@@ -23,7 +23,6 @@ wheels/
 *.pt
 
 # ipython/jupyter notebooks
-*.ipynb
 **/.ipynb_checkpoints/
 
 # Editor temporaries
