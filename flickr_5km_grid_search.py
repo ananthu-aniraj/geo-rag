@@ -119,15 +119,19 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
     if not file_exists:
         writer.writerow(['Photo_ID', 'Title', 'Latitude', 'Longitude', 'Image_URL'])
     
-    for box in tqdm(my_boxes, desc=f"Processing Chunk {CURRENT_CHUNK}"):
-        box_id = f"{box[0]:.4f},{box[1]:.4f},{box[2]:.4f},{box[3]:.4f}"
+    # Use tqdm to create a progress bar
+    # CHANGE: Renamed 'box' to 'grid_box' to avoid overwriting Shapely's 'box' function
+    for grid_box in tqdm(my_boxes, desc=f"Processing Chunk {CURRENT_CHUNK}"):
+        
+        # Create a unique ID for this box to log it
+        box_id = f"{grid_box[0]:.4f},{grid_box[1]:.4f},{grid_box[2]:.4f},{grid_box[3]:.4f}"
         
         # 1. Check Save-State
         if box_id in completed_boxes:
             continue
             
-        center_lon = (box[0] + box[2]) / 2
-        center_lat = (box[1] + box[3]) / 2
+        center_lon = (grid_box[0] + grid_box[2]) / 2
+        center_lat = (grid_box[1] + grid_box[3]) / 2
         
         # 2. Check Land Mask: Log and skip if in the ocean
         if not globe.is_land(center_lat, center_lon):
@@ -137,20 +141,19 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
             continue
             
         # 3. Check Urban Mask: Log and skip if it intersects an urban area
-        if is_urban(box, urban_gdf):
-            # We log it as "completed" so if the script restarts, we don't recalculate the math
+        if is_urban(grid_box, urban_gdf):
             with open(LOG_FILE, 'a') as log:
                 log.write(box_id + '\n')
             completed_boxes.add(box_id)
             continue
             
-        # 4. Fetch Photos (Only happens if it's on land AND rural)
+        # 4. Fetch Photos
         current_page = 1
         total_pages = 1
         photos_saved_this_box = 0
         
         while current_page <= total_pages:
-            data = fetch_outdoor_photos(box, current_page)
+            data = fetch_outdoor_photos(grid_box, current_page)
             
             if data.get('stat') == 'ok':
                 if current_page == 1:
@@ -182,7 +185,7 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
             else:
                 break
 
-        # 5. Update Save-State after finishing the API calls for this box
+        # 5. Update Save-State
         with open(LOG_FILE, 'a') as log:
             log.write(box_id + '\n')
         completed_boxes.add(box_id)
