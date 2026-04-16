@@ -4,6 +4,7 @@ API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
 
 # A dictionary of our test boxes (min_lon, min_lat, max_lon, max_lat)
 test_boxes = {
+    "New York (Midtown Manhattan)": "-74.015,40.735,-73.955,40.780",
     "Central Paris (Hyper-Dense)": "2.30,48.83,2.37,48.88",
     "Montpellier (Medium City)": "3.85,43.59,3.91,43.63",
     "Cévennes National Park (Rural)": "3.55,44.20,3.61,44.24"
