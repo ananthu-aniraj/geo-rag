@@ -14,6 +14,7 @@ url = (
     f"&api_key={API_KEY}"
     f"&bbox={BBOX}"
     f"&has_geo=1"          # Ensures photos have location data
+    f"&geo_context=2"      # 2 = OUTDOORS ONLY
     f"&extras=url_m,geo"   # Requests the medium image URL and geo-coordinates
     f"&format=json"
     f"&nojsoncallback=1"   # Returns clean JSON
