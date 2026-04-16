@@ -11,7 +11,7 @@ API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
 STEP_KM = 5
 # Example: The "Western" Hemisphere (The Americas)
 REGION = (-180, -90, -25, 90) 
-
+MAX_PHOTOS_PER_BOX = 50
 # Add a 10% safety buffer (1.1 seconds instead of exactly 1.0)
 DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 
@@ -118,23 +118,17 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
             
         # 3. Fetch Photos with Pagination
         current_page = 1
-        total_pages = 1  # We start at 1, but update this after the first API call
+        total_pages = 1
+        photos_saved_this_box = 0  # <--- Initialize our counter for this box
         
         while current_page <= total_pages:
             data = fetch_outdoor_photos(box, current_page)
             
             if data.get('stat') == 'ok':
-                # On the first page, find out how many pages there are in total
                 if current_page == 1:
                     total_pages = data['photos']['pages']
-                    # Optional: Print out how many total photos we expect for this box
-                    total_photos = data['photos']['total']
-                    if int(total_photos) > 0:
-                        print(f"\n  -> Found {total_photos} photos in this box across {total_pages} pages.")
                 
                 photos = data.get('photos', {}).get('photo', [])
-                
-                # Safety break if a page comes back empty
                 if not photos:
                     break
                     
@@ -148,14 +142,24 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
                     
                     if image_url and lat and lon:
                         writer.writerow([photo_id, title, lat, lon, image_url])
+                        photos_saved_this_box += 1  # <--- Increment the counter
+                        
+                    # --- THE CUTOFF SWITCH ---
+                    if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
+                        break # Break out of the 'for' loop
                 
-                current_page += 1  # Move to the next page
+                # If we hit the limit, break out of the 'while' loop too
+                if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
+                    print(f"  -> Reached limit of {MAX_PHOTOS_PER_BOX} photos. Moving to next box.")
+                    break 
+                
+                current_page += 1
                 
             else:
                 print(f"  -> Error on page {current_page}: {data.get('message')}")
-                break  # Exit the pagination loop if an error occurs
+                break
 
-        # 4. Update Save-State (Only log the box as complete after ALL pages are done)
+        # 4. Update Save-State
         with open(LOG_FILE, 'a') as log:
             log.write(box_id + '\n')
         completed_boxes.add(box_id)
