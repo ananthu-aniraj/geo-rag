@@ -3,6 +3,7 @@ import math
 import csv
 import os
 import time
+import argparse
 from tqdm import tqdm
 from global_land_mask import globe
 import geopandas as gpd
@@ -19,9 +20,15 @@ DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 # Urban Mask Configuration
 URBAN_SHAPEFILE = "ne_10m_urban_areas.shp"
 
+argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
+argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
+argparser.add_argument('--total_chunks', type=int, default=10000, help='Total number of chunks to split the grid into')
+args = argparser.parse_args()
+
+
 # --- Splitting Variables ---
-TOTAL_CHUNKS = 100000     # How many pieces to split the region into
-CURRENT_CHUNK = 0     # Which piece THIS script will process (0 through 9)
+TOTAL_CHUNKS = args.total_chunks     # How many pieces to split the region into
+CURRENT_CHUNK = args.chunk     # Which piece THIS script will process (0 through 9)
 
 # File Setup
 OUTPUT_FILE = f'flickr_data_chunk_{CURRENT_CHUNK}.csv'
