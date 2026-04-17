@@ -13,7 +13,7 @@ from shapely.geometry import box
 ACCESS_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'  # <-- REPLACE WITH YOUR MAPILLARY TOKEN
 STEP_KM = 5
 REGION = (-180, -90, -25, 90) 
-MAX_PHOTOS_PER_BOX = 50
+MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = 1.8  # Be polite to the Mapillary servers
 
 # Urban Mask Configuration
