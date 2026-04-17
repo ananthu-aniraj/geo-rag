@@ -36,5 +36,7 @@ wheels/
 *.txt
 *.tsv
 *.csv
+*.csv#
+*.html
 wandb/
 exps/
