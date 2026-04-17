@@ -23,6 +23,7 @@ URBAN_SHAPEFILE = "ne_10m_urban_areas.shp"
 argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
 argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
 argparser.add_argument('--total_chunks', type=int, default=10000, help='Total number of chunks to split the grid into')
+argparser.add_argument('--base_dir', type=str, default='.', help='Base directory for output files')
 args = argparser.parse_args()
 
 
@@ -31,8 +32,8 @@ TOTAL_CHUNKS = args.total_chunks     # How many pieces to split the region into
 CURRENT_CHUNK = args.chunk     # Which piece THIS script will process (0 through 9)
 
 # File Setup
-OUTPUT_FILE = f'flickr_data_chunk_{CURRENT_CHUNK}.csv'
-LOG_FILE = f'completed_boxes_chunk_{CURRENT_CHUNK}.txt'
+OUTPUT_FILE = os.path.join(args.base_dir, f'flickr_data_chunk_{CURRENT_CHUNK}.csv')
+LOG_FILE = os.path.join(args.base_dir, f'flickr_completed_boxes_chunk_{CURRENT_CHUNK}.txt')
 
 # --- 2. Helper Functions ---
 def generate_5km_grid(region, step_km):
