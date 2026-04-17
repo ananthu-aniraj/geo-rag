@@ -20,7 +20,7 @@ DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 URBAN_SHAPEFILE = "ne_10m_urban_areas.shp"
 
 # --- Splitting Variables ---
-TOTAL_CHUNKS = 10     # How many pieces to split the region into
+TOTAL_CHUNKS = 100000     # How many pieces to split the region into
 CURRENT_CHUNK = 0     # Which piece THIS script will process (0 through 9)
 
 # File Setup

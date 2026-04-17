@@ -19,7 +19,7 @@ DELAY_BETWEEN_CALLS = 1.8  # Be polite to the Mapillary servers
 URBAN_SHAPEFILE = "ne_10m_urban_areas.shp"
 
 # --- Splitting Variables ---
-TOTAL_CHUNKS = 10     
+TOTAL_CHUNKS = 100000     
 CURRENT_CHUNK = 0     
 
 # File Setup
