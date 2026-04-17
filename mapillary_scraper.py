@@ -7,6 +7,7 @@ from tqdm import tqdm
 from global_land_mask import globe
 import geopandas as gpd
 import argparse
+import Path
 from shapely.geometry import box
 
 # --- 1. Configuration ---
@@ -31,6 +32,7 @@ TOTAL_CHUNKS = args.total_chunks     # How many pieces to split the region into
 CURRENT_CHUNK = args.chunk     # Which piece THIS script will process (0 through 9)
 
 # File Setup
+Path(args.base_dir).mkdir(parents=True, exist_ok=True)  # Ensure base directory exists
 OUTPUT_FILE = os.path.join(args.base_dir, f'mapillary_data_chunk_{CURRENT_CHUNK}.csv')
 LOG_FILE = os.path.join(args.base_dir, f'mapillary_completed_boxes_chunk_{CURRENT_CHUNK}.txt')
 
