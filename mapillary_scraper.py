@@ -7,7 +7,7 @@ from tqdm import tqdm
 from global_land_mask import globe
 import geopandas as gpd
 import argparse
-import Path
+from pathlib import Path
 from shapely.geometry import box
 
 # --- 1. Configuration ---

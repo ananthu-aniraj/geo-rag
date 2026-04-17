@@ -4,7 +4,7 @@ import csv
 import os
 import time
 import argparse
-import Path
+from pathlib import Path
 from tqdm import tqdm
 from global_land_mask import globe
 import geopandas as gpd
