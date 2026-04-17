@@ -14,7 +14,7 @@ API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'  # <-- REPLACE THIS WITH YOUR ACTUAL FLIC
 STEP_KM = 5
 # Example: The "Western" Hemisphere (The Americas)
 REGION = (-180, -90, -25, 90) 
-MAX_PHOTOS_PER_BOX = 50
+MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 
 # Urban Mask Configuration
@@ -68,8 +68,9 @@ def is_urban(bbox_coords, urban_dataframe):
     
     return not exact_matches.empty
 
-def fetch_outdoor_photos(bbox_coords, page=1):
-    """Fetches outdoor photos for a specific bounding box and page."""
+# Pass geo_context as a parameter (defaulting to 2)
+def fetch_photos(bbox_coords, page=1, geo_context=2):
+    """Fetches geo-tagged photos for a specific context."""
     bbox_str = f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
     url = (
         f"https://www.flickr.com/services/rest/"
@@ -77,7 +78,7 @@ def fetch_outdoor_photos(bbox_coords, page=1):
         f"&api_key={API_KEY}"
         f"&bbox={bbox_str}"
         f"&has_geo=1"
-        f"&geo_context=2"
+        f"&geo_context={geo_context}"  # <--- Now dynamically injected
         f"&extras=url_m,geo"
         f"&per_page=250"
         f"&page={page}"
@@ -159,42 +160,54 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
         total_pages = 1
         photos_saved_this_box = 0
         
-        while current_page <= total_pages:
-            data = fetch_outdoor_photos(grid_box, current_page)
+        # Priority 1: Outdoors (2). Priority 2: Unlabelled (0).
+        for current_context in [2, 0]:
             
-            if data.get('stat') == 'ok':
-                if current_page == 1:
-                    total_pages = data['photos']['pages']
+            # If the bucket is already full from the previous priority, skip!
+            if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
+                break 
                 
-                photos = data.get('photos', {}).get('photo', [])
-                if not photos:
-                    break
+            current_page = 1
+            total_pages = 1
+            
+            while current_page <= total_pages:
+                # Call our updated function with the current context
+                data = fetch_photos(grid_box, page=current_page, geo_context=current_context)
+                
+                if data.get('stat') == 'ok':
+                    if current_page == 1:
+                        total_pages = data['photos']['pages']
                     
-                for photo in photos:
-                    photo_id = photo.get('id')
-                    title = photo.get('title', 'Untitled')
-                    lat = photo.get('latitude')
-                    lon = photo.get('longitude')
-                    image_url = photo.get('url_m')
-                    
-                    if image_url and lat and lon:
-                        writer.writerow([photo_id, title, lat, lon, image_url])
-                        photos_saved_this_box += 1
+                    photos = data.get('photos', {}).get('photo', [])
+                    if not photos:
+                        break # No more photos for this context, move on
                         
+                    for photo in photos:
+                        photo_id = photo.get('id')
+                        title = photo.get('title', 'Untitled')
+                        lat = photo.get('latitude')
+                        lon = photo.get('longitude')
+                        image_url = photo.get('url_m')
+                        
+                        if image_url and lat and lon:
+                            writer.writerow([photo_id, title, lat, lon, image_url])
+                            photos_saved_this_box += 1
+                            
+                        # Break out if we hit the limit while looping through photos
+                        if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
+                            break
+                    
+                    # Break out of the pagination loop if limit is reached
                     if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
-                        break
-                
-                if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
-                    break 
-                
-                current_page += 1
-                
-            else:
-                break
+                        break 
+                    
+                    current_page += 1
+                    
+                else:
+                    break # API Error, break pagination loop
 
         # 5. Update Save-State
         with open(LOG_FILE, 'a') as log:
             log.write(box_id + '\n')
         completed_boxes.add(box_id)
-
 print(f"\nChunk {CURRENT_CHUNK} finished!")
