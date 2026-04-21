@@ -4,7 +4,6 @@ import csv
 import os
 import time
 from tqdm import tqdm
-from global_land_mask import globe
 import geopandas as gpd
 import argparse
 from pathlib import Path
@@ -17,8 +16,8 @@ REGION = (-180, -90, -25, 90)
 MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = 1.8  # Be polite to the Mapillary servers
 
-# Urban Mask Configuration
-URBAN_SHAPEFILE = "ne_10m_urban_areas.shp"
+# Uncovered Land Configuration
+UNCOVERED_SHAPEFILE = "uncovered_land_areas.shp"
 
 argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
 argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
@@ -53,17 +52,19 @@ def generate_5km_grid(region, step_km):
         current_lat += lat_step
     return boxes
 
-def is_urban(bbox_coords, urban_dataframe):
+def is_in_uncovered_area(bbox_coords, uncovered_gdf):
+    """Checks if a bounding box intersects with any uncovered land area."""
     min_lon, min_lat, max_lon, max_lat = bbox_coords
     bbox_polygon = box(min_lon, min_lat, max_lon, max_lat)
     
-    possible_matches_index = list(urban_dataframe.sindex.intersection(bbox_polygon.bounds))
+    # Use spatial indexing for fast lookups
+    possible_matches_index = list(uncovered_gdf.sindex.intersection(bbox_polygon.bounds))
+    
     if len(possible_matches_index) == 0:
         return False
         
-    possible_matches = urban_dataframe.iloc[possible_matches_index]
-    exact_matches = possible_matches[possible_matches.intersects(bbox_polygon)]
-    return not exact_matches.empty
+    possible_matches = uncovered_gdf.iloc[possible_matches_index]
+    return any(possible_matches.intersects(bbox_polygon))
 
 def fetch_mapillary_photos(bbox_coords=None, next_url=None):
     """Fetches photos using a bounding box OR a pagination URL."""
@@ -106,8 +107,8 @@ if os.path.exists(LOG_FILE):
     with open(LOG_FILE, 'r') as f:
         completed_boxes = set(line.strip() for line in f)
 
-print("Loading Urban Areas map...")
-urban_gdf = gpd.read_file(URBAN_SHAPEFILE)
+print(f"Loading Uncovered Land Areas map: {UNCOVERED_SHAPEFILE}...")
+uncovered_gdf = gpd.read_file(UNCOVERED_SHAPEFILE, engine='pyogrio')
 
 print("Generating global grid...")
 all_boxes = generate_5km_grid(REGION, STEP_KM)
@@ -132,17 +133,8 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
         if box_id in completed_boxes:
             continue
             
-        center_lon = (grid_box[0] + grid_box[2]) / 2
-        center_lat = (grid_box[1] + grid_box[3]) / 2
-        
-        # 2. Land Mask Check
-        if not globe.is_land(center_lat, center_lon):
-            with open(LOG_FILE, 'a') as log: log.write(box_id + '\n')
-            completed_boxes.add(box_id)
-            continue
-            
-        # 3. Urban Mask Check
-        if is_urban(grid_box, urban_gdf):
+        # 2. Check Uncovered Mask: Skip if it does NOT intersect an uncovered land area
+        if not is_in_uncovered_area(grid_box, uncovered_gdf):
             with open(LOG_FILE, 'a') as log: log.write(box_id + '\n')
             completed_boxes.add(box_id)
             continue
