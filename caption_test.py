@@ -29,6 +29,21 @@ Include exactly these five keys:
 }
 """
 
+def load_places365_labels(filepath):
+    """Loads the valid Places365 categories from the provided Excel file."""
+    if not os.path.exists(filepath):
+        print(f"Warning: Labels file '{filepath}' not found. Continuing without it.")
+        return None
+        
+    print(f"Loading labels from {filepath}...")
+    try:
+        df = pd.read_excel(filepath)
+        return df
+    except Exception as e:
+        print(f"Error loading {filepath}: {e}")
+        return None
+
+
 def extract_json_from_response(response_text):
     """Safely extracts JSON from the model's response."""
     try:
@@ -70,6 +85,7 @@ def clean_macro_category(raw_string):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate local VLMs against Places365 using Ollama.")
     parser.add_argument("--model", type=str, default="llava:13b", help="The name of the model in Ollama.")
+    parser.add_argument("--labels", type=str, default="Scene hierarchy.xlsx", help="Path to the Places365 Scene hierarchy.xlsx file.")
     parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory.")
     parser.add_argument("--max_images", type=int, default=100, help="Maximum number of images to evaluate. Set to 0 for unlimited.")
     args = parser.parse_args()
@@ -77,6 +93,10 @@ def main():
     if not os.path.exists(args.img_dir):
         print(f"Error: Directory '{args.img_dir}' not found.")
         return
+
+    # Attempt to load labels, but script will proceed even if it fails (using folder names as ground truth)
+    labels_df = load_places365_labels(args.labels)
+
 
     print(f"Scanning directory structure in {args.img_dir}...")
     all_images = []
