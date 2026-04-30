@@ -6,6 +6,7 @@ import pandas as pd
 import ollama
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import random
 
 # Initialize the lightweight embedding model for semantic similarity scoring
 print("Loading embedding model...")
@@ -29,6 +30,10 @@ Include exactly these four keys:
 
 def load_places365_labels(filepath):
     """Loads the valid Places365 categories from the provided Excel file."""
+    if not os.path.exists(filepath):
+        print(f"Warning: Labels file '{filepath}' not found. Continuing without it.")
+        return None
+        
     print(f"Loading labels from {filepath}...")
     try:
         df = pd.read_excel(filepath)
@@ -67,17 +72,48 @@ def main():
     # Setup argparse
     parser = argparse.ArgumentParser(description="Evaluate local VLMs against Places365 using Ollama.")
     parser.add_argument("--model", type=str, default="llava:13b", help="The name of the model in Ollama (e.g., llava:13b, qwen2-vl).")
-    parser.add_argument("--img_dir", type=str, required=True, help="Path to the directory containing your test images.")
+    parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory (e.g., /path/to/places365/val).")
     parser.add_argument("--labels", type=str, default="Scene hierarchy.xlsx", help="Path to the Places365 Scene hierarchy.xlsx file.")
+    parser.add_argument("--max_images", type=int, default=100, help="Maximum number of images to evaluate (prevents infinite runs on the full dataset). Set to 0 for unlimited.")
     
     args = parser.parse_args()
 
+    # Attempt to load labels, but script will proceed even if it fails (using folder names as ground truth)
     labels_df = load_places365_labels(args.labels)
     
     if not os.path.exists(args.img_dir):
-        print(f"Error: Image directory '{args.img_dir}' not found.")
+        print(f"Error: Directory '{args.img_dir}' not found.")
         return
 
+    # 1. Gather all image paths first so we can shuffle/sample them
+    print(f"Scanning directory structure in {args.img_dir}...")
+    all_images = []
+    
+    # os.walk looks through the root folder, then all subfolders
+    for root, _, files in os.walk(args.img_dir):
+        for filename in files:
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                image_path = os.path.join(root, filename)
+                
+                # The ground truth is the name of the folder containing the image
+                class_folder_name = os.path.basename(root)
+                # Replace underscores with spaces for semantic similarity scoring (e.g., "auto_showroom" -> "auto showroom")
+                ground_truth_label = class_folder_name.replace('_', ' ')
+                
+                all_images.append((image_path, filename, ground_truth_label))
+
+    if not all_images:
+        print("No images found in the provided directory.")
+        return
+
+    # Shuffle to get a good mix of classes if we are limiting the run
+    random.shuffle(all_images)
+    
+    if args.max_images > 0:
+        all_images = all_images[:args.max_images]
+        print(f"Found {len(all_images)} images. Limiting evaluation to {args.max_images} images.")
+
+    # 2. Run the Evaluation Loop
     results = []
     total_score = 0.0
     valid_evaluations = 0
@@ -85,15 +121,9 @@ def main():
     print(f"\nStarting evaluation using model: {args.model}")
     print("-" * 50)
     
-    for filename in os.listdir(args.img_dir):
-        if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            continue
-            
-        image_path = os.path.join(args.img_dir, filename)
-        ground_truth_label = filename.rsplit('_', 1)[0].replace('_', ' ') 
-        
+    for image_path, filename, ground_truth_label in all_images:
         print(f"\nProcessing: {filename}")
-        print(f"Ground Truth: {ground_truth_label}")
+        print(f"Ground Truth (Folder): {ground_truth_label}")
 
         try:
             response = ollama.generate(
@@ -132,6 +162,9 @@ def main():
         except Exception as e:
             print(f"  -> Error processing {filename}: {e}")
 
+    # ==========================================
+    # FINAL REPORTING
+    # ==========================================
     print("\n" + "=" * 50)
     print("EVALUATION COMPLETE")
     print("=" * 50)
