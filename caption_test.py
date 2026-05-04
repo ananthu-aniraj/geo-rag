@@ -53,8 +53,17 @@ def load_places365_labels(filepath):
             raw_cat = row[('Unnamed: 0_level_0', 'category')]
             if not isinstance(raw_cat, str): continue
             
-            clean_cat = raw_cat.strip("'").strip("/").replace("_", " ")
-            if clean_cat.startswith("a "): clean_cat = clean_cat[2:]
+            # Clean category name: remove quotes and slashes
+            clean_cat = raw_cat.strip("'").strip("/")
+            # Remove single-letter prefix directory (e.g., 'a/', 'i/')
+            if '/' in clean_cat:
+                parts = clean_cat.split('/')
+                if len(parts[0]) == 1:
+                    clean_cat = "/".join(parts[1:])
+            
+            # Replace remaining '/' with '-' as per user instructions
+            # Underscores are preserved to match folder names
+            clean_cat = clean_cat.replace("/", "-")
             
             # Identify macro-category
             macro = "unknown"
@@ -142,7 +151,7 @@ def main():
             if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                 image_path = os.path.join(root, filename)
                 class_folder_name = os.path.basename(root)
-                ground_truth_label = class_folder_name.replace('_', ' ')
+                ground_truth_label = class_folder_name
                 if ground_truth_label not in images_by_class:
                     images_by_class[ground_truth_label] = []
                 images_by_class[ground_truth_label].append((image_path, filename, ground_truth_label))
