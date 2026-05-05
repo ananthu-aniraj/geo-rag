@@ -212,10 +212,9 @@ def main():
             response = ollama.generate(
                 model=args.model,
                 prompt=PROMPT,
-                images=[image_path],
-                format='json' 
+                images=[image_path]
             )
-            
+            print(f"Model Response: {response.get('response', '')}")
             vlm_text = response.get('response', '')
             parsed_data = extract_json_from_response(vlm_text)
             
