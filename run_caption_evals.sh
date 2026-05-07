@@ -6,8 +6,8 @@ conda activate ananthu_venv
 # ==========================================
 # Update these variables to match your environment
 PYTHON_SCRIPT="caption_test.py"
-IMG_DIR="/user/aaniraj/home/Documents/Projects/data/places365/versions/1/val"      # Path to your val/train directory
-LABELS_FILE="/user/aaniraj/home/Documents/Projects/data/places365/versions/1/Scene_hierarchy.xlsx"
+IMG_DIR="/home/ananthu/DATA/data_ananthu/places365/versions/1/val"      # Path to your val/train directory
+LABELS_FILE="/home/ananthu/DATA/data_ananthu/places365/versions/1/Scene_hierarchy.xlsx"
 MAX_IMAGES=1000                    # Set to 0 to run the entire dataset
 
 # Define the list of models you want to evaluate.
