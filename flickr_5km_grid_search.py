@@ -13,8 +13,8 @@ from shapely.geometry import box
 # --- 1. Configuration ---
 API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'  # <-- REPLACE THIS WITH YOUR ACTUAL FLICKR API KEY
 STEP_KM = 5
-# Example: The "Western" Hemisphere (The Americas)
-REGION = (-180, -90, -25, 90) 
+# Global Region for a representative scan
+REGION = (-180, -90, 180, 90) 
 MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 
@@ -39,15 +39,17 @@ LOG_FILE = os.path.join(args.base_dir, f'flickr_completed_boxes_chunk_{CURRENT_C
 
 # --- 2. Helper Functions ---
 def generate_5km_grid(region, step_km):
-    """Slices a large bounding box into smaller boxes."""
+    """Slices a large bounding box into smaller boxes with consistent physical dimensions."""
     min_lon, min_lat, max_lon, max_lat = region
     lat_step = step_km / 111.32
-    avg_lat = math.radians((min_lat + max_lat) / 2)
-    lon_step = step_km / (111.32 * math.cos(avg_lat))
     
     boxes = []
     current_lat = min_lat
     while current_lat < max_lat:
+        # Adjust longitude step based on current latitude to maintain consistent box width
+        cos_lat = math.cos(math.radians(max(-89.9, min(89.9, current_lat))))
+        lon_step = step_km / (111.32 * cos_lat)
+        
         current_lon = min_lon
         while current_lon < max_lon:
             boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
