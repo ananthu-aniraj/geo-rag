@@ -7,32 +7,49 @@ import ollama
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import random
+from PIL import Image
 
 # Initialize the lightweight embedding model for semantic similarity scoring
 print("Loading embedding model...")
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
+print("Loading CLIP model...")
+clip_model = SentenceTransformer('clip-ViT-B-32')
+
 # ==========================================
 # PROMPT DESIGN
 # ==========================================
-PROMPT = """
-Analyze the provided image and output a JSON object detailing the scene using this hierarchical structure:
+PROMPT_STEP1 = """
+Analyze the provided image and output a JSON object with the following information:
+1. Human Activities: What are people doing here, or what activities does the infrastructure support?
+2. Land Cover/Usage: What is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?
 
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+{
+  "human_activities": "...",
+  "land_cover_usage": "..."
+}
+"""
+
+PROMPT_STEP2 = """
+Based on the following description of a scene, output a JSON object detailing the hierarchy:
+
+Description:
+Human Activities: {human_activities}
+Land Cover/Usage: {land_cover_usage}
+
+Hierarchical structure to derive:
 1. Macro Category: Classify the scene into exactly one of these: 'indoor', 'outdoor natural', or 'outdoor man-made'.
 2. Sub Category: Further categorize the scene (e.g., 'water/ice/snow', 'forest/field', 'transportation', 'commercial/shopping', 'workplace', 'home', etc.).
 3. Environment/Landscape: Describe the physical surroundings (e.g., specific terrain, architectural style, or interior setting).
 4. Type of Place: A concise 1-3 word label for the specific location (e.g., "coffee shop", "mountain peak", "industrial warehouse").
-5. Human Activities: What are people doing here, or what activities does the infrastructure support?
-6. Land Cover/Usage: What is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?
 
 You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
 {
   "macro_category": "...",
   "sub_category": "...",
   "environment_landscape": "...",
-  "type_of_place": "...",
-  "human_activities": "...",
-  "land_cover_usage": "..."
+  "type_of_place": "..."
 }
 """
 
@@ -209,18 +226,52 @@ def main():
             print(f"Ground Truth Sub Category: {gt_sub}")
 
         try:
-            response = ollama.generate(
+            # Step 1: Extract Human Activities and Land Cover from Image
+            response1 = ollama.generate(
                 model=args.model,
-                prompt=PROMPT,
+                prompt=PROMPT_STEP1,
                 images=[image_path]
             )
-            # print(f"Model Response: {response.get('response', '')}")
-            vlm_text = response.get('response', '')
-            parsed_data = extract_json_from_response(vlm_text)
+            vlm_text1 = response1.get('response', '')
+            parsed_data1 = extract_json_from_response(vlm_text1)
             
-            if parsed_data is None:
-                print("  -> Failed to parse JSON from model output.")
+            if parsed_data1 is None:
+                print("  -> Failed to parse JSON from Step 1 model output.")
                 continue
+
+            human_activities = parsed_data1.get('human_activities', '')
+            land_cover_usage = parsed_data1.get('land_cover_usage', '')
+
+            # Step 2: Derive Categories from Text
+            step2_prompt = PROMPT_STEP2.format(
+                human_activities=human_activities,
+                land_cover_usage=land_cover_usage
+            )
+            response2 = ollama.generate(
+                model=args.model,
+                prompt=step2_prompt
+            )
+            vlm_text2 = response2.get('response', '')
+            parsed_data2 = extract_json_from_response(vlm_text2)
+
+            if parsed_data2 is None:
+                print("  -> Failed to parse JSON from Step 2 model output.")
+                continue
+
+            # Merge results
+            parsed_data = {**parsed_data1, **parsed_data2}
+            
+            # CLIP Similarity Calculation
+            img = Image.open(image_path)
+            combined_caption = f"{human_activities}. {land_cover_usage}"
+            
+            # Get embeddings
+            img_emb = clip_model.encode(img)
+            text_emb = clip_model.encode([combined_caption])
+            
+            # Calculate similarity
+            clip_similarity = float(cosine_similarity([img_emb], [text_emb])[0][0])
+            print(f"  -> CLIP Similarity: {clip_similarity:.4f}")
                 
             # 1. Evaluate the Class Name (Semantic Similarity)
             predicted_place = parsed_data.get('type_of_place', '')
@@ -258,9 +309,10 @@ def main():
                 'sub_category_similarity_score': sub_similarity,
                 'predicted_place': predicted_place,
                 'class_similarity_score': class_similarity,
+                'clip_similarity': clip_similarity,
                 'environment_landscape': parsed_data.get('environment_landscape', ''),
-                'human_activities': parsed_data.get('human_activities', ''),
-                'land_cover_usage': parsed_data.get('land_cover_usage', '')
+                'human_activities': human_activities,
+                'land_cover_usage': land_cover_usage
             })
             
             total_class_score += class_similarity
@@ -282,6 +334,9 @@ def main():
         
         # Calculate scores for those with ground truth
         results_df = pd.DataFrame(results)
+        
+        avg_clip_score = results_df['clip_similarity'].mean()
+        print(f"Average CLIP Similarity: {avg_clip_score:.4f}")
         
         macro_evaluable = results_df[results_df['ground_truth_macro'] != 'unknown']
         if not macro_evaluable.empty:
