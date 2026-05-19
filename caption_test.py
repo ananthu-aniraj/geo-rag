@@ -243,10 +243,7 @@ def main():
             land_cover_usage = parsed_data1.get('land_cover_usage', '')
 
             # Step 2: Derive Categories from Text
-            step2_prompt = PROMPT_STEP2.format(
-                human_activities=human_activities,
-                land_cover_usage=land_cover_usage
-            )
+            step2_prompt = PROMPT_STEP2.replace("{human_activities}", str(human_activities)).replace("{land_cover_usage}", str(land_cover_usage))
             response2 = ollama.generate(
                 model=args.model,
                 prompt=step2_prompt
@@ -262,7 +259,7 @@ def main():
             parsed_data = {**parsed_data1, **parsed_data2}
             
             # CLIP Similarity Calculation
-            img = Image.open(image_path)
+            img = Image.open(image_path).convert('RGB')
             combined_caption = f"{human_activities}. {land_cover_usage}"
             
             # Get embeddings
