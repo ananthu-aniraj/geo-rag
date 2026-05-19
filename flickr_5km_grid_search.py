@@ -4,6 +4,7 @@ import csv
 import os
 import time
 import argparse
+import random
 from pathlib import Path
 from tqdm import tqdm
 import geopandas as gpd
@@ -108,6 +109,10 @@ except Exception as e:
 
 print("Generating global grid... (this might take a moment)")
 all_boxes = generate_5km_grid(REGION, STEP_KM)
+
+# Randomize the order of boxes to get maximum coverage (diverse lat/lon) across all chunks.
+# Using a fixed seed ensures that different chunk runs consistently cover their assigned boxes.
+random.Random(42).shuffle(all_boxes)
 
 # Calculate chunk sizes
 chunk_size = math.ceil(len(all_boxes) / TOTAL_CHUNKS)
