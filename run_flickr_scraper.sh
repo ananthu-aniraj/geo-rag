@@ -37,15 +37,15 @@ do
     echo "========================================"
     echo "Processing chunk $i / $((TOTAL_CHUNKS - 1))"
     echo "========================================"
-    
+
     # Run the Python script
     python "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"
-    
+
     # Safety Check: If the Python script crashes completely, stop the Bash loop
     if [ $? -ne 0 ]; then
         echo "CRITICAL ERROR: Script failed on chunk $i. Halting execution."
         exit 1
     fi
-done
+done < "$ORDER_FILE"
 
 echo "All $TOTAL_CHUNKS chunks completed successfully!"

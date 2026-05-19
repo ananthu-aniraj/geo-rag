@@ -38,25 +38,6 @@ OUTPUT_FILE = os.path.join(args.base_dir, f'flickr_data_chunk_{CURRENT_CHUNK}.cs
 LOG_FILE = os.path.join(args.base_dir, f'flickr_completed_boxes_chunk_{CURRENT_CHUNK}.txt')
 
 # --- 2. Helper Functions ---
-def generate_5km_grid(region, step_km):
-    """Slices a large bounding box into smaller boxes with consistent physical dimensions."""
-    min_lon, min_lat, max_lon, max_lat = region
-    lat_step = step_km / 111.32
-    
-    boxes = []
-    current_lat = min_lat
-    while current_lat < max_lat:
-        # Adjust longitude step based on current latitude to maintain consistent box width
-        cos_lat = math.cos(math.radians(max(-89.9, min(89.9, current_lat))))
-        lon_step = step_km / (111.32 * cos_lat)
-        
-        current_lon = min_lon
-        while current_lon < max_lon:
-            boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
-            current_lon += lon_step
-        current_lat += lat_step
-    return boxes
-
 def is_in_uncovered_area(bbox_coords, uncovered_gdf):
     """Checks if a bounding box intersects with any uncovered land area."""
     min_lon, min_lat, max_lon, max_lat = bbox_coords
@@ -109,21 +90,35 @@ except Exception as e:
     print(f"ERROR: Could not load {UNCOVERED_SHAPEFILE}: {e}")
     exit()
 
-print("Generating global grid... (this might take a moment)")
-all_boxes = generate_5km_grid(REGION, STEP_KM)
+print(f"Initializing global grid sampling for Chunk {CURRENT_CHUNK}...")
+# Memory-efficient approach: Instead of generating and shuffling 26M+ boxes in RAM,
+# we use a virtual grid. Each chunk picks every Nth box from the virtual grid.
+# This ensures global diversity (representative scan) for every chunk.
 
-# Randomize the order of boxes to get maximum coverage (diverse lat/lon) across all chunks.
-# Using a fixed seed ensures that different chunk runs consistently cover their assigned boxes.
-random.Random(42).shuffle(all_boxes)
+my_boxes = []
+total_boxes_count = 0
+current_lat = REGION[1]
+lat_step = STEP_KM / 111.32
 
-# Calculate chunk sizes
-chunk_size = math.ceil(len(all_boxes) / TOTAL_CHUNKS)
-start_idx = CURRENT_CHUNK * chunk_size
-end_idx = min(start_idx + chunk_size, len(all_boxes))
-my_boxes = all_boxes[start_idx:end_idx]
+while current_lat < REGION[3]:
+    # Adjust longitude step based on current latitude
+    cos_lat = math.cos(math.radians(max(-89.9, min(89.9, current_lat))))
+    lon_step = STEP_KM / (111.32 * cos_lat)
+    
+    current_lon = REGION[0]
+    while current_lon < REGION[2]:
+        if total_boxes_count % TOTAL_CHUNKS == CURRENT_CHUNK:
+            my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+        
+        current_lon += lon_step
+        total_boxes_count += 1
+    current_lat += lat_step
 
-print(f"Total boxes in region: {len(all_boxes)}")
-print(f"Boxes in Chunk {CURRENT_CHUNK}: {len(my_boxes)}")
+# Shuffle the specific boxes assigned to THIS chunk to avoid sequential processing
+random.Random(42 + CURRENT_CHUNK).shuffle(my_boxes)
+
+print(f"Total virtual boxes in global grid: {total_boxes_count}")
+print(f"Boxes assigned to Chunk {CURRENT_CHUNK}: {len(my_boxes)}")
 print(f"Already completed: {len(completed_boxes)}")
 
 # --- 4. Main Execution ---
