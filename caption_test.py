@@ -262,12 +262,12 @@ def main():
             img = Image.open(image_path).convert('RGB')
             combined_caption = f"{human_activities}. {land_cover_usage}"
             
-            # Get embeddings
-            img_emb = clip_model.encode(img)
+            # Get embeddings (passing as list ensures 2D output)
+            img_emb = clip_model.encode([img])
             text_emb = clip_model.encode([combined_caption])
             
-            # Calculate similarity
-            clip_similarity = float(cosine_similarity([img_emb], [text_emb])[0][0])
+            # Calculate similarity (already 2D, no need to wrap in [])
+            clip_similarity = float(cosine_similarity(img_emb, text_emb)[0][0])
             print(f"  -> CLIP Similarity: {clip_similarity:.4f}")
                 
             # 1. Evaluate the Class Name (Semantic Similarity)
