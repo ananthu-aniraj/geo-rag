@@ -7,6 +7,7 @@ import ollama
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import random
+import pickle
 from PIL import Image
 
 # Initialize the lightweight embedding model for semantic similarity scoring
@@ -326,7 +327,8 @@ def main():
                 'clip_similarity': clip_similarity,
                 'environment_landscape': parsed_data.get('environment_landscape', ''),
                 'human_activities': human_activities,
-                'land_cover_usage': land_cover_usage
+                'land_cover_usage': land_cover_usage,
+                'image_embedding': img_emb[0]  # Save the vector for retrieval studies
             })
             
             total_class_score += class_similarity
@@ -367,8 +369,16 @@ def main():
         print(f"Model Macro Category Distribution: {macro_counts}")
         
         output_csv = f"vlm_evaluation_results_{args.model.replace(':', '_')}.csv"
-        results_df.to_csv(output_csv, index=False)
+        # Drop the embedding column before saving CSV to keep it readable and small
+        results_df.drop(columns=['image_embedding']).to_csv(output_csv, index=False)
         print(f"\nDetailed results saved to: {output_csv}")
+
+        # Save retrieval data (filename, caption, embedding) to a pickle file
+        retrieval_file = f"vlm_retrieval_data_{args.model.replace(':', '_')}.pkl"
+        retrieval_data = results_df[['image', 'environment_landscape', 'image_embedding']].to_dict('records')
+        with open(retrieval_file, 'wb') as f:
+            pickle.dump(retrieval_data, f)
+        print(f"Retrieval data (embeddings + captions) saved to: {retrieval_file}")
     else:
         print("No valid evaluations were completed.")
 
