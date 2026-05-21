@@ -40,9 +40,12 @@ Land Cover/Usage: {land_cover_usage}
 
 Hierarchical structure to derive:
 1. Macro Category: Classify the scene into exactly one of these: 'indoor', 'outdoor natural', or 'outdoor man-made'.
-2. Sub Category: Further categorize the scene (e.g., 'water/ice/snow', 'forest/field', 'transportation', 'commercial/shopping', 'workplace', 'home', etc.).
+2. Sub Category: Further categorize the scene. Choose the BEST fit from this list:
+{sub_categories_list}
+
 3. Environment/Landscape: Describe the physical surroundings (e.g., specific terrain, architectural style, or interior setting).
-4. Type of Place: A concise 1-3 word label for the specific location (e.g., "coffee shop", "mountain peak", "industrial warehouse").
+4. Type of Place: A concise label for the specific location. Choose the BEST fit from this list:
+{type_of_places_list}
 
 You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
 {
@@ -54,10 +57,10 @@ You must respond ONLY with a valid JSON object. Do not include markdown formatti
 """
 
 def load_places365_labels(filepath):
-    """Loads the valid Places365 categories from the provided Excel file and returns a mapping to macro and sub-categories."""
+    """Loads the valid Places365 categories from the provided Excel file and returns a mapping to macro and sub-categories, plus unique lists."""
     if not os.path.exists(filepath):
         print(f"Warning: Labels file '{filepath}' not found. Continuing without it.")
-        return {}
+        return {}, [], []
         
     print(f"Loading labels from {filepath}...")
     try:
@@ -65,6 +68,14 @@ def load_places365_labels(filepath):
         df = pd.read_excel(filepath, header=[0, 1])
         
         mapping = {}
+        all_sub_cats = set()
+        all_types = []
+        
+        # Get unique sub-categories from columns
+        for col in df.columns:
+            if col[0].startswith("Level 2"):
+                all_sub_cats.add(col[1])
+
         for _, row in df.iterrows():
             # Extract category name and normalize it (e.g., '/a/airfield' -> 'airfield')
             raw_cat = row[('Unnamed: 0_level_0', 'category')]
@@ -81,6 +92,7 @@ def load_places365_labels(filepath):
             # Replace remaining '/' with '-' as per user instructions
             # Underscores are preserved to match folder names
             clean_cat = clean_cat.replace("/", "-")
+            all_types.append(clean_cat)
             
             # Identify macro-category
             macro = "unknown"
@@ -100,10 +112,10 @@ def load_places365_labels(filepath):
             
             mapping[clean_cat] = {"macro": macro, "sub_category": sub_cat}
             
-        return mapping
+        return mapping, sorted(list(all_sub_cats)), sorted(all_types)
     except Exception as e:
         print(f"Error loading {filepath}: {e}")
-        return {}
+        return {}, [], []
 
 
 def extract_json_from_response(response_text):
@@ -147,7 +159,7 @@ def clean_macro_category(raw_string):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate local VLMs against Places365 using Ollama.")
     parser.add_argument("--model", type=str, default="llava:13b", help="The name of the model in Ollama.")
-    parser.add_argument("--labels", type=str, default="Scene hierarchy.xlsx", help="Path to the Places365 Scene hierarchy.xlsx file.")
+    parser.add_argument("--labels", type=str, default="/home/aaniraj/Documents/Projects/data/places365/versions/1/Scene_hierarchy.xlsx", help="Path to the Places365 Scene hierarchy.xlsx file.")
     parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory.")
     parser.add_argument("--max_images", type=int, default=100, help="Maximum number of images to evaluate. Set to 0 for unlimited.")
     args = parser.parse_args()
@@ -157,8 +169,10 @@ def main():
         return
 
     # Attempt to load labels, but script will proceed even if it fails (using folder names as ground truth)
-    labels_mapping = load_places365_labels(args.labels)
+    labels_mapping, sub_categories_list, type_of_places_list = load_places365_labels(args.labels)
 
+    sub_cats_str = "\n".join([f"- {c}" for c in sub_categories_list]) if sub_categories_list else "None"
+    type_of_places_str = ", ".join(type_of_places_list) if type_of_places_list else "None"
 
     print(f"Scanning directory structure in {args.img_dir}...")
     images_by_class = {}
@@ -243,7 +257,10 @@ def main():
             land_cover_usage = parsed_data1.get('land_cover_usage', '')
 
             # Step 2: Derive Categories from Text
-            step2_prompt = PROMPT_STEP2.replace("{human_activities}", str(human_activities)).replace("{land_cover_usage}", str(land_cover_usage))
+            step2_prompt = PROMPT_STEP2.replace("{human_activities}", str(human_activities)) \
+                                       .replace("{land_cover_usage}", str(land_cover_usage)) \
+                                       .replace("{sub_categories_list}", sub_cats_str) \
+                                       .replace("{type_of_places_list}", type_of_places_str)
             response2 = ollama.generate(
                 model=args.model,
                 prompt=step2_prompt
