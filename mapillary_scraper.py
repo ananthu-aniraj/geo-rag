@@ -3,6 +3,7 @@ import math
 import csv
 import os
 import time
+import random
 from tqdm import tqdm
 import geopandas as gpd
 import argparse
@@ -12,14 +13,15 @@ from shapely.geometry import box
 # --- 1. Configuration ---
 ACCESS_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'  # <-- REPLACE WITH YOUR MAPILLARY TOKEN
 STEP_KM = 5
-REGION = (-180, -90, -25, 90) 
+# Global Region for a representative scan
+REGION = (-180, -90, 180, 90) 
 MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = 1.8  # Be polite to the Mapillary servers
 
 # Uncovered Land Configuration
 UNCOVERED_SHAPEFILE = "uncovered_land_areas.shp"
 
-argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
+argparser = argparse.ArgumentParser(description="Mapillary 5km Grid Search")
 argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
 argparser.add_argument('--total_chunks', type=int, default=10000, help='Total number of chunks to split the grid into')
 argparser.add_argument('--base_dir', type=str, default='.', help='Base directory for output files')
@@ -36,22 +38,6 @@ OUTPUT_FILE = os.path.join(args.base_dir, f'mapillary_data_chunk_{CURRENT_CHUNK}
 LOG_FILE = os.path.join(args.base_dir, f'mapillary_completed_boxes_chunk_{CURRENT_CHUNK}.txt')
 
 # --- 2. Helper Functions ---
-def generate_5km_grid(region, step_km):
-    min_lon, min_lat, max_lon, max_lat = region
-    lat_step = step_km / 111.32
-    avg_lat = math.radians((min_lat + max_lat) / 2)
-    lon_step = step_km / (111.32 * math.cos(avg_lat))
-    
-    boxes = []
-    current_lat = min_lat
-    while current_lat < max_lat:
-        current_lon = min_lon
-        while current_lon < max_lon:
-            boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
-            current_lon += lon_step
-        current_lat += lat_step
-    return boxes
-
 def is_in_uncovered_area(bbox_coords, uncovered_gdf):
     """Checks if a bounding box intersects with any uncovered land area."""
     min_lon, min_lat, max_lon, max_lat = bbox_coords
@@ -110,13 +96,32 @@ if os.path.exists(LOG_FILE):
 print(f"Loading Uncovered Land Areas map: {UNCOVERED_SHAPEFILE}...")
 uncovered_gdf = gpd.read_file(UNCOVERED_SHAPEFILE, engine='pyogrio')
 
-print("Generating global grid...")
-all_boxes = generate_5km_grid(REGION, STEP_KM)
+print("Generating global virtual grid...")
+my_boxes = []
+total_boxes_count = 0
+current_lat = REGION[1]
+lat_step = STEP_KM / 111.32
 
-chunk_size = math.ceil(len(all_boxes) / TOTAL_CHUNKS)
-start_idx = CURRENT_CHUNK * chunk_size
-end_idx = min(start_idx + chunk_size, len(all_boxes))
-my_boxes = all_boxes[start_idx:end_idx]
+while current_lat < REGION[3]:
+    # Adjust longitude step based on current latitude
+    cos_lat = math.cos(math.radians(max(-89.9, min(89.9, current_lat))))
+    lon_step = STEP_KM / (111.32 * cos_lat)
+    
+    current_lon = REGION[0]
+    while current_lon < REGION[2]:
+        if total_boxes_count % TOTAL_CHUNKS == CURRENT_CHUNK:
+            my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+        
+        current_lon += lon_step
+        total_boxes_count += 1
+    current_lat += lat_step
+
+# Shuffle the specific boxes assigned to THIS chunk to avoid sequential processing
+random.Random(42 + CURRENT_CHUNK).shuffle(my_boxes)
+
+print(f"Total virtual boxes in global grid: {total_boxes_count}")
+print(f"Boxes assigned to Chunk {CURRENT_CHUNK}: {len(my_boxes)}")
+print(f"Already completed: {len(completed_boxes)}")
 
 # --- 4. Main Execution ---
 file_exists = os.path.exists(OUTPUT_FILE)
