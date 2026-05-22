@@ -23,7 +23,6 @@ print("Load Tips model")
 tips_model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
 tips_model.eval().to(device)
 
-
 # Initialize the lightweight embedding model for semantic similarity scoring
 print("Loading embedding model...")
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
@@ -35,16 +34,18 @@ clip_model = SentenceTransformer('clip-ViT-B-32')
 # PROMPT DESIGN
 # ==========================================
 PROMPT_STEP1 = """
-Analyze the provided image and output a JSON object with the following information:
-1. Human Activities: What are people doing here, or what activities does the infrastructure support?
-2. Land Cover/Usage: What is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?
-3. Type of Vegetation (if any): Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state "none".
+Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Output a JSON object with the following information:
+1. visible_evidence: First, list the primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.
+2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?
+3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?
+4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state "none".
 
 You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
 {
+  "visible_evidence": "...",
   "human_activities": "...",
   "land_cover_usage": "...",
-   "type_of_vegetation": "..."
+  "type_of_vegetation": "..."
 }
 """
 
@@ -52,6 +53,7 @@ PROMPT_STEP2 = """
 Based on the following description of a scene, output a JSON object detailing the hierarchy:
 
 Description:
+Visible Evidence: {visible_evidence}
 Human Activities: {human_activities}
 Land Cover/Usage: {land_cover_usage}
 Type of Vegetation: {type_of_vegetation}
@@ -281,12 +283,14 @@ def main():
                 print("  -> Failed to parse JSON from Step 1 model output.")
                 continue
 
+            visible_evidence = parsed_data1.get('visible_evidence', '')
             human_activities = parsed_data1.get('human_activities', '')
             land_cover_usage = parsed_data1.get('land_cover_usage', '')
             type_of_vegetation = parsed_data1.get('type_of_vegetation', '')
 
             # Step 2: Derive Categories from Text
-            step2_prompt = PROMPT_STEP2.replace("{human_activities}", str(human_activities)) \
+            step2_prompt = PROMPT_STEP2.replace("{visible_evidence}", str(visible_evidence)) \
+                .replace("{human_activities}", str(human_activities)) \
                 .replace("{land_cover_usage}", str(land_cover_usage)) \
                 .replace("{type_of_vegetation}", str(type_of_vegetation)) \
                 .replace("{sub_categories_list}", sub_cats_str) \
@@ -307,7 +311,8 @@ def main():
 
             # CLIP Similarity Calculation
             img = Image.open(image_path).convert('RGB')
-            combined_caption = f"{human_activities}. {land_cover_usage}"
+            combined_caption = f"{visible_evidence}. {human_activities}. {land_cover_usage}. {type_of_vegetation}".replace(
+                "..", ".")
 
             # TIPSv2 similarity
             img_transformed = tips_transform(img).unsqueeze(0).to(device)  # Add batch dimension
@@ -364,10 +369,12 @@ def main():
                 'clip_similarity': clip_similarity,
                 'tips_similarity_score': tips_similarity,
                 'environment_landscape': parsed_data.get('environment_landscape', ''),
+                'visible_evidence': visible_evidence,
                 'human_activities': human_activities,
                 'land_cover_usage': land_cover_usage,
                 'type_of_vegetation': type_of_vegetation,
                 'image_embedding': img_emb[0],
+                'tips_image_embedding': tips_img_features[0][0],
                 'combined_caption': combined_caption})
 
             total_class_score += class_similarity
@@ -410,12 +417,14 @@ def main():
 
         output_csv = f"vlm_evaluation_results_{args.model.replace(':', '_')}.csv"
         # Drop the embedding column before saving CSV to keep it readable and small
-        results_df.drop(columns=['image_embedding', 'combined_caption']).to_csv(output_csv, index=False)
+        results_df.drop(columns=['image_embedding', 'combined_caption', 'tips_image_embedding']).to_csv(output_csv,
+                                                                                                        index=False)
         print(f"\nDetailed results saved to: {output_csv}")
 
         # Save retrieval data (filename, caption, embedding) to a pickle file
         retrieval_file = f"vlm_retrieval_data_{args.model.replace(':', '_')}.pkl"
-        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding']].to_dict('records')
+        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding', 'tips_image_embedding']].to_dict(
+            'records')
         with open(retrieval_file, 'wb') as f:
             pickle.dump(retrieval_data, f)
         print(f"Retrieval data (embeddings + captions) saved to: {retrieval_file}")
