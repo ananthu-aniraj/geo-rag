@@ -311,8 +311,8 @@ def main():
 
             # TIPSv2 similarity
             img_transformed = tips_transform(img).unsqueeze(0).to(device)  # Add batch dimension
-            tips_img_features = tips_model.encode_image(img_transformed).cls_token.to('cpu')
-            tips_text_features = tips_model.encode_text([combined_caption]).to('cpu')
+            tips_img_features = tips_model.encode_image(img_transformed).cls_token.detach().cpu()
+            tips_text_features = tips_model.encode_text([combined_caption]).detach().cpu()
 
             # Get embeddings (passing as list ensures 2D output)
             img_emb = clip_model.encode([img])
@@ -322,7 +322,7 @@ def main():
             clip_similarity = float(cosine_similarity(img_emb, text_emb)[0][0])
             print(f"  -> CLIP Similarity: {clip_similarity:.4f}")
 
-            tips_similarity = float(cosine_similarity(tips_img_features, tips_text_features)[0][0])
+            tips_similarity = float(cosine_similarity(tips_img_features[0], tips_text_features)[0][0])
             print(f"  -> TIPSv2 Similarity: {tips_similarity:.4f}")
 
             # 1. Evaluate the Class Name (Semantic Similarity)
