@@ -9,6 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import random
 import pickle
 from PIL import Image
+import torch
 
 from transformers import AutoModel
 from torchvision import transforms
@@ -17,9 +18,11 @@ tips_transform = transforms.Compose([
     transforms.Resize((448, 448)),
     transforms.ToTensor(),
 ])
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Load Tips model")
 tips_model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
-tips_model.eval()
+tips_model.eval().to(device)
+
 
 # Initialize the lightweight embedding model for semantic similarity scoring
 print("Loading embedding model...")
@@ -307,8 +310,8 @@ def main():
             combined_caption = f"{human_activities}. {land_cover_usage}"
 
             # TIPSv2 similarity
-            img_transformed = tips_transform(img).unsqueeze(0)  # Add batch dimension
-            tips_img_features = tips_model.encode_image(img_transformed).cls_token
+            img_transformed = tips_transform(img).unsqueeze(0).to(device)  # Add batch dimension
+            tips_img_features = tips_model.encode_image(img_transformed).cls_token.to('cpu')
             tips_text_features = tips_model.encode_text([combined_caption])
 
             # Get embeddings (passing as list ensures 2D output)
