@@ -312,7 +312,7 @@ def main():
             # TIPSv2 similarity
             img_transformed = tips_transform(img).unsqueeze(0).to(device)  # Add batch dimension
             tips_img_features = tips_model.encode_image(img_transformed).cls_token.to('cpu')
-            tips_text_features = tips_model.encode_text([combined_caption])
+            tips_text_features = tips_model.encode_text([combined_caption]).to('cpu')
 
             # Get embeddings (passing as list ensures 2D output)
             img_emb = clip_model.encode([img])
