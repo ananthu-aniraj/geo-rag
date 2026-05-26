@@ -295,6 +295,7 @@ def main():
 
             if parsed_data1 is None:
                 print("  -> Failed to parse JSON from Step 1 model output.")
+                print(f"  -> Raw Output: {vlm_text1}")
                 continue
 
             visible_evidence = parsed_data1.get('visible_evidence', '')
@@ -319,6 +320,7 @@ def main():
 
             if parsed_data2 is None:
                 print("  -> Failed to parse JSON from Step 2 model output.")
+                print(f"  -> Raw Output: {vlm_text2}")
                 continue
 
             # Merge results
