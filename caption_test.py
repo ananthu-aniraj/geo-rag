@@ -147,11 +147,11 @@ def load_places365_labels(filepath):
 
 
 def extract_json_from_response(response_text):
-    """Safely extracts and repairs JSON from the model's response."""
+    """Safely extracts and repairs JSON from the model's response using a tiered approach."""
     if not response_text:
         return None
 
-    # 1. Try to find the widest possible JSON-like block (Greedy search)
+    # 1. Greedy search for the outermost braces
     start_idx = response_text.find('{')
     end_idx = response_text.rfind('}')
 
@@ -160,37 +160,52 @@ def extract_json_from_response(response_text):
 
     json_str = response_text[start_idx:end_idx + 1]
 
-    # 2. Advanced cleanup for common small model mistakes
-    
-    # Remove literal backslash escapes (e.g., \_ becomes _)
-    json_str = json_str.replace('\\_', '_').replace('\\-', '-')
-
-    # Fix "Set" mistake: {"none"} -> ["none"]
-    # This happens when a model tries to provide a list but uses braces
-    json_str = re.sub(r'\{\s*"([^"]*)"\s*\}', r'["\1"]', json_str)
-
-    # Handle single quotes surgically: Replace ' with " only when used as delimiters
-    # Around keys
-    json_str = re.sub(r"'(\w+)'\s*:", r'"\1":', json_str)
-    # Around string values in arrays or objects
-    json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str)
-    json_str = re.sub(r'\[\s*\'([^\']*)\'', r'["\1"', json_str)
-    json_str = re.sub(r'\'([^\']*)\'\s*\]', r'"\1"]', json_str)
-    json_str = re.sub(r'\'([^\']*)\'\s*,', r'"\1",', json_str)
-    json_str = re.sub(r',\s*\'([^\']*)\'', r', "\1"', json_str)
-
-    # Remove trailing commas before a closing brace or bracket
-    json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
-
+    # --- ATTEMPT 1: Direct Parse ---
+    # If the model output valid JSON, we return it immediately without touching it.
     try:
         return json.loads(json_str, strict=False)
     except json.JSONDecodeError:
+        pass
+
+    # --- ATTEMPT 2: Basic Cleanup (Backslashes & Commas) ---
+    # These are safe repairs that shouldn't break valid JSON.
+    temp_json = json_str.replace('\\_', '_').replace('\\-', '-')
+    # Fix trailing commas
+    temp_json = re.sub(r',\s*([\]}])', r'\1', temp_json)
+    # Fix "Set" mistake only if it looks like a stand-alone value: {"none"} -> ["none"]
+    # We use a more specific pattern to avoid matching the whole object
+    temp_json = re.sub(r':\s*\{\s*"([^"]*)"\s*\}', r': ["\1"]', temp_json)
+
+    try:
+        return json.loads(temp_json, strict=False)
+    except json.JSONDecodeError:
+        pass
+
+    # --- ATTEMPT 3: Surgical Single Quote Repair ---
+    # Only try this if we suspect single quotes are being used as JSON delimiters.
+    # We look for keys wrapped in single quotes (e.g., 'key':)
+    if re.search(r"'\w+'\s*:", json_str):
+        # Fix keys: 'key': -> "key":
+        temp_json = re.sub(r"'(\w+)'\s*:", r'"\1":', json_str)
+        # Fix string values: : 'value' -> : "value"
+        temp_json = re.sub(r":\s*'([^']*)'\s*([,}])", r': "\1"\2', temp_json)
+        # Fix values in arrays: ['a', 'b']
+        temp_json = re.sub(r"'\s*([^']*)\s*'\s*([,\]])", r'"\1"\2', temp_json)
+        # Final cleanup for this attempt
+        temp_json = temp_json.replace('\\_', '_').replace('\\-', '-')
+        temp_json = re.sub(r',\s*([\]}])', r'\1', temp_json)
+
         try:
-            # Fallback: one last attempt to clean up any remaining markdown or artifacts
-            clean_json = re.sub(r'```(?:json)?|```', '', json_str).strip()
-            return json.loads(clean_json, strict=False)
-        except:
+            return json.loads(temp_json, strict=False)
+        except json.JSONDecodeError:
             pass
+
+    # --- FINAL FALLBACK: Strip Markdown ---
+    try:
+        clean_json = re.sub(r'```(?:json)?|```', '', json_str).strip()
+        return json.loads(clean_json, strict=False)
+    except:
+        pass
 
     return None
 
