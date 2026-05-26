@@ -156,18 +156,29 @@ def extract_json_from_response(response_text):
 
     json_str = response_text[start_idx:end_idx + 1]
 
-    # 2. Basic cleanup for common small model mistakes
+    # 2. Advanced cleanup for common small model mistakes
+    
+    # Remove literal backslash escapes for characters that shouldn't be escaped (like \_ or \-)
+    # This preserves the character itself (e.g., \_ becomes _)
+    json_str = json_str.replace('\\_', '_').replace('\\-', '-')
+
+    # Handle single quotes: If the JSON starts with {' or contains ': it's likely using single quotes for keys
+    if "{'" in json_str or "':" in json_str:
+        # A simple replacement can be risky if single quotes are inside strings, 
+        # but for these specific VLM outputs, it is often necessary.
+        json_str = json_str.replace("'", '"')
+
     # Remove trailing commas before a closing brace or bracket
     json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
 
     try:
-        return json.loads(json_str)
+        # strict=False allows control characters like newlines within strings
+        return json.loads(json_str, strict=False)
     except json.JSONDecodeError:
-        # 3. Fallback: Try to clean up any remaining markdown or artifacts
+        # 3. Fallback: Try one last time by stripping any remaining markdown artifacts
         try:
-            # Attempt to strip out any potential markdown code block markers
             clean_json = re.sub(r'```(?:json)?|```', '', json_str).strip()
-            return json.loads(clean_json)
+            return json.loads(clean_json, strict=False)
         except:
             pass
 
