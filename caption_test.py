@@ -34,23 +34,24 @@ clip_model = SentenceTransformer('clip-ViT-B-32')
 # PROMPT DESIGN
 # ==========================================
 PROMPT_STEP1 = """
-Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Output a JSON object with the following information:
-1. visible_evidence: First, list the primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.
-2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?
-3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?
-4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state "none".
+Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. 
 
-You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+Output a JSON object with this structure:
 {
-  "visible_evidence": "...",
-  "human_activities": "...",
-  "land_cover_usage": "...",
-  "type_of_vegetation": "..."
+  "visible_evidence": "primary objects, architectural elements, lighting, etc.",
+  "human_activities": "activities visible or supported by infrastructure",
+  "land_cover_usage": "surface materials (e.g. asphalt) and space usage",
+  "type_of_vegetation": "type of plants present or 'none'"
 }
+
+Instructions:
+- Respond ONLY with the JSON object.
+- Do not use markdown backticks or conversational filler.
+- Start your response immediately with '{'.
 """
 
 PROMPT_STEP2 = """
-Based on the following description of a scene, output a JSON object detailing the hierarchy:
+Based on the description provided, classify the scene hierarchy into a JSON object.
 
 Description:
 Visible Evidence: {visible_evidence}
@@ -58,22 +59,24 @@ Human Activities: {human_activities}
 Land Cover/Usage: {land_cover_usage}
 Type of Vegetation: {type_of_vegetation}
 
-Hierarchical structure to derive:
-1. Macro Category: Classify the scene into exactly one of these: 'indoor', 'outdoor natural', or 'outdoor man-made'.
-2. Sub Category: Further categorize the scene. Choose the BEST fit from this list:
+Valid Sub-Categories:
 {sub_categories_list}
 
-3. Environment/Landscape: Describe the physical surroundings (e.g., specific terrain, architectural style, or interior setting).
-4. Type of Place: A concise label for the specific location. Choose the BEST fit from this list:
+Valid Types of Places:
 {type_of_places_list}
 
-You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+Output structure:
 {
-  "macro_category": "...",
-  "sub_category": "...",
-  "environment_landscape": "...",
-  "type_of_place": "..."
+  "macro_category": "exactly one of: 'indoor', 'outdoor natural', 'outdoor man-made'",
+  "sub_category": "the best fit from the Valid Sub-Categories list",
+  "environment_landscape": "describe physical surroundings/architectural style",
+  "type_of_place": "the best fit from the Valid Types of Places list"
 }
+
+Instructions:
+- Respond ONLY with the JSON object.
+- Do not use markdown backticks or conversational filler.
+- Start your response immediately with '{'.
 """
 
 
@@ -140,23 +143,33 @@ def load_places365_labels(filepath):
 
 
 def extract_json_from_response(response_text):
-    """Safely extracts JSON from the model's response."""
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1))
-            except:
-                pass
+    """Safely extracts and repairs JSON from the model's response."""
+    if not response_text:
+        return None
 
-        match = re.search(r'\{.*?\}', response_text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except:
-                pass
+    # 1. Try to find the widest possible JSON-like block (Greedy search)
+    start_idx = response_text.find('{')
+    end_idx = response_text.rfind('}')
+
+    if start_idx == -1 or end_idx == -1:
+        return None
+
+    json_str = response_text[start_idx:end_idx + 1]
+
+    # 2. Basic cleanup for common small model mistakes
+    # Remove trailing commas before a closing brace or bracket
+    json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
+
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        # 3. Fallback: Try to clean up any remaining markdown or artifacts
+        try:
+            # Attempt to strip out any potential markdown code block markers
+            clean_json = re.sub(r'```(?:json)?|```', '', json_str).strip()
+            return json.loads(clean_json)
+        except:
+            pass
 
     return None
 
@@ -273,6 +286,7 @@ def main():
             # Step 1: Extract Human Activities and Land Cover from Image
             response1 = ollama.generate(
                 model=args.model,
+                system="You are a precise image analysis assistant. You always output valid JSON without any conversational filler.",
                 prompt=PROMPT_STEP1,
                 images=[image_path]
             )
@@ -297,6 +311,7 @@ def main():
                 .replace("{type_of_places_list}", type_of_places_str)
             response2 = ollama.generate(
                 model=args.model,
+                system="You are a scene classification assistant. You always output valid JSON without any conversational filler.",
                 prompt=step2_prompt
             )
             vlm_text2 = response2.get('response', '')
