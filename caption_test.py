@@ -36,17 +36,19 @@ clip_model = SentenceTransformer('clip-ViT-B-32')
 PROMPT_STEP1 = """
 Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. 
 
-Output a JSON object with this structure:
+Output a JSON object with this exact structure:
 {
-  "visible_evidence": "primary objects, architectural elements, lighting, etc.",
-  "human_activities": "activities visible or supported by infrastructure",
-  "land_cover_usage": "surface materials (e.g. asphalt) and space usage",
-  "type_of_vegetation": "type of plants present or 'none'"
+  "visible_evidence": "string describing primary objects, architectural elements, lighting, etc.",
+  "human_activities": "string describing activities visible or supported by infrastructure",
+  "land_cover_usage": "string describing surface materials (e.g. asphalt) and space usage",
+  "type_of_vegetation": "string describing type of plants present or 'none'"
 }
 
-Instructions:
+Constraints:
 - Respond ONLY with the JSON object.
-- Do not use markdown backticks or conversational filler.
+- Do NOT use nested objects or lists; use plain strings for all values.
+- Do NOT use single quotes (') for JSON keys or values; use double quotes (").
+- Do NOT use markdown backticks or conversational filler.
 - Start your response immediately with '{'.
 """
 
@@ -69,13 +71,15 @@ Output structure:
 {
   "macro_category": "exactly one of: 'indoor', 'outdoor natural', 'outdoor man-made'",
   "sub_category": "the best fit from the Valid Sub-Categories list",
-  "environment_landscape": "describe physical surroundings/architectural style",
+  "environment_landscape": "string describing physical surroundings/architectural style",
   "type_of_place": "the best fit from the Valid Types of Places list"
 }
 
-Instructions:
+Constraints:
 - Respond ONLY with the JSON object.
-- Do not use markdown backticks or conversational filler.
+- Do NOT use nested objects or lists; use plain strings for all values.
+- Do NOT use single quotes (') for JSON keys or values; use double quotes (").
+- Do NOT use markdown backticks or conversational filler.
 - Start your response immediately with '{'.
 """
 
@@ -158,25 +162,31 @@ def extract_json_from_response(response_text):
 
     # 2. Advanced cleanup for common small model mistakes
     
-    # Remove literal backslash escapes for characters that shouldn't be escaped (like \_ or \-)
-    # This preserves the character itself (e.g., \_ becomes _)
+    # Remove literal backslash escapes (e.g., \_ becomes _)
     json_str = json_str.replace('\\_', '_').replace('\\-', '-')
 
-    # Handle single quotes: If the JSON starts with {' or contains ': it's likely using single quotes for keys
-    if "{'" in json_str or "':" in json_str:
-        # A simple replacement can be risky if single quotes are inside strings, 
-        # but for these specific VLM outputs, it is often necessary.
-        json_str = json_str.replace("'", '"')
+    # Fix "Set" mistake: {"none"} -> ["none"]
+    # This happens when a model tries to provide a list but uses braces
+    json_str = re.sub(r'\{\s*"([^"]*)"\s*\}', r'["\1"]', json_str)
+
+    # Handle single quotes surgically: Replace ' with " only when used as delimiters
+    # Around keys
+    json_str = re.sub(r"'(\w+)'\s*:", r'"\1":', json_str)
+    # Around string values in arrays or objects
+    json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str)
+    json_str = re.sub(r'\[\s*\'([^\']*)\'', r'["\1"', json_str)
+    json_str = re.sub(r'\'([^\']*)\'\s*\]', r'"\1"]', json_str)
+    json_str = re.sub(r'\'([^\']*)\'\s*,', r'"\1",', json_str)
+    json_str = re.sub(r',\s*\'([^\']*)\'', r', "\1"', json_str)
 
     # Remove trailing commas before a closing brace or bracket
     json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
 
     try:
-        # strict=False allows control characters like newlines within strings
         return json.loads(json_str, strict=False)
     except json.JSONDecodeError:
-        # 3. Fallback: Try one last time by stripping any remaining markdown artifacts
         try:
+            # Fallback: one last attempt to clean up any remaining markdown or artifacts
             clean_json = re.sub(r'```(?:json)?|```', '', json_str).strip()
             return json.loads(clean_json, strict=False)
         except:
