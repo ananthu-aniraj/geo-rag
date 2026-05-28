@@ -126,13 +126,13 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False):
         }
 
     # Final Comparison Table
-    print("\n" + "=" * 80)
-    print(f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10}")
-    print("-" * 80)
+    print("\n" + "=" * 115)
+    print(f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'T2I MRR':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10} | {'I2T MRR':<10}")
+    print("-" * 115)
     for key in component_keys:
         res = all_results[key]
-        print(f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}%")
-    print("=" * 80)
+        print(f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['t2i']['mrr']:>10.3f} | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}% | {res['i2t']['mrr']:>10.3f}")
+    print("=" * 115)
 
 
 if __name__ == "__main__":
