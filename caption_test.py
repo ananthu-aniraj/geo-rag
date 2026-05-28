@@ -18,63 +18,9 @@ tips_transform = transforms.Compose([
     transforms.Resize((448, 448)),
     transforms.ToTensor(),
 ])
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Load Tips model")
-tips_model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
-tips_model.eval().to(device)
 
-# Initialize the lightweight embedding model for semantic similarity scoring
-print("Loading embedding model...")
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
-print("Loading CLIP model...")
-clip_model = SentenceTransformer('clip-ViT-B-32')
-
-# ==========================================
-# PROMPT DESIGN
-# ==========================================
-PROMPT_STEP1 = """
-Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Output a JSON object with the following information:
-1. visible_evidence: First, list all the primary elements, natural and artificial, clearly visible in the image, along with their visual characteristics. Base this strictly on visual facts and focus primarily on objects that help characterize the landscape
-2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the objects/infrastructure support?
-3. land_cover_usage: Based ONLY on the visual evidence, what land-cover classes are present (e.g., asphalt, grass, dense forest) and what are the most likely land-use classes associated to this place?
-4. type_of_vegetation: Describe, in as much detail as possible, the type of vegetation visible in the image, as well as other details that may give clues about the ecosystem , if applicable. If none, state "none".
-
-You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
-{
-  "visible_evidence": "...",
-  "human_activities": "...",
-  "land_cover_usage": "...",
-  "type_of_vegetation": "..."
-}
-"""
-
-PROMPT_STEP2 = """
-Based on the following description of a scene, output a JSON object detailing the hierarchy:
-
-Description:
-Visible Evidence: {visible_evidence}
-Human Activities: {human_activities}
-Land Cover/Usage: {land_cover_usage}
-Type of Vegetation: {type_of_vegetation}
-
-Hierarchical structure to derive:
-1. Macro Category: Classify the scene into exactly one of these: 'indoor', 'outdoor natural', or 'outdoor man-made'.
-2. Sub Category: Further categorize the scene. Choose the BEST fit from this list:
-{sub_categories_list}
-
-3. Environment/Landscape: Describe the physical surroundings (e.g., specific terrain, architectural style, or interior setting).
-4. Type of Place: A concise label for the specific location. Choose the BEST fit from this list:
-{type_of_places_list}
-
-You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
-{
-  "macro_category": "...",
-  "sub_category": "...",
-  "environment_landscape": "...",
-  "type_of_place": "..."
-}
-"""
+# Prompts are now loaded from an external prompts.json file
 
 
 def load_places365_labels(filepath):
@@ -203,7 +149,7 @@ def extract_json_from_response(response_text):
     return None
 
 
-def calculate_similarity(predicted_place, ground_truth):
+def calculate_similarity(embedder, predicted_place, ground_truth):
     """Calculates cosine similarity between the model's guess and the actual label."""
     if not predicted_place or not ground_truth:
         return 0.0
@@ -234,11 +180,43 @@ def main():
     parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory.")
     parser.add_argument("--max_images", type=int, default=100,
                         help="Maximum number of images to evaluate. Set to 0 for unlimited.")
+    parser.add_argument("--prompt_version", type=str, default="v1", help="The version of the prompt to use from prompts.json.")
+    parser.add_argument("--prompts_file", type=str, default="prompts.json", help="Path to the prompts JSON file.")
     args = parser.parse_args()
 
     if not os.path.exists(args.img_dir):
         print(f"Error: Directory '{args.img_dir}' not found.")
         return
+
+    # Load prompts from external file
+    if not os.path.exists(args.prompts_file):
+        print(f"Error: Prompts file '{args.prompts_file}' not found.")
+        return
+    
+    with open(args.prompts_file, 'r') as f:
+        prompts_data = json.load(f)
+    
+    if args.prompt_version not in prompts_data:
+        print(f"Error: Prompt version '{args.prompt_version}' not found in {args.prompts_file}.")
+        print(f"Available versions: {list(prompts_data.keys())}")
+        return
+    
+    prompt_step1 = prompts_data[args.prompt_version]["step1"]
+    prompt_step2 = prompts_data[args.prompt_version]["step2"]
+
+    print(f"Using prompt version: {args.prompt_version}")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Load Tips model")
+    tips_model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
+    tips_model.eval().to(device)
+
+    # Initialize the lightweight embedding model for semantic similarity scoring
+    print("Loading embedding model...")
+    embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+    print("Loading CLIP model...")
+    clip_model = SentenceTransformer("clip-ViT-B-32")
 
     # Attempt to load labels, but script will proceed even if it fails (using folder names as ground truth)
     labels_mapping, sub_categories_list, type_of_places_list = load_places365_labels(args.labels)
@@ -315,7 +293,7 @@ def main():
             # Step 1: Extract Human Activities and Land Cover from Image
             response1 = ollama.generate(
                 model=args.model,
-                prompt=PROMPT_STEP1,
+                prompt=prompt_step1,
                 images=[image_path]
             )
             vlm_text1 = response1.get('response', '')
@@ -332,7 +310,7 @@ def main():
             type_of_vegetation = parsed_data1.get('type_of_vegetation', '')
 
             # Step 2: Derive Categories from Text
-            step2_prompt = PROMPT_STEP2.replace("{visible_evidence}", str(visible_evidence)) \
+            step2_prompt = prompt_step2.replace("{visible_evidence}", str(visible_evidence)) \
                 .replace("{human_activities}", str(human_activities)) \
                 .replace("{land_cover_usage}", str(land_cover_usage)) \
                 .replace("{type_of_vegetation}", str(type_of_vegetation)) \
@@ -376,7 +354,7 @@ def main():
 
             # 1. Evaluate the Class Name (Semantic Similarity)
             predicted_place = parsed_data.get('type_of_place', '')
-            class_similarity = calculate_similarity(predicted_place, ground_truth_label)
+            class_similarity = calculate_similarity(embedder, predicted_place, ground_truth_label)
 
             # 2. Extract and Evaluate the Macro Category
             raw_macro = parsed_data.get('macro_category', '')
@@ -385,7 +363,7 @@ def main():
 
             # 3. Extract and Evaluate Sub Category (Semantic Similarity)
             predicted_sub = parsed_data.get('sub_category', '')
-            sub_similarity = calculate_similarity(predicted_sub, gt_sub) if gt_sub != "unknown" else 0.0
+            sub_similarity = calculate_similarity(embedder, predicted_sub, gt_sub) if gt_sub != "unknown" else 0.0
 
             print(f"  -> Predicted Macro Category: {cleaned_macro}")
             if macro_correct is not None:
@@ -419,7 +397,11 @@ def main():
                 'type_of_vegetation': type_of_vegetation,
                 'image_embedding': img_emb[0],
                 'tips_image_embedding': tips_img_features[0][0],
-                'combined_caption': combined_caption})
+                'combined_caption': combined_caption,
+                'prompt_version': args.prompt_version,
+                'prompt_step1': prompt_step1,
+                'prompt_step2': prompt_step2
+            })
 
             total_class_score += class_similarity
             if gt_sub != "unknown":
@@ -429,45 +411,55 @@ def main():
         except Exception as e:
             print(f"  -> Error processing {filename}: {e}")
 
-    print("\n" + "=" * 50)
-    print("EVALUATION COMPLETE")
-    print("=" * 50)
+    summary_report = []
+    summary_report.append("\n" + "=" * 50)
+    summary_report.append("EVALUATION COMPLETE")
+    summary_report.append("=" * 50)
 
     if valid_evaluations > 0:
         avg_class_score = total_class_score / valid_evaluations
-        print(f"Total Images Evaluated: {valid_evaluations}")
-        print(f"Average Class (Place) Similarity: {avg_class_score:.4f}")
+        summary_report.append(f"Total Images Evaluated: {valid_evaluations}")
+        summary_report.append(f"Average Class (Place) Similarity: {avg_class_score:.4f}")
 
         # Calculate scores for those with ground truth
         results_df = pd.DataFrame(results)
 
         avg_clip_score = results_df['clip_similarity'].mean()
-        print(f"Average CLIP Similarity: {avg_clip_score:.4f}")
+        summary_report.append(f"Average CLIP Similarity: {avg_clip_score:.4f}")
 
         macro_evaluable = results_df[results_df['ground_truth_macro'] != 'unknown']
         if not macro_evaluable.empty:
             macro_acc = (macro_evaluable['macro_correct'].sum() / len(macro_evaluable)) * 100
-            print(
+            summary_report.append(
                 f"Macro Category Accuracy: {macro_acc:.2f}% ({macro_evaluable['macro_correct'].sum()}/{len(macro_evaluable)})")
 
         sub_evaluable = results_df[results_df['ground_truth_sub'] != 'unknown']
         if not sub_evaluable.empty:
             avg_sub_score = sub_evaluable['sub_category_similarity_score'].mean()
-            print(f"Average Sub Category Similarity: {avg_sub_score:.4f}")
+            summary_report.append(f"Average Sub Category Similarity: {avg_sub_score:.4f}")
 
         # Calculate how often the model picked each macro category
         macro_counts = results_df['predicted_macro_category'].value_counts().to_dict()
-        print(f"Model Macro Category Distribution: {macro_counts}")
+        summary_report.append(f"Model Macro Category Distribution: {macro_counts}")
 
-        output_csv = f"vlm_evaluation_results_{args.model.replace(':', '_')}.csv"
-        # Drop the embedding column before saving CSV to keep it readable and small
-        results_df.drop(columns=['image_embedding', 'combined_caption', 'tips_image_embedding']).to_csv(output_csv,
-                                                                                                        index=False)
+        # Save to summary file
+        summary_file = f"vlm_evaluation_summary_{args.model.replace(':', '_')}_{args.prompt_version}.txt"
+        with open(summary_file, 'w') as f:
+            f.write("\n".join(summary_report))
+        
+        print("\n".join(summary_report))
+        print(f"\nSummary metrics saved to: {summary_file}")
+
+        output_csv = f"vlm_evaluation_results_{args.model.replace(':', '_')}_{args.prompt_version}.csv"
+        # Drop the embedding and prompt columns before saving CSV to keep it readable and small
+        # We keep prompt_version though
+        cols_to_drop = ['image_embedding', 'combined_caption', 'tips_image_embedding', 'prompt_step1', 'prompt_step2']
+        results_df.drop(columns=cols_to_drop).to_csv(output_csv, index=False)
         print(f"\nDetailed results saved to: {output_csv}")
 
         # Save retrieval data (filename, caption, embedding) to a pickle file
-        retrieval_file = f"vlm_retrieval_data_{args.model.replace(':', '_')}.pkl"
-        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding', 'tips_image_embedding']].to_dict(
+        retrieval_file = f"vlm_retrieval_data_{args.model.replace(':', '_')}_{args.prompt_version}.pkl"
+        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding', 'tips_image_embedding', 'prompt_version']].to_dict(
             'records')
         with open(retrieval_file, 'wb') as f:
             pickle.dump(retrieval_data, f)
