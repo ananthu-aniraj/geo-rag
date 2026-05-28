@@ -13,9 +13,9 @@ MAX_IMAGES=1000                    # Set to 0 to run the entire dataset
 # Define the list of models you want to evaluate.
 # Make sure these exact names match what you see when you type `ollama list`.
 MODELS=(
-    # "gemma4:e4b"
+    "gemma4:e4b"
     # "llava:7b"
-    "qwen3-vl:8b"
+    #"qwen3-vl:8b"
     # "llama3.2-vision:11b"
 )
 

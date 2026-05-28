@@ -67,44 +67,72 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False):
 
     # Prepare data
     images = [item['image'] for item in data]
-    # Handle cases where environment_landscape might be a dict or list
-    captions = [dict_to_string(item.get('combined_caption', "")) for item in data]
+    
+    # Define the components to evaluate
+    component_keys = [
+        'combined_caption',
+        'visible_evidence',
+        'human_activities',
+        'land_cover_usage',
+        'type_of_vegetation'
+    ]
 
-    # Ensure embeddings are numpy arrays
+    # Ensure image embeddings are numpy arrays
     if use_tips_embeddings:
         image_embeddings = np.array([item['tips_image_embedding'] for item in data])
     else:
-
         image_embeddings = np.array([item["image_embedding"] for item in data])
 
     print(f"Dataset size: {len(images)} images")
-    print("Encoding captions...")
-    if use_tips_embeddings:
-        text_embeddings = tips_model.encode_text(captions).detach().cpu().numpy()
-    else:
-        text_embeddings = model.encode(captions, show_progress_bar=True)
+    
+    all_results = {}
 
-    # Calculate similarity matrix
-    # sim_matrix[i, j] is similarity between caption i and image j
-    print("Calculating similarity matrix...")
-    sim_matrix = cosine_similarity(text_embeddings, image_embeddings)
+    for key in component_keys:
+        print(f"\n--- Evaluating Component: {key} ---")
+        # Handle cases where value might be empty or missing
+        raw_captions = [dict_to_string(item.get(key, "")) for item in data]
+        
+        # Format as "Category: Value" to provide context, especially for "none" values
+        formatted_captions = []
+        category_label = key.replace('_', ' ').capitalize()
+        
+        for c in raw_captions:
+            val = c.strip() if c.strip() else "none"
+            # Special case for combined_caption: don't prefix
+            if key == 'combined_caption':
+                formatted_captions.append(val)
+            else:
+                formatted_captions.append(f"{category_label}: {val}")
+        
+        print(f"Encoding '{key}'...")
+        if use_tips_embeddings:
+            text_embeddings = tips_model.encode_text(formatted_captions).detach().cpu().numpy()
+        else:
+            text_embeddings = model.encode(formatted_captions, show_progress_bar=True)
 
-    print("Evaluating Text-to-Image (T2I) retrieval...")
-    t2i_metrics = compute_metrics(sim_matrix)
+        # Calculate similarity matrix
+        print(f"Calculating similarity matrix for {key}...")
+        sim_matrix = cosine_similarity(text_embeddings, image_embeddings)
 
-    print("Evaluating Image-to-Text (I2T) retrieval...")
-    # For I2T, we query with images and look for the correct caption
-    # This is equivalent to taking the transpose of the similarity matrix
-    i2t_metrics = compute_metrics(sim_matrix.T)
+        print(f"Evaluating T2I retrieval for {key}...")
+        t2i_metrics = compute_metrics(sim_matrix)
 
-    print("\n" + "=" * 45)
-    print(f"{'METRIC':<20} | {'T2I':<10} | {'I2T':<10}")
-    print("-" * 45)
-    print(f"{'Total Queries':<20} | {len(images):<10} | {len(images):<10}")
-    print(f"{'Top-1 Accuracy':<20} | {t2i_metrics['top1']:>9.2f}% | {i2t_metrics['top1']:>9.2f}%")
-    print(f"{'Top-5 Accuracy':<20} | {t2i_metrics['top5']:>9.2f}% | {i2t_metrics['top5']:>9.2f}%")
-    print(f"{'MRR':<20} | {t2i_metrics['mrr']:>10.4f} | {i2t_metrics['mrr']:>10.4f}")
-    print("=" * 45)
+        print(f"Evaluating I2T retrieval for {key}...")
+        i2t_metrics = compute_metrics(sim_matrix.T)
+        
+        all_results[key] = {
+            "t2i": t2i_metrics,
+            "i2t": i2t_metrics
+        }
+
+    # Final Comparison Table
+    print("\n" + "=" * 80)
+    print(f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10}")
+    print("-" * 80)
+    for key in component_keys:
+        res = all_results[key]
+        print(f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}%")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
