@@ -33,10 +33,10 @@ wheels/
 
 # Results temporary
 *.png
-*.txt
 *.tsv
 *.csv
 *.csv#
 *.html
 wandb/
 exps/
+ne_10m_urban_areas.VERSION.txt

@@ -1,0 +1,24 @@
+Based on the following description of a scene, output a JSON object detailing the hierarchy:
+
+Description:
+Visible Evidence: {visible_evidence}
+Human Activities: {human_activities}
+Land Cover/Usage: {land_cover_usage}
+Type of Vegetation: {type_of_vegetation}
+
+Hierarchical structure to derive:
+1. Macro Category: Classify the scene into exactly one of these: 'indoor', 'outdoor natural', or 'outdoor man-made'.
+2. Sub Category: Further categorize the scene. Choose the BEST fit from this list:
+{sub_categories_list}
+
+3. Environment/Landscape: Describe the physical surroundings (e.g., specific terrain, architectural style, or interior setting).
+4. Type of Place: A concise label for the specific location. Choose the BEST fit from this list:
+{type_of_places_list}
+
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+{
+  "macro_category": "...",
+  "sub_category": "...",
+  "environment_landscape": "...",
+  "type_of_place": "..."
+}

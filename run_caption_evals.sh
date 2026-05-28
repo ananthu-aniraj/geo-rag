@@ -19,6 +19,11 @@ MODELS=(
     # "llama3.2-vision:11b"
 )
 
+# Define the list of prompt versions you want to evaluate (folder names in prompts/)
+VERSIONS=(
+    "v1"
+)
+
 # ==========================================
 # PRE-FLIGHT CHECKS
 # ==========================================
@@ -38,32 +43,37 @@ echo "====================================================="
 echo "📁 Image Directory: $IMG_DIR"
 echo "🖼️  Max Images per run: $MAX_IMAGES"
 echo "🤖 Models queued: ${#MODELS[@]}"
+echo "📝 Versions queued: ${#VERSIONS[@]}"
 echo "====================================================="
 
 # ==========================================
 # EXECUTION LOOP
 # ==========================================
 for MODEL in "${MODELS[@]}"; do
-    echo ""
-    echo "▶️  [START] Evaluating Model: $MODEL"
-    echo "-----------------------------------------------------"
-    
-    # Run the python script with the arguments
-    python3 "$PYTHON_SCRIPT" \
-        --model "$MODEL" \
-        --img_dir "$IMG_DIR" \
-        --labels "$LABELS_FILE" \
-        --max_images "$MAX_IMAGES"
-        
-    # Check if the python command executed successfully
-    if [ $? -eq 0 ]; then
-        echo "✅ [SUCCESS] Completed evaluation for $MODEL"
-    else
-        echo "❌ [ERROR] An error occurred while evaluating $MODEL"
-        # Optional: exit 1 # Uncomment this if you want the bash script to stop entirely on a failure
-    fi
-    echo "-----------------------------------------------------"
+    for VERSION in "${VERSIONS[@]}"; do
+        echo ""
+        echo "▶️  [START] Evaluating Model: $MODEL | Version: $VERSION"
+        echo "-----------------------------------------------------"
+
+        # Run the python script with the arguments
+        python3 "$PYTHON_SCRIPT" \
+            --model "$MODEL" \
+            --img_dir "$IMG_DIR" \
+            --labels "$LABELS_FILE" \
+            --max_images "$MAX_IMAGES" \
+            --prompt_version "$VERSION"
+
+        # Check if the python command executed successfully
+        if [ $? -eq 0 ]; then
+            echo "✅ [SUCCESS] Completed $MODEL with $VERSION"
+        else
+            echo "❌ [ERROR] An error occurred while evaluating $MODEL with $VERSION"
+            # Optional: exit 1 
+        fi
+        echo "-----------------------------------------------------"
+    done
 done
+
 
 echo ""
 echo "🎉 All automated evaluations are complete!"

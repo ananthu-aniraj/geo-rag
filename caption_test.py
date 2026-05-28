@@ -180,31 +180,33 @@ def main():
     parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory.")
     parser.add_argument("--max_images", type=int, default=100,
                         help="Maximum number of images to evaluate. Set to 0 for unlimited.")
-    parser.add_argument("--prompt_version", type=str, default="v1", help="The version of the prompt to use from prompts.json.")
-    parser.add_argument("--prompts_file", type=str, default="prompts.json", help="Path to the prompts JSON file.")
+    parser.add_argument("--prompt_version", type=str, default="v1", help="The version of the prompt to use (folder name in prompts/).")
+    parser.add_argument("--prompts_dir", type=str, default="prompts", help="Path to the directory containing prompt versions.")
     args = parser.parse_args()
+
+    # Load prompts from external directory
+    prompt_version_dir = os.path.join(args.prompts_dir, args.prompt_version)
+    if not os.path.exists(prompt_version_dir):
+        print(f"Error: Prompt version directory '{prompt_version_dir}' not found.")
+        return
+    
+    step1_path = os.path.join(prompt_version_dir, "step1.txt")
+    step2_path = os.path.join(prompt_version_dir, "step2.txt")
+    
+    if not os.path.exists(step1_path) or not os.path.exists(step2_path):
+        print(f"Error: step1.txt or step2.txt missing in {prompt_version_dir}")
+        return
+
+    with open(step1_path, 'r') as f:
+        prompt_step1 = f.read().strip()
+    with open(step2_path, 'r') as f:
+        prompt_step2 = f.read().strip()
+
+    print(f"Using prompt version: {args.prompt_version}")
 
     if not os.path.exists(args.img_dir):
         print(f"Error: Directory '{args.img_dir}' not found.")
         return
-
-    # Load prompts from external file
-    if not os.path.exists(args.prompts_file):
-        print(f"Error: Prompts file '{args.prompts_file}' not found.")
-        return
-    
-    with open(args.prompts_file, 'r') as f:
-        prompts_data = json.load(f)
-    
-    if args.prompt_version not in prompts_data:
-        print(f"Error: Prompt version '{args.prompt_version}' not found in {args.prompts_file}.")
-        print(f"Available versions: {list(prompts_data.keys())}")
-        return
-    
-    prompt_step1 = prompts_data[args.prompt_version]["step1"]
-    prompt_step2 = prompts_data[args.prompt_version]["step2"]
-
-    print(f"Using prompt version: {args.prompt_version}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Load Tips model")
@@ -411,10 +413,7 @@ def main():
         except Exception as e:
             print(f"  -> Error processing {filename}: {e}")
 
-    summary_report = []
-    summary_report.append("\n" + "=" * 50)
-    summary_report.append("EVALUATION COMPLETE")
-    summary_report.append("=" * 50)
+    summary_report = ["\n" + "=" * 50, "EVALUATION COMPLETE", "=" * 50]
 
     if valid_evaluations > 0:
         avg_class_score = total_class_score / valid_evaluations
