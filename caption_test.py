@@ -181,11 +181,13 @@ def main():
     parser.add_argument("--max_images", type=int, default=100,
                         help="Maximum number of images to evaluate. Set to 0 for unlimited.")
     parser.add_argument("--prompt_version", type=str, default="v1", help="The version of the prompt to use (folder name in prompts/).")
-    parser.add_argument("--prompts_dir", type=str, default="prompts", help="Path to the directory containing prompt versions.")
     args = parser.parse_args()
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_prompts_dir = os.path.join(script_dir, "prompts")
+
     # Load prompts from external directory
-    prompt_version_dir = os.path.join(args.prompts_dir, args.prompt_version)
+    prompt_version_dir = os.path.join(default_prompts_dir, args.prompt_version)
     if not os.path.exists(prompt_version_dir):
         print(f"Error: Prompt version directory '{prompt_version_dir}' not found.")
         return
