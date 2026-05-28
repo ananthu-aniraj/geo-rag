@@ -34,26 +34,23 @@ clip_model = SentenceTransformer('clip-ViT-B-32')
 # PROMPT DESIGN
 # ==========================================
 PROMPT_STEP1 = """
-Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. 
+Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Output a JSON object with the following information:
+1. visible_evidence: First, list all the primary elements, natural and artificial, clearly visible in the image, along with their visual characteristics. Base this strictly on visual facts and focus primarily on objects that help characterize the landscape
+2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the objects/infrastructure support?
+3. land_cover_usage: Based ONLY on the visual evidence, what land-cover classes are present (e.g., asphalt, grass, dense forest) and what are the most likely land-use classes associated to this place?
+4. type_of_vegetation: Describe, in as much detail as possible, the type of vegetation visible in the image, as well as other details that may give clues about the ecosystem , if applicable. If none, state "none".
 
-Output a JSON object with this exact structure:
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
 {
-  "visible_evidence": "string describing primary objects, architectural elements, lighting, etc.",
-  "human_activities": "string describing activities visible or supported by infrastructure",
-  "land_cover_usage": "string describing surface materials (e.g. asphalt) and space usage",
-  "type_of_vegetation": "string describing type of plants present or 'none'"
+  "visible_evidence": "...",
+  "human_activities": "...",
+  "land_cover_usage": "...",
+  "type_of_vegetation": "..."
 }
-
-Constraints:
-- Respond ONLY with the JSON object.
-- Do NOT use nested objects or lists; use plain strings for all values.
-- Do NOT use single quotes (') for JSON keys or values; use double quotes (").
-- Do NOT use markdown backticks or conversational filler.
-- Start your response immediately with '{'.
 """
 
 PROMPT_STEP2 = """
-Based on the description provided, classify the scene hierarchy into a JSON object.
+Based on the following description of a scene, output a JSON object detailing the hierarchy:
 
 Description:
 Visible Evidence: {visible_evidence}
@@ -61,26 +58,22 @@ Human Activities: {human_activities}
 Land Cover/Usage: {land_cover_usage}
 Type of Vegetation: {type_of_vegetation}
 
-Valid Sub-Categories:
+Hierarchical structure to derive:
+1. Macro Category: Classify the scene into exactly one of these: 'indoor', 'outdoor natural', or 'outdoor man-made'.
+2. Sub Category: Further categorize the scene. Choose the BEST fit from this list:
 {sub_categories_list}
 
-Valid Types of Places:
+3. Environment/Landscape: Describe the physical surroundings (e.g., specific terrain, architectural style, or interior setting).
+4. Type of Place: A concise label for the specific location. Choose the BEST fit from this list:
 {type_of_places_list}
 
-Output structure:
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
 {
-  "macro_category": "exactly one of: 'indoor', 'outdoor natural', 'outdoor man-made'",
-  "sub_category": "the best fit from the Valid Sub-Categories list",
-  "environment_landscape": "string describing physical surroundings/architectural style",
-  "type_of_place": "the best fit from the Valid Types of Places list"
+  "macro_category": "...",
+  "sub_category": "...",
+  "environment_landscape": "...",
+  "type_of_place": "..."
 }
-
-Constraints:
-- Respond ONLY with the JSON object.
-- Do NOT use nested objects or lists; use plain strings for all values.
-- Do NOT use single quotes (') for JSON keys or values; use double quotes (").
-- Do NOT use markdown backticks or conversational filler.
-- Start your response immediately with '{'.
 """
 
 
@@ -322,7 +315,6 @@ def main():
             # Step 1: Extract Human Activities and Land Cover from Image
             response1 = ollama.generate(
                 model=args.model,
-                system="You are a precise image analysis assistant. You always output valid JSON without any conversational filler.",
                 prompt=PROMPT_STEP1,
                 images=[image_path]
             )
@@ -348,7 +340,6 @@ def main():
                 .replace("{type_of_places_list}", type_of_places_str)
             response2 = ollama.generate(
                 model=args.model,
-                system="You are a scene classification assistant. You always output valid JSON without any conversational filler.",
                 prompt=step2_prompt
             )
             vlm_text2 = response2.get('response', '')
