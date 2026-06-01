@@ -481,7 +481,7 @@ def main():
 
         # Save retrieval data (filename, caption, embedding) to a pickle file
         retrieval_file = f"vlm_retrieval_data_{args.model.replace(':', '_')}_{args.prompt_version}.pkl"
-        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding', 'tips_image_embedding', 'prompt_version', 'visible_evidence', 'human_activities', 'land_cover_usage', 'type_of_vegetation']].to_dict(
+        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding', 'tips_image_embedding', 'prompt_version', 'visible_evidence', 'human_activities', 'land_cover_usage', 'type_of_vegetation', 'ground_truth_macro']].to_dict(
             'records')
         with open(retrieval_file, 'wb') as f:
             pickle.dump(retrieval_data, f)

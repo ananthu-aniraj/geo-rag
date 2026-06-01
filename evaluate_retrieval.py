@@ -18,20 +18,30 @@ def dict_to_string(data):
         return str(data)
 
 
-def compute_metrics(sim_matrix):
-    """Computes Top-1, Top-5, and MRR from a similarity matrix."""
-    num_queries = sim_matrix.shape[0]
+def compute_metrics(sim_matrix, query_indices=None):
+    """Computes Top-1, Top-5, and MRR from a similarity matrix.
+    
+    If query_indices is provided, only those queries (rows) are evaluated, 
+    but they are searched against the FULL gallery (all columns).
+    """
+    if query_indices is None:
+        query_indices = np.arange(sim_matrix.shape[0])
+    
+    num_eval = len(query_indices)
+    if num_eval == 0:
+        return {"top1": 0.0, "top5": 0.0, "mrr": 0.0}
+
     top1_hits = 0
     top5_hits = 0
     mrr_sum = 0.0
 
-    for i in range(num_queries):
-        # i is the index of the "correct" match for the i-th query
-        scores = sim_matrix[i]
+    for q_idx in query_indices:
+        # q_idx is the index of the "correct" match in the gallery (columns)
+        scores = sim_matrix[q_idx]
         rank_indices = np.argsort(scores)[::-1]
 
         # Find the rank of the correct item (1-based)
-        rank = np.where(rank_indices == i)[0][0] + 1
+        rank = np.where(rank_indices == q_idx)[0][0] + 1
 
         if rank == 1:
             top1_hits += 1
@@ -41,9 +51,9 @@ def compute_metrics(sim_matrix):
         mrr_sum += 1.0 / rank
 
     return {
-        "top1": (top1_hits / num_queries) * 100,
-        "top5": (top5_hits / num_queries) * 100,
-        "mrr": mrr_sum / num_queries
+        "top1": (top1_hits / num_eval) * 100,
+        "top5": (top5_hits / num_eval) * 100,
+        "mrr": mrr_sum / num_eval
     }
 
 
@@ -84,6 +94,16 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False):
         image_embeddings = np.array([item["image_embedding"] for item in data])
 
     print(f"Dataset size: {len(images)} images")
+
+    # Identify macro-category indices
+    indoor_indices = [i for i, item in enumerate(data) if item.get('ground_truth_macro') == 'indoor']
+    outdoor_indices = [i for i, item in enumerate(data) if str(item.get('ground_truth_macro', '')).startswith('outdoor')]
+    
+    groups = [("Overall", None)]
+    if indoor_indices:
+        groups.append(("Indoor", np.array(indoor_indices)))
+    if outdoor_indices:
+        groups.append(("Outdoor", np.array(outdoor_indices)))
     
     all_results = {}
 
@@ -114,25 +134,28 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False):
         print(f"Calculating similarity matrix for {key}...")
         sim_matrix = cosine_similarity(text_embeddings, image_embeddings)
 
-        print(f"Evaluating T2I retrieval for {key}...")
-        t2i_metrics = compute_metrics(sim_matrix)
+        all_results[key] = {}
+        for group_name, group_indices in groups:
+            print(f"Evaluating {group_name} retrieval for {key}...")
+            t2i_metrics = compute_metrics(sim_matrix, group_indices)
+            i2t_metrics = compute_metrics(sim_matrix.T, group_indices)
+            
+            all_results[key][group_name] = {
+                "t2i": t2i_metrics,
+                "i2t": i2t_metrics
+            }
 
-        print(f"Evaluating I2T retrieval for {key}...")
-        i2t_metrics = compute_metrics(sim_matrix.T)
-        
-        all_results[key] = {
-            "t2i": t2i_metrics,
-            "i2t": i2t_metrics
-        }
-
-    # Final Comparison Table
-    print("\n" + "=" * 115)
-    print(f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'T2I MRR':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10} | {'I2T MRR':<10}")
-    print("-" * 115)
-    for key in component_keys:
-        res = all_results[key]
-        print(f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['t2i']['mrr']:>10.3f} | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}% | {res['i2t']['mrr']:>10.3f}")
-    print("=" * 115)
+    # Final Comparison Tables
+    for group_name, _ in groups:
+        print("\n" + "=" * 115)
+        print(f"RETRIEVAL PERFORMANCE: {group_name.upper()}")
+        print("=" * 115)
+        print(f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'T2I MRR':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10} | {'I2T MRR':<10}")
+        print("-" * 115)
+        for key in component_keys:
+            res = all_results[key][group_name]
+            print(f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['t2i']['mrr']:>10.3f} | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}% | {res['i2t']['mrr']:>10.3f}")
+        print("=" * 115)
 
 
 if __name__ == "__main__":
