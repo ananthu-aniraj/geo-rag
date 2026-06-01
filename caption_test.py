@@ -439,7 +439,28 @@ def main():
             avg_sub_score = sub_evaluable['sub_category_similarity_score'].mean()
             summary_report.append(f"Average Sub Category Similarity: {avg_sub_score:.4f}")
 
+        # Performance within macro-categories (Indoor vs Outdoor)
+        for group_name, macro_filter in [
+            ("Indoor", results_df['ground_truth_macro'] == 'indoor'),
+            ("Outdoor", results_df['ground_truth_macro'].str.startswith('outdoor', na=False))
+        ]:
+            group_df = results_df[macro_filter]
+            if not group_df.empty:
+                summary_report.append(f"\n--- {group_name} Performance ({len(group_df)} images) ---")
+                summary_report.append(f"Average Class Similarity: {group_df['class_similarity_score'].mean():.4f}")
+                summary_report.append(f"Average CLIP Similarity: {group_df['clip_similarity'].mean():.4f}")
+                
+                group_macro_eval = group_df[group_df['ground_truth_macro'] != 'unknown']
+                if not group_macro_eval.empty:
+                    group_macro_acc = (group_macro_eval['macro_correct'].sum() / len(group_macro_eval)) * 100
+                    summary_report.append(f"Macro Category Accuracy: {group_macro_acc:.2f}%")
+                
+                group_sub_eval = group_df[group_df['ground_truth_sub'] != 'unknown']
+                if not group_sub_eval.empty:
+                    summary_report.append(f"Average Sub Category Similarity: {group_sub_eval['sub_category_similarity_score'].mean():.4f}")
+
         # Calculate how often the model picked each macro category
+        summary_report.append("")
         macro_counts = results_df['predicted_macro_category'].value_counts().to_dict()
         summary_report.append(f"Model Macro Category Distribution: {macro_counts}")
 
