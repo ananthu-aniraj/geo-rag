@@ -23,6 +23,7 @@ tips_transform = transforms.Compose([
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
+
 def download_image(url):
     """Downloads an image and returns a PIL Image object."""
     try:
@@ -44,7 +45,7 @@ def download_image(url):
                 url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
             else:
                 return None
-                
+
         if not url:
             return None
 
@@ -55,19 +56,21 @@ def download_image(url):
         pass
     return None
 
+
 def get_tips_embeddings(images, model, device):
     """Computes TIPSv2 embeddings for a list of PIL images."""
     if not images:
         return None
-    
+
     embeddings = []
     with torch.no_grad():
         for img in images:
             img_tensor = tips_transform(img).unsqueeze(0).to(device)
             features = model.encode_image(img_tensor).cls_token.cpu().numpy()
             embeddings.append(features[0])
-    
+
     return np.array(embeddings)
+
 
 def process_cell(cell_id, metadata_list, model, device, sim_threshold, text_features=None):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell."""
@@ -75,14 +78,14 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, text_feat
     urls = [m['Image_URL'] for m in metadata_list]
     with ThreadPoolExecutor(max_workers=5) as executor:
         imgs = list(executor.map(download_image, urls))
-    
+
     valid_indices = [i for i, img in enumerate(imgs) if img is not None]
     if not valid_indices:
         return []
-    
+
     valid_imgs = [imgs[i] for i in valid_indices]
     all_embeddings = get_tips_embeddings(valid_imgs, model, device)
-    
+
     if all_embeddings is None:
         return []
 
@@ -93,14 +96,14 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, text_feat
     for i, idx in enumerate(valid_indices):
         metadata = metadata_list[idx]
         embedding = all_embeddings[i]
-        
+
         # Flickr-only Indoor/Outdoor Filter
         if metadata['Platform'] == 'Flickr' and text_features is not None:
             sims = cosine_similarity(embedding.reshape(1, -1), text_features)[0]
             # sims[0] is Indoor, sims[1] is Outdoor
             if sims[0] > sims[1]:
-                continue # Skip indoor Flickr image
-        
+                continue  # Skip indoor Flickr image
+
         # Deduplication check against already kept images in this cell
         is_duplicate = False
         for j_emb in processed_embeddings:
@@ -108,22 +111,24 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, text_feat
             if sim > sim_threshold:
                 is_duplicate = True
                 break
-        
+
         if not is_duplicate:
             final_indices.append(idx)
             processed_embeddings.append(embedding)
-    
+
     results = []
     for i, orig_idx in enumerate(final_indices):
         item = metadata_list[orig_idx].copy()
         item['embedding'] = processed_embeddings[i]
         results.append(item)
-    
+
     return results
+
 
 def main():
     parser = argparse.ArgumentParser(description="Consolidate, Filter, and Deduplicate Geo-Scraped Data using TIPSv2.")
     parser.add_argument("--dirs", nargs="+", required=True, help="List of directories containing chunked CSVs.")
+    parser.add_argument("--save_path", type=str, default=".", help="Directory to save output files and data.")
     parser.add_argument("--output_name", type=str, default="geo_embedding_space", help="Base name for output files.")
     parser.add_argument("--h3_res", type=int, default=11, help="H3 resolution (~25m).")
     parser.add_argument("--sim_threshold", type=float, default=0.95, help="TIPSv2 cosine similarity threshold.")
@@ -135,9 +140,9 @@ def main():
     csv_files = []
     for d in args.dirs:
         csv_files.extend(glob.glob(os.path.join(d, "*.csv")))
-    
+
     print(f"Found {len(csv_files)} CSV files.")
-    
+
     # 2. Aggregate Metadata
     h3_buckets = {}
     total_raw_images = 0
@@ -169,7 +174,7 @@ def main():
 
                 # Ensure standard names
                 col_map = {
-                    'latitude': 'Latitude', 'longitude': 'Longitude', 
+                    'latitude': 'Latitude', 'longitude': 'Longitude',
                     'image_url': 'Image_URL', 'photo_id': 'Photo_ID',
                     'ID': 'Photo_ID'
                 }
@@ -240,13 +245,14 @@ def main():
         print("No data processed successfully.")
         return
 
+    os.makedirs(args.save_path, exist_ok=True)
     out_df = pd.DataFrame(final_data)
-    csv_path = f"{args.output_name}.csv"
-    pkl_path = f"{args.output_name}.pkl"
+    csv_path = os.path.join(args.save_path, f"{args.output_name}.csv")
+    pkl_path = os.path.join(args.save_path, f"{args.output_name}.pkl")
 
     # Save CSV without embeddings
     out_df.drop(columns=['embedding']).to_csv(csv_path, index=False)
-    
+
     # Save Full Data (including embeddings) to Pickle
     with open(pkl_path, 'wb') as f:
         pickle.dump(final_data, f)
@@ -255,6 +261,7 @@ def main():
     print(f"Unique images kept: {len(final_data)}")
     print(f"CSV saved to: {csv_path}")
     print(f"Pickle saved to: {pkl_path}")
+
 
 if __name__ == "__main__":
     main()
