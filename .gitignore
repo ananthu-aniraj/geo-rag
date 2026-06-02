@@ -40,3 +40,4 @@ wheels/
 wandb/
 exps/
 ne_10m_urban_areas.VERSION.txt
+*.log
