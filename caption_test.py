@@ -173,8 +173,10 @@ def clean_macro_category(raw_string):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate local VLMs against Places365 using Ollama.")
-    parser.add_argument("--model", type=str, default="llava:13b", help="The name of the model in Ollama.")
+    parser = argparse.ArgumentParser(description="Evaluate local VLMs against Places365 using Ollama or sglang.")
+    parser.add_argument("--backend", type=str, choices=["ollama", "sglang"], default="ollama", help="The inference backend to use.")
+    parser.add_argument("--model", type=str, default="llava:13b", help="The name of the model (Ollama tag or sglang model path).")
+    parser.add_argument("--sgl_mem_fraction", type=float, default=0.8, help="Memory fraction for sglang (0.0 to 1.0).")
     parser.add_argument("--labels", type=str,
                         help="Path to the Places365 Scene hierarchy.xlsx file.")
     parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory.")
@@ -206,9 +208,24 @@ def main():
 
     print(f"Using prompt version: {args.prompt_version}")
 
-    if not os.path.exists(args.img_dir):
-        print(f"Error: Directory '{args.img_dir}' not found.")
-        return
+    # Initialize Backend
+    sgl_runtime = None
+    if args.backend == "sglang":
+        print(f"Initializing sglang runtime with model: {args.model}")
+        try:
+            import sglang as sgl
+            # Initialize runtime with memory constraints
+            sgl_runtime = sgl.Runtime(
+                model_path=args.model,
+                mem_fraction_static=args.sgl_mem_fraction
+            )
+            sgl.set_default_backend(sgl_runtime)
+        except ImportError:
+            print("Error: sglang library not found. Please install it to use the sglang backend.")
+            return
+        except Exception as e:
+            print(f"Error initializing sglang: {e}")
+            return
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Load Tips model")
@@ -295,12 +312,24 @@ def main():
 
         try:
             # Step 1: Extract Human Activities and Land Cover from Image
-            response1 = ollama.generate(
-                model=args.model,
-                prompt=prompt_step1,
-                images=[image_path]
-            )
-            vlm_text1 = response1.get('response', '')
+            if args.backend == "ollama":
+                response1 = ollama.generate(
+                    model=args.model,
+                    prompt=prompt_step1,
+                    images=[image_path]
+                )
+                vlm_text1 = response1.get('response', '')
+            else:
+                # sglang inference
+                import sglang as sgl
+                @sgl.function
+                def step1_fn(s, image_path, prompt):
+                    s += s.image(image_path)
+                    s += prompt + s.gen("response")
+                
+                res1 = step1_fn.run(image_path=image_path, prompt=prompt_step1)
+                vlm_text1 = res1["response"]
+
             parsed_data1 = extract_json_from_response(vlm_text1)
 
             if parsed_data1 is None:
@@ -320,11 +349,23 @@ def main():
                 .replace("{type_of_vegetation}", str(type_of_vegetation)) \
                 .replace("{sub_categories_list}", sub_cats_str) \
                 .replace("{type_of_places_list}", type_of_places_str)
-            response2 = ollama.generate(
-                model=args.model,
-                prompt=step2_prompt
-            )
-            vlm_text2 = response2.get('response', '')
+            
+            if args.backend == "ollama":
+                response2 = ollama.generate(
+                    model=args.model,
+                    prompt=step2_prompt
+                )
+                vlm_text2 = response2.get('response', '')
+            else:
+                # sglang inference (text only)
+                import sglang as sgl
+                @sgl.function
+                def step2_fn(s, prompt):
+                    s += prompt + s.gen("response")
+                
+                res2 = step2_fn.run(prompt=step2_prompt)
+                vlm_text2 = res2["response"]
+
             parsed_data2 = extract_json_from_response(vlm_text2)
 
             if parsed_data2 is None:

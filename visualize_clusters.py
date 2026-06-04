@@ -26,21 +26,35 @@ def create_map(pkl_path, output_html, max_markers=1000):
     m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12, tiles='OpenStreetMap')
     marker_cluster = MarkerCluster().add_to(m)
 
+    # Define available folium colors
+    colors = [
+        'red', 'blue', 'green', 'purple', 'orange', 'darkred',
+        'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue',
+        'darkpurple', 'pink', 'lightblue', 'lightgreen', 'gray', 'black'
+    ]
+
     for item in plot_data:
+        # Determine color based on cluster_id or platform
+        if 'cluster_id' in item:
+            color = colors[item['cluster_id'] % len(colors)]
+            cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br>"
+        else:
+            color = 'blue' if item['Platform'] == 'Flickr' else 'green'
+            cluster_text = ""
+
         # Create a popup with the image and metadata
         html = f"""
             <div style="width:200px">
                 <img src="{item['Image_URL']}" width="100%">
                 <p><b>ID:</b> {item['Photo_ID']}<br>
                 <b>Platform:</b> {item['Platform']}<br>
+                {cluster_text}
                 <b>H3 Cell:</b> {item['H3_Cell']}<br>
                 <a href="{item['Image_URL']}" target="_blank">Full Image</a></p>
             </div>
         """
         iframe = folium.IFrame(html=html, width=220, height=280)
         popup = folium.Popup(iframe, max_width=265)
-        
-        color = 'blue' if item['Platform'] == 'Flickr' else 'green'
         
         folium.Marker(
             location=[item['Latitude'], item['Longitude']],
