@@ -57,27 +57,28 @@ def download_image(url):
     return None
 
 
-def get_tips_embeddings(images, model, device):
-    """Computes TIPSv2 embeddings for a list of PIL images."""
+def get_tips_embeddings(images, model, device, batch_size=32):
+    """Computes TIPSv2 embeddings for a list of PIL images in batches."""
     if not images:
         return None
 
-    embeddings = []
+    all_features = []
     with torch.no_grad():
-        for img in images:
-            img_tensor = tips_transform(img).unsqueeze(0).to(device)
-            features = model.encode_image(img_tensor).cls_token.cpu().numpy()
-            embeddings.append(features[0])
+        for i in range(0, len(images), batch_size):
+            batch = images[i : i + batch_size]
+            # Batch transform and stack
+            batch_tensors = torch.stack([tips_transform(img) for img in batch]).to(device)
+            features = model.encode_image(batch_tensors).cls_token
+            all_features.append(features.squeeze(1).cpu().numpy())
 
-    return np.array(embeddings)
+    return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, text_features=None):
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell."""
-    # 1. Download all images in cell
+    # 1. Download all images in cell using the shared executor
     urls = [m['Image_URL'] for m in metadata_list]
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        imgs = list(executor.map(download_image, urls))
+    imgs = list(executor.map(download_image, urls))
 
     valid_indices = [i for i, img in enumerate(imgs) if img is not None]
     if not valid_indices:
@@ -93,24 +94,47 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, text_feat
     final_indices = []
     processed_embeddings = []
 
+    # Batch compute indoor/outdoor similarity for the whole cell
+    if text_features is not None:
+        # Normalize embeddings and text features for cosine similarity (dot product)
+        emb_norms = np.linalg.norm(all_embeddings, axis=1, keepdims=True)
+        # Avoid division by zero
+        emb_norms[emb_norms == 0] = 1.0
+        norm_embeddings = all_embeddings / emb_norms
+
+        text_norms = np.linalg.norm(text_features, axis=1, keepdims=True)
+        norm_text = text_features / text_norms
+
+        # Matrix multiply: (N, D) x (D, 2) -> (N, 2)
+        all_io_sims = np.dot(norm_embeddings, norm_text.T)
+
     for i, idx in enumerate(valid_indices):
         metadata = metadata_list[idx]
         embedding = all_embeddings[i]
 
-        # Flickr-only Indoor/Outdoor Filter
+        # Flickr-only Indoor/Outdoor Filter (now using precomputed batch similarities)
         if metadata['Platform'] == 'Flickr' and text_features is not None:
-            sims = cosine_similarity(embedding.reshape(1, -1), text_features)[0]
             # sims[0] is Indoor, sims[1] is Outdoor
+            sims = all_io_sims[i]
             if sims[0] > sims[1]:
-                continue  # Skip indoor Flickr image
+                continue # Skip indoor Flickr image
 
-        # Deduplication check against already kept images in this cell
+        # Deduplication check
         is_duplicate = False
-        for j_emb in processed_embeddings:
-            sim = cosine_similarity(embedding.reshape(1, -1), j_emb.reshape(1, -1))[0][0]
-            if sim > sim_threshold:
+        if processed_embeddings:
+            # Vectorized check against all kept embeddings
+            # Normalize current embedding
+            curr_norm = embedding / (np.linalg.norm(embedding) or 1.0)
+
+            # Normalize kept embeddings
+            kept_embs = np.array(processed_embeddings)
+            kept_norms = np.linalg.norm(kept_embs, axis=1, keepdims=True)
+            norm_kept = kept_embs / kept_norms
+
+            # Compute similarities in one go
+            sims = np.dot(norm_kept, curr_norm)
+            if np.any(sims > sim_threshold):
                 is_duplicate = True
-                break
 
         if not is_duplicate:
             final_indices.append(idx)
@@ -236,9 +260,10 @@ def main():
         cells_to_process = cells_to_process[:args.limit_cells]
         print(f"Limiting to {args.limit_cells} cells for testing.")
 
-    for cell in tqdm(cells_to_process, desc="Deduplicating cells"):
-        deduped = process_cell(cell, h3_buckets[cell], model, device, args.sim_threshold, text_features)
-        final_data.extend(deduped)
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for cell in tqdm(cells_to_process, desc="Deduplicating cells"):
+            deduped = process_cell(cell, h3_buckets[cell], model, device, args.sim_threshold, executor, text_features)
+            final_data.extend(deduped)
 
     # 5. Save Results
     if not final_data:
