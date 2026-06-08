@@ -11,7 +11,6 @@ def main():
     parser.add_argument("--k", type=int, default=10, help="Number of clusters.")
     parser.add_argument("--use_umap", action="store_true", help="Use UMAP dimensionality reduction before clustering.")
     parser.add_argument("--reduce_dim", type=int, default=10, help="Dimensions to reduce to via UMAP if --use_umap is set.")
-    parser.add_argument("--visualize", action="store_true", help="Compute 2D UMAP coordinates for scatter plotting.")
     parser.add_argument("--minibatch", action="store_true", help="Use MiniBatchKMeans for massive datasets (2M+ images).")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
@@ -54,19 +53,9 @@ def main():
     
     cluster_ids = kmeans.fit_predict(cluster_input)
 
-    # Optional: 2D Projection for plotting
-    embeddings_2d = None
-    if args.visualize:
-        import umap
-        print("Computing 2D UMAP projection for visualization...")
-        reducer_2d = umap.UMAP(n_components=2, metric='cosine', random_state=42)
-        embeddings_2d = reducer_2d.fit_transform(embeddings_norm)
-
     print("Updating metadata...")
     for i, item in enumerate(data):
         item['cluster_id'] = int(cluster_ids[i])
-        if embeddings_2d is not None:
-            item['umap_2d'] = embeddings_2d[i].tolist()
 
     print(f"Saving to {args.out}...")
     with open(args.out, 'wb') as f:

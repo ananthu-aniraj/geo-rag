@@ -40,14 +40,13 @@ python process_scraped_data.py \
 echo ""
 echo "[Step 2/5] Global Unsupervised Clustering (K-Means)..."
 # By default, uses Raw 768D Normalized embeddings.
-# Add --use_umap to enable UMAP reduction.
-# Add --visualize to generate 2D coordinates for Step 5.
+# Add --use_umap to enable UMAP reduction (e.g. to 10D) before K-Means.
 # Add --minibatch for faster processing of 2M+ images.
 python cluster_images_global.py \
   --pkl "$RAW_PKL" \
   --k "$K_CLUSTERS" \
-  --visualize \
-  --out "$CLUSTERED_PKL"
+  --out "$CLUSTERED_PKL" \
+  --minibatch
 
 echo ""
 echo "[Step 3/5] Generating Cluster Map..."
