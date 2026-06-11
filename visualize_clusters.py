@@ -5,13 +5,14 @@ import pandas as pd
 import argparse
 import os
 
+
 def create_map(pkl_path, output_html, max_markers=1000):
     print(f"Loading embedding space from {pkl_path}...")
     with open(pkl_path, 'rb') as f:
         data = pickle.load(f)
-    
+
     print(f"Total unique images: {len(data)}")
-    
+
     # Use a subset for the map if there are too many, to keep the HTML responsive
     if len(data) > max_markers:
         print(f"Limiting visualization to first {max_markers} images for performance.")
@@ -55,7 +56,7 @@ def create_map(pkl_path, output_html, max_markers=1000):
         """
         iframe = folium.IFrame(html=html, width=220, height=280)
         popup = folium.Popup(iframe, max_width=265)
-        
+
         folium.Marker(
             location=[item['Latitude'], item['Longitude']],
             popup=popup,
@@ -64,6 +65,7 @@ def create_map(pkl_path, output_html, max_markers=1000):
 
     m.save(output_html)
     print(f"Interactive map saved to: {output_html}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize kept images and cluster centroids on a map.")

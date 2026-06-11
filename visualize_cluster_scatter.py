@@ -7,6 +7,7 @@ from sklearn.preprocessing import normalize
 import argparse
 import umap
 
+
 def create_scatter_plot(pkl_path, output_png, max_points=10000):
     print(f"Loading clustered data from {pkl_path}...")
     with open(pkl_path, 'rb') as f:
@@ -25,7 +26,7 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
 
     print("Extracting and normalizing embeddings for 2D projection...")
     embeddings = np.array([item['embedding'] for item in data]).squeeze()
-    if embeddings.ndim == 1: 
+    if embeddings.ndim == 1:
         embeddings = embeddings.reshape(1, -1)
     embeddings_norm = normalize(embeddings)
 
