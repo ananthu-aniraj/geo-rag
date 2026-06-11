@@ -9,22 +9,23 @@ echo "=========================================================="
 
 # --- CONFIGURATION ---
 # Input Directories (Modify these for your machine)
-FLICKR_DIR="/user/aaniraj/home/Documents/Projects/data/flickr_scrape_rand"
-MAPILLARY_DIR="/user/aaniraj/home/Documents/Projects/data/mapillary_scrape_rand"
-GS_DIR="/user/aaniraj/home/Documents/Projects/data/global-streetscapes/train"
+FLICKR_DIR="/home/ananthu/DATA/data_ananthu/flickr_scrape_rand"
+MAPILLARY_DIR="/home/ananthu/DATA/data_ananthu/mapillary_scrape_rand"
+#GS_DIR="/home/ananthu/DATA/data_ananthu/global-streetscapes/train"
 
 # Output Configuration
-OUTPUT_DIR="./full_pipeline_output"
+OUTPUT_DIR="/home/ananthu/DATA/data_ananthu/full_pipeline_output"
 BASE_NAME="geo_space"
-K_CLUSTERS=10  # Number of visual clusters to find
+K_CLUSTERS=100  # Number of visual clusters to find
+MAX_MARKERS=10000
 LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
 
 # File Paths
 RAW_PKL="$OUTPUT_DIR/${BASE_NAME}_deduplicated.pkl"
-CLUSTERED_PKL="$OUTPUT_DIR/${BASE_NAME}_clustered.pkl"
+CLUSTERED_PKL="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.pkl"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
-SAMPLES_FILE="$OUTPUT_DIR/cluster_samples.html"
-SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter.png"
+SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
+SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
@@ -32,7 +33,7 @@ mkdir -p "$OUTPUT_DIR"
 echo ""
 echo "[Step 1/5] Spatial Deduplication (H3 + TIPSv2)..."
 python process_scraped_data.py \
-  --dirs "$FLICKR_DIR" "$MAPILLARY_DIR" "$GS_DIR" \
+  --dirs "$FLICKR_DIR" "$MAPILLARY_DIR" \
   --save_path "$OUTPUT_DIR" \
   --output_name "${BASE_NAME}_deduplicated" \
   --limit_cells "$LIMIT_CELLS"
@@ -52,7 +53,8 @@ echo ""
 echo "[Step 3/5] Generating Cluster Map..."
 python visualize_clusters.py \
   --pkl_file "$CLUSTERED_PKL" \
-  --output "$MAP_FILE"
+  --output "$MAP_FILE" \
+  --max_markers "$MAX_MARKERS"
 
 echo ""
 echo "[Step 4/5] Generating Cluster Representative Samples..."
