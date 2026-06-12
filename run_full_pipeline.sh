@@ -11,7 +11,9 @@ echo "=========================================================="
 # Input Directories (Modify these for your machine)
 FLICKR_DIR="/home/ananthu/DATA/data_ananthu/flickr_scrape_rand"
 MAPILLARY_DIR="/home/ananthu/DATA/data_ananthu/mapillary_scrape_rand"
-#GS_DIR="/home/ananthu/DATA/data_ananthu/global-streetscapes/train"
+GS_DIR="/home/ananthu/DATA/data_ananthu/global-streetscapes/train"
+FLICKR_DIR_2="/home/ananthu/DATA/data_ananthu/flickr_scrape"
+MAPILLARY_DIR_2="/home/ananthu/DATA/data_ananthu/mapillary_scrape"
 
 # Output Configuration
 OUTPUT_DIR="/home/ananthu/DATA/data_ananthu/full_pipeline_output"
@@ -23,7 +25,7 @@ LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
 # File Paths
 RAW_PKL="$OUTPUT_DIR/${BASE_NAME}_deduplicated.pkl"
 CLUSTERED_PKL="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.pkl"
-MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
+MAP_FILE="$OUTPUT_DIR/global_cluster_map_markers_${MAX_MARKERS}_k_${K_CLUSTERS}.html"
 SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
 SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
 
