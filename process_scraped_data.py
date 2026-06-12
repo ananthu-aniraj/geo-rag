@@ -74,25 +74,34 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None):
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell."""
     # 1. Download all images in cell using the shared executor
     urls = [m['Image_URL'] for m in metadata_list]
     imgs = list(executor.map(download_image, urls))
 
     valid_indices = [i for i, img in enumerate(imgs) if img is not None]
-    if not valid_indices:
+    
+    # If there are no new images and no existing images, return empty
+    if not valid_indices and not existing_items:
         return []
+    
+    # If there are no new images but there are existing ones, return existing
+    if not valid_indices and existing_items:
+        return existing_items
 
     valid_imgs = [imgs[i] for i in valid_indices]
     all_embeddings = get_tips_embeddings(valid_imgs, model, device)
 
     if all_embeddings is None:
-        return []
+        return existing_items or []
 
     # 2. Conditional Filtering and Deduplication
     final_indices = []
-    processed_embeddings = []
+    
+    # Initialize with existing data if resuming
+    results = existing_items.copy() if existing_items else []
+    processed_embeddings = [item['embedding'] for item in results]
 
     # Batch compute indoor/outdoor similarity for the whole cell
     if text_features is not None:
@@ -137,14 +146,12 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
                 is_duplicate = True
 
         if not is_duplicate:
-            final_indices.append(idx)
+            final_indices.append(i) # Index in all_embeddings
             processed_embeddings.append(embedding)
-
-    results = []
-    for i, orig_idx in enumerate(final_indices):
-        item = metadata_list[orig_idx].copy()
-        item['embedding'] = processed_embeddings[i]
-        results.append(item)
+            
+            item = metadata.copy()
+            item['embedding'] = embedding
+            results.append(item)
 
     return results
 
@@ -158,6 +165,7 @@ def main():
     parser.add_argument("--sim_threshold", type=float, default=0.95, help="TIPSv2 cosine similarity threshold.")
     parser.add_argument("--no_filter", action="store_true", help="Disable Flickr indoor/outdoor filtering.")
     parser.add_argument("--limit_cells", type=int, default=0, help="Limit number of cells to process (for testing).")
+    parser.add_argument("--resume_from", type=str, default=None, help="Path to a previously generated .pkl file to resume from.")
     args = parser.parse_args()
 
     # 1. Gather all CSVs
@@ -167,10 +175,26 @@ def main():
 
     print(f"Found {len(csv_files)} CSV files.")
 
-    # 2. Aggregate Metadata
+    # 2. Aggregating Metadata & Handling Resume
     h3_buckets = {}
+    existing_buckets = {}
     total_raw_images = 0
     seen_photo_ids = set()
+
+    if args.resume_from and os.path.exists(args.resume_from):
+        print(f"Resuming from existing data: {args.resume_from}")
+        with open(args.resume_from, 'rb') as f:
+            existing_data = pickle.load(f)
+        
+        for item in existing_data:
+            photo_id = str(item['Photo_ID'])
+            seen_photo_ids.add(photo_id)
+            cell = item['H3_Cell']
+            if cell not in existing_buckets:
+                existing_buckets[cell] = []
+            existing_buckets[cell].append(item)
+        
+        print(f"Loaded {len(existing_data)} existing images across {len(existing_buckets)} cells.")
 
     for f in tqdm(csv_files, desc="Reading CSVs"):
         try:
@@ -236,8 +260,11 @@ def main():
         except Exception as e:
             print(f"Error reading {f}: {e}")
 
-    print(f"Total raw images: {total_raw_images}")
-    print(f"Unique H3 cells: {len(h3_buckets)}")
+    print(f"Total NEW raw images: {total_raw_images}")
+    
+    # Combine cells that have new images OR existing images
+    all_cells = set(h3_buckets.keys()) | set(existing_buckets.keys())
+    print(f"Total H3 cells to verify/process: {len(all_cells)}")
 
     # 3. Load TIPSv2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -255,14 +282,22 @@ def main():
 
     # 4. Process and Deduplicate
     final_data = []
-    cells_to_process = list(h3_buckets.keys())
+    cells_to_process = list(all_cells)
     if args.limit_cells > 0:
         cells_to_process = cells_to_process[:args.limit_cells]
         print(f"Limiting to {args.limit_cells} cells for testing.")
 
     with ThreadPoolExecutor(max_workers=20) as executor:
-        for cell in tqdm(cells_to_process, desc="Deduplicating cells"):
-            deduped = process_cell(cell, h3_buckets[cell], model, device, args.sim_threshold, executor, text_features)
+        for cell in tqdm(cells_to_process, desc="Processing cells"):
+            new_metadata = h3_buckets.get(cell, [])
+            existing_items = existing_buckets.get(cell, [])
+            
+            # If there's no new data for this cell, just keep the existing data
+            if not new_metadata:
+                final_data.extend(existing_items)
+                continue
+                
+            deduped = process_cell(cell, new_metadata, model, device, args.sim_threshold, executor, text_features, existing_items)
             final_data.extend(deduped)
 
     # 5. Save Results

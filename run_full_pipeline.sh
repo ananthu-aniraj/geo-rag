@@ -32,11 +32,18 @@ mkdir -p "$OUTPUT_DIR"
 
 echo ""
 echo "[Step 1/5] Spatial Deduplication (H3 + TIPSv2)..."
+RESUME_FLAG=""
+if [ -f "$RAW_PKL" ]; then
+    echo "Found existing deduplicated data at $RAW_PKL. Incremental run enabled."
+    RESUME_FLAG="--resume_from $RAW_PKL"
+fi
+
 python process_scraped_data.py \
   --dirs "$FLICKR_DIR" "$MAPILLARY_DIR" \
   --save_path "$OUTPUT_DIR" \
   --output_name "${BASE_NAME}_deduplicated" \
-  --limit_cells "$LIMIT_CELLS"
+  --limit_cells "$LIMIT_CELLS" \
+  $RESUME_FLAG
 
 echo ""
 echo "[Step 2/5] Global Unsupervised Clustering (K-Means)..."
