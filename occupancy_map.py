@@ -16,6 +16,7 @@ max_log = math.log10(df['img_count'].max())
 # Create a colormap transitioning from faint yellow to deep red
 colormap = colors.LinearSegmentedColormap.from_list("density", ["#ffeda0", "#feb24c", "#f03b20"])
 
+
 def get_color(count):
     if count <= 0:
         return None
@@ -24,6 +25,7 @@ def get_color(count):
     norm_value = (log_count - min_log) / (max_log - min_log)
     rgba = colormap(norm_value)
     return colors.to_hex(rgba)
+
 
 # --- 3. Initialize the Map ---
 # Centered roughly on a global view (Latitude 20, Longitude 0) with a zoomed-out view
@@ -38,32 +40,32 @@ for idx, row in df.iterrows():
     count = row['img_count']
     city_name = row['city']
     country = row['country']
-    
+
     # Calculate the degree distances for a 5x5 km square
     lat_step = 5 / 111.32
-    
+
     # Avoid math errors at extreme latitudes
     cos_lat = math.cos(math.radians(lat))
-    if cos_lat == 0: 
+    if cos_lat == 0:
         cos_lat = 0.0001
-        
+
     lon_step = 5 / (111.32 * cos_lat)
-    
+
     # Center the square exactly over the city coordinates
     min_lat = lat - lat_step / 2
     max_lat = lat + lat_step / 2
     min_lon = lon - lon_step / 2
     max_lon = lon + lon_step / 2
-    
+
     color = get_color(count)
     if not color:
         continue
-        
+
     bounds = [[min_lat, min_lon], [max_lat, max_lon]]
-    
+
     # Create an interactive hover tooltip
     tooltip_text = f"<b>{city_name}, {country}</b><br>Images Collected: {int(count):,}"
-    
+
     # Draw the rectangle onto the map
     folium.Rectangle(
         bounds=bounds,
