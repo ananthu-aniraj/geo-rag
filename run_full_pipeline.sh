@@ -41,7 +41,7 @@ if [ -f "$RAW_PKL" ]; then
 fi
 
 python process_scraped_data.py \
-  --dirs "$FLICKR_DIR" "$MAPILLARY_DIR" \
+  --dirs "$FLICKR_DIR" "$MAPILLARY_DIR" "$FLICKR_DIR_2" "$MAPILLARY_DIR_2" "$GS_DIR" \
   --save_path "$OUTPUT_DIR" \
   --output_name "${BASE_NAME}_deduplicated" \
   --limit_cells "$LIMIT_CELLS" \
