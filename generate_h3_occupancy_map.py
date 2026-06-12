@@ -8,6 +8,7 @@ import numpy as np
 from tqdm import tqdm
 import branca.colormap as cm
 
+
 def main():
     parser = argparse.ArgumentParser(description="Generate a global H3-based occupancy map from image metadata.")
     parser.add_argument("--dirs", nargs="+", required=True, help="List of directories containing CSV files.")
@@ -57,7 +58,7 @@ def main():
                     photo_id = str(row[id_col]) if id_col else None
                     if photo_id and photo_id in seen_photo_ids:
                         continue
-                    
+
                     if h3_col:
                         # Use existing H3 cell and coarsen if needed
                         cell = row[h3_col]
@@ -105,29 +106,68 @@ def main():
     colormap = cm.linear.YlOrRd_09.scale(min_val, max_val)
     colormap.caption = f"Image Density (Log10 scale, H3 Res {args.res})"
 
-    for cell, count in tqdm(display_cells.items(), desc="Adding hexagons to map"):
+    def get_clean_boundary(cell):
+        """Get hexagon boundary and handle antimeridian crossing."""
+        coords = h3.cell_to_boundary(cell)
+        lngs = [c[1] for c in coords]
+        if max(lngs) - min(lngs) > 180:
+            # Shift negative longitudes by 360 to keep the polygon contiguous
+            # Leaflet handles longitudes > 180 gracefully.
+            coords = [(lat, lng + 360 if lng < 0 else lng) for lat, lng in coords]
+        return coords
+
+    # Prepare GeoJSON features for better performance
+    features = []
+    for cell, count in tqdm(display_cells.items(), desc="Preparing GeoJSON"):
         try:
-            # Get hexagon boundary
-            boundary = h3.cell_to_boundary(cell)
-            
-            # Map count to color (log scale)
-            color = colormap(np.log10(count))
-            
-            folium.Polygon(
-                locations=boundary,
-                fill=True,
-                fill_color=color,
-                color=color,
-                weight=1,
-                fill_opacity=0.7,
-                tooltip=f"H3 Cell: {cell}<br>Image Count: {count}"
-            ).add_to(m)
-        except Exception as e:
+            boundary = get_clean_boundary(cell)
+            # GeoJSON expects [lng, lat] and a closed loop
+            geojson_coords = [[lng, lat] for lat, lng in boundary]
+            geojson_coords.append(geojson_coords[0])
+
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [geojson_coords]
+                },
+                "properties": {
+                    "cell": cell,
+                    "count": count,
+                    "log_count": np.log10(count)
+                }
+            }
+            features.append(feature)
+        except Exception:
             continue
+
+    geojson_data = {
+        "type": "FeatureCollection",
+        "features": features
+    }
+
+    def style_fn(feature):
+        return {
+            "fillColor": colormap(feature["properties"]["log_count"]),
+            "color": colormap(feature["properties"]["log_count"]),
+            "weight": 1,
+            "fillOpacity": 0.7,
+        }
+
+    folium.GeoJson(
+        geojson_data,
+        style_function=style_fn,
+        tooltip=folium.GeoJsonTooltip(
+            fields=["cell", "count"],
+            aliases=["H3 Cell:", "Image Count:"],
+            localize=True
+        )
+    ).add_to(m)
 
     m.add_child(colormap)
     m.save(args.output)
     print(f"Successfully saved global occupancy map to: {args.output}")
+
 
 if __name__ == "__main__":
     main()
