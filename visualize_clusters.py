@@ -4,6 +4,18 @@ from folium.plugins import MarkerCluster
 import pandas as pd
 import argparse
 import os
+import h3
+import math
+
+
+def get_clean_boundary(cell):
+    """Get hexagon boundary and handle antimeridian crossing."""
+    coords = h3.cell_to_boundary(cell)
+    lngs = [c[1] for c in coords]
+    if max(lngs) - min(lngs) > 180:
+        # Shift negative longitudes by 360 to keep the polygon contiguous
+        coords = [(lat, lng + 360 if lng < 0 else lng) for lat, lng in coords]
+    return coords
 
 
 def create_map(pkl_path, output_html, max_markers=1000):
@@ -20,11 +32,49 @@ def create_map(pkl_path, output_html, max_markers=1000):
     else:
         plot_data = data
 
-    # Calculate center of the map
+    # Calculate center of the map (robustly handling the antimeridian)
     avg_lat = sum(item['Latitude'] for item in plot_data) / len(plot_data)
-    avg_lon = sum(item['Longitude'] for item in plot_data) / len(plot_data)
+    
+    # Use vector averaging for longitude to handle wrap-around
+    x = sum(math.cos(math.radians(item['Longitude'])) for item in plot_data) / len(plot_data)
+    y = sum(math.sin(math.radians(item['Longitude'])) for item in plot_data) / len(plot_data)
+    avg_lon = math.degrees(math.atan2(y, x))
 
-    m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12, tiles='OpenStreetMap')
+    m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12, tiles='CartoDB Positron')
+    
+    # Prepare H3 Cell Polygons
+    unique_cells = set(item['H3_Cell'] for item in plot_data if 'H3_Cell' in item)
+    features = []
+    for cell in unique_cells:
+        try:
+            boundary = get_clean_boundary(cell)
+            # GeoJSON expects [lng, lat] and a closed loop
+            geojson_coords = [[lng, lat] for lat, lng in boundary]
+            geojson_coords.append(geojson_coords[0])
+            
+            features.append({
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [geojson_coords]
+                },
+                "properties": {"cell": cell}
+            })
+        except Exception:
+            continue
+            
+    if features:
+        folium.GeoJson(
+            {"type": "FeatureCollection", "features": features},
+            style_function=lambda x: {
+                "fillColor": "gray",
+                "color": "gray",
+                "weight": 1,
+                "fillOpacity": 0.1
+            },
+            tooltip=folium.GeoJsonTooltip(fields=["cell"], aliases=["H3 Cell:"])
+        ).add_to(m)
+
     marker_cluster = MarkerCluster().add_to(m)
 
     # Define available folium colors
