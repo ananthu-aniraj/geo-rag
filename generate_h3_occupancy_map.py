@@ -7,6 +7,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 import branca.colormap as cm
+import json
 
 
 def main():
@@ -32,7 +33,7 @@ def main():
     print(f"Found {len(csv_files)} CSV files.")
 
     # 2. Aggregate Data
-    h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}}
+    h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}, 'photos': [ids]}
     seen_photo_ids = set()
     total_images = 0
 
@@ -76,13 +77,14 @@ def main():
                     platform = str(row[platform_col]) if platform_col else inferred_platform
                     
                     if cell not in h3_stats:
-                        h3_stats[cell] = {'total': 0, 'platforms': {}}
+                        h3_stats[cell] = {'total': 0, 'platforms': {}, 'photos': []}
                     
                     h3_stats[cell]['total'] += 1
                     h3_stats[cell]['platforms'][platform] = h3_stats[cell]['platforms'].get(platform, 0) + 1
-                    
                     if photo_id:
+                        h3_stats[cell]['photos'].append(photo_id)
                         seen_photo_ids.add(photo_id)
+                    
                     total_images += 1
                 except Exception:
                     continue
@@ -105,6 +107,14 @@ def main():
     if not display_cells:
         print(f"No cells with at least {args.min_count} images.")
         return
+
+    # Save Trace-Back Mapping (Photos in each Cell)
+    trace_path = args.output.replace(".html", "_trace.json")
+    with open(trace_path, 'w') as f:
+        # Only save photo IDs for cells actually shown on the map
+        trace_data = {cell: stats['photos'] for cell, stats in display_cells.items()}
+        json.dump(trace_data, f, indent=2)
+    print(f"Trace-back mapping saved to: {trace_path}")
 
     counts = [v['total'] for v in display_cells.values()]
     min_val = np.log10(min(counts))
