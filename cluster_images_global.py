@@ -4,6 +4,48 @@ import argparse
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 import os
+import torch
+from transformers import AutoModel
+
+
+# Curated Geo-LULC Vocabulary optimized for TIPSv2
+GEO_LULC_VOCAB = {
+    "High-density urban area (downtown, skyscrapers)": "An urban scene with tall buildings and high-density architecture.",
+    "Residential neighborhood (houses, suburban streets)": "A residential area with houses, gardens, and quiet streets.",
+    "Industrial zone or logistics park": "An industrial area with factories, warehouses, and heavy machinery.",
+    "Agricultural land (crops, plantations, orchards)": "Farmland with cultivated crops, fields, or orchards.",
+    "Transportation infrastructure (highways, railways, bridges)": "Major infrastructure like highways, overpasses, or railways.",
+    "Dense forest or woodland": "A dense natural forest or wooded area with many trees.",
+    "Sparse shrubland or scrub": "An open area with low-lying bushes, shrubs, and sparse vegetation.",
+    "Open grassland or pasture": "Wide open fields of grass, meadows, or grazing land.",
+    "Arid land or desert": "A dry, sandy, or rocky desert landscape with very little vegetation.",
+    "Wetland or marshland": "A swampy or marshy area with water and specialized vegetation.",
+    "Water body (river, lake, or sea)": "A view dominated by water, such as a river, lake, or the ocean.",
+    "Busy street with heavy vehicle traffic": "A street scene filled with cars, buses, and traffic activity.",
+    "Pedestrian-only zone or public plaza": "A walkable city area like a square, plaza, or pedestrian street.",
+    "Active construction site": "An area with ongoing building work, cranes, and excavated earth.",
+    "Outdoor recreation or park activity": "People enjoying a managed park, sports field, or playground."
+}
+
+
+def label_clusters(centroids, model, device):
+    """Performs zero-shot labeling of cluster centroids using the Geo-LULC vocab."""
+    print("Embedding Geo-LULC vocabulary...")
+    categories = list(GEO_LULC_VOCAB.keys())
+    prompts = list(GEO_LULC_VOCAB.values())
+    
+    with torch.no_grad():
+        text_features = model.encode_text(prompts).cpu().numpy()
+    
+    # Normalize for cosine similarity
+    text_features = normalize(text_features)
+    centroids_norm = normalize(centroids)
+    
+    # Matrix multiply to get similarities (K, 15)
+    sims = np.dot(centroids_norm, text_features.T)
+    top_indices = np.argmax(sims, axis=1)
+    
+    return [categories[idx] for idx in top_indices]
 
 
 def main():
@@ -15,6 +57,7 @@ def main():
                         help="Dimensions to reduce to via UMAP if --use_umap is set.")
     parser.add_argument("--minibatch", action="store_true",
                         help="Use MiniBatchKMeans for massive datasets (2M+ images).")
+    parser.add_argument("--no_label", action="store_true", help="Disable automatic zero-shot cluster labeling.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
 
@@ -55,10 +98,33 @@ def main():
         kmeans = KMeans(n_clusters=args.k, random_state=42, n_init=10)
 
     cluster_ids = kmeans.fit_predict(cluster_input)
+    
+    # Labeling
+    cluster_labels = {}
+    if not args.no_label:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Loading TIPSv2 for labeling on {device}...")
+        model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).to(device)
+        model.eval()
+        
+        # If we used UMAP, we need centroids in the ORIGINAL 768D space for labeling
+        if args.use_umap:
+            # Manually compute centroids in raw space
+            raw_centroids = np.array([embeddings_norm[cluster_ids == i].mean(axis=0) for i in range(args.k)])
+        else:
+            raw_centroids = kmeans.cluster_centers_
+            
+        labels = label_clusters(raw_centroids, model, device)
+        for i, label in enumerate(labels):
+            cluster_labels[i] = label
+            print(f"  Cluster {i} Label: {label}")
 
     print("Updating metadata...")
     for i, item in enumerate(data):
-        item['cluster_id'] = int(cluster_ids[i])
+        cid = int(cluster_ids[i])
+        item['cluster_id'] = cid
+        if cid in cluster_labels:
+            item['cluster_label'] = cluster_labels[cid]
 
     print(f"Saving to {args.out}...")
     with open(args.out, 'wb') as f:
@@ -67,7 +133,8 @@ def main():
     print(f"\nClustering Complete using {clustering_mode}!")
     unique, counts = np.unique(cluster_ids, return_counts=True)
     for u, c in zip(unique, counts):
-        print(f"  Cluster {u}: {c} images")
+        lbl = f" ({cluster_labels[u]})" if u in cluster_labels else ""
+        print(f"  Cluster {u}{lbl}: {c} images")
 
 
 if __name__ == "__main__":

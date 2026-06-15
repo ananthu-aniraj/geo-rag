@@ -88,7 +88,8 @@ def create_map(pkl_path, output_html, max_markers=1000):
         # Determine color based on cluster_id or platform
         if 'cluster_id' in item:
             color = colors[item['cluster_id'] % len(colors)]
-            cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br>"
+            label = item.get('cluster_label', 'Unlabeled')
+            cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br><b>Label:</b> {label}<br>"
         else:
             color = 'blue' if item['Platform'] == 'Flickr' else 'green'
             cluster_text = ""
