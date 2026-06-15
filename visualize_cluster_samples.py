@@ -45,6 +45,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
     for c_id in sorted_cluster_ids:
         items = clusters[c_id]
+        # Get the label from the first item (all items in cluster share the same label)
+        c_name = items[0].get('cluster_label', 'Unlabeled')
         
         # Calculate centroid
         embs = np.array([item['embedding'] for item in items]).squeeze()
@@ -62,7 +64,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         
         html_content += f"""
         <div class="cluster-container">
-            <h2 class="cluster-title">Cluster {c_id} ({len(items)} images)</h2>
+            <h2 class="cluster-title">Cluster {c_id}: {c_name} ({len(items)} images)</h2>
             <div class="image-grid">
         """
         

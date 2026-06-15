@@ -29,9 +29,9 @@ GEO_LULC_VOCAB = {
 }
 
 
-def label_clusters(centroids, model, device):
-    """Performs zero-shot labeling of cluster centroids using the Geo-LULC vocab."""
-    print("Embedding Geo-LULC vocabulary...")
+def label_clusters(centroids, model, device, top_k=3):
+    """Performs zero-shot labeling of cluster centroids using the Geo-LULC vocab (Top-K)."""
+    print(f"Embedding Geo-LULC vocabulary and finding Top-{top_k} labels...")
     categories = list(GEO_LULC_VOCAB.keys())
     prompts = list(GEO_LULC_VOCAB.values())
     
@@ -42,11 +42,17 @@ def label_clusters(centroids, model, device):
     text_features = normalize(text_features)
     centroids_norm = normalize(centroids)
     
-    # Matrix multiply to get similarities (K, 15)
+    # Matrix multiply to get similarities (K, 16)
     sims = np.dot(centroids_norm, text_features.T)
-    top_indices = np.argmax(sims, axis=1)
     
-    return [categories[idx] for idx in top_indices]
+    results = []
+    for i in range(len(centroids)):
+        # Get indices of top_k similarities
+        top_indices = np.argsort(sims[i])[::-1][:top_k]
+        top_labels = [categories[idx] for idx in top_indices]
+        results.append(", ".join(top_labels))
+    
+    return results
 
 
 def main():
