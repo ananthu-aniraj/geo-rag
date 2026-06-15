@@ -32,7 +32,7 @@ def main():
     print(f"Found {len(csv_files)} CSV files.")
 
     # 2. Aggregate Data
-    h3_counts = {}
+    h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}}
     seen_photo_ids = set()
     total_images = 0
 
@@ -46,11 +46,15 @@ def main():
             lat_col = next((c for c in df.columns if c.lower() in ['latitude', 'lat']), None)
             lon_col = next((c for c in df.columns if c.lower() in ['longitude', 'lon']), None)
             id_col = next((c for c in df.columns if c.lower() in ['photo_id', 'id', 'orig_id', 'uuid']), None)
+            platform_col = next((c for c in df.columns if c.lower() in ['platform', 'source']), None)
             h3_col = 'H3_Cell' if 'H3_Cell' in df.columns else None
 
             if not (lat_col and lon_col) and not h3_col:
                 print(f"Skipping {f}: Missing location columns.")
                 continue
+            
+            # Infer platform if not explicitly in columns
+            inferred_platform = 'Flickr' if 'flickr' in f.lower() else 'Mapillary'
 
             for _, row in df.iterrows():
                 try:
@@ -69,7 +73,14 @@ def main():
                         lat, lon = float(row[lat_col]), float(row[lon_col])
                         cell = h3.latlng_to_cell(lat, lon, args.res)
 
-                    h3_counts[cell] = h3_counts.get(cell, 0) + 1
+                    platform = str(row[platform_col]) if platform_col else inferred_platform
+                    
+                    if cell not in h3_stats:
+                        h3_stats[cell] = {'total': 0, 'platforms': {}}
+                    
+                    h3_stats[cell]['total'] += 1
+                    h3_stats[cell]['platforms'][platform] = h3_stats[cell]['platforms'].get(platform, 0) + 1
+                    
                     if photo_id:
                         seen_photo_ids.add(photo_id)
                     total_images += 1
@@ -78,24 +89,24 @@ def main():
         except Exception as e:
             print(f"Error reading {f}: {e}")
 
-    if not h3_counts:
+    if not h3_stats:
         print("No valid data processed.")
         return
 
     print(f"Total unique images: {total_images}")
-    print(f"Unique H3 cells at resolution {args.res}: {len(h3_counts)}")
+    print(f"Unique H3 cells at resolution {args.res}: {len(h3_stats)}")
 
     # 3. Create Interactive Map
     print("Generating Folium map...")
     m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
 
     # Filter by min_count
-    display_cells = {k: v for k, v in h3_counts.items() if v >= args.min_count}
+    display_cells = {k: v for k, v in h3_stats.items() if v['total'] >= args.min_count}
     if not display_cells:
         print(f"No cells with at least {args.min_count} images.")
         return
 
-    counts = list(display_cells.values())
+    counts = [v['total'] for v in display_cells.values()]
     min_val = np.log10(min(counts))
     max_val = np.log10(max(counts))
 
@@ -118,12 +129,15 @@ def main():
 
     # Prepare GeoJSON features for better performance
     features = []
-    for cell, count in tqdm(display_cells.items(), desc="Preparing GeoJSON"):
+    for cell, stats in tqdm(display_cells.items(), desc="Preparing GeoJSON"):
         try:
             boundary = get_clean_boundary(cell)
             # GeoJSON expects [lng, lat] and a closed loop
             geojson_coords = [[lng, lat] for lat, lng in boundary]
             geojson_coords.append(geojson_coords[0])
+
+            # Format platform breakdown for the tooltip
+            p_str = ", ".join([f"{k}: {v}" for k, v in stats['platforms'].items()])
 
             feature = {
                 "type": "Feature",
@@ -133,8 +147,9 @@ def main():
                 },
                 "properties": {
                     "cell": cell,
-                    "count": count,
-                    "log_count": np.log10(count)
+                    "count": stats['total'],
+                    "platforms": p_str,
+                    "log_count": np.log10(stats['total'])
                 }
             }
             features.append(feature)
@@ -158,8 +173,8 @@ def main():
         geojson_data,
         style_function=style_fn,
         tooltip=folium.GeoJsonTooltip(
-            fields=["cell", "count"],
-            aliases=["H3 Cell:", "Image Count:"],
+            fields=["cell", "count", "platforms"],
+            aliases=["H3 Cell:", "Total Images:", "Platform Breakdown:"],
             localize=True
         )
     ).add_to(m)
