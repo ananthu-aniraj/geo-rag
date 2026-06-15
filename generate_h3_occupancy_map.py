@@ -108,14 +108,6 @@ def main():
         print(f"No cells with at least {args.min_count} images.")
         return
 
-    # Save Trace-Back Mapping (Photos in each Cell)
-    trace_path = args.output.replace(".html", "_trace.json")
-    with open(trace_path, 'w') as f:
-        # Only save photo IDs for cells actually shown on the map
-        trace_data = {cell: stats['photos'] for cell, stats in display_cells.items()}
-        json.dump(trace_data, f, indent=2)
-    print(f"Trace-back mapping saved to: {trace_path}")
-
     counts = [v['total'] for v in display_cells.values()]
     min_val = np.log10(min(counts))
     max_val = np.log10(max(counts))
