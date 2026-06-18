@@ -19,7 +19,7 @@ MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = 1.8  # Be polite to the Mapillary servers
 
 # Uncovered Land Configuration
-UNCOVERED_SHAPEFILE = "uncovered_land_areas.shp"
+UNCOVERED_SHAPEFILE = "uncovered_land_areas_test.shp"
 
 argparser = argparse.ArgumentParser(description="Mapillary 5km Grid Search")
 argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
