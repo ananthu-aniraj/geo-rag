@@ -18,7 +18,7 @@ MAPILLARY_DIR_2="/home/ananthu/DATA/data_ananthu/mapillary_scrape"
 # Output Configuration
 OUTPUT_DIR="/home/ananthu/DATA/data_ananthu/full_pipeline_output"
 BASE_NAME="geo_space"
-K_CLUSTERS=100  # Number of visual clusters to find
+K_CLUSTERS=20000  # Number of visual clusters to find
 MAX_MARKERS=10000
 LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
 
