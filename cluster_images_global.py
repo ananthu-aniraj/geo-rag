@@ -164,8 +164,12 @@ def main():
             item['cluster_label'] = cluster_labels[cid]
 
     print(f"Saving to {args.out}...")
-    with open(args.out, 'wb') as f:
-        pickle.dump(data, f)
+    if args.out.endswith('.pkl'):
+        with open(args.out, 'wb') as f:
+            pickle.dump(data, f)
+    else:
+        # Assume Parquet
+        pd.DataFrame(data).to_parquet(args.out)
 
     print(f"\nClustering Complete using {clustering_mode}!")
     unique, counts = np.unique(cluster_ids, return_counts=True)
