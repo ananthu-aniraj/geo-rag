@@ -4,8 +4,13 @@ import argparse
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 import os
+import pandas as pd
 import torch
 from transformers import AutoModel
+try:
+    import faiss
+except ImportError:
+    faiss = None
 
 
 # Curated Geo-LULC Vocabulary optimized for TIPSv2
@@ -64,6 +69,8 @@ def main():
                         help="Dimensions to reduce to via UMAP if --use_umap is set.")
     parser.add_argument("--minibatch", action="store_true",
                         help="Use MiniBatchKMeans for massive datasets (2M+ images).")
+    parser.add_argument("--gpu", action="store_true",
+                        help="Use FAISS GPU for massive datasets.")
     parser.add_argument("--no_label", action="store_true", help="Disable automatic zero-shot cluster labeling.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
@@ -103,13 +110,25 @@ def main():
         clustering_mode = "Raw 768D (Normalized)"
 
     # Clustering
-    print(f"Running {'MiniBatch' if args.minibatch else ''}K-Means (k={args.k}) on {clustering_mode} space...")
-    if args.minibatch:
-        kmeans = MiniBatchKMeans(n_clusters=args.k, random_state=42, n_init=3, batch_size=1024)
+    if args.gpu:
+        if faiss is None:
+            raise ImportError("faiss is not installed. Please install it to use --gpu.")
+        print(f"Running FAISS GPU K-Means (k={args.k}) on {clustering_mode} space...")
+        # FAISS K-Means
+        d = cluster_input.shape[1]
+        kmeans_faiss = faiss.KMeans(d, args.k, niter=20, verbose=True, gpu=True, seed=42)
+        kmeans_faiss.train(cluster_input.astype('float32'))
+        _, cluster_ids = kmeans_faiss.index.search(cluster_input.astype('float32'), 1)
+        cluster_ids = cluster_ids.ravel()
+        centroids = kmeans_faiss.centroids
     else:
-        kmeans = KMeans(n_clusters=args.k, random_state=42, n_init=10)
-
-    cluster_ids = kmeans.fit_predict(cluster_input)
+        print(f"Running {'MiniBatch' if args.minibatch else ''}K-Means (k={args.k}) on {clustering_mode} space...")
+        if args.minibatch:
+            kmeans = MiniBatchKMeans(n_clusters=args.k, random_state=42, n_init=3, batch_size=1024)
+        else:
+            kmeans = KMeans(n_clusters=args.k, random_state=42, n_init=10)
+        cluster_ids = kmeans.fit_predict(cluster_input)
+        centroids = kmeans.cluster_centers_
     
     # Labeling
     cluster_labels = {}
@@ -122,9 +141,15 @@ def main():
         # If we used UMAP, we need centroids in the ORIGINAL 768D space for labeling
         if args.use_umap:
             # Manually compute centroids in raw space
-            raw_centroids = np.array([embeddings_norm[cluster_ids == i].mean(axis=0) for i in range(args.k)])
+            print("Computing centroids in original space for labeling...")
+            d = embeddings_norm.shape[1]
+            raw_centroids = np.zeros((args.k, d), dtype=embeddings_norm.dtype)
+            np.add.at(raw_centroids, cluster_ids, embeddings_norm)
+            counts = np.bincount(cluster_ids, minlength=args.k)
+            valid = counts > 0
+            raw_centroids[valid] /= counts[valid, None]
         else:
-            raw_centroids = kmeans.cluster_centers_
+            raw_centroids = centroids
             
         labels = label_clusters(raw_centroids, model, device)
         for i, label in enumerate(labels):
