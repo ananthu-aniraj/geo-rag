@@ -183,8 +183,13 @@ def main():
 
     if args.resume_from and os.path.exists(args.resume_from):
         print(f"Resuming from existing data: {args.resume_from}")
-        with open(args.resume_from, 'rb') as f:
-            existing_data = pickle.load(f)
+        if args.resume_from.endswith('.pkl'):
+            with open(args.resume_from, 'rb') as f:
+                existing_data = pickle.load(f)
+        else:
+            # Assume Parquet
+            df_existing = pd.read_parquet(args.resume_from)
+            existing_data = df_existing.to_dict('records')
         
         for item in existing_data:
             photo_id = str(item['Photo_ID'])
@@ -308,19 +313,19 @@ def main():
     os.makedirs(args.save_path, exist_ok=True)
     out_df = pd.DataFrame(final_data)
     csv_path = os.path.join(args.save_path, f"{args.output_name}.csv")
-    pkl_path = os.path.join(args.save_path, f"{args.output_name}.pkl")
+    parquet_path = os.path.join(args.save_path, f"{args.output_name}.parquet")
 
-    # Save CSV without embeddings
-    out_df.drop(columns=['embedding']).to_csv(csv_path, index=False)
+    # Save CSV without embeddings (for human readability)
+    cols_to_drop = [c for c in ['embedding', 'patch_embedding'] if c in out_df.columns]
+    out_df.drop(columns=cols_to_drop).to_csv(csv_path, index=False)
 
-    # Save Full Data (including embeddings) to Pickle
-    with open(pkl_path, 'wb') as f:
-        pickle.dump(final_data, f)
+    # Save Full Data to Parquet (High-performance binary storage)
+    out_df.to_parquet(parquet_path, index=False)
 
     print(f"\nProcessing Complete!")
     print(f"Unique images kept: {len(final_data)}")
     print(f"CSV saved to: {csv_path}")
-    print(f"Pickle saved to: {pkl_path}")
+    print(f"Parquet saved to: {parquet_path}")
 
 
 if __name__ == "__main__":

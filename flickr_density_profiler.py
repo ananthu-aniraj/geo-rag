@@ -18,31 +18,33 @@ test_boxes = {
     "Cévennes National Park": (3.55, 44.20, 3.61, 44.24)
 }
 
+
 def is_urban(bbox_coords, urban_dataframe):
     """
     Checks if a bounding box intersects with any urban area.
     bbox_coords: tuple of (min_lon, min_lat, max_lon, max_lat)
     """
     min_lon, min_lat, max_lon, max_lat = bbox_coords
-    
+
     # Create a Shapely polygon out of your bounding box coordinates
     bbox_polygon = box(min_lon, min_lat, max_lon, max_lat)
-    
+
     # --- OPTIMIZATION: Spatial Indexing ---
     # Instead of checking every city in the world, the spatial index (sindex) 
     # instantly filters down to only the cities right next to your box.
     possible_matches_index = list(urban_dataframe.sindex.intersection(bbox_polygon.bounds))
-    
+
     # If there are no cities even close by, it's definitely rural
     if len(possible_matches_index) == 0:
         return False
-        
+
     # If there ARE cities nearby, do an exact check to see if the borders touch/overlap
     possible_matches = urban_dataframe.iloc[possible_matches_index]
     exact_matches = possible_matches[possible_matches.intersects(bbox_polygon)]
-    
+
     # If exact_matches is not empty, it means our box overlaps an urban area!
     return not exact_matches.empty
+
 
 def check_total_photos(box_name, bbox_str):
     url = (
@@ -51,21 +53,22 @@ def check_total_photos(box_name, bbox_str):
         f"&api_key={API_KEY}"
         f"&bbox={bbox_str}"
         f"&has_geo=1"
-        f"&geo_context=2" # Outdoors only
-        f"&per_page=1"    # We only need 1 photo to get the metadata
+        f"&geo_context=2"  # Outdoors only
+        f"&per_page=1"  # We only need 1 photo to get the metadata
         f"&format=json"
         f"&nojsoncallback=1"
     )
-    
+
     response = requests.get(url)
     data = response.json()
-    
+
     if data.get('stat') == 'ok':
         total = data['photos']['total']
         print(f"{box_name}:")
         print(f"  -> Total outdoor photos available: {total}\n")
     else:
         print(f"Error checking {box_name}: {data.get('message')}")
+
 
 # Run the test
 print("\n--- Urban vs Rural Profiler ---")

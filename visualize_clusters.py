@@ -19,9 +19,14 @@ def get_clean_boundary(cell):
 
 
 def create_map(pkl_path, output_html, max_markers=1000):
-    print(f"Loading embedding space from {pkl_path}...")
-    with open(pkl_path, 'rb') as f:
-        data = pickle.load(f)
+    print(f"Loading clustered data from {pkl_path}...")
+    if pkl_path.endswith('.pkl'):
+        with open(pkl_path, 'rb') as f:
+            data = pickle.load(f)
+    else:
+        # Assume Parquet
+        df = pd.read_parquet(pkl_path)
+        data = df.to_dict('records')
 
     print(f"Total unique images: {len(data)}")
 

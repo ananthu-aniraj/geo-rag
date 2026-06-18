@@ -3,18 +3,28 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import box
 import os
+import glob
+import argparse
+from tqdm import tqdm
 
 
-def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
+def create_uncovered_shapefile(csv_dirs, output_shp, res=1.0):
     """
-    Creates a shapefile representing all global areas NOT covered by the images in the CSV.
-    
-    Args:
-        csv_path: Path to metadata_common_attributes.csv
-        output_shp: Path for the resulting shapefile (.shp)
-        res: Grid resolution in degrees (default 1.0 for efficient shapefile size)
+    Creates a shapefile representing all global areas NOT covered by the images in the CSVs.
     """
     print(f"Analyzing coverage with resolution {res} degrees...")
+
+    # 1. Gather all CSVs
+    csv_files = []
+    for d in csv_dirs:
+        if os.path.isdir(d):
+            csv_files.extend(glob.glob(os.path.join(d, "*.csv")))
+        elif os.path.isfile(d) and d.endswith(".csv"):
+            csv_files.append(d)
+
+    if not csv_files:
+        print("No CSV files found.")
+        return
 
     # Define grid
     lon_bins = np.arange(-180, 180 + res, res)
@@ -23,19 +33,26 @@ def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
     # 0 = uncovered, 1 = covered
     occupancy_grid = np.zeros((len(lat_bins) - 1, len(lon_bins) - 1), dtype=np.uint8)
 
-    chunksize = 1000000
-    total_processed = 0
+    print(f"Reading {len(csv_files)} CSV files to determine coverage...")
+    for f in tqdm(csv_files, desc="Processing CSVs"):
+        try:
+            # We only need lat/lon to save memory
+            df = pd.read_csv(f)
+            if df.empty:
+                continue
+                
+            # Identify standard columns
+            lat_col = next((c for c in df.columns if c.lower() in ['latitude', 'lat']), None)
+            lon_col = next((c for c in df.columns if c.lower() in ['longitude', 'lon']), None)
 
-    print("Reading image coordinates to determine coverage...")
-    try:
-        reader = pd.read_csv(csv_path, usecols=['lat', 'lon'], chunksize=chunksize)
-        for i, chunk in enumerate(reader):
-            chunk = chunk.dropna(subset=['lat', 'lon'])
+            if not (lat_col and lon_col):
+                continue
 
-            # Simple binning to find occupied cells
-            # We use digitize to find the indices quickly
-            lon_idx = np.digitize(chunk['lon'], lon_bins) - 1
-            lat_idx = np.digitize(chunk['lat'], lat_bins) - 1
+            chunk = df.dropna(subset=[lat_col, lon_col])
+
+            # Simple binning
+            lon_idx = np.digitize(chunk[lon_col], lon_bins) - 1
+            lat_idx = np.digitize(chunk[lat_col], lat_bins) - 1
 
             # Filter valid indices
             valid = (lon_idx >= 0) & (lon_idx < len(lon_bins) - 1) & \
@@ -43,13 +60,8 @@ def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
 
             occupancy_grid[lat_idx[valid], lon_idx[valid]] = 1
 
-            total_processed += len(chunk)
-            if i % 2 == 0:
-                print(f"  Processed {total_processed} rows...")
-
-    except Exception as e:
-        print(f"Error reading CSV: {e}")
-        return
+        except Exception as e:
+            print(f"Error reading {f}: {e}")
 
     # Find indices where occupancy is 0 (uncovered)
     uncovered_lat_idx, uncovered_lon_idx = np.where(occupancy_grid == 0)
@@ -57,7 +69,6 @@ def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
 
     print("Converting uncovered cells to polygons...")
     polygons = []
-    # We'll create a box for each empty cell
     for lat_i, lon_i in zip(uncovered_lat_idx, uncovered_lon_idx):
         min_lon = lon_bins[lon_i]
         max_lon = lon_bins[lon_i + 1]
@@ -74,18 +85,15 @@ def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
 
     # Export to Shapefile
     print(f"Saving shapefile to {output_shp}...")
-    # Note: This will create .shp, .shx, .dbf, etc.
     gdf.to_file(output_shp, engine='pyogrio')
-
     print("Success!")
 
 
 if __name__ == "__main__":
-    csv = "Projects/code/geo-rag/metadata_common_attributes.csv"
-    out = "Projects/code/geo-rag/uncovered_areas.shp"
+    parser = argparse.ArgumentParser(description="Create a shapefile of uncovered global areas.")
+    parser.add_argument("--dirs", nargs="+", required=True, help="List of directories containing CSV files.")
+    parser.add_argument("--output", type=str, default="uncovered_areas.shp", help="Output shapefile path.")
+    parser.add_argument("--res", type=float, default=1.0, help="Grid resolution in degrees.")
+    args = parser.parse_args()
 
-    if os.path.exists(csv):
-        # 1.0 degree provides a good balance between detail and performance for a global SHP
-        create_uncovered_shapefile(csv, out, res=1.0)
-    else:
-        print(f"Error: Could not find {csv}")
+    create_uncovered_shapefile(args.dirs, args.output, res=args.res)

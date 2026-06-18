@@ -69,8 +69,13 @@ def main():
     args = parser.parse_args()
 
     print(f"Loading data from {args.pkl}...")
-    with open(args.pkl, 'rb') as f:
-        data = pickle.load(f)
+    if args.pkl.endswith('.pkl'):
+        with open(args.pkl, 'rb') as f:
+            data = pickle.load(f)
+    else:
+        # Assume Parquet
+        df = pd.read_parquet(args.pkl)
+        data = df.to_dict('records')
 
     if not data:
         print("No data found.")
