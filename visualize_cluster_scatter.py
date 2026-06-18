@@ -10,8 +10,13 @@ import umap
 
 def create_scatter_plot(pkl_path, output_png, max_points=10000):
     print(f"Loading clustered data from {pkl_path}...")
-    with open(pkl_path, 'rb') as f:
-        data = pickle.load(f)
+    if pkl_path.endswith('.pkl'):
+        with open(pkl_path, 'rb') as f:
+            data = pickle.load(f)
+    else:
+        # Assume Parquet
+        df = pd.read_parquet(pkl_path)
+        data = df.to_dict('records')
 
     if not data or 'cluster_id' not in data[0]:
         print("Error: Data must be clustered first.")
