@@ -116,7 +116,7 @@ def main():
         print(f"Running FAISS GPU K-Means (k={args.k}) on {clustering_mode} space...")
         # FAISS K-Means
         d = cluster_input.shape[1]
-        kmeans_faiss = faiss.KMeans(d, args.k, niter=20, verbose=True, gpu=True, seed=42)
+        kmeans_faiss = faiss.Kmeans(d, args.k, niter=20, verbose=True, gpu=True, seed=42)
         kmeans_faiss.train(cluster_input.astype('float32'))
         _, cluster_ids = kmeans_faiss.index.search(cluster_input.astype('float32'), 1)
         cluster_ids = cluster_ids.ravel()
