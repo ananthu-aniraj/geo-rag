@@ -79,6 +79,14 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
     # Generate the Dynamic Dashboard HTML
     import json
     json_data = json.dumps(dashboard_data)
+    
+    # Save data to an external JS file to prevent browser freezing on massive inline scripts
+    data_js_path = output_html.replace('.html', '_data.js')
+    print(f"Writing data payload to {data_js_path}...")
+    with open(data_js_path, 'w', encoding='utf-8') as f:
+        f.write(f"const CLUSTER_DATA = {json_data};")
+
+    data_js_filename = os.path.basename(data_js_path)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -87,6 +95,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         <title>Geo-RAG Cluster Dashboard</title>
         <meta charset="utf-8">
         <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.basic.min.js"></script>
+        <script src="{data_js_filename}"></script>
         <style>
             body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }}
             .header {{ background: #1a73e8; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
@@ -101,6 +110,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             .image-item img {{ width: 100%; height: 150px; object-fit: cover; border-radius: 4px; border: 1px solid #eee; }}
             .tag {{ background: #e8f0fe; color: #1967d2; padding: 4px 8px; border-radius: 12px; font-size: 0.85em; font-weight: 500; }}
             .stats {{ color: #5f6368; font-size: 0.9em; }}
+            .load-more {{ background: #1a73e8; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 20px auto; display: block; font-size: 16px; }}
+            .load-more:hover {{ background: #1557b0; }}
         </style>
     </head>
     <body>
@@ -111,7 +122,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
         <div class="controls">
             <input type="text" id="searchInput" placeholder="Search by Cluster ID or Label (e.g., 'Forest' or '142')..." onkeyup="handleSearch()">
-            <select id="sortSelect" onchange="renderResults()">
+            <select id="sortSelect" onchange="resetAndRender()">
                 <option value="id">Sort by ID</option>
                 <option value="count">Sort by Size (Large First)</option>
             </select>
@@ -120,12 +131,15 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         <div id="results" class="results-container">
             <!-- Clusters will be rendered here via JS -->
         </div>
+        
+        <button id="loadMoreBtn" class="load-more" onclick="loadMore()" style="display: none;">Load More</button>
 
         <script>
-            const data = {json_data};
+            const data = typeof CLUSTER_DATA !== 'undefined' ? CLUSTER_DATA : [];
             let filteredData = [...data];
+            let renderLimit = 100;
 
-            function renderResults() {{
+            function renderResults(append = false) {{
                 const container = document.getElementById('results');
                 const sortVal = document.getElementById('sortSelect').value;
                 
@@ -136,36 +150,54 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     toRender.sort((a, b) => a.id - b.id);
                 }}
 
-                // Limit rendering to first 100 results for performance, use scrolling for more if needed
-                const slice = toRender.slice(0, 100);
+                const slice = toRender.slice(append ? renderLimit - 100 : 0, renderLimit);
                 
-                container.innerHTML = slice.map(c => `
+                const html = slice.map(c => `
                     <div class="cluster-card">
                         <div class="cluster-header">
-                            <div class="cluster-title">Cluster #$ {{c.id}}: <span style="color: #1a73e8">$ {{c.label}}</span></div>
+                            <div class="cluster-title">Cluster #${{c.id}}: <span style="color: #1a73e8">${{c.label}}</span></div>
                             <div class="stats">
-                                <span class="tag">$ {{c.count.toLocaleString()}} images</span>
+                                <span class="tag">${{c.count.toLocaleString()}} images</span>
                             </div>
                         </div>
                         <div class="image-grid">
-                            $ {{c.samples.map((s, i) => `
+                            ${{c.samples.map((s, i) => `
                                 <div class="image-item">
-                                    <div style="font-weight: bold; color: $ {{i===0 ? '#d93025':'#1a73e8'}}; margin-bottom: 4px;">
-                                        $ {{i===0 ? 'Centroid' : 'Sample ' + i}}
+                                    <div style="font-weight: bold; color: ${{i===0 ? '#d93025':'#1a73e8'}}; margin-bottom: 4px;">
+                                        ${{i===0 ? 'Centroid' : 'Sample ' + i}}
                                     </div>
-                                    <a href="$ {{s.url}}" target="_blank">
-                                        <img src="$ {{s.url}}" loading="lazy">
+                                    <a href="${{s.url}}" target="_blank">
+                                        <img src="${{s.url}}" loading="lazy">
                                     </a>
-                                    <div style="margin-top: 5px; color: #5f6368;">ID: $ {{s.id}}<br>Sim: $ {{s.sim.toFixed(4)}}</div>
+                                    <div style="margin-top: 5px; color: #5f6368;">ID: ${{s.id}}<br>Sim: ${{s.sim.toFixed(4)}}</div>
                                 </div>
                             `).join('')}}
                         </div>
                     </div>
                 `).join('');
                 
-                if (toRender.length > 100) {{
-                    container.innerHTML += `<p style="text-align:center; color:#5f6368; padding:20px;">Showing top 100 matches. Refine your search to see others.</p>`;
+                if (append) {{
+                    container.innerHTML += html;
+                }} else {{
+                    container.innerHTML = html;
                 }}
+                
+                const btn = document.getElementById('loadMoreBtn');
+                if (toRender.length > renderLimit) {{
+                    btn.style.display = 'block';
+                }} else {{
+                    btn.style.display = 'none';
+                }}
+            }}
+            
+            function loadMore() {{
+                renderLimit += 100;
+                renderResults(true);
+            }}
+
+            function resetAndRender() {{
+                renderLimit = 100;
+                renderResults(false);
             }}
 
             function handleSearch() {{
@@ -178,11 +210,11 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                         c.label.toLowerCase().includes(query)
                     );
                 }}
-                renderResults();
+                resetAndRender();
             }}
 
             // Initial render
-            renderResults();
+            resetAndRender();
         </script>
     </body>
     </html>
