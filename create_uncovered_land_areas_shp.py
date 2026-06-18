@@ -106,7 +106,7 @@ def create_uncovered_land_shapefile(csv_paths, output_shp, res=1.0):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create a shapefile of land areas not covered by images.")
     parser.add_argument("--dirs", nargs="+", required=True, help="List of directories containing CSVs.")
-    parser.add_argument("--output", type=str, default="Projects/code/geo-rag/uncovered_land_areas.shp", help="Path to output shapefile.")
+    parser.add_argument("--output", type=str, default="uncovered_land_areas.shp", help="Path to output shapefile.")
     parser.add_argument("--res", type=float, default=1.0, help="Resolution in degrees.")
     args = parser.parse_args()
 
