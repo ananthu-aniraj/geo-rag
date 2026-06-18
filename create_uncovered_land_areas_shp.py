@@ -1,91 +1,96 @@
-import pandas as pd
-import numpy as np
-import geopandas as gpd
-from shapely.geometry import box
 import os
+import glob
+import pandas as pd
+import h3
+import geopandas as gpd
+from shapely.geometry import Polygon
+import argparse
+from tqdm import tqdm
 
 
-def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
-    """
-    Creates a shapefile representing all global areas NOT covered by the images in the CSV.
+def get_h3_polygon(cell):
+    """Convert H3 cell to a Shapely Polygon."""
+    coords = h3.cell_to_boundary(cell)
+    # H3 returns (lat, lng), Shapely expects (lng, lat)
+    # Handle antimeridian crossing
+    lngs = [c[1] for c in coords]
+    if max(lngs) - min(lngs) > 180:
+        coords = [(lat, lng + 360 if lng < 0 else lng) for lat, lng in coords]
 
-    Args:
-        csv_path: Path to metadata_common_attributes.csv
-        output_shp: Path for the resulting shapefile (.shp)
-        res: Grid resolution in degrees (default 1.0 for efficient shapefile size)
-    """
-    print(f"Analyzing coverage with resolution {res} degrees...")
+    return Polygon([[lng, lat] for lat, lng in coords])
 
-    # Define grid
-    lon_bins = np.arange(-180, 180 + res, res)
-    lat_bins = np.arange(-90, 90 + res, res)
 
-    # 0 = uncovered, 1 = covered
-    occupancy_grid = np.zeros((len(lat_bins) - 1, len(lon_bins) - 1), dtype=np.uint8)
+def main():
+    parser = argparse.ArgumentParser(description="Generate Uncovered Land Areas Shapefile using H3.")
+    parser.add_argument("--csv_paths", nargs="+", required=True, help="List of paths to CSV files or directories containing CSVs.")
+    parser.add_argument("--land_shp", type=str, default="ne_10m_admin_0_countries.shp", help="Path to the base land shapefile.")
+    parser.add_argument("--output", type=str, default="uncovered_land_areas.shp", help="Output shapefile path.")
+    parser.add_argument("--res", type=int, default=11, help="H3 resolution for covered areas.")
+    args = parser.parse_args()
 
-    chunksize = 1000000
-    total_processed = 0
+    # 1. Load Land
+    print(f"Loading land shapefile from {args.land_shp}...")
+    land_gdf = gpd.read_file(args.land_shp)
 
-    print("Reading image coordinates to determine coverage...")
-    try:
-        reader = pd.read_csv(csv_path, usecols=['lat', 'lon'], chunksize=chunksize)
-        for i, chunk in enumerate(reader):
-            chunk = chunk.dropna(subset=['lat', 'lon'])
+    # 2. Gather Covered Cells
+    print(f"Processing CSVs to find covered H3 res {args.res} cells...")
+    covered_cells = set()
 
-            # Simple binning to find occupied cells
-            # We use digitize to find the indices quickly
-            lon_idx = np.digitize(chunk['lon'], lon_bins) - 1
-            lat_idx = np.digitize(chunk['lat'], lat_bins) - 1
+    csv_files = []
+    for path in args.csv_paths:
+        if os.path.isdir(path):
+            csv_files.extend(glob.glob(os.path.join(path, "**/*.csv"), recursive=True))
+        else:
+            csv_files.append(path)
 
-            # Filter valid indices
-            valid = (lon_idx >= 0) & (lon_idx < len(lon_bins) - 1) & \
-                    (lat_idx >= 0) & (lat_idx < len(lat_bins) - 1)
+    for f in tqdm(csv_files, desc="Reading CSVs"):
+        try:
+            df = pd.read_csv(f, usecols=lambda c: c.lower() in ['latitude', 'lat', 'longitude', 'lon'])
+            if df.empty: continue
 
-            occupancy_grid[lat_idx[valid], lon_idx[valid]] = 1
+            lat_col = next((c for c in df.columns if c.lower() in ['latitude', 'lat']), None)
+            lon_col = next((c for c in df.columns if c.lower() in ['longitude', 'lon']), None)
 
-            total_processed += len(chunk)
-            if i % 2 == 0:
-                print(f"  Processed {total_processed} rows...")
+            if not (lat_col and lon_col):
+                continue
 
-    except Exception as e:
-        print(f"Error reading CSV: {e}")
+            for _, row in df.iterrows():
+                try:
+                    if pd.notna(row[lat_col]) and pd.notna(row[lon_col]):
+                        cell = h3.latlng_to_cell(float(row[lat_col]), float(row[lon_col]), args.res)
+                        covered_cells.add(cell)
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"Error reading {f}: {e}")
+
+    print(f"Found {len(covered_cells)} unique covered cells at res {args.res}.")
+
+    if not covered_cells:
+        print("No covered cells found. Saving unmodified land shapefile.")
+        land_gdf.to_file(args.output)
         return
 
-    # Find indices where occupancy is 0 (uncovered)
-    uncovered_lat_idx, uncovered_lon_idx = np.where(occupancy_grid == 0)
-    print(f"Found {len(uncovered_lat_idx)} uncovered grid cells.")
+    # 3. Create Covered GeoDataFrame
+    print("Generating polygons for covered cells...")
+    polygons = [get_h3_polygon(c) for c in tqdm(covered_cells, desc="Creating Polygons")]
+    covered_gdf = gpd.GeoDataFrame(geometry=polygons, crs="EPSG:4326")
 
-    print("Converting uncovered cells to polygons...")
-    polygons = []
-    # We'll create a box for each empty cell
-    for lat_i, lon_i in zip(uncovered_lat_idx, uncovered_lon_idx):
-        min_lon = lon_bins[lon_i]
-        max_lon = lon_bins[lon_i + 1]
-        min_lat = lat_bins[lat_i]
-        max_lat = lat_bins[lat_i + 1]
-        polygons.append(box(min_lon, min_lat, max_lon, max_lat))
+    # Optional: Combine overlapping covered hexagons to speed up difference
+    print("Unioning covered geometries...")
+    covered_geom = covered_gdf.union_all()
 
-    # Create GeoDataFrame
-    print(f"Creating GeoDataFrame with {len(polygons)} features...")
-    gdf = gpd.GeoDataFrame({
-        'geometry': polygons,
-        'status': ['uncovered'] * len(polygons)
-    }, crs="EPSG:4326")
+    # 4. Subtract Covered from Land
+    print("Subtracting covered areas from land mass... (This may take a while!)")
 
-    # Export to Shapefile
-    print(f"Saving shapefile to {output_shp}...")
-    # Note: This will create .shp, .shx, .dbf, etc.
-    gdf.to_file(output_shp, engine='pyogrio')
+    uncovered_geoms = land_gdf.geometry.difference(covered_geom)
+    uncovered_gdf = gpd.GeoDataFrame(geometry=uncovered_geoms, crs="EPSG:4326")
+    uncovered_gdf = uncovered_gdf[~uncovered_gdf.is_empty]
 
-    print("Success!")
+    print(f"Saving to {args.output}...")
+    uncovered_gdf.to_file(args.output)
+    print("Done!")
 
 
 if __name__ == "__main__":
-    csv = "/user/aaniraj/home/Documents/Projects/data/global-streetscapes/train/platform.csv"
-    out = "uncovered_areas.shp"
-
-    if os.path.exists(csv):
-        # 1.0 degree provides a good balance between detail and performance for a global SHP
-        create_uncovered_shapefile(csv, out, res=1.0)
-    else:
-        print(f"Error: Could not find {csv}")
+    main()
