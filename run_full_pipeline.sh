@@ -23,7 +23,7 @@ MAX_MARKERS=10000
 LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
 
 # File Paths
-RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
+RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.pkl"
 CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
 SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
@@ -60,7 +60,8 @@ python cluster_images_global.py \
   --pkl "$RAW_PARQUET" \
   --k "$K_CLUSTERS" \
   --out "$CLUSTERED_PARQUET" \
-  --minibatch
+  --minibatch \
+  --gpu
 
 echo ""
 echo "[Step 3/5] Generating Cluster Map..."
