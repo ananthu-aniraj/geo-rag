@@ -15,22 +15,9 @@ def create_uncovered_land_shapefile(csv_paths, output_shp, res=1.0):
     lon_bins = np.arange(-180, 180 + res, res)
     lat_bins = np.arange(-90, 90 + res, res)
 
-    try:
-        # Using the standard naturalearth_lowres dataset
-        # In newer versions of geopandas, this might need an explicit path or a different way to load
-        try:
-            world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'), engine='pyogrio')
-        except AttributeError:
-            # Fallback for newer geopandas versions where gpd.datasets is deprecated
-            import pooch
-            world_path = pooch.retrieve(
-                url="https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip",
-                known_hash="f63080e599e0486c8f621743666d3a95f9c4f1c1",
-            )
-            world = gpd.read_file(world_path, engine='pyogrio')
-    except Exception as e:
-        print(f"Error loading world map: {e}")
-        return
+    url = "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip"
+
+    world = gpd.read_file(url)
 
     grid_polygons = []
     grid_coords = []
