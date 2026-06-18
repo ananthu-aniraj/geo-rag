@@ -81,8 +81,8 @@ def create_uncovered_shapefile(csv_path, output_shp, res=1.0):
 
 
 if __name__ == "__main__":
-    csv = "Projects/code/geo-rag/metadata_common_attributes.csv"
-    out = "Projects/code/geo-rag/uncovered_areas.shp"
+    csv = "/user/aaniraj/home/Documents/Projects/data/global-streetscapes/train/platform.csv"
+    out = "uncovered_areas.shp"
 
     if os.path.exists(csv):
         # 1.0 degree provides a good balance between detail and performance for a global SHP
