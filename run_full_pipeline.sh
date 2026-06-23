@@ -21,6 +21,8 @@ BASE_NAME="geo_space"
 K_CLUSTERS=20000  # Number of visual clusters to find
 MAX_MARKERS=10000
 LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
+CHECKPOINT_INTERVAL=1800 # Save a checkpoint every 30 minutes
+BATCH_SIZE=64
 
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
@@ -49,6 +51,8 @@ python process_scraped_data.py \
   --save_path "$OUTPUT_DIR" \
   --output_name "${BASE_NAME}_deduplicated" \
   --limit_cells "$LIMIT_CELLS" \
+  --checkpoint_interval "$CHECKPOINT_INTERVAL" \
+  --tips_batch_size "$BATCH_SIZE" \
   $RESUME_FLAG
 
 echo ""
