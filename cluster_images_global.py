@@ -13,15 +13,21 @@ except ImportError:
     faiss = None
 
 
-# Exhaustive Natural LULC Vocabulary
+# Exhaustive Natural LULC Vocabulary with Global Biomes
 NATURAL_LULC_VOCAB = {
     "Dense forest": "A dense natural forest or wooded area with many trees.",
     "Shrubland/scrub": "Low-lying bushes, shrubs, and sparse dry vegetation.",
     "Grassland/pasture": "Open grassy fields, meadows, grazing pastures, or plains.",
-    "Arid desert/dunes": "Dry sandy dunes, rocky deserts, or barren arid landscapes.",
-    "Snow/glacier": "Snow-covered mountains, glaciers, ice caps, or winter landscapes.",
+    "Sandy desert / dunes": "A desert landscape dominated by sand dunes, sandy expanses, and sand ripples.",
+    "Rocky desert / gravel plains": "A dry, stony desert, gravel plains, or barren rocky terrain with sparse desert scrub.",
+    "Barren soil / badlands": "Eroded clay hills, badlands, bare dry earth, or dry mud flats with no vegetation.",
+    "Glacier / permanent ice": "A polar or alpine landscape dominated by thick glaciers, ice caps, or solid ice sheets.",
+    "Snow-covered plains / tundra": "Open fields, tundra, or plains completely covered in a blanket of white snow.",
+    "Snow-covered forest": "A winter forest scene with evergreen pine or fir trees heavily laden with white snow.",
     "Wetland/marsh": "Swampy, marshy, or boggy area with specialized vegetation.",
-    "Water body": "Rivers, lakes, oceans, coastlines, or open water scenes.",
+    "Open ocean / sea": "An open view of the ocean, sea, or saltwater coast.",
+    "River / freshwater stream": "A flowing river, stream, creek, or freshwater channel.",
+    "Lake / inland pond": "A still body of freshwater, a lake, pond, or reservoir.",
     "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes."
 }
 
@@ -90,7 +96,6 @@ def main():
                         help="Use FAISS GPU for massive datasets.")
     parser.add_argument("--no_label", action="store_true", help="Disable automatic zero-shot cluster labeling.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
-    parser.add_argument("--k_noise", type=int, default=None, help="Number of clusters for screened indoor/noise images (defaults to max(1, K // 10); set to 0 to disable).")
     args = parser.parse_args()
 
     print(f"Loading data from {args.pkl}...")
@@ -110,17 +115,12 @@ def main():
     if embeddings.ndim == 1:
         embeddings = embeddings.reshape(1, -1)
 
-    # 1. Zero-shot screening and classification
+    # 1. Zero-shot classification (Natural vs Man-made)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading TIPSv2 model on {device} to encode classification prompts...")
     model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).to(device)
     model.eval()
 
-    SCREENING_PROMPTS = [
-        "An outdoor scene, landscape, street view, city street, building exterior, nature, or a road view looking out through a vehicle windshield or window.",
-        "An indoor scene, room interior, office, household, inside of a building, or a vehicle cabin interior focusing on passengers, seats, or group selfies."
-    ]
-    
     SUBTYPE_PROMPTS = [
         "A natural landscape, wild nature, forest, grassland, desert, mountain, or water body.",
         "A man-made structure, city, road, building, industrial area, or transport infrastructure."
@@ -133,7 +133,6 @@ def main():
 
     # Encode prompts
     with torch.no_grad():
-        screening_features = normalize(model.encode_text(SCREENING_PROMPTS).cpu().numpy())
         subtype_features = normalize(model.encode_text(SUBTYPE_PROMPTS).cpu().numpy())
         natural_features = normalize(model.encode_text(natural_prompts).cpu().numpy())
         man_made_features = normalize(model.encode_text(man_made_prompts).cpu().numpy())
@@ -147,32 +146,16 @@ def main():
     print("Normalizing embeddings for cosine similarity classification...")
     embeddings_norm = normalize(embeddings)
 
-    # Screening execution (Outdoor vs Indoor Noise)
-    screening_sims = np.dot(embeddings_norm, screening_features.T)
-    screening_preds = np.argmax(screening_sims, axis=1)
+    # Subtype execution for all images (Natural vs Man-made)
+    subtype_sims = np.dot(embeddings_norm, subtype_features.T)
+    subtype_preds = np.argmax(subtype_sims, axis=1)
 
-    indoor_indices = np.where(screening_preds == 1)[0]
-    outdoor_indices = np.where(screening_preds == 0)[0]
+    natural_indices = np.where(subtype_preds == 0)[0]
+    man_made_indices = np.where(subtype_preds == 1)[0]
 
-    # Subtype execution for outdoor images (Natural vs Man-made)
-    natural_indices = np.array([], dtype=int)
-    man_made_indices = np.array([], dtype=int)
-    k_nat, k_man = 0, 0
-
-    if len(outdoor_indices) > 0:
-        outdoor_embeddings = embeddings_norm[outdoor_indices]
-        subtype_sims = np.dot(outdoor_embeddings, subtype_features.T)
-        subtype_preds = np.argmax(subtype_sims, axis=1)
-        
-        natural_indices = outdoor_indices[subtype_preds == 0]
-        man_made_indices = outdoor_indices[subtype_preds == 1]
-
-    print(f"\nScreening Summary:")
-    print(f"  Outdoor/Geo images: {len(outdoor_indices)}")
-    print(f"  Indoor images (excluded): {len(indoor_indices)}")
-    print(f"Outdoor Classification:")
-    print(f"  Natural: {len(natural_indices)}")
-    print(f"  Man-made: {len(man_made_indices)}")
+    print(f"\nClassification Summary:")
+    print(f"  Natural images: {len(natural_indices)}")
+    print(f"  Man-made images: {len(man_made_indices)}")
 
     # Dynamic K allocation
     n_nat = len(natural_indices)
@@ -180,7 +163,7 @@ def main():
     n_total = n_nat + n_man
 
     if n_total == 0:
-        print("No outdoor images found to cluster.")
+        print("No images found to cluster.")
         return
 
     if args.k < 2:
@@ -207,22 +190,6 @@ def main():
     # Cluster subsets
     global_cluster_ids = np.zeros(len(data), dtype=int)
 
-    # Resolve dynamic k_noise
-    if args.k_noise is None:
-        k_noise = max(1, args.k // 10)
-    else:
-        k_noise = args.k_noise
-
-    if k_noise > 0 and len(indoor_indices) > 0:
-        k_noise = min(k_noise, len(indoor_indices))
-        print(f"\nClustering Indoor Noise subset on {clustering_mode} space (K={k_noise})...")
-        indoor_input = cluster_input[indoor_indices]
-        indoor_cluster_ids, _ = cluster_subset(indoor_input, k_noise, args.gpu, args.minibatch, faiss)
-        global_cluster_ids[indoor_indices] = -1 - indoor_cluster_ids
-    else:
-        k_noise = 0
-        global_cluster_ids[indoor_indices] = -1
-
     # Cluster Natural
     if k_nat > 0 and len(natural_indices) > 0:
         print(f"\nClustering Natural subset on {clustering_mode} space...")
@@ -239,8 +206,6 @@ def main():
 
     # Centroid derivation and labeling
     cluster_labels = {}
-    if k_noise == 0:
-        cluster_labels[-1] = "Noise: Indoor"
 
     if not args.no_label:
         print("\nComputing centroids in original 768D space for labeling...")
@@ -251,26 +216,6 @@ def main():
         counts = np.bincount(global_cluster_ids[valid_mask], minlength=args.k)
         valid_counts = counts > 0
         raw_centroids[valid_counts] /= counts[valid_counts, None]
-
-        # Label Noise centroids using combined LULC vocabulary
-        if k_noise > 0:
-            print("\nComputing centroids for Noise clusters...")
-            d = embeddings_norm.shape[1]
-            raw_noise_centroids = np.zeros((k_noise, d), dtype=embeddings_norm.dtype)
-            noise_mask = (global_cluster_ids < 0) & (global_cluster_ids >= -k_noise)
-            mapped_noise_ids = -1 - global_cluster_ids[noise_mask]
-            np.add.at(raw_noise_centroids, mapped_noise_ids, embeddings_norm[noise_mask])
-            noise_counts = np.bincount(mapped_noise_ids, minlength=k_noise)
-            valid_noise = noise_counts > 0
-            raw_noise_centroids[valid_noise] /= noise_counts[valid_noise, None]
-
-            combined_categories = natural_categories + man_made_categories
-            combined_features = np.concatenate([natural_features, man_made_features], axis=0)
-            noise_labels = label_clusters(raw_noise_centroids, combined_features, combined_categories)
-            for i, label in enumerate(noise_labels):
-                cid = -1 - i
-                cluster_labels[cid] = f"Noise (Matched LULC: {label})"
-                print(f"  Cluster {cid} (Indoor Noise) Label: {cluster_labels[cid]}")
 
         if k_nat > 0:
             nat_centroids = raw_centroids[:k_nat]
