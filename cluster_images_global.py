@@ -90,6 +90,7 @@ def main():
                         help="Use FAISS GPU for massive datasets.")
     parser.add_argument("--no_label", action="store_true", help="Disable automatic zero-shot cluster labeling.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
+    parser.add_argument("--k_noise", type=int, default=None, help="Number of clusters for screened indoor/noise images (defaults to max(1, K // 10); set to 0 to disable).")
     args = parser.parse_args()
 
     print(f"Loading data from {args.pkl}...")
@@ -205,7 +206,22 @@ def main():
 
     # Cluster subsets
     global_cluster_ids = np.zeros(len(data), dtype=int)
-    global_cluster_ids[indoor_indices] = -1
+
+    # Resolve dynamic k_noise
+    if args.k_noise is None:
+        k_noise = max(1, args.k // 10)
+    else:
+        k_noise = args.k_noise
+
+    if k_noise > 0 and len(indoor_indices) > 0:
+        k_noise = min(k_noise, len(indoor_indices))
+        print(f"\nClustering Indoor Noise subset on {clustering_mode} space (K={k_noise})...")
+        indoor_input = cluster_input[indoor_indices]
+        indoor_cluster_ids, _ = cluster_subset(indoor_input, k_noise, args.gpu, args.minibatch, faiss)
+        global_cluster_ids[indoor_indices] = -1 - indoor_cluster_ids
+    else:
+        k_noise = 0
+        global_cluster_ids[indoor_indices] = -1
 
     # Cluster Natural
     if k_nat > 0 and len(natural_indices) > 0:
@@ -223,7 +239,8 @@ def main():
 
     # Centroid derivation and labeling
     cluster_labels = {}
-    cluster_labels[-1] = "Noise: Indoor"
+    if k_noise == 0:
+        cluster_labels[-1] = "Noise: Indoor"
 
     if not args.no_label:
         print("\nComputing centroids in original 768D space for labeling...")
@@ -234,6 +251,26 @@ def main():
         counts = np.bincount(global_cluster_ids[valid_mask], minlength=args.k)
         valid_counts = counts > 0
         raw_centroids[valid_counts] /= counts[valid_counts, None]
+
+        # Label Noise centroids using combined LULC vocabulary
+        if k_noise > 0:
+            print("\nComputing centroids for Noise clusters...")
+            d = embeddings_norm.shape[1]
+            raw_noise_centroids = np.zeros((k_noise, d), dtype=embeddings_norm.dtype)
+            noise_mask = (global_cluster_ids < 0) & (global_cluster_ids >= -k_noise)
+            mapped_noise_ids = -1 - global_cluster_ids[noise_mask]
+            np.add.at(raw_noise_centroids, mapped_noise_ids, embeddings_norm[noise_mask])
+            noise_counts = np.bincount(mapped_noise_ids, minlength=k_noise)
+            valid_noise = noise_counts > 0
+            raw_noise_centroids[valid_noise] /= noise_counts[valid_noise, None]
+
+            combined_categories = natural_categories + man_made_categories
+            combined_features = np.concatenate([natural_features, man_made_features], axis=0)
+            noise_labels = label_clusters(raw_noise_centroids, combined_features, combined_categories)
+            for i, label in enumerate(noise_labels):
+                cid = -1 - i
+                cluster_labels[cid] = f"Noise (Matched LULC: {label})"
+                print(f"  Cluster {cid} (Indoor Noise) Label: {cluster_labels[cid]}")
 
         if k_nat > 0:
             nat_centroids = raw_centroids[:k_nat]
