@@ -1,4 +1,5 @@
 import os
+import time
 import glob
 import pandas as pd
 import torch
@@ -74,86 +75,106 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None):
-    """Filters indoor images (Flickr only) and deduplicates images within an H3 cell."""
-    # 1. Download all images in cell using the shared executor
-    urls = [m['Image_URL'] for m in metadata_list]
-    imgs = list(executor.map(download_image, urls))
-
-    valid_indices = [i for i, img in enumerate(imgs) if img is not None]
-    
-    # If there are no new images and no existing images, return empty
-    if not valid_indices and not existing_items:
-        return []
-    
-    # If there are no new images but there are existing ones, return existing
-    if not valid_indices and existing_items:
-        return existing_items
-
-    valid_imgs = [imgs[i] for i in valid_indices]
-    all_embeddings = get_tips_embeddings(valid_imgs, model, device)
-
-    if all_embeddings is None:
-        return existing_items or []
-
-    # 2. Conditional Filtering and Deduplication
-    final_indices = []
-    
-    # Initialize with existing data if resuming
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32):
+    """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
 
-    # Batch compute indoor/outdoor similarity for the whole cell
-    if text_features is not None:
-        # Normalize embeddings and text features for cosine similarity (dot product)
-        emb_norms = np.linalg.norm(all_embeddings, axis=1, keepdims=True)
-        # Avoid division by zero
-        emb_norms[emb_norms == 0] = 1.0
-        norm_embeddings = all_embeddings / emb_norms
-
-        text_norms = np.linalg.norm(text_features, axis=1, keepdims=True)
-        norm_text = text_features / text_norms
-
-        # Matrix multiply: (N, D) x (D, 2) -> (N, 2)
-        all_io_sims = np.dot(norm_embeddings, norm_text.T)
-
-    for i, idx in enumerate(valid_indices):
-        metadata = metadata_list[idx]
-        embedding = all_embeddings[i]
-
-        # Flickr-only Indoor/Outdoor Filter (now using precomputed batch similarities)
-        if metadata['Platform'] == 'Flickr' and text_features is not None:
-            # sims[0] is Indoor, sims[1] is Outdoor
-            sims = all_io_sims[i]
-            if sims[0] > sims[1]:
-                continue # Skip indoor Flickr image
-
-        # Deduplication check
-        is_duplicate = False
-        if processed_embeddings:
-            # Vectorized check against all kept embeddings
-            # Normalize current embedding
-            curr_norm = embedding / (np.linalg.norm(embedding) or 1.0)
-
-            # Normalize kept embeddings
-            kept_embs = np.array(processed_embeddings)
-            kept_norms = np.linalg.norm(kept_embs, axis=1, keepdims=True)
-            norm_kept = kept_embs / kept_norms
-
-            # Compute similarities in one go
-            sims = np.dot(norm_kept, curr_norm)
-            if np.any(sims > sim_threshold):
-                is_duplicate = True
-
-        if not is_duplicate:
-            final_indices.append(i) # Index in all_embeddings
-            processed_embeddings.append(embedding)
+    # Process new images in chunks to limit peak memory usage
+    for chunk_start in range(0, len(metadata_list), cell_chunk_size):
+        chunk_metadata = metadata_list[chunk_start : chunk_start + cell_chunk_size]
+        urls = [m['Image_URL'] for m in chunk_metadata]
+        
+        # Download images in parallel for this chunk
+        imgs = list(executor.map(download_image, urls))
+        
+        valid_indices = [i for i, img in enumerate(imgs) if img is not None]
+        if not valid_indices:
+            continue
             
-            item = metadata.copy()
-            item['embedding'] = embedding
-            results.append(item)
+        valid_imgs = [imgs[i] for i in valid_indices]
+        
+        # Compute embeddings for this chunk using configured tips_batch_size
+        all_embeddings = get_tips_embeddings(valid_imgs, model, device, batch_size=tips_batch_size)
+        
+        # Explicitly close PIL images immediately to free RAM
+        for img in valid_imgs:
+            try:
+                img.close()
+            except Exception:
+                pass
+                
+        if all_embeddings is None:
+            continue
+            
+        # Matrix multiply for indoor/outdoor zero-shot classification
+        if text_features is not None:
+            emb_norms = np.linalg.norm(all_embeddings, axis=1, keepdims=True)
+            emb_norms[emb_norms == 0] = 1.0
+            norm_embeddings = all_embeddings / emb_norms
 
+            text_norms = np.linalg.norm(text_features, axis=1, keepdims=True)
+            text_norms[text_norms == 0] = 1.0
+            norm_text = text_features / text_norms
+
+            all_io_sims = np.dot(norm_embeddings, norm_text.T)
+            
+        for i, idx in enumerate(valid_indices):
+            metadata = chunk_metadata[idx]
+            embedding = all_embeddings[i]
+
+            # Flickr-only Indoor/Outdoor Filter
+            if metadata['Platform'] == 'Flickr' and text_features is not None:
+                sims = all_io_sims[i]
+                if sims[0] > sims[1]:
+                    continue # Skip indoor Flickr image
+
+            # Deduplication check
+            is_duplicate = False
+            if processed_embeddings:
+                curr_norm = embedding / (np.linalg.norm(embedding) or 1.0)
+                kept_embs = np.array(processed_embeddings)
+                kept_norms = np.linalg.norm(kept_embs, axis=1, keepdims=True)
+                kept_norms[kept_norms == 0] = 1.0
+                norm_kept = kept_embs / kept_norms
+
+                sims = np.dot(norm_kept, curr_norm)
+                if np.any(sims > sim_threshold):
+                    is_duplicate = True
+
+            if not is_duplicate:
+                processed_embeddings.append(embedding)
+                item = metadata.copy()
+                item['embedding'] = embedding
+                results.append(item)
+                
     return results
+
+
+def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path):
+    """Saves the intermediate state to checkpoint files atomically."""
+    tmp_path = f"{checkpoint_path}.tmp"
+    tmp_meta_path = f"{checkpoint_meta_path}.tmp"
+    try:
+        # Convert final_data to DataFrame and save to tmp parquet
+        if not final_data:
+            df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding'])
+        else:
+            df = pd.DataFrame(final_data)
+        df.to_parquet(tmp_path, index=False)
+        
+        # Save processed cells to tmp meta
+        with open(tmp_meta_path, 'wb') as f:
+            pickle.dump(processed_cells, f)
+            
+        # Atomic rename
+        if os.path.exists(tmp_path):
+            os.replace(tmp_path, checkpoint_path)
+        if os.path.exists(tmp_meta_path):
+            os.replace(tmp_meta_path, checkpoint_meta_path)
+        print(f"\nCheckpoint saved: {len(final_data)} images kept, {len(processed_cells)} cells processed.")
+    except Exception as e:
+        print(f"\nError saving checkpoint: {e}")
 
 
 def main():
@@ -165,7 +186,10 @@ def main():
     parser.add_argument("--sim_threshold", type=float, default=0.95, help="TIPSv2 cosine similarity threshold.")
     parser.add_argument("--no_filter", action="store_true", help="Disable Flickr indoor/outdoor filtering.")
     parser.add_argument("--limit_cells", type=int, default=0, help="Limit number of cells to process (for testing).")
-    parser.add_argument("--resume_from", type=str, default=None, help="Path to a previously generated .pkl file to resume from.")
+    parser.add_argument("--resume_from", type=str, default=None, help="Path to a previously generated .pkl or parquet file to resume from.")
+    parser.add_argument("--checkpoint_interval", type=int, default=1800, help="Interval in seconds to save checkpoints (0 to disable).")
+    parser.add_argument("--cell_chunk_size", type=int, default=128, help="Number of images within a cell to download/process in a chunk.")
+    parser.add_argument("--tips_batch_size", type=int, default=32, help="Batch size for TIPSv2 embedding inference.")
     args = parser.parse_args()
 
     # 1. Gather all CSVs
@@ -176,9 +200,7 @@ def main():
     print(f"Found {len(csv_files)} CSV files.")
 
     # 2. Aggregating Metadata & Handling Resume
-    h3_buckets = {}
-    existing_buckets = {}
-    total_raw_images = 0
+    df_existing = None
     seen_photo_ids = set()
 
     if args.resume_from and os.path.exists(args.resume_from):
@@ -186,21 +208,15 @@ def main():
         if args.resume_from.endswith('.pkl'):
             with open(args.resume_from, 'rb') as f:
                 existing_data = pickle.load(f)
+            df_existing = pd.DataFrame(existing_data)
+            del existing_data  # Free list from RAM
         else:
-            # Assume Parquet
             df_existing = pd.read_parquet(args.resume_from)
-            existing_data = df_existing.to_dict('records')
         
-        for item in existing_data:
-            photo_id = str(item['Photo_ID'])
-            seen_photo_ids.add(photo_id)
-            cell = item['H3_Cell']
-            if cell not in existing_buckets:
-                existing_buckets[cell] = []
-            existing_buckets[cell].append(item)
-        
-        print(f"Loaded {len(existing_data)} existing images across {len(existing_buckets)} cells.")
+        seen_photo_ids = set(df_existing['Photo_ID'].astype(str))
+        print(f"Loaded {len(df_existing)} existing images across {df_existing['H3_Cell'].nunique()} cells.")
 
+    all_dfs = []
     for f in tqdm(csv_files, desc="Reading CSVs"):
         try:
             df = pd.read_csv(f)
@@ -211,64 +227,43 @@ def main():
                 df['Latitude'] = df['lat']
                 df['Longitude'] = df['lon']
                 df['Photo_ID'] = df['orig_id']
-
-                def make_url(row):
-                    src = str(row['source']).lower()
-                    if src == 'mapillary':
-                        return f"mapillary://{row['orig_id']}"
-                    elif src == 'kartaview':
-                        return f"kartaview://{row['orig_id']}"
-                    return row['url']
-
-                df['Image_URL'] = df.apply(make_url, axis=1)
+                df['Image_URL'] = df.apply(lambda r: f"mapillary://{r['orig_id']}" if str(r['source']).lower() == 'mapillary' else (f"kartaview://{r['orig_id']}" if str(r['source']).lower() == 'kartaview' else r['url']), axis=1)
             else:
-                # Normalize columns
                 platform = 'Flickr' if 'flickr' in f.lower() else 'Mapillary'
-
-                # Ensure standard names
-                col_map = {
-                    'latitude': 'Latitude', 'longitude': 'Longitude',
-                    'image_url': 'Image_URL', 'photo_id': 'Photo_ID',
-                    'ID': 'Photo_ID'
-                }
+                col_map = {'latitude': 'Latitude', 'longitude': 'Longitude', 'image_url': 'Image_URL', 'photo_id': 'Photo_ID', 'ID': 'Photo_ID'}
                 df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-
-                # If Platform column doesn't exist, use inferred platform
                 if 'Platform' not in df.columns:
                     df['Platform'] = platform
 
-            for _, row in df.iterrows():
-                try:
-                    photo_id = str(row['Photo_ID'])
-                    if photo_id in seen_photo_ids:
-                        continue
-
-                    lat, lon = float(row['Latitude']), float(row['Longitude'])
-                    cell = h3.latlng_to_cell(lat, lon, args.h3_res)
-
-                    item = {
-                        'Photo_ID': photo_id,
-                        'Platform': row['Platform'],
-                        'Latitude': lat,
-                        'Longitude': lon,
-                        'Image_URL': row['Image_URL'],
-                        'H3_Cell': cell
-                    }
-
-                    if cell not in h3_buckets:
-                        h3_buckets[cell] = []
-                    h3_buckets[cell].append(item)
-                    seen_photo_ids.add(photo_id)
-                    total_raw_images += 1
-                except Exception:
-                    continue
+            required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL']
+            for col in required_cols:
+                if col not in df.columns:
+                    df[col] = None
+            df = df[required_cols]
+            all_dfs.append(df)
         except Exception as e:
             print(f"Error reading {f}: {e}")
 
-    print(f"Total NEW raw images: {total_raw_images}")
+    if all_dfs:
+        df_all = pd.concat(all_dfs, ignore_index=True)
+    else:
+        df_all = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL'])
+    all_dfs = []  # Free memory
+
+    # Vectorized H3 cell computation and filtering
+    if not df_all.empty:
+        df_all['H3_Cell'] = df_all.apply(lambda r: h3.latlng_to_cell(float(r['Latitude']), float(r['Longitude']), args.h3_res) if pd.notna(r['Latitude']) and pd.notna(r['Longitude']) else None, axis=1)
+        df_all = df_all.dropna(subset=['H3_Cell', 'Photo_ID'])
+        df_all['Photo_ID'] = df_all['Photo_ID'].astype(str)
+        df_all = df_all.drop_duplicates(subset=['Photo_ID'])
+        if seen_photo_ids:
+            df_all = df_all[~df_all['Photo_ID'].isin(seen_photo_ids)]
+
+    print(f"Total NEW raw images: {len(df_all)}")
     
-    # Combine cells that have new images OR existing images
-    all_cells = set(h3_buckets.keys()) | set(existing_buckets.keys())
+    new_cells = set(df_all['H3_Cell'].unique()) if not df_all.empty else set()
+    existing_cells = set(df_existing['H3_Cell'].unique()) if df_existing is not None else set()
+    all_cells = new_cells | existing_cells
     print(f"Total H3 cells to verify/process: {len(all_cells)}")
 
     # 3. Load TIPSv2
@@ -286,24 +281,63 @@ def main():
             text_features = model.encode_text(prompts).cpu().numpy()
 
     # 4. Process and Deduplicate
+    checkpoint_path = os.path.join(args.save_path, f"{args.output_name}_checkpoint.parquet")
+    checkpoint_meta_path = os.path.join(args.save_path, f"{args.output_name}_checkpoint_meta.pkl")
+    
     final_data = []
+    processed_cells = set()
+    
+    if args.checkpoint_interval > 0 and os.path.exists(checkpoint_path) and os.path.exists(checkpoint_meta_path):
+        print(f"Found checkpoint files: {checkpoint_path}")
+        print("Resuming from checkpoint. (To start fresh, delete these checkpoint files or run with --checkpoint_interval 0)")
+        try:
+            df_ckpt = pd.read_parquet(checkpoint_path)
+            final_data = df_ckpt.to_dict('records')
+            with open(checkpoint_meta_path, 'rb') as f:
+                processed_cells = pickle.load(f)
+            print(f"Loaded {len(final_data)} images from checkpoint. {len(processed_cells)} cells already processed.")
+        except Exception as e:
+            print(f"Error loading checkpoint: {e}. Starting from scratch/resume_from.")
+            final_data = []
+            processed_cells = set()
+
     cells_to_process = list(all_cells)
     if args.limit_cells > 0:
         cells_to_process = cells_to_process[:args.limit_cells]
         print(f"Limiting to {args.limit_cells} cells for testing.")
 
+    last_checkpoint_time = time.time()
+    
+    h3_groups = df_all.groupby('H3_Cell') if not df_all.empty else None
+    existing_groups = df_existing.groupby('H3_Cell') if df_existing is not None else None
+
     with ThreadPoolExecutor(max_workers=20) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):
-            new_metadata = h3_buckets.get(cell, [])
-            existing_items = existing_buckets.get(cell, [])
+            if cell in processed_cells:
+                continue
+                
+            new_metadata = h3_groups.get_group(cell).to_dict('records') if (h3_groups and cell in h3_groups.groups) else []
+            existing_items = existing_groups.get_group(cell).to_dict('records') if (existing_groups and cell in existing_groups.groups) else []
             
             # If there's no new data for this cell, just keep the existing data
             if not new_metadata:
                 final_data.extend(existing_items)
+                processed_cells.add(cell)
                 continue
                 
-            deduped = process_cell(cell, new_metadata, model, device, args.sim_threshold, executor, text_features, existing_items)
+            deduped = process_cell(cell, new_metadata, model, device, args.sim_threshold, executor, 
+                                   text_features, existing_items, 
+                                   cell_chunk_size=args.cell_chunk_size, 
+                                   tips_batch_size=args.tips_batch_size)
             final_data.extend(deduped)
+            processed_cells.add(cell)
+            
+            # Periodic checkpoint saving
+            if args.checkpoint_interval > 0:
+                current_time = time.time()
+                if current_time - last_checkpoint_time > args.checkpoint_interval:
+                    save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path)
+                    last_checkpoint_time = current_time
 
     # 5. Save Results
     if not final_data:
@@ -321,6 +355,18 @@ def main():
 
     # Save Full Data to Parquet (High-performance binary storage)
     out_df.to_parquet(parquet_path, index=False)
+
+    # Clean up checkpoint files on successful completion
+    if os.path.exists(checkpoint_path):
+        try:
+            os.remove(checkpoint_path)
+        except Exception:
+            pass
+    if os.path.exists(checkpoint_meta_path):
+        try:
+            os.remove(checkpoint_meta_path)
+        except Exception:
+            pass
 
     print(f"\nProcessing Complete!")
     print(f"Unique images kept: {len(final_data)}")
