@@ -23,7 +23,7 @@ MAX_MARKERS=10000
 LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
 
 # File Paths
-RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.pkl"
+RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
 CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
 SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
