@@ -63,18 +63,18 @@ def label_clusters(centroids, text_features, categories, top_k=3):
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
-def resize_image_aspect(img, target_min=448):
-    """Resizes a PIL image maintaining aspect ratio such that the smallest dimension is target_min."""
+def resize_image_aspect(img, target_max=448):
+    """Resizes a PIL image maintaining aspect ratio such that the largest dimension is target_max."""
     w, h = img.size
-    if min(w, h) <= target_min:
+    if max(w, h) <= target_max:
         return img
     
-    if w < h:
-        new_w = target_min
-        new_h = int(h * (target_min / w))
+    if w > h:
+        new_w = target_max
+        new_h = int(h * (target_max / w))
     else:
-        new_h = target_min
-        new_w = int(w * (target_min / h))
+        new_h = target_max
+        new_w = int(w * (target_max / h))
         
     try:
         resample = Image.Resampling.LANCZOS
@@ -84,12 +84,12 @@ def resize_image_aspect(img, target_min=448):
     return img.resize((new_w, new_h), resample)
 
 
-def load_image(url):
+def load_image(url, target_max=448):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
     if os.path.exists(url):
         try:
             img = Image.open(url).convert("RGB")
-            return resize_image_aspect(img, 448)
+            return resize_image_aspect(img, target_max)
         except Exception as e:
             print(f"Error loading local image {url}: {e}")
             return None
@@ -119,7 +119,7 @@ def load_image(url):
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             img = Image.open(BytesIO(response.content)).convert("RGB")
-            return resize_image_aspect(img, 448)
+            return resize_image_aspect(img, target_max)
     except Exception as e:
         print(f"Error loading image URL {url}: {e}")
     return None
@@ -161,7 +161,7 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url):
         return ""
 
 
-def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128):
+def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128, img_max_dim=448):
     """Runs VLM labeling in chunks to utilize batch inference via OpenAI-compatible API."""
     results = {}
 
@@ -177,7 +177,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128)
 
         def prepare_image(task):
             cid = task['cid']
-            img = load_image(task['img_url'])
+            img = load_image(task['img_url'], target_max=img_max_dim)
             if img is not None:
                 buffered = BytesIO()
                 img.save(buffered, format="JPEG")
@@ -273,6 +273,8 @@ def main():
                         help="Custom API URL for the VLM server. Overrides the default port assigned by --mllm_backend.")
     parser.add_argument("--chunk_size", type=int, default=128,
                         help="Batch chunk size for parallel VLM API requests.")
+    parser.add_argument("--img_max_dim", type=int, default=448,
+                        help="Target maximum dimension to resize images before VLM processing (default: 448). Prevents OOM on wide panoramic images.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
 
@@ -448,7 +450,8 @@ def main():
 
             print(f"Total tasks prepared: {len(tasks)}. Starting batch inference via VLM API at {endpoint} (chunk size {args.chunk_size})...")
             results = label_clusters_mllm_batched(
-                tasks, args.mllm_model, endpoint, chunk_size=args.chunk_size
+                tasks, args.mllm_model, endpoint, 
+                chunk_size=args.chunk_size, img_max_dim=args.img_max_dim
             )
             for cid, (lbl, desc) in results.items():
                 cluster_labels[cid] = lbl
