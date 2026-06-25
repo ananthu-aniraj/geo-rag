@@ -63,11 +63,33 @@ def label_clusters(centroids, text_features, categories, top_k=3):
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
+def resize_image_aspect(img, target_min=448):
+    """Resizes a PIL image maintaining aspect ratio such that the smallest dimension is target_min."""
+    w, h = img.size
+    if min(w, h) <= target_min:
+        return img
+    
+    if w < h:
+        new_w = target_min
+        new_h = int(h * (target_min / w))
+    else:
+        new_h = target_min
+        new_w = int(w * (target_min / h))
+        
+    try:
+        resample = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample = Image.LANCZOS
+        
+    return img.resize((new_w, new_h), resample)
+
+
 def load_image(url):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
     if os.path.exists(url):
         try:
-            return Image.open(url).convert("RGB")
+            img = Image.open(url).convert("RGB")
+            return resize_image_aspect(img, 448)
         except Exception as e:
             print(f"Error loading local image {url}: {e}")
             return None
@@ -96,7 +118,8 @@ def load_image(url):
 
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
-            return Image.open(BytesIO(response.content)).convert("RGB")
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+            return resize_image_aspect(img, 448)
     except Exception as e:
         print(f"Error loading image URL {url}: {e}")
     return None
