@@ -7,6 +7,10 @@ import os
 import pandas as pd
 import torch
 from transformers import AutoModel
+import tempfile
+import requests
+from io import BytesIO
+from PIL import Image
 try:
     import faiss
 except ImportError:
@@ -56,6 +60,98 @@ def label_clusters(centroids, text_features, categories, top_k=3):
     return results
 
 
+MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+
+
+def load_image(url):
+    """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
+    if os.path.exists(url):
+        try:
+            return Image.open(url).convert("RGB")
+        except Exception as e:
+            print(f"Error loading local image {url}: {e}")
+            return None
+    try:
+        if url.startswith("mapillary://"):
+            orig_id = url.split("://")[1]
+            api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
+            headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
+            res = requests.get(api_url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                url = res.json().get("thumb_1024_url")
+            else:
+                return None
+        elif url.startswith("kartaview://"):
+            orig_id = url.split("://")[1]
+            api_url = f"https://api.openstreetcam.org/2.0/photo/{orig_id}"
+            res = requests.get(api_url, timeout=10)
+            if res.status_code == 200:
+                data = res.json().get("result", {}).get("data", {})
+                url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
+            else:
+                return None
+
+        if not url:
+            return None
+
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return Image.open(BytesIO(response.content)).convert("RGB")
+    except Exception as e:
+        print(f"Error loading image URL {url}: {e}")
+    return None
+
+
+def query_mllm(img_url, prompt_text, model_name, backend="ollama"):
+    """Downloads the representative image, writes to temporary storage, and queries the VLM."""
+    img = load_image(img_url)
+    if img is None:
+        return "Unknown Centroid Image", "Could not load image."
+
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+        img.save(tmp_file.name, format="JPEG")
+        tmp_path = tmp_file.name
+
+    try:
+        if backend == "ollama":
+            import ollama
+            response = ollama.generate(
+                model=model_name,
+                prompt=prompt_text,
+                images=[tmp_path]
+            )
+            response_text = response.get("response", "").strip()
+        else:
+            import sglang as sgl
+            @sgl.function
+            def describe_image(s, image_path, prompt):
+                s += s.image(image_path)
+                s += prompt + s.gen("response")
+            
+            res = describe_image.run(image_path=tmp_path, prompt=prompt_text)
+            response_text = res["response"].strip()
+
+        # Parse structured output
+        label = "Unlabeled"
+        description = response_text
+        if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
+            parts = response_text.split("DESCRIPTION:")
+            label = parts[0].replace("LABEL:", "").strip()
+            description = parts[1].strip()
+        elif "LABEL:" in response_text:
+            label = response_text.replace("LABEL:", "").strip()
+
+        label = label.replace("**", "").replace("*", "").replace("`", "").strip()
+        label = label.strip('"\'*#-\t ')
+        return label, description
+    except Exception as e:
+        print(f"Error calling VLM backend {backend}: {e}")
+        return "Error Labeling", f"Error occurred: {e}"
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 def cluster_subset(subset_input, k_subset, gpu_enabled, minibatch_enabled, faiss_module):
     """Helper to run K-Means on a subset of embeddings."""
     if k_subset <= 0:
@@ -94,8 +190,14 @@ def main():
                         help="Use MiniBatchKMeans for massive datasets (2M+ images).")
     parser.add_argument("--gpu", action="store_true",
                         help="Use FAISS GPU for massive datasets.")
-    parser.add_argument("--no_label", action="store_true", help="Disable automatic zero-shot cluster labeling.")
-    parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
+    parser.add_argument("--no_label", action="store_true", help="Disable automatic cluster labeling.")
+    parser.add_argument("--label_method", type=str, choices=["zeroshot", "mllm"], default="zeroshot",
+                        help="Method to label clusters: 'zeroshot' (embedding-based) or 'mllm' (visual LLM on centroid image).")
+    parser.add_argument("--mllm_model", type=str, default="gemma4:e4b",
+                        help="Ollama model to use for cluster labeling.")
+    parser.add_argument("--mllm_backend", type=str, choices=["ollama", "sglang"], default="ollama",
+                        help="Backend to run the VLM.")
+    parser.add_argument("--out", type=str, default="clustered_data.parquet", help="Output path.")
     args = parser.parse_args()
 
     print(f"Loading data from {args.pkl}...")
@@ -206,6 +308,7 @@ def main():
 
     # Centroid derivation and labeling
     cluster_labels = {}
+    cluster_descriptions = {}
 
     if not args.no_label:
         print("\nComputing centroids in original 768D space for labeling...")
@@ -217,20 +320,65 @@ def main():
         valid_counts = counts > 0
         raw_centroids[valid_counts] /= counts[valid_counts, None]
 
-        if k_nat > 0:
-            nat_centroids = raw_centroids[:k_nat]
-            nat_labels = label_clusters(nat_centroids, natural_features, natural_categories)
-            for i, label in enumerate(nat_labels):
-                cluster_labels[i] = label
-                print(f"  Cluster {i} (Natural) Label: {label}")
+        if args.label_method == "mllm":
+            print(f"\nLabeling clusters using MLLM ({args.mllm_model} via {args.mllm_backend})...")
+            # Build prompt templates
+            prompt_template = (
+                "Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Describe:\n"
+                "1. visible_evidence: Primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.\n"
+                "2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?\n"
+                "3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?\n"
+                "4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state \"none\".\n\n"
+                "Based ONLY on the visual evidence described above, classify this environment into EXACTLY one of the following Land Use / Land Cover (LULC) categories:\n"
+                "{lulc_list}\n\n"
+                "Format your output EXACTLY as follows:\n"
+                "LABEL: <Insert EXACTLY one category from the list above>\n"
+                "DESCRIPTION: <A detailed paragraph summarizing the visual evidence, human activities, land cover, and vegetation.>"
+            )
+            natural_list_str = "\n".join([f"- {k}" for k in NATURAL_LULC_VOCAB.keys()])
+            man_made_list_str = "\n".join([f"- {k}" for k in MAN_MADE_LULC_VOCAB.keys()])
 
-        if k_man > 0:
-            man_centroids = raw_centroids[k_nat : k_nat + k_man]
-            man_labels = label_clusters(man_centroids, man_made_features, man_made_categories)
-            for i, label in enumerate(man_labels):
-                cid = k_nat + i
-                cluster_labels[cid] = label
-                print(f"  Cluster {cid} (Man-made) Label: {label}")
+            for cid in range(args.k):
+                indices = np.where(global_cluster_ids == cid)[0]
+                if len(indices) == 0:
+                    continue
+
+                centroid = raw_centroids[cid]
+                centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
+                cluster_embs = embeddings_norm[indices]
+                sims = np.dot(cluster_embs, centroid_norm)
+                closest_idx = indices[np.argmax(sims)]
+                representative_item = data[closest_idx]
+                img_url = representative_item['Image_URL']
+                photo_id = representative_item['Photo_ID']
+
+                is_natural = (cid < k_nat)
+                subset_lbl = "Natural" if is_natural else "Man-made"
+                lulc_list_str = natural_list_str if is_natural else man_made_list_str
+                prompt_text = prompt_template.format(lulc_list=lulc_list_str)
+
+                print(f"  Cluster {cid} ({subset_lbl}) -> representative Image ID: {photo_id} (URL: {img_url})")
+                lbl, desc = query_mllm(img_url, prompt_text, args.mllm_model, args.mllm_backend)
+                cluster_labels[cid] = lbl
+                cluster_descriptions[cid] = desc
+                print(f"    Label: {lbl}")
+                print(f"    Description: {desc[:100]}...")
+
+        else:
+            if k_nat > 0:
+                nat_centroids = raw_centroids[:k_nat]
+                nat_labels = label_clusters(nat_centroids, natural_features, natural_categories)
+                for i, label in enumerate(nat_labels):
+                    cluster_labels[i] = label
+                    print(f"  Cluster {i} (Natural) Label: {label}")
+
+            if k_man > 0:
+                man_centroids = raw_centroids[k_nat : k_nat + k_man]
+                man_labels = label_clusters(man_centroids, man_made_features, man_made_categories)
+                for i, label in enumerate(man_labels):
+                    cid = k_nat + i
+                    cluster_labels[cid] = label
+                    print(f"  Cluster {cid} (Man-made) Label: {label}")
 
     print("\nUpdating metadata...")
     for i, item in enumerate(data):
@@ -238,6 +386,8 @@ def main():
         item['cluster_id'] = cid
         if cid in cluster_labels:
             item['cluster_label'] = cluster_labels[cid]
+        if cid in cluster_descriptions:
+            item['cluster_description'] = cluster_descriptions[cid]
 
     print(f"Saving to {args.out}...")
     if args.out.endswith('.pkl'):
