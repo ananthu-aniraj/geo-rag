@@ -273,7 +273,7 @@ def main():
                         help="Custom API URL for the VLM server. Overrides the default port assigned by --mllm_backend.")
     parser.add_argument("--chunk_size", type=int, default=128,
                         help="Batch chunk size for parallel VLM API requests.")
-    parser.add_argument("--img_max_dim", type=int, default=448,
+    parser.add_argument("--img_max_dim", type=int, default=672,
                         help="Target maximum dimension to resize images before VLM processing (default: 448). Prevents OOM on wide panoramic images.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
