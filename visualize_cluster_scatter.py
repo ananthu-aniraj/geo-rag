@@ -42,10 +42,11 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
     # Prepare DataFrame for plotting
     plot_list = []
     for i, item in enumerate(data):
+        label_suffix = f" ({item['cluster_label']})" if 'cluster_label' in item and item['cluster_label'] else ""
         plot_list.append({
             'x': umap_coords[i][0],
             'y': umap_coords[i][1],
-            'cluster': f"Cluster {item['cluster_id']}",
+            'cluster': f"Cluster {item['cluster_id']}{label_suffix}",
             'platform': item['Platform']
         })
     df = pd.DataFrame(plot_list)

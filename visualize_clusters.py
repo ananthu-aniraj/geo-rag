@@ -95,23 +95,27 @@ def create_map(pkl_path, output_html, max_markers=1000):
             color = colors[item['cluster_id'] % len(colors)]
             label = item.get('cluster_label', 'Unlabeled')
             cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br><b>Labels:</b> {label}<br>"
+            if 'cluster_description' in item and item['cluster_description']:
+                cluster_text += f"<b>Description:</b> <span style='font-style: italic; font-size: 0.9em; color: #555;'>{item['cluster_description']}</span><br>"
         else:
             color = 'blue' if item['Platform'] == 'Flickr' else 'green'
             cluster_text = ""
 
         # Create a popup with the image and metadata
         html = f"""
-            <div style="width:200px">
-                <img src="{item['Image_URL']}" width="100%">
-                <p><b>ID:</b> {item['Photo_ID']}<br>
+            <div style="width:220px">
+                <img src="{item['Image_URL']}" width="100%" style="border-radius: 4px;">
+                <p style="font-size: 11px; margin-top: 5px; line-height: 1.4; font-family: sans-serif;">
+                <b>ID:</b> {item['Photo_ID']}<br>
                 <b>Platform:</b> {item['Platform']}<br>
                 {cluster_text}
                 <b>H3 Cell:</b> {item['H3_Cell']}<br>
-                <a href="{item['Image_URL']}" target="_blank">Full Image</a></p>
+                <a href="{item['Image_URL']}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a></p>
             </div>
         """
-        iframe = folium.IFrame(html=html, width=220, height=280)
-        popup = folium.Popup(iframe, max_width=265)
+        iframe_height = 330 if ('cluster_description' in item and item['cluster_description']) else 260
+        iframe = folium.IFrame(html=html, width=240, height=iframe_height)
+        popup = folium.Popup(iframe, max_width=285)
 
         folium.Marker(
             location=[item['Latitude'], item['Longitude']],

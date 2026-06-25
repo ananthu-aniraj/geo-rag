@@ -37,7 +37,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         cluster_map[c_id]["images"].append({
             "url": item['Image_URL'],
             "id": item['Photo_ID'],
-            "emb": item['embedding']
+            "emb": item['embedding'],
+            "desc": item.get('cluster_description', '')
         })
 
     print(f"Processing {len(cluster_map)} clusters...")
@@ -69,9 +70,12 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "sim": float(sims[idx])
             })
 
+        # Grab description from the centroid sample (highest similarity, sorted_indices[0])
+        centroid_desc = c["images"][sorted_indices[0]].get("desc", "")
         dashboard_data.append({
             "id": c_id,
             "label": c["label"],
+            "description": centroid_desc,
             "count": c["count"],
             "samples": samples
         })
@@ -160,6 +164,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                                 <span class="tag">${{c.count.toLocaleString()}} images</span>
                             </div>
                         </div>
+                        ${{c.description ? `
+                        <div style="margin-bottom: 15px; color: #5f6368; font-style: italic; font-size: 0.9em; padding: 10px; background: #f8f9fa; border-left: 4px solid #1a73e8; border-radius: 4px; line-height: 1.45; font-family: inherit;">
+                            <b>VLM Prototypical Description:</b> ${{c.description}}
+                        </div>` : ''}}
                         <div class="image-grid">
                             ${{c.samples.map((s, i) => `
                                 <div class="image-item">
