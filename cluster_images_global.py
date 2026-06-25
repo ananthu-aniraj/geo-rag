@@ -102,54 +102,103 @@ def load_image(url):
     return None
 
 
-def query_mllm(img_url, prompt_text, model_name, backend="ollama"):
-    """Downloads the representative image, writes to temporary storage, and queries the VLM."""
-    img = load_image(img_url)
-    if img is None:
-        return "Unknown Centroid Image", "Could not load image."
+def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url):
+    """Queries an OpenAI-compatible VLM server (sglang, vllm, ollama) using HTTP requests."""
+    headers = {
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+                ]
+            }
+        ],
+        "temperature": 0.2
+    }
 
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-        img.save(tmp_file.name, format="JPEG")
-        tmp_path = tmp_file.name
+    # Ensure endpoint ends with /v1/chat/completions
+    if not endpoint_url.endswith("/v1/chat/completions"):
+        endpoint_url = endpoint_url.rstrip("/") + "/v1/chat/completions"
 
     try:
-        if backend == "ollama":
-            import ollama
-            response = ollama.generate(
-                model=model_name,
-                prompt=prompt_text,
-                images=[tmp_path]
-            )
-            response_text = response.get("response", "").strip()
+        response = requests.post(endpoint_url, headers=headers, json=payload, timeout=60)
+        if response.status_code == 200:
+            res_json = response.json()
+            return res_json["choices"][0]["message"]["content"].strip()
         else:
-            import sglang as sgl
-            @sgl.function
-            def describe_image(s, image_path, prompt):
-                s += s.image(image_path)
-                s += prompt + s.gen("response")
-            
-            res = describe_image.run(image_path=tmp_path, prompt=prompt_text)
-            response_text = res["response"].strip()
-
-        # Parse structured output
-        label = "Unlabeled"
-        description = response_text
-        if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
-            parts = response_text.split("DESCRIPTION:")
-            label = parts[0].replace("LABEL:", "").strip()
-            description = parts[1].strip()
-        elif "LABEL:" in response_text:
-            label = response_text.replace("LABEL:", "").strip()
-
-        label = label.replace("**", "").replace("*", "").replace("`", "").strip()
-        label = label.strip('"\'*#-\t ')
-        return label, description
+            print(f"Error from VLM API ({response.status_code}): {response.text}")
+            return ""
     except Exception as e:
-        print(f"Error calling VLM backend {backend}: {e}")
-        return "Error Labeling", f"Error occurred: {e}"
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        print(f"Failed to query VLM API at {endpoint_url}: {e}")
+        return ""
+
+
+def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128):
+    """Runs VLM labeling in chunks to utilize batch inference via OpenAI-compatible API."""
+    results = {}
+
+    for i in range(0, len(tasks), chunk_size):
+        chunk = tasks[i : i + chunk_size]
+        print(f"Processing batch {i // chunk_size + 1}/{(len(tasks) - 1) // chunk_size + 1} ({len(chunk)} clusters)...")
+
+        from concurrent.futures import ThreadPoolExecutor
+        import base64
+
+        # Dictionary to store base64 encoded images
+        images_base64 = {}
+
+        def prepare_image(task):
+            cid = task['cid']
+            img = load_image(task['img_url'])
+            if img is not None:
+                buffered = BytesIO()
+                img.save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                images_base64[cid] = img_str
+
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            executor.map(prepare_image, chunk)
+
+        valid_chunk = [t for t in chunk if t['cid'] in images_base64]
+        if not valid_chunk:
+            continue
+
+        batch_responses = {}
+
+        def query_task(t):
+            cid = t['cid']
+            response_text = query_vlm_openai_api(images_base64[cid], t['prompt'], model_name, endpoint_url)
+            batch_responses[cid] = response_text
+
+        # Query the VLM server in parallel. The server handles parallel batching on the GPU.
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            executor.map(query_task, valid_chunk)
+
+        for t in chunk:
+            cid = t['cid']
+            if cid in batch_responses and batch_responses[cid]:
+                response_text = batch_responses[cid]
+                label = "Unlabeled"
+                description = response_text
+                if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
+                    parts = response_text.split("DESCRIPTION:")
+                    label = parts[0].replace("LABEL:", "").strip()
+                    description = parts[1].strip()
+                elif "LABEL:" in response_text:
+                    label = response_text.replace("LABEL:", "").strip()
+
+                label = label.replace("**", "").replace("*", "").replace("`", "").strip()
+                label = label.strip('"\'*#-\t ')
+                results[cid] = (label, description)
+            else:
+                results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
+
+    return results
 
 
 def cluster_subset(subset_input, k_subset, gpu_enabled, minibatch_enabled, faiss_module):
@@ -194,10 +243,14 @@ def main():
     parser.add_argument("--label_method", type=str, choices=["zeroshot", "mllm"], default="zeroshot",
                         help="Method to label clusters: 'zeroshot' (embedding-based) or 'mllm' (visual LLM on centroid image).")
     parser.add_argument("--mllm_model", type=str, default="gemma4:e4b",
-                        help="Ollama model to use for cluster labeling.")
+                        help="VLM model identifier (Ollama model name or Hugging Face model path for SGLang).")
     parser.add_argument("--mllm_backend", type=str, choices=["ollama", "sglang"], default="ollama",
-                        help="Backend to run the VLM.")
-    parser.add_argument("--out", type=str, default="clustered_data.parquet", help="Output path.")
+                        help="Backend server type. Sets the default endpoint port (Ollama: 11434, SGLang: 30000).")
+    parser.add_argument("--mllm_endpoint", type=str, default=None,
+                        help="Custom API URL for the VLM server. Overrides the default port assigned by --mllm_backend.")
+    parser.add_argument("--chunk_size", type=int, default=128,
+                        help="Batch chunk size for parallel VLM API requests.")
+    parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
 
     print(f"Loading data from {args.pkl}...")
@@ -321,7 +374,7 @@ def main():
         raw_centroids[valid_counts] /= counts[valid_counts, None]
 
         if args.label_method == "mllm":
-            print(f"\nLabeling clusters using MLLM ({args.mllm_model} via {args.mllm_backend})...")
+            print(f"\nPreparing tasks for MLLM labeling ({args.mllm_model} via {args.mllm_backend})...")
             # Build prompt templates
             prompt_template = (
                 "Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Describe:\n"
@@ -338,6 +391,7 @@ def main():
             natural_list_str = "\n".join([f"- {k}" for k in NATURAL_LULC_VOCAB.keys()])
             man_made_list_str = "\n".join([f"- {k}" for k in MAN_MADE_LULC_VOCAB.keys()])
 
+            tasks = []
             for cid in range(args.k):
                 indices = np.where(global_cluster_ids == cid)[0]
                 if len(indices) == 0:
@@ -350,19 +404,32 @@ def main():
                 closest_idx = indices[np.argmax(sims)]
                 representative_item = data[closest_idx]
                 img_url = representative_item['Image_URL']
-                photo_id = representative_item['Photo_ID']
 
                 is_natural = (cid < k_nat)
-                subset_lbl = "Natural" if is_natural else "Man-made"
                 lulc_list_str = natural_list_str if is_natural else man_made_list_str
                 prompt_text = prompt_template.format(lulc_list=lulc_list_str)
 
-                print(f"  Cluster {cid} ({subset_lbl}) -> representative Image ID: {photo_id} (URL: {img_url})")
-                lbl, desc = query_mllm(img_url, prompt_text, args.mllm_model, args.mllm_backend)
+                tasks.append({
+                    "cid": cid,
+                    "img_url": img_url,
+                    "prompt": prompt_text
+                })
+
+            # Resolve API Endpoint
+            endpoint = args.mllm_endpoint
+            if not endpoint:
+                if args.mllm_backend == "sglang":
+                    endpoint = "http://localhost:30000"
+                else:
+                    endpoint = "http://localhost:11434"
+
+            print(f"Total tasks prepared: {len(tasks)}. Starting batch inference via VLM API at {endpoint} (chunk size {args.chunk_size})...")
+            results = label_clusters_mllm_batched(
+                tasks, args.mllm_model, endpoint, chunk_size=args.chunk_size
+            )
+            for cid, (lbl, desc) in results.items():
                 cluster_labels[cid] = lbl
                 cluster_descriptions[cid] = desc
-                print(f"    Label: {lbl}")
-                print(f"    Description: {desc[:100]}...")
 
         else:
             if k_nat > 0:
