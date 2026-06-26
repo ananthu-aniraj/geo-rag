@@ -5,6 +5,7 @@ pipeline:
   limit_cells: 0
   checkpoint_interval: 1800
   batch_size: 64
+  cell_chunk_size: 32
   base_name: "geo_space"
   # Target output folder on the external HDD
   output_dir: "/home/ananthu/DATA/data_ananthu/full_pipeline_output"

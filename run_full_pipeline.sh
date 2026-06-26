@@ -14,6 +14,7 @@ MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))
 LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
 CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
 BATCH_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('batch_size', 64))" 2>/dev/null || echo "64")
+CELL_CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cell_chunk_size', 64))" 2>/dev/null || echo "64")
 BASE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('base_name', 'geo_space'))" 2>/dev/null || echo "geo_space")
 OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('output_dir', '/home/ananthu/DATA/data_ananthu/full_pipeline_output'))" 2>/dev/null || echo "/home/ananthu/DATA/data_ananthu/full_pipeline_output")
 
@@ -55,6 +56,7 @@ python3 process_scraped_data.py \
   --limit_cells "$LIMIT_CELLS" \
   --checkpoint_interval "$CHECKPOINT_INTERVAL" \
   --tips_batch_size "$BATCH_SIZE" \
+  --cell_chunk_size "$CELL_CHUNK_SIZE" \
   $RESUME_FLAG
 
 echo ""
