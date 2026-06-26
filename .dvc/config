@@ -1,0 +1,8 @@
+[core]
+    remote = hdd_cache
+[cache]
+    type = "hardlink,symlink,reflink"
+['remote "lab_remote"']
+    url = /home/ananthu/DATA/data_ananthu/dvc_cache
+['remote "hdd_cache"']
+    url = /home/ananthu/DATA/data_ananthu/dvc_cache
