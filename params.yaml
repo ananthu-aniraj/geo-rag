@@ -12,10 +12,5 @@ pipeline:
   mllm_backend: "sglang"
   mllm_model: "google/gemma-4-E4B-it"
   chunk_size: 64
-  # Input directories containing raw CSVs/images
-  input_dirs:
-    - "/home/ananthu/DATA/data_ananthu/flickr_scrape_rand"
-    - "/home/ananthu/DATA/data_ananthu/mapillary_scrape_rand"
-    - "/home/ananthu/DATA/data_ananthu/global-streetscapes/train"
-    - "/home/ananthu/DATA/data_ananthu/flickr_scrape"
-    - "/home/ananthu/DATA/data_ananthu/mapillary_scrape"
+  # Input directories passed as a space-separated string to support DVC command interpolation
+  input_dirs: "/home/ananthu/DATA/data_ananthu/flickr_scrape_rand /home/ananthu/DATA/data_ananthu/mapillary_scrape_rand /home/ananthu/DATA/data_ananthu/global-streetscapes/train /home/ananthu/DATA/data_ananthu/flickr_scrape /home/ananthu/DATA/data_ananthu/mapillary_scrape"
