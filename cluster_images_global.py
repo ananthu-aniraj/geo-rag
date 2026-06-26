@@ -75,7 +75,6 @@ def resize_image_aspect(img, target_max=448):
     else:
         new_h = target_max
         new_w = int(w * (target_max / h))
-        
     try:
         resample = Image.Resampling.LANCZOS
     except AttributeError:
@@ -306,16 +305,16 @@ def main():
         "A man-made structure, city, road, building, industrial area, or transport infrastructure."
     ]
 
-    natural_categories = list(NATURAL_LULC_VOCAB.keys())
-    natural_prompts = list(NATURAL_LULC_VOCAB.values())
-    man_made_categories = list(MAN_MADE_LULC_VOCAB.keys())
-    man_made_prompts = list(MAN_MADE_LULC_VOCAB.values())
+    noise_category = "None of the above / Noise"
+    noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
+
+    all_categories = list(NATURAL_LULC_VOCAB.keys()) + list(MAN_MADE_LULC_VOCAB.keys()) + [noise_category]
+    all_prompts = list(NATURAL_LULC_VOCAB.values()) + list(MAN_MADE_LULC_VOCAB.values()) + [noise_prompt]
 
     # Encode prompts
     with torch.no_grad():
         subtype_features = normalize(model.encode_text(SUBTYPE_PROMPTS).cpu().numpy())
-        natural_features = normalize(model.encode_text(natural_prompts).cpu().numpy())
-        man_made_features = normalize(model.encode_text(man_made_prompts).cpu().numpy())
+        all_features = normalize(model.encode_text(all_prompts).cpu().numpy())
 
     # Unload model to save memory
     del model
@@ -413,8 +412,7 @@ def main():
                 "LABEL: <Insert EXACTLY one category from the list above>\n"
                 "DESCRIPTION: <A detailed paragraph summarizing the visual evidence, human activities, land cover, and vegetation.>"
             )
-            natural_list_str = "\n".join([f"- {k}" for k in NATURAL_LULC_VOCAB.keys()])
-            man_made_list_str = "\n".join([f"- {k}" for k in MAN_MADE_LULC_VOCAB.keys()])
+            lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
 
             tasks = []
             for cid in range(args.k):
@@ -430,8 +428,6 @@ def main():
                 representative_item = data[closest_idx]
                 img_url = representative_item['Image_URL']
 
-                is_natural = (cid < k_nat)
-                lulc_list_str = natural_list_str if is_natural else man_made_list_str
                 prompt_text = prompt_template.format(lulc_list=lulc_list_str)
 
                 tasks.append({
@@ -458,20 +454,11 @@ def main():
                 cluster_descriptions[cid] = desc
 
         else:
-            if k_nat > 0:
-                nat_centroids = raw_centroids[:k_nat]
-                nat_labels = label_clusters(nat_centroids, natural_features, natural_categories)
-                for i, label in enumerate(nat_labels):
-                    cluster_labels[i] = label
-                    print(f"  Cluster {i} (Natural) Label: {label}")
-
-            if k_man > 0:
-                man_centroids = raw_centroids[k_nat : k_nat + k_man]
-                man_labels = label_clusters(man_centroids, man_made_features, man_made_categories)
-                for i, label in enumerate(man_labels):
-                    cid = k_nat + i
-                    cluster_labels[cid] = label
-                    print(f"  Cluster {cid} (Man-made) Label: {label}")
+            labels = label_clusters(raw_centroids, all_features, all_categories)
+            for cid, label in enumerate(labels):
+                cluster_labels[cid] = label
+                cluster_type = "Natural" if cid < k_nat else "Man-made"
+                print(f"  Cluster {cid} ({cluster_type}) Label: {label}")
 
     print("\nUpdating metadata...")
     for i, item in enumerate(data):
