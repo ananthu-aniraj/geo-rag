@@ -277,6 +277,40 @@ def main():
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
 
+    # Pre-flight check for VLM server
+    if args.label_method == "mllm" and not args.no_label:
+        endpoint = args.mllm_endpoint
+        if not endpoint:
+            if args.mllm_backend == "sglang":
+                endpoint = "http://localhost:30000"
+            else:
+                endpoint = "http://localhost:11434"
+        
+        print(f"Pre-flight check: Verifying VLM server is running at {endpoint}...")
+        try:
+            import urllib.request
+            test_url = endpoint.rstrip("/")
+            if args.mllm_backend == "sglang":
+                test_url += "/v1/models"
+            else:
+                test_url += "/api/tags"
+            
+            req = urllib.request.Request(test_url, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    print("VLM server connection successful!")
+        except Exception as e:
+            print(f"\n[ERROR] VLM server is not reachable at {endpoint}!")
+            print(f"Reason: {e}")
+            print(f"Please ensure your {args.mllm_backend.upper()} server is running in a screen/session:")
+            if args.mllm_backend == "sglang":
+                print(f"  python -m sglang.launch_server --model {args.mllm_model} --port 30000 --host 0.0.0.0 --mem-fraction-static 0.7")
+            else:
+                print(f"  ollama run {args.mllm_model}")
+            print("Aborting execution to prevent failing after expensive K-Means clustering.\n")
+            import sys
+            sys.exit(1)
+
     print(f"Loading data from {args.pkl}...")
     if args.pkl.endswith('.pkl'):
         with open(args.pkl, 'rb') as f:
