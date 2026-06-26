@@ -1,8 +1,6 @@
 [core]
     remote = hdd_cache
 [cache]
-    type = "hardlink,symlink,reflink"
-['remote "lab_remote"']
-    url = /home/ananthu/DATA/data_ananthu/dvc_cache
+    type = hardlink,symlink
 ['remote "hdd_cache"']
-    url = /home/ananthu/DATA/data_ananthu/dvc_cache
+    url = ssh://your-lab-server-address.org/home/ananthu/DATA/data_ananthu/dvc_cache
