@@ -1,0 +1,13 @@
+Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Output a JSON object with the following information:
+1. visible_evidence: First, list the primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.
+2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?
+3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?
+4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state "none".
+
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+{
+  "visible_evidence": "...",
+  "human_activities": "...",
+  "land_cover_usage": "...",
+  "type_of_vegetation": "..."
+}

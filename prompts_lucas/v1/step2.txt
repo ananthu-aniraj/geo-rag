@@ -1,0 +1,24 @@
+Based on the following description of a scene, output a JSON object detailing the classifications:
+
+Description:
+Visible Evidence: {visible_evidence}
+Human Activities: {human_activities}
+Land Cover/Usage: {land_cover_usage}
+Type of Vegetation: {type_of_vegetation}
+
+Classifications to derive:
+1. Land Cover (lc_label): Choose the BEST fit from this list of possible land cover categories:
+{lc_list}
+
+2. Land Use (lu_label): Choose the BEST fit from this list of possible land use categories:
+{lu_list}
+
+3. EUNIS Class (eunis_class): Choose the BEST fit from this list of possible EUNIS habitat classes:
+{eunis_list}
+
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+{
+  "lc_label": "...",
+  "lu_label": "...",
+  "eunis_class": "..."
+}
