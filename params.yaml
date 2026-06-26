@@ -1,0 +1,16 @@
+# params.yaml
+pipeline:
+  k_clusters: 20000
+  max_markers: 10000
+  limit_cells: 0
+  checkpoint_interval: 1800
+  batch_size: 64
+  base_name: "geo_space"
+  output_dir: "/home/ananthu/DATA/data_ananthu/full_pipeline_output"
+  # Input directories containing raw CSVs/images
+  input_dirs:
+    - "/home/ananthu/DATA/data_ananthu/flickr_scrape_rand"
+    - "/home/ananthu/DATA/data_ananthu/mapillary_scrape_rand"
+    - "/home/ananthu/DATA/data_ananthu/global-streetscapes/train"
+    - "/home/ananthu/DATA/data_ananthu/flickr_scrape"
+    - "/home/ananthu/DATA/data_ananthu/mapillary_scrape"
