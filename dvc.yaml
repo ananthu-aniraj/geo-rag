@@ -28,6 +28,10 @@ stages:
       --k ${pipeline.k_clusters}
       --out ${pipeline.output_dir}/${pipeline.base_name}_clustered_k_${pipeline.k_clusters}.parquet
       --minibatch
+      --label_method ${pipeline.label_method}
+      --mllm_backend ${pipeline.mllm_backend}
+      --mllm_model ${pipeline.mllm_model}
+      --chunk_size ${pipeline.chunk_size}
       --gpu
     deps:
       - cluster_images_global.py
@@ -36,6 +40,10 @@ stages:
       - pipeline.output_dir
       - pipeline.base_name
       - pipeline.k_clusters
+      - pipeline.label_method
+      - pipeline.mllm_backend
+      - pipeline.mllm_model
+      - pipeline.chunk_size
     outs:
       - ${pipeline.output_dir}/${pipeline.base_name}_clustered_k_${pipeline.k_clusters}.parquet
 
