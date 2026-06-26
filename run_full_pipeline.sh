@@ -18,7 +18,7 @@ MAPILLARY_DIR_2="/home/ananthu/DATA/data_ananthu/mapillary_scrape"
 # Output Configuration
 OUTPUT_DIR="/home/ananthu/DATA/data_ananthu/full_pipeline_output"
 BASE_NAME="geo_space"
-K_CLUSTERS=20000  # Number of visual clusters to find
+K_CLUSTERS=40000  # Number of visual clusters to find
 MAX_MARKERS=10000
 LIMIT_CELLS=0  # Set to 0 to process EVERYTHING, or a small number for testing
 CHECKPOINT_INTERVAL=1800 # Save a checkpoint every 30 minutes
@@ -65,6 +65,10 @@ python cluster_images_global.py \
   --k "$K_CLUSTERS" \
   --out "$CLUSTERED_PARQUET" \
   --minibatch \
+  --label_method mllm \
+  --mllm_backend sglang \
+  --mllm_model google/gemma-4-E4B-it \
+  --chunk_size 64 \
   --gpu
 
 echo ""
