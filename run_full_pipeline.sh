@@ -33,6 +33,7 @@ CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
 SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
 SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
+OCCUPANCY_MAP="$OUTPUT_DIR/global_h3_occupancy_map.html"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
@@ -91,6 +92,12 @@ echo "[Step 5/5] Generating Semantic Scatter Plot (UMAP 2D)..."
 python3 visualize_cluster_scatter.py \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SCATTER_FILE"
+
+echo ""
+echo "Generating occupancy map"
+python3 generate_h3_occupancy_map.py \
+  --dirs "$OUTPUT_DIR" \
+  --output "$OCCUPANCY_MAP"
 
 echo ""
 echo "=========================================================="
