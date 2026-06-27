@@ -326,16 +326,16 @@ def main():
     if embeddings.ndim == 1:
         embeddings = embeddings.reshape(1, -1)
 
-    # 1. Zero-shot classification (Natural vs Man-made)
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading TIPSv2 model on {device} to encode classification prompts...")
     model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).to(device)
     model.eval()
-
-    SUBTYPE_PROMPTS = [
-        "A natural landscape, wild nature, forest, grassland, desert, mountain, or water body.",
-        "A man-made structure, city, road, building, industrial area, or transport infrastructure."
-    ]
+    # # 1. Zero-shot classification (Natural vs Man-made)
+    # SUBTYPE_PROMPTS = [
+    #     "A natural landscape, wild nature, forest, grassland, desert, mountain, or water body.",
+    #     "A man-made structure, city, road, building, industrial area, or transport infrastructure."
+    # ]
 
     noise_category = "None of the above / Noise"
     noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
@@ -345,7 +345,7 @@ def main():
 
     # Encode prompts
     with torch.no_grad():
-        subtype_features = normalize(model.encode_text(SUBTYPE_PROMPTS).cpu().numpy())
+        # subtype_features = normalize(model.encode_text(SUBTYPE_PROMPTS).cpu().numpy())
         all_features = normalize(model.encode_text(all_prompts).cpu().numpy())
 
     # Unload model to save memory
@@ -356,36 +356,6 @@ def main():
 
     print("Normalizing embeddings for cosine similarity classification...")
     embeddings_norm = normalize(embeddings)
-
-    # Subtype execution for all images (Natural vs Man-made)
-    subtype_sims = np.dot(embeddings_norm, subtype_features.T)
-    subtype_preds = np.argmax(subtype_sims, axis=1)
-
-    natural_indices = np.where(subtype_preds == 0)[0]
-    man_made_indices = np.where(subtype_preds == 1)[0]
-
-    print(f"\nClassification Summary:")
-    print(f"  Natural images: {len(natural_indices)}")
-    print(f"  Man-made images: {len(man_made_indices)}")
-
-    # Dynamic K allocation
-    n_nat = len(natural_indices)
-    n_man = len(man_made_indices)
-    n_total = n_nat + n_man
-
-    if n_total == 0:
-        print("No images found to cluster.")
-        return
-
-    if args.k < 2:
-        k_nat = 1 if n_nat >= n_man else 0
-        k_man = 1 - k_nat
-    else:
-        k_nat = int(round(args.k * (n_nat / n_total)))
-        k_nat = max(1, min(k_nat, args.k - 1))
-        k_man = args.k - k_nat
-
-    print(f"Allocated K: K_natural = {k_nat}, K_manmade = {k_man}")
 
     # Prepare inputs for clustering
     if args.use_umap:
@@ -400,20 +370,11 @@ def main():
 
     # Cluster subsets
     global_cluster_ids = np.zeros(len(data), dtype=int)
-
-    # Cluster Natural
-    if k_nat > 0 and len(natural_indices) > 0:
-        print(f"\nClustering Natural subset on {clustering_mode} space...")
-        nat_input = cluster_input[natural_indices]
-        nat_cluster_ids, _ = cluster_subset(nat_input, k_nat, args.gpu, args.minibatch, faiss)
-        global_cluster_ids[natural_indices] = nat_cluster_ids
+    
+    # Cluster     
+    print(f"\nClustering subset on {clustering_mode} space...")
+    global_cluster_ids, _ = cluster_subset(cluster_input, args.k, args.gpu, args.minibatch, faiss)
         
-    # Cluster Man-made
-    if k_man > 0 and len(man_made_indices) > 0:
-        print(f"\nClustering Man-made subset on {clustering_mode} space...")
-        man_input = cluster_input[man_made_indices]
-        man_cluster_ids, _ = cluster_subset(man_input, k_man, args.gpu, args.minibatch, faiss)
-        global_cluster_ids[man_made_indices] = man_cluster_ids + k_nat
 
     # Centroid derivation and labeling
     cluster_labels = {}
