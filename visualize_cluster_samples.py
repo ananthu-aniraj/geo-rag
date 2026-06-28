@@ -40,7 +40,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "desc": item.get('cluster_description', ''),
             "lat": float(item.get('Latitude', 0.0)),
             "lon": float(item.get('Longitude', 0.0)),
-            "h3": item.get('H3_Cell', '')
+            "h3": item.get('H3_Cell', ''),
+            "platform": item.get('Platform', '')
         })
 
     print(f"Processing {len(cluster_map)} clusters...")
@@ -72,7 +73,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "id": img["id"],
                 "sim": float(sims[idx]),
                 "lat": float(img["lat"]),
-                "lon": float(img["lon"])
+                "lon": float(img["lon"]),
+                "platform": img["platform"]
             })
 
         # Grab description from the centroid sample (highest similarity, sorted_indices[0])
@@ -432,10 +434,53 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
     <button id="loadMoreBtn" class="load-more" onclick="loadMore()" style="display: none;">Load More Clusters</button>
 
     <script>
+        const MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER';
         const data = typeof CLUSTER_DATA !== 'undefined' ? CLUSTER_DATA : [];
         let filteredData = [...data];
         let renderLimit = 50;
         const activeMaps = {{}};
+
+        function handleImageError(img, photoId, platform) {{
+            // Avoid infinite loops if retry fails
+            if (img.dataset.retryAttempt) return;
+            img.dataset.retryAttempt = '1';
+            
+            const isMapillary = platform === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
+            const isKartaview = platform === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
+            
+            if (isMapillary && photoId) {{
+                const apiUrl = `https://graph.mapillary.com/${{photoId}}?fields=thumb_1024_url`;
+                fetch(apiUrl, {{
+                    headers: {{ 'Authorization': `OAuth ${MAPILLARY_TOKEN}` }}
+                }})
+                .then(res => res.json())
+                .then(resData => {{
+                    if (resData.thumb_1024_url) {{
+                        img.src = resData.thumb_1024_url;
+                        // Also update containing link if applicable
+                        const link = img.closest('a');
+                        if (link) link.href = resData.thumb_1024_url;
+                    }}
+                }})
+                .catch(err => console.error('Error fetching Mapillary fresh URL:', err));
+            }} else if (isKartaview && photoId) {{
+                const apiUrl = `https://api.openstreetcam.org/2.0/photo/${{photoId}}`;
+                fetch(apiUrl)
+                .then(res => res.json())
+                .then(resData => {{
+                    const data = resData.result && resData.result.data;
+                    if (data) {{
+                        const freshUrl = data.fileurlLTh || data.fileurlTh || data.fileurl;
+                        if (freshUrl) {{
+                            img.src = freshUrl;
+                            const link = img.closest('a');
+                            if (link) link.href = freshUrl;
+                        }}
+                    }}
+                }})
+                .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
+            }}
+        }}
 
         function renderResults(append = false) {{
             const container = document.getElementById('results');
@@ -479,7 +524,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                                     ${{i===0 ? 'Centroid Image' : 'Representative Sample ' + i}}
                                 </div>
                                 <a href="${{s.url}}" target="_blank">
-                                    <img src="${{s.url}}" loading="lazy">
+                                    <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" loading="lazy">
                                 </a>
                                 <div class="image-meta">
                                     <b>ID:</b> ${{s.id}}<br>
@@ -594,7 +639,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 }}).addTo(map).bindPopup(`
                     <div style="width: 140px; text-align: center;">
                         <b>${{label}}</b><br>
-                        <img src="${{s.url}}" style="width: 100%; height: 90px; object-fit: cover; margin-top: 6px; border-radius: 4px; border: 1px solid #ddd;"><br>
+                        <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" style="width: 100%; height: 90px; object-fit: cover; margin-top: 6px; border-radius: 4px; border: 1px solid #ddd;"><br>
                         <a href="${{s.url}}" target="_blank" style="font-size: 11px; color: #4f46e5; font-weight: 600; text-decoration: none;">View Original</a>
                     </div>
                 `);

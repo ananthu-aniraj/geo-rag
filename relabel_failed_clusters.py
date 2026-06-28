@@ -305,7 +305,17 @@ def main():
         # Try downloading images starting from the closest
         for rank in range(min(args.fallback_depth, len(sorted_idx_in_cluster))):
             item_idx = indices[sorted_idx_in_cluster[rank]]
-            img_url = data[item_idx]['Image_URL']
+            item = data[item_idx]
+            img_url = item['Image_URL']
+            photo_id = item.get('Photo_ID')
+            platform = str(item.get('Platform', '')).lower()
+
+            # Resolve potentially expired Mapillary or Kartaview URLs dynamically
+            if photo_id:
+                if platform == 'mapillary' or 'mapillary' in img_url or 'fbcdn.net' in img_url:
+                    img_url = f"mapillary://{photo_id}"
+                elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
+                    img_url = f"kartaview://{photo_id}"
             
             # Print a status message (helpful since download is concurrent)
             # print(f"  Cluster {cid}: Attempting download of image rank {rank}... {img_url}")
