@@ -78,7 +78,8 @@ echo "[Step 2b/5] Re-labeling Failed Clusters (due to download timeouts)..."
 python3 relabel_failed_clusters.py \
   --in "$CLUSTERED_PARQUET" \
   --mllm_model "$MLLM_MODEL" \
-  --mllm_backend "$MLLM_BACKEND"
+  --mllm_backend "$MLLM_BACKEND" \
+  --fallback_depth 10
 
 echo ""
 echo "[Step 3/5] Generating Cluster Map..."
