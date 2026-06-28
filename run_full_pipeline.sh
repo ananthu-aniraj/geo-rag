@@ -74,6 +74,15 @@ python3 cluster_images_global.py \
   --gpu
 
 echo ""
+echo "[Step 2b/5] Re-labeling Failed Clusters (due to download timeouts)..."
+python3 relabel_failed_clusters.py \
+  --in "$CLUSTERED_PARQUET" \
+  --mllm_model "$MLLM_MODEL" \
+  --mllm_backend "$MLLM_BACKEND" \
+  --chunk_size 8 \
+  --max_workers 4
+
+echo ""
 echo "[Step 3/5] Generating Cluster Map..."
 python3 visualize_clusters.py \
   --pkl_file "$CLUSTERED_PARQUET" \
