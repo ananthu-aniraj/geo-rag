@@ -3,7 +3,7 @@ pipeline:
   k_clusters: 40000
   max_markers: 10000
   limit_cells: 0
-  checkpoint_interval: 1800
+  checkpoint_interval: 180000
   batch_size: 64
   cell_chunk_size: 32
   base_name: "geo_space"
