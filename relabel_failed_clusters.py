@@ -10,7 +10,6 @@ from PIL import Image
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
-from concurrent.futures import ThreadPoolExecutor
 
 # Exhaustive Natural LULC Vocabulary with Global Biomes
 NATURAL_LULC_VOCAB = {
@@ -151,6 +150,35 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url, ti
         print(f"Failed to query VLM API at {endpoint_url}: {e}")
         return ""
 
+def save_dataset(data, final_results, out_path):
+    """Helper to update labels in the data list and write them to the output file."""
+    updated_clusters = set()
+    row_update_count = 0
+    
+    # Map results
+    cluster_labels = {}
+    cluster_descriptions = {}
+    for cid, (lbl, desc) in final_results.items():
+        if lbl != "Error Labeling":
+            cluster_labels[cid] = lbl
+            cluster_descriptions[cid] = desc
+            updated_clusters.add(cid)
+
+    for item in data:
+        cid = item.get('cluster_id')
+        if cid is not None and int(cid) in cluster_labels:
+            item['cluster_label'] = cluster_labels[int(cid)]
+            item['cluster_description'] = cluster_descriptions[int(cid)]
+            row_update_count += 1
+            
+    if out_path.endswith('.pkl'):
+        with open(out_path, 'wb') as f:
+            pickle.dump(data, f)
+    else:
+        pd.DataFrame(data).to_parquet(out_path)
+        
+    print(f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} updated clusters to {out_path}.")
+
 def main():
     # 1. Load Defaults from params.yaml if available
     default_mllm_model = "google/gemma-4-E4B-it"
@@ -179,7 +207,7 @@ def main():
         default_in = os.path.join(default_output_dir, f"{default_base_name}_clustered_k_{default_k}.parquet")
 
     # 2. Parse CLI Arguments
-    parser = argparse.ArgumentParser(description="Re-label failed clusters where images failed to load or download.")
+    parser = argparse.ArgumentParser(description="Re-label failed clusters sequentially where images failed to load.")
     parser.add_argument("--file", "--in", dest="file", type=str, default=default_in, required=not bool(default_in),
                         help="Path to the clustered .pkl or .parquet file.")
     parser.add_argument("--out", type=str, default=None,
@@ -192,18 +220,16 @@ def main():
                         help="Backend server type. Sets default endpoint port.")
     parser.add_argument("--mllm_endpoint", type=str, default=None,
                         help="Custom API URL for the VLM server.")
-    parser.add_argument("--chunk_size", type=int, default=4,
-                        help="Batch chunk size for VLM API requests (smaller to prevent download/timeout issues).")
     parser.add_argument("--img_max_dim", type=int, default=672,
                         help="Target maximum dimension to resize images before VLM processing.")
-    parser.add_argument("--max_workers", type=int, default=4,
-                        help="Number of threads for concurrent downloads and API requests.")
     parser.add_argument("--max_retries", type=int, default=3,
                         help="Number of times to retry downloading an image.")
     parser.add_argument("--fallback_depth", type=int, default=5,
                         help="Number of top closest images in a cluster to check if the closest one fails to download.")
     parser.add_argument("--timeout", type=int, default=15,
                         help="Timeout in seconds for image download HTTP requests.")
+    parser.add_argument("--save_interval", type=int, default=50,
+                        help="Interval of successfully re-labeled clusters at which to save intermediate checkpoints.")
     args = parser.parse_args()
 
     if not args.out:
@@ -235,7 +261,7 @@ def main():
             if cid is not None:
                 if label is None or label in ("Error Labeling", "Unlabeled", "", "None"):
                     target_cluster_ids.add(int(cid))
-        print(f"Automatically detected {len(target_cluster_ids)} failed or unlabeled clusters: {sorted(list(target_cluster_ids))}")
+        print(f"Automatically detected {len(target_cluster_ids)} failed or unlabeled clusters.")
 
     if not target_cluster_ids:
         print("No failed or unlabeled clusters found! Script will exit without modifying the file.")
@@ -284,13 +310,30 @@ def main():
     print("Normalizing embeddings...")
     embeddings_norm = normalize(embeddings)
 
-    # 6. Prepare tasks: download images (parallelized over failed clusters)
-    print(f"Preparing tasks for {len(target_cluster_ids)} clusters...")
-    
+    # 6. Construct prompt templates
+    noise_category = "None of the above / Noise"
+    noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
+    all_categories = list(NATURAL_LULC_VOCAB.keys()) + list(MAN_MADE_LULC_VOCAB.keys()) + [noise_category]
+    lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
+
+    prompt_template = (
+        "Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Describe:\n"
+        "1. visible_evidence: Primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.\n"
+        "2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?\n"
+        "3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?\n"
+        "4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state \"none\".\n\n"
+        "Based ONLY on the visual evidence described above, classify this environment into EXACTLY one of the following Land Use / Land Cover (LULC) categories:\n"
+        "{lulc_list}\n\n"
+        "Format your output EXACTLY as follows:\n"
+        "LABEL: <Insert EXACTLY one category from the list above>\n"
+        "DESCRIPTION: <A detailed paragraph summarizing the visual evidence, human activities, land cover, and vegetation.>"
+    )
+    prompt_text = prompt_template.format(lulc_list=lulc_list_str)
+
+    # Helper function to prepare task for a single cluster (downloading with retry and fallback)
     def prepare_cluster_task(cid):
         indices = np.where(cluster_ids == cid)[0]
         if len(indices) == 0:
-            print(f"  Cluster {cid}: No images found.")
             return None
         
         # Calculate cluster centroid in 768D space
@@ -317,8 +360,6 @@ def main():
                 elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
                     img_url = f"kartaview://{photo_id}"
             
-            # Print a status message (helpful since download is concurrent)
-            # print(f"  Cluster {cid}: Attempting download of image rank {rank}... {img_url}")
             img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout, max_retries=args.max_retries)
             
             if img is not None:
@@ -331,65 +372,30 @@ def main():
                     "img_url": img_url,
                     "rank": rank
                 }
-        print(f"  [ERROR] Cluster {cid}: Failed to download any of the top {args.fallback_depth} representative images.")
         return None
 
-    # Retrieve valid image for each target cluster ID
-    tasks = []
-    with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
-        results = list(executor.map(prepare_cluster_task, sorted(list(target_cluster_ids))))
-    
-    tasks = [r for r in results if r is not None]
-    print(f"Successfully retrieved images for {len(tasks)} / {len(target_cluster_ids)} clusters.")
-
-    if not tasks:
-        print("No images could be downloaded. Exiting.")
-        sys.exit(0)
-
-    # 7. Construct prompt templates
-    noise_category = "None of the above / Noise"
-    noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
-    all_categories = list(NATURAL_LULC_VOCAB.keys()) + list(MAN_MADE_LULC_VOCAB.keys()) + [noise_category]
-    lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
-
-    prompt_template = (
-        "Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Describe:\n"
-        "1. visible_evidence: Primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.\n"
-        "2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?\n"
-        "3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?\n"
-        "4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state \"none\".\n\n"
-        "Based ONLY on the visual evidence described above, classify this environment into EXACTLY one of the following Land Use / Land Cover (LULC) categories:\n"
-        "{lulc_list}\n\n"
-        "Format your output EXACTLY as follows:\n"
-        "LABEL: <Insert EXACTLY one category from the list above>\n"
-        "DESCRIPTION: <A detailed paragraph summarizing the visual evidence, human activities, land cover, and vegetation.>"
-    )
-    prompt_text = prompt_template.format(lulc_list=lulc_list_str)
-
-    # 8. Query the VLM Server in batches
+    # 7. Query the VLM sequentially
     final_results = {}
-    total_tasks = len(tasks)
+    sorted_failed_ids = sorted(list(target_cluster_ids))
+    total_clusters = len(sorted_failed_ids)
     
-    print(f"Starting batch VLM inference for {total_tasks} tasks (chunk size {args.chunk_size})...")
+    print(f"\nStarting sequential VLM inference for {total_clusters} clusters (batch size 1)...")
+    print("Press Ctrl+C at any time to interrupt and save your progress.")
     
-    for i in range(0, total_tasks, args.chunk_size):
-        chunk = tasks[i : i + args.chunk_size]
-        print(f"Processing chunk {i // args.chunk_size + 1}/{(total_tasks - 1) // args.chunk_size + 1} ({len(chunk)} clusters)...")
-        
-        batch_responses = {}
-        
-        def query_task(t):
-            cid = t['cid']
-            res_txt = query_vlm_openai_api(t['img_str'], prompt_text, args.mllm_model, endpoint)
-            batch_responses[cid] = res_txt
+    try:
+        for idx, cid in enumerate(sorted_failed_ids):
+            print(f"[{idx+1}/{total_clusters}] Processing Cluster #{cid}...")
             
-        with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
-            executor.map(query_task, chunk)
+            # Download image sequentially
+            task = prepare_cluster_task(cid)
+            if not task:
+                print(f"  [FAILED] Cluster #{cid}: Failed to download any of the top {args.fallback_depth} images.")
+                continue
             
-        for t in chunk:
-            cid = t['cid']
-            if cid in batch_responses and batch_responses[cid]:
-                response_text = batch_responses[cid]
+            # Query VLM sequentially
+            response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint, timeout=args.timeout + 15)
+            
+            if response_text:
                 label = "Unlabeled"
                 description = response_text
                 
@@ -402,39 +408,26 @@ def main():
 
                 label = label.replace("**", "").replace("*", "").replace("`", "").strip()
                 label = label.strip('"\'*#-\t ')
+                
                 final_results[cid] = (label, description)
-                print(f"  [SUCCESS] Cluster {cid} re-labeled: Label: '{label}' (using representative image rank {t['rank']})")
+                print(f"  [SUCCESS] Cluster #{cid} labeled: '{label}' (using representative image rank {task['rank']})")
             else:
                 final_results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
-                print(f"  [FAILED] Cluster {cid}: Inference failed or returned empty response.")
-
-    # 9. Update Dataset
-    print("Updating cluster labels in the dataset...")
-    updated_clusters = set()
-    row_update_count = 0
-    
-    for item in data:
-        cid = item.get('cluster_id')
-        if cid is not None and int(cid) in final_results:
-            lbl, desc = final_results[int(cid)]
-            # Only update if we successfully obtained a label other than "Error Labeling"
-            if lbl != "Error Labeling":
-                item['cluster_label'] = lbl
-                item['cluster_description'] = desc
-                updated_clusters.add(int(cid))
-                row_update_count += 1
+                print(f"  [FAILED] Cluster #{cid}: VLM returned empty response.")
                 
-    # 10. Save Updated Dataset
-    print(f"Saving updated dataset to {args.out}...")
-    if args.out.endswith('.pkl'):
-        with open(args.out, 'wb') as f:
-            pickle.dump(data, f)
-    else:
-        pd.DataFrame(data).to_parquet(args.out)
-        
-    print("\nRe-labeling complete!")
-    print(f"  Total clusters re-labeled successfully: {len(updated_clusters)} / {len(target_cluster_ids)}")
-    print(f"  Total rows updated in dataset: {row_update_count}")
+            # Periodically save intermediate checkpoints
+            if len(final_results) % args.save_interval == 0:
+                save_dataset(data, final_results, args.out)
+
+    except KeyboardInterrupt:
+        print("\n\nExecution interrupted by user (Ctrl+C). Saving progress so far...")
+    finally:
+        if final_results:
+            print("\nSaving final results...")
+            save_dataset(data, final_results, args.out)
+            print("Re-labeling session finished.")
+        else:
+            print("\nNo clusters were successfully re-labeled.")
 
 if __name__ == "__main__":
     main()

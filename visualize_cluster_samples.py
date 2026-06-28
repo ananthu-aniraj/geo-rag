@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import os
 
+MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 def create_sample_grid(pkl_path, output_html, top_n=5):
     print(f"Loading clustered data from {pkl_path}...")
