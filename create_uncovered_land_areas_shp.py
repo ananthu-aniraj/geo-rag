@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--csv_paths", nargs="+", required=True, help="List of paths to CSV files or directories containing CSVs.")
     parser.add_argument("--land_shp", type=str, default="ne_10m_admin_0_countries.shp", help="Path to the base land shapefile.")
     parser.add_argument("--output", type=str, default="uncovered_land_areas.shp", help="Output shapefile path.")
-    parser.add_argument("--res", type=int, default=11, help="H3 resolution for covered areas.")
+    parser.add_argument("--res", type=int, default=5, help="H3 resolution for covered areas.")
     args = parser.parse_args()
 
     # 1. Load Land
