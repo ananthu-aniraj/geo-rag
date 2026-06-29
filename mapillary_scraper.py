@@ -68,7 +68,7 @@ def fetch_mapillary_photos(bbox_coords=None, next_url=None):
         url = (
             f"https://graph.mapillary.com/images"
             f"?bbox={bbox_str}"
-            f"&fields=id,geometry,thumb_1024_url"
+            f"&fields=id,geometry,thumb_1024_url,captured_at"
             f"&limit=50" # Max allowed per request is usually higher, but 50 aligns with our goal
         )
     
@@ -129,7 +129,7 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
     writer = csv.writer(csv_file)
     
     if not file_exists:
-        writer.writerow(['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL'])
+        writer.writerow(['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At'])
     
     for grid_box in tqdm(my_boxes, desc=f"Processing Chunk {CURRENT_CHUNK}"):
         box_id = f"{grid_box[0]:.4f},{grid_box[1]:.4f},{grid_box[2]:.4f},{grid_box[3]:.4f}"
@@ -164,9 +164,14 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
                     # Mapillary returns GeoJSON [Longitude, Latitude]
                     lon, lat = img.get('geometry', {}).get('coordinates', [None, None])
                     image_url = img.get('thumb_1024_url')
+                    captured_at_ms = img.get('captured_at')
+                    captured_at = ""
+                    if captured_at_ms:
+                        import datetime
+                        captured_at = datetime.datetime.fromtimestamp(captured_at_ms / 1000.0, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
                     
                     if image_url and lat and lon:
-                        writer.writerow([img_id, "Mapillary", lat, lon, image_url])
+                        writer.writerow([img_id, "Mapillary", lat, lon, image_url, captured_at])
                         photos_saved_this_box += 1
                         
                     if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:

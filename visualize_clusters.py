@@ -102,18 +102,20 @@ def create_map(pkl_path, output_html, max_markers=1000):
             cluster_text = ""
 
         # Create a popup with the image and metadata
+        taken_text = f"<b>Captured At:</b> {item['Captured_At']}<br>" if 'Captured_At' in item and item['Captured_At'] else ""
         html = f"""
             <div style="width:220px">
                 <img src="{item['Image_URL']}" width="100%" style="border-radius: 4px;">
                 <p style="font-size: 11px; margin-top: 5px; line-height: 1.4; font-family: sans-serif;">
                 <b>ID:</b> {item['Photo_ID']}<br>
                 <b>Platform:</b> {item['Platform']}<br>
+                {taken_text}
                 {cluster_text}
                 <b>H3 Cell:</b> {item['H3_Cell']}<br>
                 <a href="{item['Image_URL']}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a></p>
             </div>
         """
-        iframe_height = 330 if ('cluster_description' in item and item['cluster_description']) else 260
+        iframe_height = 350 if ('cluster_description' in item and item['cluster_description']) else 280
         iframe = folium.IFrame(html=html, width=240, height=iframe_height)
         popup = folium.Popup(iframe, max_width=285)
 

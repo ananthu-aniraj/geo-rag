@@ -42,7 +42,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "lat": float(item.get('Latitude', 0.0)),
             "lon": float(item.get('Longitude', 0.0)),
             "h3": item.get('H3_Cell', ''),
-            "platform": item.get('Platform', '')
+            "platform": item.get('Platform', ''),
+            "captured_at": item.get('Captured_At', '')
         })
 
     print(f"Processing {len(cluster_map)} clusters...")
@@ -75,7 +76,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "sim": float(sims[idx]),
                 "lat": float(img["lat"]),
                 "lon": float(img["lon"]),
-                "platform": img["platform"]
+                "platform": img["platform"],
+                "captured_at": img["captured_at"]
             })
 
         # Grab description from the centroid sample (highest similarity, sorted_indices[0])
@@ -530,7 +532,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                                 <div class="image-meta">
                                     <b>ID:</b> ${{s.id}}<br>
                                     <b>Similarity:</b> ${{s.sim.toFixed(4)}}<br>
-                                    <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}
+                                    <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at : ''}}
                                 </div>
                             </div>
                         `).join('')}}
@@ -641,6 +643,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     <div style="width: 140px; text-align: center;">
                         <b>${{label}}</b><br>
                         <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" style="width: 100%; height: 90px; object-fit: cover; margin-top: 6px; border-radius: 4px; border: 1px solid #ddd;"><br>
+                        ${{s.captured_at ? '<span style="font-size: 10px; color: #555;"><b>Taken:</b> ' + s.captured_at + '</span><br>' : ''}}
                         <a href="${{s.url}}" target="_blank" style="font-size: 11px; color: #4f46e5; font-weight: 600; text-decoration: none;">View Original</a>
                     </div>
                 `);

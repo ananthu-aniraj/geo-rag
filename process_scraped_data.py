@@ -158,7 +158,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
     try:
         # Convert final_data to DataFrame and save to tmp parquet
         if not final_data:
-            df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding'])
+            df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding', 'Captured_At'])
         else:
             df = pd.DataFrame(final_data)
         df.to_parquet(tmp_path, index=False)
@@ -230,12 +230,12 @@ def main():
                 df['Image_URL'] = df.apply(lambda r: f"mapillary://{r['orig_id']}" if str(r['source']).lower() == 'mapillary' else (f"kartaview://{r['orig_id']}" if str(r['source']).lower() == 'kartaview' else r['url']), axis=1)
             else:
                 platform = 'Flickr' if 'flickr' in f.lower() else 'Mapillary'
-                col_map = {'latitude': 'Latitude', 'longitude': 'Longitude', 'image_url': 'Image_URL', 'photo_id': 'Photo_ID', 'ID': 'Photo_ID'}
+                col_map = {'latitude': 'Latitude', 'longitude': 'Longitude', 'image_url': 'Image_URL', 'photo_id': 'Photo_ID', 'ID': 'Photo_ID', 'captured_at': 'Captured_At', 'Captured_At': 'Captured_At'}
                 df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
                 if 'Platform' not in df.columns:
                     df['Platform'] = platform
 
-            required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL']
+            required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At']
             for col in required_cols:
                 if col not in df.columns:
                     df[col] = None
