@@ -26,7 +26,8 @@ NATURAL_LULC_VOCAB = {
     "Open ocean / sea": "An open view of the ocean, sea, or saltwater coast.",
     "River / freshwater stream": "A flowing river, stream, creek, or freshwater channel.",
     "Lake / inland pond": "A still body of freshwater, a lake, pond, or reservoir.",
-    "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes."
+    "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes.",
+    "other": "any other type of land cover."
 }
 
 # Exhaustive Man-made LULC Vocabulary
