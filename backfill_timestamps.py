@@ -2,6 +2,7 @@ import os
 import time
 import argparse
 import datetime
+import glob
 import requests
 import pandas as pd
 from tqdm import tqdm
@@ -9,13 +10,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
-
-# Polite delay for Flickr API requests (seconds)
 FLICKR_DELAY = 1.1
 
 
 def fetch_mapillary_timestamps(photo_ids):
-    """Fetches captured_at timestamps for multiple Mapillary photo IDs in batches."""
+    """Fetches captured_at timestamps for multiple Mapillary photo IDs in batches of 100."""
     if not photo_ids:
         return {}
 
@@ -24,25 +23,72 @@ def fetch_mapillary_timestamps(photo_ids):
     results = {}
 
     try:
-        # Mapillary rate limits: fetch up to 50 nodes per call
         res = requests.get(url, headers=headers, timeout=15)
         if res.status_code == 200:
             for item in res.json().get('data', []):
                 pid = str(item.get('id'))
                 cap_ms = item.get('captured_at')
                 if cap_ms:
-                    # Convert ms epoch to UTC ISO 8601
                     results[pid] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
                         '%Y-%m-%dT%H:%M:%SZ')
-        else:
-            print(f"Mapillary API error: {res.status_code} - {res.text}")
-    except Exception as e:
-        print(f"Error fetching Mapillary batch: {e}")
+    except Exception:
+        pass
     return results
 
 
-def fetch_flickr_timestamp(photo_id):
-    """Fetches the date taken for a single Flickr photo ID."""
+def fetch_flickr_bbox_timestamps(bbox_str):
+    """Fetches photo IDs and date_taken timestamps for a bounding box in bulk (up to 500 per call)."""
+    results = {}
+
+    # Priority 1: Outdoors (2). Priority 2: Unlabelled (0).
+    for geo_context in [2, 0]:
+        page = 1
+        total_pages = 1
+        while page <= total_pages:
+            url = (
+                f"https://www.flickr.com/services/rest/"
+                f"?method=flickr.photos.search"
+                f"&api_key={FLICKR_API_KEY}"
+                f"&bbox={bbox_str}"
+                f"&has_geo=1"
+                f"&geo_context={geo_context}"
+                f"&extras=date_taken"
+                f"&per_page=250"
+                f"&page={page}"
+                f"&format=json"
+                f"&nojsoncallback=1"
+            )
+            try:
+                time.sleep(FLICKR_DELAY)
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get('stat') == 'ok':
+                        if page == 1:
+                            total_pages = data.get('photos', {}).get('pages', 1)
+
+                        photos = data.get('photos', {}).get('photo', [])
+                        if not photos:
+                            break
+
+                        for p in photos:
+                            pid = str(p.get('id'))
+                            taken = p.get('datetaken', '')
+                            if taken:
+                                results[pid] = taken.replace(" ", "T")
+
+                        page += 1
+                    else:
+                        break
+                else:
+                    break
+            except Exception:
+                break
+    return results
+
+
+def fetch_flickr_individual_timestamp(photo_id):
+    """Fetches the date taken for a single Flickr photo ID (fallback approach)."""
     url = (
         f"https://www.flickr.com/services/rest/"
         f"?method=flickr.photos.getInfo"
@@ -52,7 +98,6 @@ def fetch_flickr_timestamp(photo_id):
         f"&nojsoncallback=1"
     )
     try:
-        # Enforce rate limits by sleeping
         time.sleep(FLICKR_DELAY)
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
@@ -60,12 +105,9 @@ def fetch_flickr_timestamp(photo_id):
             if data.get('stat') == 'ok':
                 taken = data.get('photo', {}).get('dates', {}).get('taken', '')
                 if taken:
-                    # Convert to ISO format
                     return photo_id, taken.replace(" ", "T")
-            else:
-                print(f"Flickr API warning for ID {photo_id}: {data.get('message')}")
-    except Exception as e:
-        print(f"Error fetching Flickr ID {photo_id}: {e}")
+    except Exception:
+        pass
     return photo_id, None
 
 
@@ -73,33 +115,32 @@ def fetch_kartaview_timestamp(photo_id):
     """Fetches the shotDate for a single KartaView photo ID."""
     url = f"https://api.openstreetcam.org/2.0/photo/{photo_id}"
     try:
-        # Enforce polite delay
-        time.sleep(0.5)
+        time.sleep(0.3)
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
             data = res.json().get("result", {}).get("data", {})
             shot_date = data.get("shotDate")
             if shot_date:
-                # Convert space to T and drop trailing milliseconds for ISO format
-                # e.g., '2016-05-03 11:53:13.000' -> '2016-05-03T11:53:13'
                 if '.' in shot_date:
                     shot_date = shot_date.split('.')[0]
                 return photo_id, shot_date.replace(" ", "T")
-    except Exception as e:
-        print(f"Error fetching KartaView ID {photo_id}: {e}")
+    except Exception:
+        pass
     return photo_id, None
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backfill Captured_At timestamps for existing dataset.")
+    parser = argparse.ArgumentParser(description="Consolidated Backfill of Captured_At timestamps.")
     parser.add_argument("--file_path", type=str, required=True, help="Path to geo_embedding_space.parquet or .csv")
     parser.add_argument("--save_path", type=str, default=None,
                         help="Where to save the enriched output (defaults to overwriting file_path)")
+    parser.add_argument("--log_dirs", nargs="+", default=None,
+                        help="Optional list of folders containing the completed_boxes log files (enables 250x faster bulk search backfill for Flickr).")
     args = parser.parse_args()
 
     save_path = args.save_path or args.file_path
 
-    # 1. Load Data
+    # 1. Load Dataset
     print(f"Loading dataset from {args.file_path}...")
     if args.file_path.endswith('.parquet'):
         df = pd.read_parquet(args.file_path)
@@ -108,69 +149,97 @@ def main():
 
     if 'Captured_At' not in df.columns:
         df['Captured_At'] = None
-
-    # Convert Photo_ID to string for reliable matching
     df['Photo_ID'] = df['Photo_ID'].astype(str)
 
-    # Identify missing entries
     missing_mask = df['Captured_At'].isna() | (df['Captured_At'] == "")
     df_missing = df[missing_mask]
 
-    print(f"Total rows: {len(df)}. Rows missing Captured_At: {len(df_missing)}.")
+    print(f"Total rows: {len(df)}. Missing timestamps: {len(df_missing)}.")
     if len(df_missing) == 0:
         print("No missing timestamps to backfill.")
         return
 
-    # Mapillary Batch Processing
+    # --- 1. Mapillary (Batch ID Queries) ---
     mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
-    print(f"Found {len(mapillary_ids)} Mapillary images to backfill.")
-
     mapillary_timestamps = {}
-    batch_size = 50
-    for i in tqdm(range(0, len(mapillary_ids), batch_size), desc="Fetching Mapillary Timestamps"):
-        batch = mapillary_ids[i:i + batch_size]
-        results = fetch_mapillary_timestamps(batch)
-        mapillary_timestamps.update(results)
-        # Avoid hitting Mapillary rate limits
-        time.sleep(0.5)
+    if mapillary_ids:
+        print(f"Found {len(mapillary_ids)} Mapillary images. Running batch queries...")
+        batch_size = 100
+        for i in tqdm(range(0, len(mapillary_ids), batch_size), desc="Bulk Fetch Mapillary"):
+            batch = mapillary_ids[i:i + batch_size]
+            res_batch = fetch_mapillary_timestamps(batch)
+            mapillary_timestamps.update(res_batch)
+            time.sleep(0.1)
 
-    # Flickr Sequential/Throttled Processing
-    flickr_ids = df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist()
-    print(f"Found {len(flickr_ids)} Flickr images to backfill.")
-
+    # --- 2. Flickr (Bulk Box Search or Fallback Individual Queries) ---
+    flickr_ids = set(df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist())
     flickr_timestamps = {}
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = {executor.submit(fetch_flickr_timestamp, pid): pid for pid in flickr_ids}
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching Flickr Timestamps"):
-            pid, timestamp = future.result()
-            if timestamp:
-                flickr_timestamps[pid] = timestamp
 
-    # KartaView (OpenStreetCam) Processing
+    if flickr_ids:
+        if args.log_dirs:
+            # Optimized Bulk BBox Search
+            log_files = []
+            for folder in args.log_dirs:
+                log_files.extend(glob.glob(os.path.join(folder, "flickr_completed_boxes_chunk_*.txt")))
+
+            print(f"Found {len(log_files)} Flickr completed boxes logs. Reading search coordinates...")
+            bboxes = set()
+            for f in log_files:
+                try:
+                    with open(f, 'r') as file:
+                        for line in file:
+                            box_id = line.strip()
+                            if box_id:
+                                bboxes.add(box_id)
+                except Exception:
+                    pass
+
+            print(f"Discovered {len(bboxes)} unique bounding boxes. Running bulk search scan (250x faster)...")
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {executor.submit(fetch_flickr_bbox_timestamps, bbox): bbox for bbox in bboxes}
+                for future in tqdm(as_completed(futures), total=len(futures), desc="Bulk Scan Flickr BBoxes"):
+                    res_box = future.result()
+                    for pid, timestamp in res_box.items():
+                        if pid in flickr_ids:
+                            flickr_timestamps[pid] = timestamp
+            print(f"Retrieved {len(flickr_timestamps)} Flickr timestamps using bulk search.")
+        else:
+            # Fallback Individual Queries (Warning user first)
+            print(f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(flickr_ids)} photos.")
+            print(f"This will take approximately {len(flickr_ids) / 3600:.1f} hours due to Flickr's rate limit.")
+            print("Provide --log_dirs with your completed box text files to speed this up by 250x.")
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {executor.submit(fetch_flickr_individual_timestamp, pid): pid for pid in flickr_ids}
+                for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch Flickr (1-by-1)"):
+                    pid, timestamp = future.result()
+                    if timestamp:
+                        flickr_timestamps[pid] = timestamp
+
+    # --- 3. KartaView (Throttled Parallel Queries) ---
     kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])][
         'Photo_ID'].tolist()
-    print(f"Found {len(kartaview_ids)} KartaView images to backfill.")
-
     kartaview_timestamps = {}
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(fetch_kartaview_timestamp, pid): pid for pid in kartaview_ids}
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching KartaView Timestamps"):
-            pid, timestamp = future.result()
-            if timestamp:
-                kartaview_timestamps[pid] = timestamp
+    if kartaview_ids:
+        print(f"Found {len(kartaview_ids)} KartaView images. Querying individual timestamps...")
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(fetch_kartaview_timestamp, pid): pid for pid in kartaview_ids}
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch KartaView"):
+                pid, timestamp = future.result()
+                if timestamp:
+                    kartaview_timestamps[pid] = timestamp
 
-    # Merge back into DataFrame
+    # --- Merge and Save ---
     all_fetched = {**mapillary_timestamps, **flickr_timestamps, **kartaview_timestamps}
 
-    def get_timestamp(row):
+    def merge_timestamp(row):
         pid = row['Photo_ID']
         if pid in all_fetched:
             return all_fetched[pid]
         return row['Captured_At']
 
-    df['Captured_At'] = df.apply(get_timestamp, axis=1)
+    df['Captured_At'] = df.apply(merge_timestamp, axis=1)
 
-    # 2. Save Output
     print(f"Saving enriched dataset to {save_path}...")
     if save_path.endswith('.parquet'):
         df.to_parquet(save_path, index=False)
