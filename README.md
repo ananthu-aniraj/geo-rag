@@ -13,10 +13,11 @@ To download the latest version of the dataset on your own PC, you need to have S
 - dvc pull full_pipeline_output.dvc
 
 ## Scraping scripts
-Flickr scraping script: [here](run_flickr_scraper.sh)
-Mapillary scraping script: [here](run_mapillary_scraper.sh)
-Note that both scripts require a shp file [example](uncovered_land_areas_test.shp) to define the area of interest. To generate this file, run the following [script](create_uncovered_land_areas_shp.py).
-This script requires as input the input dir of the latest version of the dataset. It will then read the csv and the [world land map](ne_10m_admin_0_countries.shp) to generate the uncovered land areas shp file.
+- Flickr scraping script: [here](run_flickr_scraper.sh)
+- Mapillary scraping script: [here](run_mapillary_scraper.sh)
+
+- Note that both scripts require a shp file [example](uncovered_land_areas_test.shp) to define the area of interest. To generate this file, run the following [script](create_uncovered_land_areas_shp.py).
+This script requires as input the input dir of the latest version of the dataset. It will then read the csv and the world land map (included in the repo: [this file](ne_10m_admin_0_countries.shp)) to generate the uncovered land areas shp file.
 If you want, you can visualize the generated shp file using this [script](visualize_shp.py) to get a better idea of the areas that will be scraped.
 
 ## How to postprocess the data
