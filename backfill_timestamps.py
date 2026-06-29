@@ -13,15 +13,16 @@ FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
 # Polite delay for Flickr API requests (seconds)
 FLICKR_DELAY = 1.1
 
+
 def fetch_mapillary_timestamps(photo_ids):
     """Fetches captured_at timestamps for multiple Mapillary photo IDs in batches."""
     if not photo_ids:
         return {}
-    
+
     url = f"https://graph.mapillary.com/images?ids={','.join(photo_ids)}&fields=id,captured_at"
     headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
     results = {}
-    
+
     try:
         # Mapillary rate limits: fetch up to 50 nodes per call
         res = requests.get(url, headers=headers, timeout=15)
@@ -31,12 +32,14 @@ def fetch_mapillary_timestamps(photo_ids):
                 cap_ms = item.get('captured_at')
                 if cap_ms:
                     # Convert ms epoch to UTC ISO 8601
-                    results[pid] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                    results[pid] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
+                        '%Y-%m-%dT%H:%M:%SZ')
         else:
             print(f"Mapillary API error: {res.status_code} - {res.text}")
     except Exception as e:
         print(f"Error fetching Mapillary batch: {e}")
     return results
+
 
 def fetch_flickr_timestamp(photo_id):
     """Fetches the date taken for a single Flickr photo ID."""
@@ -65,6 +68,7 @@ def fetch_flickr_timestamp(photo_id):
         print(f"Error fetching Flickr ID {photo_id}: {e}")
     return photo_id, None
 
+
 def fetch_kartaview_timestamp(photo_id):
     """Fetches the shotDate for a single KartaView photo ID."""
     url = f"https://api.openstreetcam.org/2.0/photo/{photo_id}"
@@ -85,10 +89,12 @@ def fetch_kartaview_timestamp(photo_id):
         print(f"Error fetching KartaView ID {photo_id}: {e}")
     return photo_id, None
 
+
 def main():
     parser = argparse.ArgumentParser(description="Backfill Captured_At timestamps for existing dataset.")
     parser.add_argument("--file_path", type=str, required=True, help="Path to geo_embedding_space.parquet or .csv")
-    parser.add_argument("--save_path", type=str, default=None, help="Where to save the enriched output (defaults to overwriting file_path)")
+    parser.add_argument("--save_path", type=str, default=None,
+                        help="Where to save the enriched output (defaults to overwriting file_path)")
     args = parser.parse_args()
 
     save_path = args.save_path or args.file_path
@@ -105,11 +111,11 @@ def main():
 
     # Convert Photo_ID to string for reliable matching
     df['Photo_ID'] = df['Photo_ID'].astype(str)
-    
+
     # Identify missing entries
     missing_mask = df['Captured_At'].isna() | (df['Captured_At'] == "")
     df_missing = df[missing_mask]
-    
+
     print(f"Total rows: {len(df)}. Rows missing Captured_At: {len(df_missing)}.")
     if len(df_missing) == 0:
         print("No missing timestamps to backfill.")
@@ -118,11 +124,11 @@ def main():
     # Mapillary Batch Processing
     mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
     print(f"Found {len(mapillary_ids)} Mapillary images to backfill.")
-    
+
     mapillary_timestamps = {}
     batch_size = 50
     for i in tqdm(range(0, len(mapillary_ids), batch_size), desc="Fetching Mapillary Timestamps"):
-        batch = mapillary_ids[i:i+batch_size]
+        batch = mapillary_ids[i:i + batch_size]
         results = fetch_mapillary_timestamps(batch)
         mapillary_timestamps.update(results)
         # Avoid hitting Mapillary rate limits
@@ -131,7 +137,7 @@ def main():
     # Flickr Sequential/Throttled Processing
     flickr_ids = df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist()
     print(f"Found {len(flickr_ids)} Flickr images to backfill.")
-    
+
     flickr_timestamps = {}
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = {executor.submit(fetch_flickr_timestamp, pid): pid for pid in flickr_ids}
@@ -141,9 +147,10 @@ def main():
                 flickr_timestamps[pid] = timestamp
 
     # KartaView (OpenStreetCam) Processing
-    kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])]['Photo_ID'].tolist()
+    kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])][
+        'Photo_ID'].tolist()
     print(f"Found {len(kartaview_ids)} KartaView images to backfill.")
-    
+
     kartaview_timestamps = {}
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_kartaview_timestamp, pid): pid for pid in kartaview_ids}
@@ -154,7 +161,7 @@ def main():
 
     # Merge back into DataFrame
     all_fetched = {**mapillary_timestamps, **flickr_timestamps, **kartaview_timestamps}
-    
+
     def get_timestamp(row):
         pid = row['Photo_ID']
         if pid in all_fetched:
@@ -170,6 +177,7 @@ def main():
     else:
         df.to_csv(save_path, index=False)
     print("Backfill complete!")
+
 
 if __name__ == "__main__":
     main()
