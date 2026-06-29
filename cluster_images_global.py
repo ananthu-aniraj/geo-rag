@@ -7,7 +7,6 @@ import os
 import pandas as pd
 import torch
 from transformers import AutoModel
-import tempfile
 import requests
 from io import BytesIO
 from PIL import Image
@@ -32,7 +31,8 @@ NATURAL_LULC_VOCAB = {
     "Open ocean / sea": "An open view of the ocean, sea, or saltwater coast.",
     "River / freshwater stream": "A flowing river, stream, creek, or freshwater channel.",
     "Lake / inland pond": "A still body of freshwater, a lake, pond, or reservoir.",
-    "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes."
+    "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes.",
+    "other": "any other type of land cover."
 }
 
 # Exhaustive Man-made LULC Vocabulary
@@ -450,8 +450,6 @@ def main():
             labels = label_clusters(raw_centroids, all_features, all_categories)
             for cid, label in enumerate(labels):
                 cluster_labels[cid] = label
-                cluster_type = "Natural" if cid < k_nat else "Man-made"
-                print(f"  Cluster {cid} ({cluster_type}) Label: {label}")
 
     print("\nUpdating metadata...")
     for i, item in enumerate(data):
