@@ -94,7 +94,9 @@ def load_image(url, target_max=448):
             return None
     try:
         if url.startswith("mapillary://"):
-            orig_id = url.split("://")[1]
+            orig_id = url.split("://")[1].strip()
+            if orig_id.endswith('.0'):
+                orig_id = orig_id[:-2]
             api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
             headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
             res = requests.get(api_url, headers=headers, timeout=10)
@@ -103,7 +105,9 @@ def load_image(url, target_max=448):
             else:
                 return None
         elif url.startswith("kartaview://"):
-            orig_id = url.split("://")[1]
+            orig_id = url.split("://")[1].strip()
+            if orig_id.endswith('.0'):
+                orig_id = orig_id[:-2]
             api_url = f"https://api.openstreetcam.org/2.0/photo/{orig_id}"
             res = requests.get(api_url, timeout=10)
             if res.status_code == 200:
@@ -420,6 +424,18 @@ def main():
                 closest_idx = indices[np.argmax(sims)]
                 representative_item = data[closest_idx]
                 img_url = representative_item['Image_URL']
+                
+                # Resolve potentially expired Mapillary or Kartaview URLs dynamically
+                photo_id = representative_item.get('Photo_ID')
+                platform = str(representative_item.get('Platform', '')).lower()
+                if photo_id:
+                    photo_str = str(photo_id).strip()
+                    if photo_str.endswith('.0'):
+                        photo_str = photo_str[:-2]
+                    if platform == 'mapillary' or 'mapillary' in img_url or 'fbcdn.net' in img_url:
+                        img_url = f"mapillary://{photo_str}"
+                    elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
+                        img_url = f"kartaview://{photo_str}"
 
                 prompt_text = prompt_template.format(lulc_list=lulc_list_str)
 

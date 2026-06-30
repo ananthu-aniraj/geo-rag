@@ -5,6 +5,7 @@ import os
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
+
 def create_sample_grid(pkl_path, output_html, top_n=5):
     print(f"Loading clustered data from {pkl_path}...")
     if pkl_path.endswith('.pkl'):
@@ -33,16 +34,39 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "images": []
             }
         cluster_map[c_id]["count"] += 1
+
+        photo_id = item.get('Photo_ID')
+        if photo_id is not None:
+            # Handle float or NaN values
+            if isinstance(photo_id, float):
+                import math as py_math
+                if not py_math.isnan(photo_id):
+                    photo_id = str(int(photo_id))
+                else:
+                    photo_id = ""
+            else:
+                photo_id = str(photo_id).strip()
+                if photo_id.endswith('.0'):
+                    photo_id = photo_id[:-2]
+        else:
+            photo_id = ""
+
+        platform = item.get('Platform', '')
+        if platform is not None:
+            platform = str(platform).strip()
+        else:
+            platform = ""
+
         # Store metadata for similarity sorting later
         cluster_map[c_id]["images"].append({
             "url": item['Image_URL'],
-            "id": item['Photo_ID'],
+            "id": photo_id,
             "emb": item['embedding'],
             "desc": item.get('cluster_description', ''),
             "lat": float(item.get('Latitude', 0.0)),
             "lon": float(item.get('Longitude', 0.0)),
             "h3": item.get('H3_Cell', ''),
-            "platform": item.get('Platform', ''),
+            "platform": platform,
             "captured_at": item.get('Captured_At', '')
         })
 
@@ -82,27 +106,27 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
         # Grab description from the centroid sample (highest similarity, sorted_indices[0])
         centroid_desc = c["images"][sorted_indices[0]].get("desc", "")
-        
+
         # Calculate robust geographic center (handling wrap-around for longitude)
         lats = [img['lat'] for img in c["images"]]
         lons = [img['lon'] for img in c["images"]]
-        
+
         center_lat = sum(lats) / len(lats)
         x = sum(math.cos(math.radians(lon)) for lon in lons) / len(lons)
         y = sum(math.sin(math.radians(lon)) for lon in lons) / len(lons)
         center_lon = math.degrees(math.atan2(y, x))
-        
+
         # Calculate unique H3 cells count
         h3_cells = set(img['h3'] for img in c["images"] if img['h3'])
         unique_h3_count = len(h3_cells)
-        
+
         # Compute H3 cell frequency and centroids
         h3_counts = {}
         for img in c["images"]:
             h3_cell = img.get("h3")
             if h3_cell:
                 h3_counts[h3_cell] = h3_counts.get(h3_cell, 0) + 1
-        
+
         h3_centroids = []
         try:
             import h3
@@ -136,10 +160,63 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "samples": samples
         })
 
+    # Collect all samples in a list for batch resolution in Python
+    all_samples_to_resolve = []
+    for item in dashboard_data:
+        all_samples_to_resolve.extend(item["samples"])
+
+    import concurrent.futures
+    import requests
+
+    def resolve_sample_url(sample, timeout=10):
+        url = sample["url"]
+        photo_id = sample["id"]
+        platform = sample["platform"]
+
+        if not photo_id or not platform:
+            return
+
+        platform_lower = str(platform).strip().lower()
+        photo_str = str(photo_id).strip()
+        if photo_str.endswith('.0'):
+            photo_str = photo_str[:-2]
+
+        is_mapillary = platform_lower == 'mapillary' or 'mapillary' in url or 'fbcdn.net' in url
+        is_kartaview = platform_lower == 'kartaview' or 'kartaview' in url or 'openstreetcam' in url
+
+        if not (is_mapillary or is_kartaview):
+            return
+
+        try:
+            if is_mapillary:
+                api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
+                headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
+                res = requests.get(api_url, headers=headers, timeout=timeout)
+                if res.status_code == 200:
+                    fresh_url = res.json().get("thumb_1024_url")
+                    if fresh_url:
+                        sample["url"] = fresh_url
+            elif is_kartaview:
+                api_url = f"https://api.openstreetcam.org/2.0/photo/{photo_str}"
+                res = requests.get(api_url, timeout=timeout)
+                if res.status_code == 200:
+                    data = res.json().get("result", {}).get("data", {})
+                    fresh_url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
+                    if fresh_url:
+                        sample["url"] = fresh_url
+        except Exception:
+            pass
+
+    print(f"Resolving {len(all_samples_to_resolve)} sample image URLs in parallel...")
+    max_workers = min(32, (len(all_samples_to_resolve) + 4) // 5 or 1)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(resolve_sample_url, all_samples_to_resolve))
+    print("URL resolution complete.")
+
     # Generate the Dynamic Dashboard HTML
     import json
     json_data = json.dumps(dashboard_data)
-    
+
     # Save data to an external JS file to prevent browser freezing on massive inline scripts
     data_js_path = output_html.replace('.html', '_data.js')
     print(f"Writing data payload to {data_js_path}...")
@@ -448,11 +525,18 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             if (img.dataset.retryAttempt) return;
             img.dataset.retryAttempt = '1';
             
-            const isMapillary = platform === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
-            const isKartaview = platform === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
+            const platformLower = String(platform).toLowerCase().trim();
+            const isMapillary = platformLower === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
+            const isKartaview = platformLower === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
             
-            if (isMapillary && photoId) {{
-                const apiUrl = `https://graph.mapillary.com/${{photoId}}?fields=thumb_1024_url`;
+            // Clean up photoId to remove any trailing .0 or other formatting issues
+            let cleanPhotoId = String(photoId).trim();
+            if (cleanPhotoId.endsWith('.0')) {{
+                cleanPhotoId = cleanPhotoId.slice(0, -2);
+            }}
+            
+            if (isMapillary && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
+                const apiUrl = `https://graph.mapillary.com/${{cleanPhotoId}}?fields=thumb_1024_url`;
                 fetch(apiUrl, {{
                     headers: {{ 'Authorization': `OAuth ${MAPILLARY_TOKEN}` }}
                 }})
@@ -466,8 +550,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     }}
                 }})
                 .catch(err => console.error('Error fetching Mapillary fresh URL:', err));
-            }} else if (isKartaview && photoId) {{
-                const apiUrl = `https://api.openstreetcam.org/2.0/photo/${{photoId}}`;
+            }} else if (isKartaview && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
+                const apiUrl = `https://api.openstreetcam.org/2.0/photo/${{cleanPhotoId}}`;
                 fetch(apiUrl)
                 .then(res => res.json())
                 .then(resData => {{

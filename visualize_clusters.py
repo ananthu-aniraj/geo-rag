@@ -7,6 +7,8 @@ import os
 import h3
 import math
 
+MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+
 
 def get_clean_boundary(cell):
     """Get hexagon boundary and handle antimeridian crossing."""
@@ -36,6 +38,56 @@ def create_map(pkl_path, output_html, max_markers=1000):
         plot_data = data[:max_markers]
     else:
         plot_data = data
+
+    # Batch resolve expired Mapillary or Kartaview URLs dynamically
+    import concurrent.futures
+    import requests
+
+    print(f"Resolving {len(plot_data)} image URLs in parallel...")
+
+    def resolve_item_url(item, timeout=10):
+        url = item.get('Image_URL')
+        photo_id = item.get('Photo_ID')
+        platform = item.get('Platform')
+        
+        if not url or not photo_id or not platform:
+            return
+            
+        platform_lower = str(platform).strip().lower()
+        photo_str = str(photo_id).strip()
+        if photo_str.endswith('.0'):
+            photo_str = photo_str[:-2]
+            
+        is_mapillary = platform_lower == 'mapillary' or 'mapillary' in url or 'fbcdn.net' in url
+        is_kartaview = platform_lower == 'kartaview' or 'kartaview' in url or 'openstreetcam' in url
+        
+        if not (is_mapillary or is_kartaview):
+            return
+
+        try:
+            if is_mapillary:
+                api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
+                headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
+                res = requests.get(api_url, headers=headers, timeout=timeout)
+                if res.status_code == 200:
+                    fresh_url = res.json().get("thumb_1024_url")
+                    if fresh_url:
+                        item["Image_URL"] = fresh_url
+            elif is_kartaview:
+                api_url = f"https://api.openstreetcam.org/2.0/photo/{photo_str}"
+                res = requests.get(api_url, timeout=timeout)
+                if res.status_code == 200:
+                    data = res.json().get("result", {}).get("data", {})
+                    fresh_url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
+                    if fresh_url:
+                        item["Image_URL"] = fresh_url
+        except Exception:
+            pass
+
+    max_workers = min(32, (len(plot_data) + 4) // 5 or 1)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(resolve_item_url, plot_data))
+    print("URL resolution complete.")
 
     # Calculate center of the map (robustly handling the antimeridian)
     avg_lat = sum(item['Latitude'] for item in plot_data) / len(plot_data)
