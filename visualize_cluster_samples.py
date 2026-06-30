@@ -92,7 +92,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
         # Keep only the representative samples to save space in the HTML
         samples = []
-        for idx in sorted_indices:
+        for rank, idx in enumerate(sorted_indices):
             img = c["images"][idx]
             samples.append({
                 "url": img["url"],
@@ -101,8 +101,29 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "lat": float(img["lat"]),
                 "lon": float(img["lon"]),
                 "platform": img["platform"],
-                "captured_at": img["captured_at"]
+                "captured_at": img["captured_at"],
+                "is_outlier": False,
+                "rank_label": "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
             })
+
+        # Add the least representative (outlier) images if the cluster is larger than top_n
+        if len(sims) > top_n:
+            lowest_indices = np.argsort(sims)[:2]  # Two absolute lowest similarity images
+            # Deduplicate just in case any overlap
+            lowest_indices = [idx for idx in lowest_indices if idx not in sorted_indices]
+            for i, idx in enumerate(lowest_indices):
+                img = c["images"][idx]
+                samples.append({
+                    "url": img["url"],
+                    "id": img["id"],
+                    "sim": float(sims[idx]),
+                    "lat": float(img["lat"]),
+                    "lon": float(img["lon"]),
+                    "platform": img["platform"],
+                    "captured_at": img["captured_at"],
+                    "is_outlier": True,
+                    "rank_label": f"Furthest Outlier {i+1}"
+                })
 
         # Grab description from the centroid sample (highest similarity, sorted_indices[0])
         centroid_desc = c["images"][sorted_indices[0]].get("desc", "")
@@ -159,13 +180,33 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "h3_centroids": h3_centroids,
             "samples": samples
         })
-    # Collect the first two samples (centroid and second closest) from each cluster for check/resolution
+    # Collect samples to check: first two representatives, last two representatives, and outliers
     samples_to_check = []
     for item in dashboard_data:
-        if len(item["samples"]) > 0:
-            samples_to_check.append(item["samples"][0]) # Centroid image
-        if len(item["samples"]) > 1:
-            samples_to_check.append(item["samples"][1]) # Second closest image
+        cluster_samples = item["samples"]
+        reps = [s for s in cluster_samples if not s.get("is_outlier")]
+        outliers = [s for s in cluster_samples if s.get("is_outlier")]
+        
+        selected_for_check = []
+        # First two representatives
+        if len(reps) > 0:
+            selected_for_check.append(reps[0])
+        if len(reps) > 1:
+            selected_for_check.append(reps[1])
+        # Last two representatives
+        if len(reps) > 2:
+            selected_for_check.append(reps[-1])
+            if len(reps) > 3:
+                selected_for_check.append(reps[-2])
+        # Outliers
+        selected_for_check.extend(outliers)
+        
+        # Deduplicate using python object identity to avoid checking the same sample multiple times
+        seen_ids = set()
+        for s in selected_for_check:
+            if id(s) not in seen_ids:
+                seen_ids.add(id(s))
+                samples_to_check.append(s)
 
     import concurrent.futures
     import requests
@@ -628,21 +669,29 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     <div id="map-container-${{c.id}}" class="map-container" style="display: none;"></div>
 
                     <div class="image-grid">
-                        ${{c.samples.map((s, i) => `
-                            <div class="image-item">
-                                <div class="image-role" style="color: ${{i===0 ? '#d93025':'#4f46e5'}}">
-                                    ${{i===0 ? 'Centroid Image' : 'Representative Sample ' + i}}
+                        ${{c.samples.map((s, i) => {{
+                            let roleColor = '#4f46e5';
+                            if (s.is_outlier) {{
+                                roleColor = '#e65100';
+                            }} else if (s.rank_label === 'Centroid Image') {{
+                                roleColor = '#d93025';
+                            }}
+                            return `
+                                <div class="image-item" style="${{s.is_outlier ? 'border-color: #ffe0b2; background-color: #fffaf0;' : ''}}">
+                                    <div class="image-role" style="color: ${{roleColor}}">
+                                        ${{s.rank_label}}
+                                    </div>
+                                    <a href="${{s.url}}" target="_blank">
+                                        <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" loading="lazy">
+                                    </a>
+                                    <div class="image-meta">
+                                        <b>ID:</b> ${{s.id}}<br>
+                                        <b>Similarity:</b> ${{s.sim.toFixed(4)}}<br>
+                                        <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at : ''}}
+                                    </div>
                                 </div>
-                                <a href="${{s.url}}" target="_blank">
-                                    <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" loading="lazy">
-                                </a>
-                                <div class="image-meta">
-                                    <b>ID:</b> ${{s.id}}<br>
-                                    <b>Similarity:</b> ${{s.sim.toFixed(4)}}<br>
-                                    <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at : ''}}
-                                </div>
-                            </div>
-                        `).join('')}}
+                            `;
+                        }}).join('')}}
                     </div>
                 </div>
             `).join('');
@@ -736,8 +785,13 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
             // Add custom markers for the representative sample images
             cluster.samples.forEach((s, idx) => {{
-                const markerColor = idx === 0 ? '#d93025' : '#4f46e5';
-                const label = idx === 0 ? 'Centroid image location' : `Sample ${{idx}} location`;
+                let markerColor = '#4f46e5';
+                if (s.is_outlier) {{
+                    markerColor = '#e65100';
+                }} else if (s.rank_label === 'Centroid Image') {{
+                    markerColor = '#d93025';
+                }}
+                const label = s.rank_label + ' location';
                 
                 L.circleMarker([s.lat, s.lon], {{
                     radius: 8,
