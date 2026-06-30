@@ -1,0 +1,13 @@
+Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Output a JSON object with the following information:
+1. visible_evidence: Write a short paragraph describing the primary objects, structures, architectural elements, vehicles, or natural formations visible. Avoid lists or dictionaries; write in plain natural language.
+2. human_activities: Write a sentence describing what people are doing here, or what activities are supported by the visible infrastructure.
+3. land_cover_usage: Write a sentence describing the ground surface material (e.g. asphalt, concrete, bare soil, grass, water, crops) and how the space is laid out (e.g. cultivated rows, wild growth, paved network).
+4. type_of_vegetation: Write a sentence describing the specific type of vegetation (e.g. broad-leaved deciduous trees, needle-leaf evergreen conifers, mixed forest, orchard trees, vineyards, cereal crops, low shrubs, grasses). Be as specific as possible. If none, state "none".
+
+You must respond ONLY with a valid JSON object. Do not include markdown formatting or backticks.
+{
+  "visible_evidence": "...",
+  "human_activities": "...",
+  "land_cover_usage": "...",
+  "type_of_vegetation": "..."
+}
