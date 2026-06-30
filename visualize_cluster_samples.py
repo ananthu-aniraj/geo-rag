@@ -223,8 +223,17 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
     print(f"Checking and resolving signatures for {len(samples_to_check)} critical cluster images in parallel...")
     max_workers = min(32, (len(samples_to_check) + 4) // 5 or 1)
+    
+    completed_count = 0
+    total_count = len(samples_to_check)
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(executor.map(check_and_resolve_sample, samples_to_check))
+        futures = {executor.submit(check_and_resolve_sample, sample): sample for sample in samples_to_check}
+        for future in concurrent.futures.as_completed(futures):
+            completed_count += 1
+            if completed_count % 50 == 0 or completed_count == total_count:
+                print(f"  Progress: {completed_count}/{total_count} images checked ({completed_count * 100 // total_count}%)...")
+                
     print("Signature check and resolution complete.")
 
     # Generate the Dynamic Dashboard HTML
