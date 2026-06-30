@@ -160,59 +160,6 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "samples": samples
         })
 
-    # Collect all samples in a list for batch resolution in Python
-    all_samples_to_resolve = []
-    for item in dashboard_data:
-        all_samples_to_resolve.extend(item["samples"])
-
-    import concurrent.futures
-    import requests
-
-    def resolve_sample_url(sample, timeout=10):
-        url = sample["url"]
-        photo_id = sample["id"]
-        platform = sample["platform"]
-
-        if not photo_id or not platform:
-            return
-
-        platform_lower = str(platform).strip().lower()
-        photo_str = str(photo_id).strip()
-        if photo_str.endswith('.0'):
-            photo_str = photo_str[:-2]
-
-        is_mapillary = platform_lower == 'mapillary' or 'mapillary' in url or 'fbcdn.net' in url
-        is_kartaview = platform_lower == 'kartaview' or 'kartaview' in url or 'openstreetcam' in url
-
-        if not (is_mapillary or is_kartaview):
-            return
-
-        try:
-            if is_mapillary:
-                api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
-                headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-                res = requests.get(api_url, headers=headers, timeout=timeout)
-                if res.status_code == 200:
-                    fresh_url = res.json().get("thumb_1024_url")
-                    if fresh_url:
-                        sample["url"] = fresh_url
-            elif is_kartaview:
-                api_url = f"https://api.openstreetcam.org/2.0/photo/{photo_str}"
-                res = requests.get(api_url, timeout=timeout)
-                if res.status_code == 200:
-                    data = res.json().get("result", {}).get("data", {})
-                    fresh_url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
-                    if fresh_url:
-                        sample["url"] = fresh_url
-        except Exception:
-            pass
-
-    print(f"Resolving {len(all_samples_to_resolve)} sample image URLs in parallel...")
-    max_workers = min(32, (len(all_samples_to_resolve) + 4) // 5 or 1)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(executor.map(resolve_sample_url, all_samples_to_resolve))
-    print("URL resolution complete.")
-
     # Generate the Dynamic Dashboard HTML
     import json
     json_data = json.dumps(dashboard_data)

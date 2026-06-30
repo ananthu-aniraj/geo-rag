@@ -39,56 +39,6 @@ def create_map(pkl_path, output_html, max_markers=1000):
     else:
         plot_data = data
 
-    # Batch resolve expired Mapillary or Kartaview URLs dynamically
-    import concurrent.futures
-    import requests
-
-    print(f"Resolving {len(plot_data)} image URLs in parallel...")
-
-    def resolve_item_url(item, timeout=10):
-        url = item.get('Image_URL')
-        photo_id = item.get('Photo_ID')
-        platform = item.get('Platform')
-        
-        if not url or not photo_id or not platform:
-            return
-            
-        platform_lower = str(platform).strip().lower()
-        photo_str = str(photo_id).strip()
-        if photo_str.endswith('.0'):
-            photo_str = photo_str[:-2]
-            
-        is_mapillary = platform_lower == 'mapillary' or 'mapillary' in url or 'fbcdn.net' in url
-        is_kartaview = platform_lower == 'kartaview' or 'kartaview' in url or 'openstreetcam' in url
-        
-        if not (is_mapillary or is_kartaview):
-            return
-
-        try:
-            if is_mapillary:
-                api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
-                headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-                res = requests.get(api_url, headers=headers, timeout=timeout)
-                if res.status_code == 200:
-                    fresh_url = res.json().get("thumb_1024_url")
-                    if fresh_url:
-                        item["Image_URL"] = fresh_url
-            elif is_kartaview:
-                api_url = f"https://api.openstreetcam.org/2.0/photo/{photo_str}"
-                res = requests.get(api_url, timeout=timeout)
-                if res.status_code == 200:
-                    data = res.json().get("result", {}).get("data", {})
-                    fresh_url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
-                    if fresh_url:
-                        item["Image_URL"] = fresh_url
-        except Exception:
-            pass
-
-    max_workers = min(32, (len(plot_data) + 4) // 5 or 1)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(executor.map(resolve_item_url, plot_data))
-    print("URL resolution complete.")
-
     # Calculate center of the map (robustly handling the antimeridian)
     avg_lat = sum(item['Latitude'] for item in plot_data) / len(plot_data)
     
@@ -157,7 +107,7 @@ def create_map(pkl_path, output_html, max_markers=1000):
         taken_text = f"<b>Captured At:</b> {item['Captured_At']}<br>" if 'Captured_At' in item and item['Captured_At'] else ""
         html = f"""
             <div style="width:220px">
-                <img src="{item['Image_URL']}" width="100%" style="border-radius: 4px;">
+                <img src="{item['Image_URL']}" onerror="handleImageError(this, '{item['Photo_ID']}', '{item['Platform']}')" width="100%" style="border-radius: 4px;">
                 <p style="font-size: 11px; margin-top: 5px; line-height: 1.4; font-family: sans-serif;">
                 <b>ID:</b> {item['Photo_ID']}<br>
                 <b>Platform:</b> {item['Platform']}<br>
@@ -166,6 +116,54 @@ def create_map(pkl_path, output_html, max_markers=1000):
                 <b>H3 Cell:</b> {item['H3_Cell']}<br>
                 <a href="{item['Image_URL']}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a></p>
             </div>
+            <script>
+                const MAPILLARY_TOKEN = '{MAPILLARY_TOKEN}';
+                function handleImageError(img, photoId, platform) {{
+                    if (img.dataset.retryAttempt) return;
+                    img.dataset.retryAttempt = '1';
+                    
+                    const platformLower = String(platform).toLowerCase().trim();
+                    const isMapillary = platformLower === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
+                    const isKartaview = platformLower === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
+                    
+                    let cleanPhotoId = String(photoId).trim();
+                    if (cleanPhotoId.endsWith('.0')) {{
+                        cleanPhotoId = cleanPhotoId.slice(0, -2);
+                    }}
+                    
+                    if (isMapillary && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
+                        const apiUrl = 'https://graph.mapillary.com/' + cleanPhotoId + '?fields=thumb_1024_url';
+                        fetch(apiUrl, {{
+                            headers: {{ 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }}
+                        }})
+                        .then(res => res.json())
+                        .then(resData => {{
+                            if (resData.thumb_1024_url) {{
+                                img.src = resData.thumb_1024_url;
+                                const link = img.closest('div').querySelector('a');
+                                if (link) link.href = resData.thumb_1024_url;
+                            }}
+                        }})
+                        .catch(err => console.error('Error fetching Mapillary fresh URL:', err));
+                    }} else if (isKartaview && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
+                        const apiUrl = 'https://api.openstreetcam.org/2.0/photo/' + cleanPhotoId;
+                        fetch(apiUrl)
+                        .then(res => res.json())
+                        .then(resData => {{
+                            const data = resData.result && resData.result.data;
+                            if (data) {{
+                                const freshUrl = data.fileurlLTh || data.fileurlTh || data.fileurl;
+                                if (freshUrl) {{
+                                    img.src = freshUrl;
+                                    const link = img.closest('div').querySelector('a');
+                                    if (link) link.href = freshUrl;
+                                }}
+                            }}
+                        }})
+                        .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
+                    }}
+                }}
+            </script>
         """
         iframe_height = 350 if ('cluster_description' in item and item['cluster_description']) else 280
         iframe = folium.IFrame(html=html, width=240, height=iframe_height)
