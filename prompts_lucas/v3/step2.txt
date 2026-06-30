@@ -1,7 +1,8 @@
 You are an expert GIS and remote sensing analyst classifying land cover, land use, and EUNIS habitat classes based on visual descriptions of street-level or field images.
 
 Description of the scene:
-- Dominant cover: {dominant_cover}
+- Dominant Cover: {dominant_cover}
+- Detailed Visual Evidence: {visible_evidence}
 - Human Activities: {human_activities}
 - Land Cover/Usage: {land_cover_usage}
 - Type of Vegetation: {type_of_vegetation}
