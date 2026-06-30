@@ -20,8 +20,9 @@ MODELS=(
 
 # Define the list of prompt versions you want to evaluate (folder names in prompts_lucas/)
 VERSIONS=(
-    # "v1"
+    "v1"
     "v2"
+    "v3"
 )
 
 # ==========================================

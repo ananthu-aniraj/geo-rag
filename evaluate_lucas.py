@@ -309,13 +309,31 @@ def main():
                 print(f"  -> Raw Output: {vlm_text1}")
                 continue
 
-            visible_evidence = parsed_data1.get('visible_evidence', '')
-            human_activities = parsed_data1.get('human_activities', '')
-            land_cover_usage = parsed_data1.get('land_cover_usage', '')
-            type_of_vegetation = parsed_data1.get('type_of_vegetation', '')
+            # If this is v3 (having new keys), map them to standard keys for database & retrieval compatibility
+            if 'dominant_cover' in parsed_data1:
+                visible_evidence = f"Dominant cover is {parsed_data1.get('dominant_cover', '')} ({parsed_data1.get('cover_fraction_estimate', '')}). Ground state: {parsed_data1.get('soil_surface_state', '')}. Soil/rock: {parsed_data1.get('surface_material_and_lithology', '')}. Pattern: {parsed_data1.get('structure_and_pattern', '')}. Context: {parsed_data1.get('context_background', '')}."
+                human_activities = f"Human evidence: {parsed_data1.get('human_evidence', '')}."
+                land_cover_usage = f"Dominant cover: {parsed_data1.get('dominant_cover', '')}. Ground state: {parsed_data1.get('soil_surface_state', '')}."
+                type_of_vegetation = f"Veg: {parsed_data1.get('vegetation_detail', '')}. Cond: {parsed_data1.get('vegetation_condition', '')}. Phenology: {parsed_data1.get('phenological_stage', '')}. Canopy: {parsed_data1.get('canopy_structure', '')}."
+                parsed_data1_mapped = {
+                    "visible_evidence": visible_evidence,
+                    "human_activities": human_activities,
+                    "land_cover_usage": land_cover_usage,
+                    "type_of_vegetation": type_of_vegetation
+                }
+            else:
+                visible_evidence = parsed_data1.get('visible_evidence', '')
+                human_activities = parsed_data1.get('human_activities', '')
+                land_cover_usage = parsed_data1.get('land_cover_usage', '')
+                type_of_vegetation = parsed_data1.get('type_of_vegetation', '')
+                parsed_data1_mapped = parsed_data1
 
             # Step 2: Classify based on lists
-            step2_prompt = prompt_step2.replace("{visible_evidence}", str(visible_evidence)) \
+            step2_prompt = prompt_step2
+            if "{dominant_cover}" in step2_prompt:
+                step2_prompt = step2_prompt.replace("{dominant_cover}", str(parsed_data1.get('dominant_cover', '')))
+            
+            step2_prompt = step2_prompt.replace("{visible_evidence}", str(visible_evidence)) \
                 .replace("{human_activities}", str(human_activities)) \
                 .replace("{land_cover_usage}", str(land_cover_usage)) \
                 .replace("{type_of_vegetation}", str(type_of_vegetation)) \
@@ -344,7 +362,7 @@ def main():
                 print(f"  -> Raw Output: {vlm_text2}")
                 continue
 
-            parsed_data = {**parsed_data1, **parsed_data2}
+            parsed_data = {**parsed_data1_mapped, **parsed_data2}
 
             # Embeddings and image-text similarities
             img = Image.open(image_path).convert('RGB')
