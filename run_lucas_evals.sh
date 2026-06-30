@@ -6,8 +6,8 @@ conda activate ananthu_venv
 # ==========================================
 # Update these variables to match your environment
 PYTHON_SCRIPT="evaluate_lucas.py"
-IMG_DIR="/path/to/lucas/images"                                             # Update this to the actual image directory path
-CSV_FILE="/user/aaniraj/home/Documents/Projects/data/LUCAS2018/Sen4Map_Metadata_test.csv"
+IMG_DIR="/home/ananthu/DATA/data_ananthu/LUCAS2018"                                             # Update this to the actual image directory path
+CSV_FILE="/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"
 MAX_IMAGES=1000                                                             # Set to 0 to run the entire dataset
 
 # Define the list of models you want to evaluate.
@@ -20,7 +20,7 @@ MODELS=(
 
 # Define the list of prompt versions you want to evaluate (folder names in prompts_lucas/)
 VERSIONS=(
-    "v1"
+    # "v1"
     "v2"
 )
 
