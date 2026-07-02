@@ -67,13 +67,18 @@ def main():
             coords = [(lat, lng + 360 if lng < 0 else lng) for lat, lng in coords]
         return coords
 
-    # Add each H3 Cell to the map as a styled Polygon
-    for _, item in tqdm(cell_totals.iterrows(), total=len(cell_totals), desc="Drawing Hexagons"):
+    # Create GeoJSON Features List
+    features = []
+    
+    for _, item in tqdm(cell_totals.iterrows(), total=len(cell_totals), desc="Processing Hexagons"):
         cell = item['query_cell']
         total_images = item['image_count']
         
         try:
             boundary = get_clean_boundary(cell)
+            # GeoJSON polygon expects [lng, lat] and a closed loop
+            geojson_coords = [[lng, lat] for lat, lng in boundary]
+            geojson_coords.append(geojson_coords[0])
             
             # Retrieve cluster breakdown for this cell, sorted by image count
             df_cell = df_res[df_res['query_cell'] == cell].sort_values(by='image_count', ascending=False)
@@ -98,21 +103,54 @@ def main():
                 """
             tooltip_html += "</ul></div>"
             
-            # Style matching the density log value
             log_val = np.log10(total_images)
-            fill_color = colormap(log_val)
             
-            folium.Polygon(
-                locations=boundary,
-                color=fill_color,
-                weight=1,
-                fill_color=fill_color,
-                fill_opacity=0.6,
-                tooltip=folium.Tooltip(tooltip_html, sticky=True)
-            ).add_to(m)
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [geojson_coords]
+                },
+                "properties": {
+                    "cell": cell,
+                    "count": total_images,
+                    "log_count": log_val,
+                    "tooltip_content": tooltip_html
+                }
+            }
+            features.append(feature)
             
         except Exception as e:
             continue
+
+    geojson_data = {
+        "type": "FeatureCollection",
+        "features": features
+    }
+
+    # Style function mapping density to color
+    def style_fn(feature):
+        log_val = feature["properties"]["log_count"]
+        fill_color = colormap(log_val)
+        return {
+            "fillColor": fill_color,
+            "color": fill_color,
+            "weight": 1,
+            "fillOpacity": 0.6,
+        }
+
+    print("Adding GeoJSON layer to map...")
+    # Add GeoJSON layer in one batch
+    folium.GeoJson(
+        geojson_data,
+        style_function=style_fn,
+        tooltip=folium.GeoJsonTooltip(
+            fields=["tooltip_content"],
+            aliases=[""],
+            labels=False,
+            style="background-color: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 2px 2px 6px rgba(0,0,0,0.2);"
+        )
+    ).add_to(m)
 
     m.add_child(colormap)
     
