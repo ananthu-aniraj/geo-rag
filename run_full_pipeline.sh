@@ -30,10 +30,12 @@ CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))[
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
 CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
+H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_h3_semantic_index.parquet"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
 SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
 SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
 OCCUPANCY_MAP="$OUTPUT_DIR/global_h3_occupancy_map.html"
+SEMANTIC_MAP="$OUTPUT_DIR/global_h3_semantic_map.html"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
@@ -82,6 +84,12 @@ python3 relabel_failed_clusters.py \
   --fallback_depth 10
 
 echo ""
+echo "[Step 2c/5] Building H3 Spatial-Semantic Index..."
+python3 build_spatial_semantic_index.py \
+  --input "$CLUSTERED_PARQUET" \
+  --output "$H3_SEMANTIC_INDEX"
+
+echo ""
 echo "[Step 3/5] Generating Cluster Map..."
 python3 visualize_clusters.py \
   --pkl_file "$CLUSTERED_PARQUET" \
@@ -106,6 +114,13 @@ echo "Generating occupancy map"
 python3 generate_h3_occupancy_map.py \
   --dirs "$OUTPUT_DIR" \
   --output "$OCCUPANCY_MAP"
+
+echo ""
+echo "Generating H3 spatial-semantic map"
+python3 generate_h3_semantic_map.py \
+  --index "$H3_SEMANTIC_INDEX" \
+  --output "$SEMANTIC_MAP" \
+  --res 6
 
 echo ""
 echo "=========================================================="
