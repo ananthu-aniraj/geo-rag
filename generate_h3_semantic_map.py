@@ -88,7 +88,9 @@ def main():
             cluster_list = []
             for _, row in df_cell.head(5).iterrows():
                 pct = float((row['image_count'] / total_images) * 100)
-                cluster_list.append([row['cluster_label'], pct, int(row['image_count']), row['cluster_description'][:200]])
+                # Keep only first 200 chars of description to reduce JSON size
+                desc = row['cluster_description'] if row['cluster_description'] else ""
+                cluster_list.append([row['cluster_label'], pct, int(row['image_count']), desc[:200]])
             
             clusters_json = json.dumps(cluster_list)
             log_val = np.log10(total_images)
@@ -127,14 +129,13 @@ def main():
             "fillOpacity": 0.6,
         }
 
-    # Javascript dynamic HTML tooltip builder
-    # Note: We bind the tooltip dynamically inside the onEachFeature callback
+    # Javascript dynamic HTML tooltip builder (corrected quoting issues)
     js_tooltip_builder = f"""
     function(feature, layer) {{
         var props = feature.properties;
         var countFormatted = Number(props.count).toLocaleString();
         
-        var html = '<div style="font-family: \'Helvetica Neue\', Arial, sans-serif; min-width: 320px; max-width: 400px; font-size: 12px; padding: 6px;">' +
+        var html = '<div style="font-family: Arial, sans-serif; min-width: 320px; max-width: 400px; font-size: 12px; padding: 6px;">' +
                    '<b style="font-size: 14px; color: #2c3e50; display: block; margin-bottom: 5px;">📍 H3 Cell: ' + props.cell + ' (Res {args.res})</b>' +
                    '<b>📊 Total Images:</b> ' + countFormatted + '<br/>' +
                    '<hr style="margin: 6px 0; border: 0; border-top: 1px solid #ddd;"/>' +
@@ -166,7 +167,7 @@ def main():
         html += '</ul></div>';
         layer.bindTooltip(html, {{
             sticky: true,
-            direction: 'auto',
+            direction: "auto",
             opacity: 0.95
         }});
     }}
