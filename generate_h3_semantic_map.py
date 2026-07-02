@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 import branca.colormap as cm
+import json
 
 def main():
     parser = argparse.ArgumentParser(description="Generate an interactive H3 spatial-semantic world map.")
@@ -15,8 +16,8 @@ def main():
                         help="Path to save the output HTML map.")
     parser.add_argument("--res", type=int, default=6, choices=list(range(5, 12)),
                         help="H3 resolution to display on the map (default: 6, ~36 sq km).")
-    parser.add_argument("--min_count", type=int, default=1,
-                        help="Minimum number of images in a cell to display on the map.")
+    parser.add_argument("--min_count", type=int, default=10,
+                        help="Minimum number of images in a cell to display on the map (default: 10).")
     args = parser.parse_args()
 
     if not os.path.exists(args.index):
@@ -83,26 +84,13 @@ def main():
             # Retrieve cluster breakdown for this cell, sorted by image count
             df_cell = df_res[df_res['query_cell'] == cell].sort_values(by='image_count', ascending=False)
             
-            # Construct rich HTML tooltip
-            tooltip_html = f"""
-            <div style="font-family: 'Helvetica Neue', Arial, sans-serif; min-width: 280px; font-size: 12px; padding: 4px;">
-                <b style="font-size: 13px; color: #2c3e50; display: block; margin-bottom: 5px;">📍 H3 Cell: {cell} (Res {args.res})</b>
-                <b>📊 Total Images:</b> {total_images:,}<br/>
-                <hr style="margin: 6px 0; border: 0; border-top: 1px solid #ddd;"/>
-                <b style="color: #16a085; text-transform: uppercase; font-size: 10px; display: block; margin-bottom: 4px;">Dominant Land Use / Cover:</b>
-                <ul style="margin: 0; padding-left: 14px; list-style-type: square; color: #34495e;">
-            """
-            
-            # Show top 5 clusters in the cell tooltip
+            # Construct a lightweight JSON string of cluster data to prevent HTML duplication bloat
+            cluster_list = []
             for _, row in df_cell.head(5).iterrows():
-                pct = (row['image_count'] / total_images) * 100
-                tooltip_html += f"""
-                    <li style="margin-bottom: 4px;">
-                        <b>{row['cluster_label']}:</b> {pct:.1f}% ({row['image_count']:,} images)
-                    </li>
-                """
-            tooltip_html += "</ul></div>"
+                pct = float((row['image_count'] / total_images) * 100)
+                cluster_list.append([row['cluster_label'], pct, int(row['image_count']), row['cluster_description'][:200]])
             
+            clusters_json = json.dumps(cluster_list)
             log_val = np.log10(total_images)
             
             feature = {
@@ -113,9 +101,9 @@ def main():
                 },
                 "properties": {
                     "cell": cell,
-                    "count": total_images,
-                    "log_count": log_val,
-                    "tooltip_content": tooltip_html
+                    "count": int(total_images),
+                    "log_count": float(log_val),
+                    "clusters": clusters_json  # Compact serialized data
                 }
             }
             features.append(feature)
@@ -139,17 +127,56 @@ def main():
             "fillOpacity": 0.6,
         }
 
-    print("Adding GeoJSON layer to map...")
-    # Add GeoJSON layer in one batch
+    # Javascript dynamic HTML tooltip builder
+    # Note: We bind the tooltip dynamically inside the onEachFeature callback
+    js_tooltip_builder = f"""
+    function(feature, layer) {{
+        var props = feature.properties;
+        var countFormatted = Number(props.count).toLocaleString();
+        
+        var html = '<div style="font-family: \'Helvetica Neue\', Arial, sans-serif; min-width: 320px; max-width: 400px; font-size: 12px; padding: 6px;">' +
+                   '<b style="font-size: 14px; color: #2c3e50; display: block; margin-bottom: 5px;">📍 H3 Cell: ' + props.cell + ' (Res {args.res})</b>' +
+                   '<b>📊 Total Images:</b> ' + countFormatted + '<br/>' +
+                   '<hr style="margin: 6px 0; border: 0; border-top: 1px solid #ddd;"/>' +
+                   '<b style="color: #16a085; text-transform: uppercase; font-size: 10px; display: block; margin-bottom: 4px;">Dominant Land Use / Cover:</b>' +
+                   '<ul style="margin: 0; padding-left: 14px; list-style-type: square; color: #34495e;">';
+        
+        try {{
+            var clusters = JSON.parse(props.clusters);
+            for (var i = 0; i < clusters.length; i++) {{
+                var pct = Number(clusters[i][1]).toFixed(1);
+                var cCount = Number(clusters[i][2]).toLocaleString();
+                var label = clusters[i][0];
+                var desc = clusters[i][3];
+                
+                // Truncate description if too long
+                if (desc.length > 150) {{
+                    desc = desc.substring(0, 147) + '...';
+                }}
+                
+                html += '<li style="margin-bottom: 6px;">' +
+                        '<b>' + label + ':</b> ' + pct + '% (' + cCount + ' images)' +
+                        '<br/><span style="color: #7f8c8d; font-size: 10.5px; font-style: italic;">' + desc + '</span>' +
+                        '</li>';
+            }}
+        }} catch(e) {{
+            html += '<li>Error parsing cluster details</li>';
+        }}
+        
+        html += '</ul></div>';
+        layer.bindTooltip(html, {{
+            sticky: true,
+            direction: 'auto',
+            opacity: 0.95
+        }});
+    }}
+    """
+
+    print("Adding GeoJSON layer to map with dynamic JavaScript tooltips...")
     folium.GeoJson(
         geojson_data,
         style_function=style_fn,
-        tooltip=folium.GeoJsonTooltip(
-            fields=["tooltip_content"],
-            aliases=[""],
-            labels=False,
-            style="background-color: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 2px 2px 6px rgba(0,0,0,0.2);"
-        )
+        on_each_feature=js_tooltip_builder
     ).add_to(m)
 
     m.add_child(colormap)
