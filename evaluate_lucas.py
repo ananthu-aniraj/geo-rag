@@ -311,10 +311,21 @@ def main():
 
             # If this is v3 (having new keys), map them to standard keys for database & retrieval compatibility
             if 'dominant_cover' in parsed_data1:
-                visible_evidence = f"Dominant cover is {parsed_data1.get('dominant_cover', '')} ({parsed_data1.get('cover_fraction_estimate', '')}). Ground state: {parsed_data1.get('soil_surface_state', '')}. Soil/rock: {parsed_data1.get('surface_material_and_lithology', '')}. Pattern: {parsed_data1.get('structure_and_pattern', '')}. Context: {parsed_data1.get('context_background', '')}."
-                human_activities = f"Human evidence: {parsed_data1.get('human_evidence', '')}."
-                land_cover_usage = f"Dominant cover: {parsed_data1.get('dominant_cover', '')}. Ground state: {parsed_data1.get('soil_surface_state', '')}."
-                type_of_vegetation = f"Veg: {parsed_data1.get('vegetation_detail', '')}. Cond: {parsed_data1.get('vegetation_condition', '')}. Phenology: {parsed_data1.get('phenological_stage', '')}. Canopy: {parsed_data1.get('canopy_structure', '')}."
+                visible_evidence_struc = f"Dominant cover is {parsed_data1.get('dominant_cover', '')} ({parsed_data1.get('cover_fraction_estimate', '')}). Ground state: {parsed_data1.get('soil_surface_state', '')}. Soil/rock: {parsed_data1.get('surface_material_and_lithology', '')}. Pattern: {parsed_data1.get('structure_and_pattern', '')}. Context: {parsed_data1.get('context_background', '')}."
+                human_activities_struc = f"Human evidence: {parsed_data1.get('human_evidence', '')}."
+                land_cover_usage_struc = f"Dominant cover: {parsed_data1.get('dominant_cover', '')}. Ground state: {parsed_data1.get('soil_surface_state', '')}."
+                type_of_vegetation_struc = f"Veg: {parsed_data1.get('vegetation_detail', '')}. Cond: {parsed_data1.get('vegetation_condition', '')}. Phenology: {parsed_data1.get('phenological_stage', '')}. Canopy: {parsed_data1.get('canopy_structure', '')}."
+
+                # Check if natural language descriptions are provided by VLM. If so, use them; otherwise, fall back.
+                # In old runs/formats, visible_evidence contains "Dominant cover is..." so we check that
+                has_natural = ('visible_evidence' in parsed_data1 and 
+                               not str(parsed_data1.get('visible_evidence', '')).startswith("Dominant cover is"))
+
+                visible_evidence = parsed_data1.get('visible_evidence', visible_evidence_struc) if has_natural else visible_evidence_struc
+                human_activities = parsed_data1.get('human_activities', human_activities_struc) if has_natural else human_activities_struc
+                land_cover_usage = parsed_data1.get('land_cover_usage', land_cover_usage_struc) if has_natural else land_cover_usage_struc
+                type_of_vegetation = parsed_data1.get('type_of_vegetation', type_of_vegetation_struc) if has_natural else type_of_vegetation_struc
+
                 parsed_data1_mapped = {
                     "visible_evidence": visible_evidence,
                     "human_activities": human_activities,
@@ -322,10 +333,15 @@ def main():
                     "type_of_vegetation": type_of_vegetation
                 }
             else:
-                visible_evidence = parsed_data1.get('visible_evidence', '')
-                human_activities = parsed_data1.get('human_activities', '')
-                land_cover_usage = parsed_data1.get('land_cover_usage', '')
-                type_of_vegetation = parsed_data1.get('type_of_vegetation', '')
+                visible_evidence_struc = parsed_data1.get('visible_evidence', '')
+                human_activities_struc = parsed_data1.get('human_activities', '')
+                land_cover_usage_struc = parsed_data1.get('land_cover_usage', '')
+                type_of_vegetation_struc = parsed_data1.get('type_of_vegetation', '')
+
+                visible_evidence = visible_evidence_struc
+                human_activities = human_activities_struc
+                land_cover_usage = land_cover_usage_struc
+                type_of_vegetation = type_of_vegetation_struc
                 parsed_data1_mapped = parsed_data1
 
             # Step 2: Classify based on lists
@@ -333,10 +349,11 @@ def main():
             if "{dominant_cover}" in step2_prompt:
                 step2_prompt = step2_prompt.replace("{dominant_cover}", str(parsed_data1.get('dominant_cover', '')))
             
-            step2_prompt = step2_prompt.replace("{visible_evidence}", str(visible_evidence)) \
-                .replace("{human_activities}", str(human_activities)) \
-                .replace("{land_cover_usage}", str(land_cover_usage)) \
-                .replace("{type_of_vegetation}", str(type_of_vegetation)) \
+            # Step 2 always uses the structured variables to maximize classification performance
+            step2_prompt = step2_prompt.replace("{visible_evidence}", str(visible_evidence_struc)) \
+                .replace("{human_activities}", str(human_activities_struc)) \
+                .replace("{land_cover_usage}", str(land_cover_usage_struc)) \
+                .replace("{type_of_vegetation}", str(type_of_vegetation_struc)) \
                 .replace("{lc_list}", lc_list_str) \
                 .replace("{lu_list}", lu_list_str) \
                 .replace("{eunis_list}", eunis_list_str)
