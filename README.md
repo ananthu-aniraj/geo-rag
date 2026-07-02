@@ -9,7 +9,7 @@ This project uses **DVC (Data Version Control)** to manage and version the large
 To download the latest version of the dataset on your own PC, you need to have SSH access to the 10.34.192.190 server. Here are the steps: 
 - Clone the repo
 - pip install dvc dvc-ssh
-- dvc remote modify --local shared_remote user their_server_username (use your username on the server) 
+- dvc remote modify --local hdd_cache user their_server_username (use your username on the server) 
 - dvc pull full_pipeline_output.dvc
 
 ## Scraping scripts
