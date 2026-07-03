@@ -25,6 +25,15 @@ tips_transform = transforms.Compose([
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
+def clean_photo_id(val):
+    if pd.isna(val):
+        return ""
+    val_str = str(val).strip()
+    if val_str.endswith('.0'):
+        val_str = val_str[:-2]
+    return val_str
+
+
 def download_image(url):
     """Downloads an image and returns a PIL Image object."""
     try:
@@ -213,7 +222,7 @@ def main():
         else:
             df_existing = pd.read_parquet(args.resume_from)
         
-        seen_photo_ids = set(df_existing['Photo_ID'].astype(str))
+        seen_photo_ids = set(df_existing['Photo_ID'].apply(clean_photo_id))
         print(f"Loaded {len(df_existing)} existing images across {df_existing['H3_Cell'].nunique()} cells.")
 
     all_dfs = []
@@ -255,7 +264,7 @@ def main():
     if not df_all.empty:
         df_all['H3_Cell'] = df_all.apply(lambda r: h3.latlng_to_cell(float(r['Latitude']), float(r['Longitude']), args.h3_res) if pd.notna(r['Latitude']) and pd.notna(r['Longitude']) else None, axis=1)
         df_all = df_all.dropna(subset=['H3_Cell', 'Photo_ID'])
-        df_all['Photo_ID'] = df_all['Photo_ID'].astype(str)
+        df_all['Photo_ID'] = df_all['Photo_ID'].apply(clean_photo_id)
         df_all = df_all.drop_duplicates(subset=['Photo_ID'])
         if seen_photo_ids:
             df_all = df_all[~df_all['Photo_ID'].isin(seen_photo_ids)]
@@ -309,16 +318,22 @@ def main():
 
     last_checkpoint_time = time.time()
     
-    h3_groups = df_all.groupby('H3_Cell') if not df_all.empty else None
-    existing_groups = df_existing.groupby('H3_Cell') if df_existing is not None else None
+    print("Grouping metadata by H3 cell...")
+    new_metadata_dict = {}
+    if not df_all.empty:
+        new_metadata_dict = {cell: grp.to_dict('records') for cell, grp in df_all.groupby('H3_Cell')}
+        
+    existing_items_dict = {}
+    if df_existing is not None:
+        existing_items_dict = {cell: grp.to_dict('records') for cell, grp in df_existing.groupby('H3_Cell')}
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):
             if cell in processed_cells:
                 continue
                 
-            new_metadata = h3_groups.get_group(cell).to_dict('records') if (h3_groups and cell in h3_groups.groups) else []
-            existing_items = existing_groups.get_group(cell).to_dict('records') if (existing_groups and cell in existing_groups.groups) else []
+            new_metadata = new_metadata_dict.get(cell, [])
+            existing_items = existing_items_dict.get(cell, [])
             
             # If there's no new data for this cell, just keep the existing data
             if not new_metadata:
