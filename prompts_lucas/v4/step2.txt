@@ -1,0 +1,33 @@
+You are an expert GIS and remote sensing analyst classifying land cover, land use, and EUNIS habitat classes based on visual descriptions of street-level or field images.
+
+Description of the scene:
+- Detailed Visual Evidence: {dominant_cover} {visible_evidence}
+- Human Activities: {human_activities}
+- Land Cover/Usage: {land_cover_usage}
+- Type of Vegetation: {type_of_vegetation}
+
+Your task is to classify this scene into three categories: Land Cover, Land Use, and EUNIS Class.
+To do this accurately, follow this step-by-step reasoning (Chain of Thought):
+1. First, identify the broad domain of the scene (e.g., Artificial/Built-up, Agricultural/Cropland, Woodland/Forest, Grassland/Shrubland, Bareland, Water, Wetland).
+2. Review the allowed categories for each classification and find the one that best fits the description.
+
+Classifications to choose from (choose EXACTLY one from each list):
+
+1. Land Cover (lc_label):
+{lc_list}
+
+2. Land Use (lu_label):
+{lu_list}
+
+3. EUNIS Class (eunis_class):
+{eunis_list}
+
+Output a JSON object with your final classifications:
+{
+  "reasoning": "A short, one-sentence explanation of your classification choices based on the description above.",
+  "lc_label": "Choose the EXACT category name from the Land Cover list above.",
+  "lu_label": "Choose the EXACT category name from the Land Use list above.",
+  "eunis_class": "Choose the EXACT category name from the EUNIS Class list above."
+}
+
+Do not include markdown code block backticks or any introductory text. Output ONLY the raw JSON object.

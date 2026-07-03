@@ -18,33 +18,44 @@ except ImportError:
 
 # Exhaustive Natural LULC Vocabulary with Global Biomes
 NATURAL_LULC_VOCAB = {
-    "Dense forest": "A dense natural forest or wooded area with many trees.",
-    "Shrubland/scrub": "Low-lying bushes, shrubs, and sparse dry vegetation.",
-    "Grassland/pasture": "Open grassy fields, meadows, grazing pastures, or plains.",
-    "Sandy desert / dunes": "A desert landscape dominated by sand dunes, sandy expanses, and sand ripples.",
-    "Rocky desert / gravel plains": "A dry, stony desert, gravel plains, or barren rocky terrain with sparse desert scrub.",
-    "Barren soil / badlands": "Eroded clay hills, badlands, bare dry earth, or dry mud flats with no vegetation.",
-    "Glacier / permanent ice": "A polar or alpine landscape dominated by thick glaciers, ice caps, or solid ice sheets.",
-    "Snow-covered plains / tundra": "Open fields, tundra, or plains completely covered in a blanket of white snow.",
-    "Snow-covered forest": "A winter forest scene with evergreen pine or fir trees heavily laden with white snow.",
-    "Wetland/marsh": "Swampy, marshy, or boggy area with specialized vegetation.",
-    "Open ocean / sea": "An open view of the ocean, sea, or saltwater coast.",
-    "River / freshwater stream": "A flowing river, stream, creek, or freshwater channel.",
-    "Lake / inland pond": "A still body of freshwater, a lake, pond, or reservoir.",
-    "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes.",
-    "other": "any other type of land cover."
+    "Broadleaved forest": "Deciduous or evergreen broad-leaf trees (oak, beech, maple, birch).",
+    "Coniferous forest": "Evergreen needle-leaf trees (pine, spruce, fir, larch).",
+    "Mixed forest": "Co-dominant broadleaved and coniferous trees.",
+    "Tropical forest": "Equatorial rainforests, mangroves, or tropical dry forest.",
+    "Sparsely wooded / Savanna": "Grassland with scattered trees (10-30% canopy cover).",
+    "Natural grassland": "Meadows, wild steppes, alpine grasslands, or prairies.",
+    "Temperate shrubland / Scrub": "Low woody scrub (heather, gorse, bramble).",
+    "Arid shrubland": "Desert scrub, sagebrush, or dry savanna bushland.",
+    "Tundra": "Low-growing polar vegetation (mosses, lichens, dwarf shrubs).",
+    "Sandy desert / Dunes": "Sand sheets, active dunes, or sandy flats.",
+    "Rocky desert / Gravel plains": "Stony hamadas, gravel plains, or barren volcanic ash fields.",
+    "Barren soil / Badlands": "Highly eroded clay hills, bare dry earth, or dry salt flats.",
+    "Bare rock / Cliffs": "Exposed bedrock, cliffs, scree slopes, or mountain peaks.",
+    "Coastal beach / Spit": "Sandy or pebbly sea coast.",
+    "Wetland / Marsh / Bog": "Marshes, peat bogs, fens, reed beds, or swamps.",
+    "River / Stream": "Flowing freshwater channels, creeks, or canals.",
+    "Lake / Pond": "Standing inland water bodies or reservoirs.",
+    "Marine / Estuary": "Coastal saltwater, ocean surf, bays, or intertidal flats.",
+    "Glacier / Permanent ice": "Glaciers, ice caps, or permanent snowfields.",
+    "Other natural land cover": "Any other natural land cover or landscape."
 }
 
 # Exhaustive Man-made LULC Vocabulary
 MAN_MADE_LULC_VOCAB = {
-    "High-density urban": "Skyscrapers, city downtowns, high-rise buildings, and dense city center scenes.",
-    "Suburban/residential": "Quiet streets with houses, gardens, villas, and residential yards.",
-    "Commercial/retail": "Storefronts, shopping districts, malls, plazas, or commercial avenues.",
-    "Industrial zone": "Factories, warehouses, refineries, power plants, and industrial complexes.",
-    "Transportation infrastructure": "Highways, paved roads, railways, overpasses, bridges, or tunnels.",
-    "Agricultural land": "Cultivated fields, crop rows, orchards, vineyards, or plantations.",
-    "Active construction site": "Excavations, cranes, scaffolding, and buildings under construction.",
-    "Managed park/recreation": "City parks, gardens, playgrounds, athletic fields, or golf courses."
+    "Forest plantation": "Evenly spaced rows of planted timber trees.",
+    "Managed pasture": "Fenced grazing pastures or paddocks.",
+    "Herbaceous cropland": "Annual cultivated field crops (cereal, corn, wheat, canola).",
+    "Orchards & Vineyards": "Woody perennial row crops (vineyards, fruit/olive orchards, plantations).",
+    "Rice paddies / Flooded crops": "Water-flooded agricultural basins.",
+    "Covered agriculture": "Greenhouses, polytunnels, or nurseries.",
+    "High-density built-up": "Skyscrapers, high-rise blocks, and dense urban centers.",
+    "Suburban / Low-density residential": "Single-family houses, villas, private gardens, and streets.",
+    "Industrial / Commercial zone": "Factories, warehouses, refineries, shopping centers, or office parks.",
+    "Active construction site": "Earthworks, building foundations, cranes, and scaffolding.",
+    "Transportation network": "Highways, railways, runways, or shipping ports.",
+    "Mine / Quarry / Landfill": "Open-pit mines, gravel quarries, or landfill sites.",
+    "Urban green space": "City parks, golf courses, botanical gardens, or sports fields.",
+    "Other man-made surface": "Any other artificial or managed land cover or surface."
 }
 
 
