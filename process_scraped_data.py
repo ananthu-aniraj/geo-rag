@@ -227,7 +227,8 @@ def main():
                 df['Latitude'] = df['lat']
                 df['Longitude'] = df['lon']
                 df['Photo_ID'] = df['orig_id']
-                df['Image_URL'] = df.apply(lambda r: f"mapillary://{r['orig_id']}" if str(r['source']).lower() == 'mapillary' else (f"kartaview://{r['orig_id']}" if str(r['source']).lower() == 'kartaview' else r['url']), axis=1)
+                df['Captured_At'] = df['datetime_local'] if 'datetime_local' in df.columns else None
+                df['Image_URL'] = df.apply(lambda r: f"mapillary://{r['orig_id']}" if str(r['source']).lower() == 'mapillary' else (f"kartaview://{r['orig_id']}" if str(r['source']).lower() == 'kartaview' else (r['url'] if 'url' in r else None)), axis=1)
             else:
                 platform = 'Flickr' if 'flickr' in f.lower() else 'Mapillary'
                 col_map = {'latitude': 'Latitude', 'longitude': 'Longitude', 'image_url': 'Image_URL', 'photo_id': 'Photo_ID', 'ID': 'Photo_ID', 'captured_at': 'Captured_At', 'Captured_At': 'Captured_At'}
