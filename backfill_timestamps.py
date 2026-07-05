@@ -174,14 +174,14 @@ def main():
     # --- 2. Flickr (Bulk Box Search or Fallback Individual Queries) ---
     flickr_ids = set(df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist())
     flickr_timestamps = {}
-
+    
     if flickr_ids:
         if args.log_dirs:
             # Optimized Bulk BBox Search
             log_files = []
             for folder in args.log_dirs:
                 log_files.extend(glob.glob(os.path.join(folder, "flickr_completed_boxes_chunk_*.txt")))
-
+            
             print(f"Found {len(log_files)} Flickr completed boxes logs. Reading search coordinates...")
             bboxes = set()
             for f in log_files:
@@ -193,15 +193,55 @@ def main():
                                 bboxes.add(box_id)
                 except Exception:
                     pass
-
-            print(f"Discovered {len(bboxes)} unique bounding boxes. Running bulk search scan (250x faster)...")
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                futures = {executor.submit(fetch_flickr_bbox_timestamps, bbox): bbox for bbox in bboxes}
-                for future in tqdm(as_completed(futures), total=len(futures), desc="Bulk Scan Flickr BBoxes"):
-                    res_box = future.result()
-                    for pid, timestamp in res_box.items():
-                        if pid in flickr_ids:
-                            flickr_timestamps[pid] = timestamp
+            
+            print(f"Discovered {len(bboxes)} unique bounding boxes.")
+            
+            # Filter bboxes using spatial join to only query those containing missing points
+            active_bboxes = []
+            try:
+                import geopandas as gpd
+                from shapely.geometry import box
+                
+                print("Filtering boxes using spatial indexing to find boxes that contain our images...")
+                # Create GeoDataFrame for bboxes
+                box_geoms = []
+                box_ids = []
+                for bbox_str in bboxes:
+                    try:
+                        coords = [float(x) for x in bbox_str.split(',')]
+                        box_geoms.append(box(coords[0], coords[1], coords[2], coords[3]))
+                        box_ids.append(bbox_str)
+                    except Exception:
+                        pass
+                
+                gdf_boxes = gpd.GeoDataFrame({'bbox_str': box_ids}, geometry=box_geoms, crs="EPSG:4326")
+                
+                # Create GeoDataFrame for missing Flickr points
+                df_flickr_missing = df_missing[df_missing['Platform'].str.lower() == 'flickr']
+                gdf_points = gpd.GeoDataFrame(
+                    df_flickr_missing,
+                    geometry=gpd.points_from_xy(df_flickr_missing['Longitude'], df_flickr_missing['Latitude']),
+                    crs="EPSG:4326"
+                )
+                
+                # Spatial join
+                joined = gpd.sjoin(gdf_boxes, gdf_points, how="inner", predicate="intersects")
+                active_bboxes = joined['bbox_str'].unique().tolist()
+                print(f"Filtered to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
+            except Exception as se:
+                print(f"Spatial join optimization failed or geopandas not available: {se}")
+                print("Falling back to scanning all discovered bounding boxes...")
+                active_bboxes = list(bboxes)
+            
+            if active_bboxes:
+                print(f"Running bulk search scan on {len(active_bboxes)} active boxes (250x faster)...")
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = {executor.submit(fetch_flickr_bbox_timestamps, bbox): bbox for bbox in active_bboxes}
+                    for future in tqdm(as_completed(futures), total=len(futures), desc="Bulk Scan Flickr BBoxes"):
+                        res_box = future.result()
+                        for pid, timestamp in res_box.items():
+                            if pid in flickr_ids:
+                                flickr_timestamps[pid] = timestamp
             print(f"Retrieved {len(flickr_timestamps)} Flickr timestamps using bulk search.")
         else:
             # Fallback Individual Queries (Warning user first)
