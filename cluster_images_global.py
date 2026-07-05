@@ -10,53 +10,15 @@ from transformers import AutoModel
 import requests
 from io import BytesIO
 from PIL import Image
+
+
 try:
     import faiss
 except ImportError:
     faiss = None
 
-
-# Exhaustive Natural LULC Vocabulary with Global Biomes
-NATURAL_LULC_VOCAB = {
-    "Broadleaved forest": "Deciduous or evergreen broad-leaf trees (oak, beech, maple, birch).",
-    "Coniferous forest": "Evergreen needle-leaf trees (pine, spruce, fir, larch).",
-    "Mixed forest": "Co-dominant broadleaved and coniferous trees.",
-    "Tropical forest": "Equatorial rainforests, mangroves, or tropical dry forest.",
-    "Sparsely wooded / Savanna": "Grassland with scattered trees (10-30% canopy cover).",
-    "Natural grassland": "Meadows, wild steppes, alpine grasslands, or prairies.",
-    "Temperate shrubland / Scrub": "Low woody scrub (heather, gorse, bramble).",
-    "Arid shrubland": "Desert scrub, sagebrush, or dry savanna bushland.",
-    "Tundra": "Low-growing polar vegetation (mosses, lichens, dwarf shrubs).",
-    "Sandy desert / Dunes": "Sand sheets, active dunes, or sandy flats.",
-    "Rocky desert / Gravel plains": "Stony hamadas, gravel plains, or barren volcanic ash fields.",
-    "Barren soil / Badlands": "Highly eroded clay hills, bare dry earth, or dry salt flats.",
-    "Bare rock / Cliffs": "Exposed bedrock, cliffs, scree slopes, or mountain peaks.",
-    "Coastal beach / Spit": "Sandy or pebbly sea coast.",
-    "Wetland / Marsh / Bog": "Marshes, peat bogs, fens, reed beds, or swamps.",
-    "River / Stream": "Flowing freshwater channels, creeks, or canals.",
-    "Lake / Pond": "Standing inland water bodies or reservoirs.",
-    "Marine / Estuary": "Coastal saltwater, ocean surf, bays, or intertidal flats.",
-    "Glacier / Permanent ice": "Glaciers, ice caps, or permanent snowfields.",
-    "Other natural land cover": "Any other natural land cover or landscape."
-}
-
-# Exhaustive Man-made LULC Vocabulary
-MAN_MADE_LULC_VOCAB = {
-    "Forest plantation": "Evenly spaced rows of planted timber trees.",
-    "Managed pasture": "Fenced grazing pastures or paddocks.",
-    "Herbaceous cropland": "Annual cultivated field crops (cereal, corn, wheat, canola).",
-    "Orchards & Vineyards": "Woody perennial row crops (vineyards, fruit/olive orchards, plantations).",
-    "Rice paddies / Flooded crops": "Water-flooded agricultural basins.",
-    "Covered agriculture": "Greenhouses, polytunnels, or nurseries.",
-    "High-density built-up": "Skyscrapers, high-rise blocks, and dense urban centers.",
-    "Suburban / Low-density residential": "Single-family houses, villas, private gardens, and streets.",
-    "Industrial / Commercial zone": "Factories, warehouses, refineries, shopping centers, or office parks.",
-    "Active construction site": "Earthworks, building foundations, cranes, and scaffolding.",
-    "Transportation network": "Highways, railways, runways, or shipping ports.",
-    "Mine / Quarry / Landfill": "Open-pit mines, gravel quarries, or landfill sites.",
-    "Urban green space": "City parks, golf courses, botanical gardens, or sports fields.",
-    "Other man-made surface": "Any other artificial or managed land cover or surface."
-}
+# Shared LULC Vocabularies
+from lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
 
 
 def label_clusters(centroids, text_features, categories, top_k=3):
@@ -79,7 +41,7 @@ def resize_image_aspect(img, target_max=448):
     w, h = img.size
     if max(w, h) <= target_max:
         return img
-    
+
     if w > h:
         new_w = target_max
         new_h = int(h * (target_max / w))
@@ -90,7 +52,7 @@ def resize_image_aspect(img, target_max=448):
         resample = Image.Resampling.LANCZOS
     except AttributeError:
         resample = Image.LANCZOS
-        
+
     return img.resize((new_w, new_h), resample)
 
 
@@ -180,7 +142,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
     results = {}
 
     for i in range(0, len(tasks), chunk_size):
-        chunk = tasks[i : i + chunk_size]
+        chunk = tasks[i: i + chunk_size]
         print(f"Processing batch {i // chunk_size + 1}/{(len(tasks) - 1) // chunk_size + 1} ({len(chunk)} clusters)...")
 
         from concurrent.futures import ThreadPoolExecutor
@@ -244,7 +206,7 @@ def cluster_subset(subset_input, k_subset, gpu_enabled, minibatch_enabled, faiss
         return np.array([]), np.array([])
     if len(subset_input) < k_subset:
         k_subset = len(subset_input)
-        
+
     if gpu_enabled:
         if faiss_module is None:
             raise ImportError("faiss is not installed. Please install it to use --gpu.")
@@ -261,7 +223,7 @@ def cluster_subset(subset_input, k_subset, gpu_enabled, minibatch_enabled, faiss
             kmeans = KMeans(n_clusters=k_subset, random_state=42, n_init=10)
         cluster_ids = kmeans.fit_predict(subset_input)
         centroids = kmeans.cluster_centers_
-        
+
     return cluster_ids, centroids
 
 
@@ -300,7 +262,7 @@ def main():
                 endpoint = "http://localhost:30000"
             else:
                 endpoint = "http://localhost:11434"
-        
+
         print(f"Pre-flight check: Verifying VLM server is running at {endpoint}...")
         server_running = False
         try:
@@ -310,7 +272,7 @@ def main():
                 test_url += "/v1/models"
             else:
                 test_url += "/api/tags"
-            
+
             req = urllib.request.Request(test_url, method="GET")
             with urllib.request.urlopen(req, timeout=3) as response:
                 if response.status == 200:
@@ -341,7 +303,6 @@ def main():
     if embeddings.ndim == 1:
         embeddings = embeddings.reshape(1, -1)
 
-    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading TIPSv2 model on {device} to encode classification prompts...")
     model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).to(device)
@@ -385,11 +346,10 @@ def main():
 
     # Cluster subsets
     global_cluster_ids = np.zeros(len(data), dtype=int)
-    
+
     # Cluster     
     print(f"\nClustering subset on {clustering_mode} space...")
     global_cluster_ids, _ = cluster_subset(cluster_input, args.k, args.gpu, args.minibatch, faiss)
-        
 
     # Centroid derivation and labeling
     cluster_labels = {}
@@ -407,19 +367,14 @@ def main():
 
         if args.label_method == "mllm":
             print(f"\nPreparing tasks for MLLM labeling ({args.mllm_model} via {args.mllm_backend})...")
-            # Build prompt templates
-            prompt_template = (
-                "Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Describe:\n"
-                "1. visible_evidence: Primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.\n"
-                "2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?\n"
-                "3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?\n"
-                "4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state \"none\".\n\n"
-                "Based ONLY on the visual evidence described above, classify this environment into EXACTLY one of the following Land Use / Land Cover (LULC) categories:\n"
-                "{lulc_list}\n\n"
-                "Format your output EXACTLY as follows:\n"
-                "LABEL: <Insert EXACTLY one category from the list above>\n"
-                "DESCRIPTION: <A detailed paragraph summarizing the visual evidence, human activities, land cover, and vegetation.>"
-            )
+            # Load prompt template from prompts/shared/prompt.txt
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            prompt_path = os.path.join(script_dir, "prompts", "shared", "prompt.txt")
+
+            print(f"Loading shared prompt template from {prompt_path}")
+            with open(prompt_path, 'r') as f:
+                prompt_template = f.read()
+
             lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
 
             tasks = []
@@ -435,7 +390,7 @@ def main():
                 closest_idx = indices[np.argmax(sims)]
                 representative_item = data[closest_idx]
                 img_url = representative_item['Image_URL']
-                
+
                 # Resolve potentially expired Mapillary or Kartaview URLs dynamically
                 photo_id = representative_item.get('Photo_ID')
                 platform = str(representative_item.get('Platform', '')).lower()
@@ -464,9 +419,10 @@ def main():
                 else:
                     endpoint = "http://localhost:11434"
 
-            print(f"Total tasks prepared: {len(tasks)}. Starting batch inference via VLM API at {endpoint} (chunk size {args.chunk_size})...")
+            print(
+                f"Total tasks prepared: {len(tasks)}. Starting batch inference via VLM API at {endpoint} (chunk size {args.chunk_size})...")
             results = label_clusters_mllm_batched(
-                tasks, args.mllm_model, endpoint, 
+                tasks, args.mllm_model, endpoint,
                 chunk_size=args.chunk_size, img_max_dim=args.img_max_dim
             )
             for cid, (lbl, desc) in results.items():

@@ -11,45 +11,19 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
 
-# Exhaustive Natural LULC Vocabulary with Global Biomes
-NATURAL_LULC_VOCAB = {
-    "Dense forest": "A dense natural forest or wooded area with many trees.",
-    "Shrubland/scrub": "Low-lying bushes, shrubs, and sparse dry vegetation.",
-    "Grassland/pasture": "Open grassy fields, meadows, grazing pastures, or plains.",
-    "Sandy desert / dunes": "A desert landscape dominated by sand dunes, sandy expanses, and sand ripples.",
-    "Rocky desert / gravel plains": "A dry, stony desert, gravel plains, or barren rocky terrain with sparse desert scrub.",
-    "Barren soil / badlands": "Eroded clay hills, badlands, bare dry earth, or dry mud flats with no vegetation.",
-    "Glacier / permanent ice": "A polar or alpine landscape dominated by thick glaciers, ice caps, or solid ice sheets.",
-    "Snow-covered plains / tundra": "Open fields, tundra, or plains completely covered in a blanket of white snow.",
-    "Snow-covered forest": "A winter forest scene with evergreen pine or fir trees heavily laden with white snow.",
-    "Wetland/marsh": "Swampy, marshy, or boggy area with specialized vegetation.",
-    "Open ocean / sea": "An open view of the ocean, sea, or saltwater coast.",
-    "River / freshwater stream": "A flowing river, stream, creek, or freshwater channel.",
-    "Lake / inland pond": "A still body of freshwater, a lake, pond, or reservoir.",
-    "Barren rock/cliffs": "Exposed bedrock, mountains, cliffs, canyons, or rocky slopes.",
-    "other": "any other type of land cover."
-}
 
-# Exhaustive Man-made LULC Vocabulary
-MAN_MADE_LULC_VOCAB = {
-    "High-density urban": "Skyscrapers, city downtowns, high-rise buildings, and dense city center scenes.",
-    "Suburban/residential": "Quiet streets with houses, gardens, villas, and residential yards.",
-    "Commercial/retail": "Storefronts, shopping districts, malls, plazas, or commercial avenues.",
-    "Industrial zone": "Factories, warehouses, refineries, power plants, and industrial complexes.",
-    "Transportation infrastructure": "Highways, paved roads, railways, overpasses, bridges, or tunnels.",
-    "Agricultural land": "Cultivated fields, crop rows, orchards, vineyards, or plantations.",
-    "Active construction site": "Excavations, cranes, scaffolding, and buildings under construction.",
-    "Managed park/recreation": "City parks, gardens, playgrounds, athletic fields, or golf courses."
-}
+# Shared LULC Vocabularies
+from lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+
 
 def resize_image_aspect(img, target_max=448):
     """Resizes a PIL image maintaining aspect ratio such that the largest dimension is target_max."""
     w, h = img.size
     if max(w, h) <= target_max:
         return img
-    
+
     if w > h:
         new_w = target_max
         new_h = int(h * (target_max / w))
@@ -60,8 +34,9 @@ def resize_image_aspect(img, target_max=448):
         resample = Image.Resampling.LANCZOS
     except AttributeError:
         resample = Image.LANCZOS
-        
+
     return img.resize((new_w, new_h), resample)
+
 
 def load_image(url, target_max=448, timeout=15):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
@@ -103,6 +78,7 @@ def load_image(url, target_max=448, timeout=15):
         print(f"Error loading image URL {url}: {e}")
     return None
 
+
 def load_image_with_retry(url, target_max=448, timeout=15, max_retries=3):
     """Wrapper around load_image that retries with exponential backoff on failure."""
     for attempt in range(max_retries):
@@ -115,6 +91,7 @@ def load_image_with_retry(url, target_max=448, timeout=15, max_retries=3):
         if attempt < max_retries - 1:
             time.sleep(2 ** attempt)  # Exponential backoff (1s, 2s, 4s...)
     return None
+
 
 def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url, timeout=60):
     """Queries an OpenAI-compatible VLM server (sglang, vllm, ollama) using HTTP requests."""
@@ -151,11 +128,12 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url, ti
         print(f"Failed to query VLM API at {endpoint_url}: {e}")
         return ""
 
+
 def save_dataset(data, final_results, out_path):
     """Helper to update labels in the data list and write them to the output file."""
     updated_clusters = set()
     row_update_count = 0
-    
+
     # Map results
     cluster_labels = {}
     cluster_descriptions = {}
@@ -171,14 +149,16 @@ def save_dataset(data, final_results, out_path):
             item['cluster_label'] = cluster_labels[int(cid)]
             item['cluster_description'] = cluster_descriptions[int(cid)]
             row_update_count += 1
-            
+
     if out_path.endswith('.pkl'):
         with open(out_path, 'wb') as f:
             pickle.dump(data, f)
     else:
         pd.DataFrame(data).to_parquet(out_path)
-        
-    print(f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} updated clusters to {out_path}.")
+
+    print(
+        f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} updated clusters to {out_path}.")
+
 
 def main():
     # 1. Load Defaults from params.yaml if available
@@ -285,7 +265,7 @@ def main():
             test_url += "/v1/models"
         else:
             test_url += "/api/tags"
-        
+
         req = urllib.request.Request(test_url, method="GET")
         with urllib.request.urlopen(req, timeout=3) as response:
             if response.status == 200:
@@ -302,12 +282,12 @@ def main():
     # 5. Extract Cluster Mapping and Embeddings
     print("Extracting cluster assignments...")
     cluster_ids = np.array([item['cluster_id'] for item in data])
-    
+
     print("Extracting embeddings...")
     embeddings = np.array([item['embedding'] for item in data]).squeeze()
     if embeddings.ndim == 1:
         embeddings = embeddings.reshape(1, -1)
-        
+
     print("Normalizing embeddings...")
     embeddings_norm = normalize(embeddings)
 
@@ -317,18 +297,14 @@ def main():
     all_categories = list(NATURAL_LULC_VOCAB.keys()) + list(MAN_MADE_LULC_VOCAB.keys()) + [noise_category]
     lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
 
-    prompt_template = (
-        "Analyze the provided image with a strict focus on visual evidence. Do not guess or assume context outside the frame. Describe:\n"
-        "1. visible_evidence: Primary objects, architectural elements, lighting, or natural formations clearly visible in the image. Base this strictly on visual facts.\n"
-        "2. human_activities: Based ONLY on the visual evidence, what are people doing here, or what activities does the infrastructure support?\n"
-        "3. land_cover_usage: Based ONLY on the visual evidence, what is on the ground (e.g., asphalt, grass, carpet) and how is the space utilized?\n"
-        "4. type_of_vegetation: Describe the type of vegetation present, if applicable (e.g., grass, trees, shrubs). If none, state \"none\".\n\n"
-        "Based ONLY on the visual evidence described above, classify this environment into EXACTLY one of the following Land Use / Land Cover (LULC) categories:\n"
-        "{lulc_list}\n\n"
-        "Format your output EXACTLY as follows:\n"
-        "LABEL: <Insert EXACTLY one category from the list above>\n"
-        "DESCRIPTION: <A detailed paragraph summarizing the visual evidence, human activities, land cover, and vegetation.>"
-    )
+    # Load prompt template from prompts/shared/prompt.txt
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    prompt_path = os.path.join(script_dir, "prompts", "shared", "prompt.txt")
+
+    print(f"Loading shared prompt template from {prompt_path}")
+    with open(prompt_path, 'r') as f:
+        prompt_template = f.read()
+
     prompt_text = prompt_template.format(lulc_list=lulc_list_str)
 
     # Helper function to prepare task for a single cluster (downloading with retry and fallback)
@@ -336,16 +312,16 @@ def main():
         indices = np.where(cluster_ids == cid)[0]
         if len(indices) == 0:
             return None
-        
+
         # Calculate cluster centroid in 768D space
         cluster_embs = embeddings_norm[indices]
         centroid = np.mean(cluster_embs, axis=0)
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
-        
+
         # Sort members by cosine similarity to the centroid (descending)
         sims = np.dot(cluster_embs, centroid_norm)
         sorted_idx_in_cluster = np.argsort(sims)[::-1]
-        
+
         # Try downloading images starting from the closest
         for rank in range(min(args.fallback_depth, len(sorted_idx_in_cluster))):
             item_idx = indices[sorted_idx_in_cluster[rank]]
@@ -360,9 +336,10 @@ def main():
                     img_url = f"mapillary://{photo_id}"
                 elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
                     img_url = f"kartaview://{photo_id}"
-            
-            img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout, max_retries=args.max_retries)
-            
+
+            img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout,
+                                        max_retries=args.max_retries)
+
             if img is not None:
                 buffered = BytesIO()
                 img.save(buffered, format="JPEG")
@@ -379,27 +356,28 @@ def main():
     final_results = {}
     sorted_failed_ids = sorted(list(target_cluster_ids))
     total_clusters = len(sorted_failed_ids)
-    
+
     print(f"\nStarting sequential VLM inference for {total_clusters} clusters (batch size 1)...")
     print("Press Ctrl+C at any time to interrupt and save your progress.")
-    
+
     try:
         for idx, cid in enumerate(sorted_failed_ids):
-            print(f"[{idx+1}/{total_clusters}] Processing Cluster #{cid}...")
-            
+            print(f"[{idx + 1}/{total_clusters}] Processing Cluster #{cid}...")
+
             # Download image sequentially
             task = prepare_cluster_task(cid)
             if not task:
                 print(f"  [FAILED] Cluster #{cid}: Failed to download any of the top {args.fallback_depth} images.")
                 continue
-            
+
             # Query VLM sequentially
-            response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint, timeout=args.timeout + 15)
-            
+            response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint,
+                                                 timeout=args.timeout + 15)
+
             if response_text:
                 label = "Unlabeled"
                 description = response_text
-                
+
                 if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
                     parts = response_text.split("DESCRIPTION:")
                     label = parts[0].replace("LABEL:", "").strip()
@@ -409,13 +387,13 @@ def main():
 
                 label = label.replace("**", "").replace("*", "").replace("`", "").strip()
                 label = label.strip('"\'*#-\t ')
-                
+
                 final_results[cid] = (label, description)
                 print(f"  [SUCCESS] Cluster #{cid} labeled: '{label}' (using representative image rank {task['rank']})")
             else:
                 final_results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
                 print(f"  [FAILED] Cluster #{cid}: VLM returned empty response.")
-                
+
             # Periodically save intermediate checkpoints
             if len(final_results) % args.save_interval == 0:
                 save_dataset(data, final_results, args.out)
@@ -429,6 +407,7 @@ def main():
             print("Re-labeling session finished.")
         else:
             print("\nNo clusters were successfully re-labeled.")
+
 
 if __name__ == "__main__":
     main()
