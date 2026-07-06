@@ -281,10 +281,43 @@ def main():
     df['Captured_At'] = df.apply(merge_timestamp, axis=1)
 
     print(f"Saving enriched dataset to {save_path}...")
+    output_base, _ = os.path.splitext(save_path)
+    
     if save_path.endswith('.parquet'):
         df.to_parquet(save_path, index=False)
+        
+        # Auto-discover and enrich corresponding CSV file
+        csv_pair = output_base + ".csv"
+        if os.path.exists(csv_pair):
+            print(f"Auto-discovered corresponding CSV file: {csv_pair}. Enriching it...")
+            try:
+                df_csv = pd.read_csv(csv_pair)
+                df_csv['Photo_ID'] = df_csv['Photo_ID'].astype(str)
+                if 'Captured_At' not in df_csv.columns:
+                    df_csv['Captured_At'] = None
+                df_csv['Captured_At'] = df_csv.apply(merge_timestamp, axis=1)
+                df_csv.to_csv(csv_pair, index=False)
+                print("CSV file enriched successfully!")
+            except Exception as e:
+                print(f"Error enriching corresponding CSV file: {e}")
     else:
         df.to_csv(save_path, index=False)
+        
+        # Auto-discover and enrich corresponding Parquet file
+        parquet_pair = output_base + ".parquet"
+        if os.path.exists(parquet_pair):
+            print(f"Auto-discovered corresponding Parquet file: {parquet_pair}. Enriching it...")
+            try:
+                df_pq = pd.read_parquet(parquet_pair)
+                df_pq['Photo_ID'] = df_pq['Photo_ID'].astype(str)
+                if 'Captured_At' not in df_pq.columns:
+                    df_pq['Captured_At'] = None
+                df_pq['Captured_At'] = df_pq.apply(merge_timestamp, axis=1)
+                df_pq.to_parquet(parquet_pair, index=False)
+                print("Parquet file enriched successfully!")
+            except Exception as e:
+                print(f"Error enriching corresponding Parquet file: {e}")
+                
     print("Backfill complete!")
 
 
