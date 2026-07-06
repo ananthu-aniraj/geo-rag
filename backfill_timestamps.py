@@ -64,8 +64,9 @@ def fetch_flickr_bbox_timestamps(bbox_str):
                 if res.status_code == 200:
                     data = res.json()
                     if data.get('stat') == 'ok':
-                        if page == 1:
-                            total_pages = data.get('photos', {}).get('pages', 1)
+                        # Since the scraper capped photos at 100, and per_page is 250,
+                        # all scraped photos are guaranteed to be on Page 1.
+                        total_pages = 1
 
                         photos = data.get('photos', {}).get('photo', [])
                         if not photos:
