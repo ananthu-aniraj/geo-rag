@@ -223,6 +223,14 @@ def main():
             df_existing = pd.read_parquet(args.resume_from)
         
         seen_photo_ids = set(df_existing['Photo_ID'].apply(clean_photo_id))
+        
+        # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView
+        if not df_existing.empty and 'Image_URL' in df_existing.columns:
+            df_existing['Image_URL'] = df_existing.apply(
+                lambda r: f"mapillary://{r['Photo_ID']}" if str(r['Platform']).lower() == 'mapillary'
+                else (f"kartaview://{r['Photo_ID']}" if str(r['Platform']).lower() == 'kartaview' else r['Image_URL']),
+                axis=1
+            )
         print(f"Loaded {len(df_existing)} existing images across {df_existing['H3_Cell'].nunique()} cells.")
 
     all_dfs = []
@@ -265,6 +273,14 @@ def main():
         df_all['H3_Cell'] = df_all.apply(lambda r: h3.latlng_to_cell(float(r['Latitude']), float(r['Longitude']), args.h3_res) if pd.notna(r['Latitude']) and pd.notna(r['Longitude']) else None, axis=1)
         df_all = df_all.dropna(subset=['H3_Cell', 'Photo_ID'])
         df_all['Photo_ID'] = df_all['Photo_ID'].apply(clean_photo_id)
+        
+        # Convert any raw Mapillary/KartaView URLs to virtual URIs to prevent CDN expiration
+        df_all['Image_URL'] = df_all.apply(
+            lambda r: f"mapillary://{r['Photo_ID']}" if str(r['Platform']).lower() == 'mapillary' 
+            else (f"kartaview://{r['Photo_ID']}" if str(r['Platform']).lower() == 'kartaview' else r['Image_URL']),
+            axis=1
+        )
+        
         df_all = df_all.drop_duplicates(subset=['Photo_ID'])
         if seen_photo_ids:
             df_all = df_all[~df_all['Photo_ID'].isin(seen_photo_ids)]
