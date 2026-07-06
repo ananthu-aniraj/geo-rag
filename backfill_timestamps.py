@@ -159,19 +159,7 @@ def main():
         print("No missing timestamps to backfill.")
         return
 
-    # --- 1. Mapillary (Batch ID Queries) ---
-    mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
-    mapillary_timestamps = {}
-    if mapillary_ids:
-        print(f"Found {len(mapillary_ids)} Mapillary images. Running batch queries...")
-        batch_size = 100
-        for i in tqdm(range(0, len(mapillary_ids), batch_size), desc="Bulk Fetch Mapillary"):
-            batch = mapillary_ids[i:i + batch_size]
-            res_batch = fetch_mapillary_timestamps(batch)
-            mapillary_timestamps.update(res_batch)
-            time.sleep(0.1)
-
-    # --- 2. Flickr (Bulk Box Search or Fallback Individual Queries) ---
+    # --- 1. Flickr (Bulk Box Search or Fallback Individual Queries) ---
     flickr_ids = set(df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist())
     flickr_timestamps = {}
     
@@ -226,35 +214,65 @@ def main():
                 
                 # Spatial join
                 joined = gpd.sjoin(gdf_boxes, gdf_points, how="inner", predicate="intersects")
-                active_bboxes = joined['bbox_str'].unique().tolist()
-                print(f"Filtered to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
+                
+                # Map each bbox to the set of Photo_IDs it contains
+                box_to_photos = joined.groupby('bbox_str')['Photo_ID'].apply(set).to_dict()
+                
+                # Sort bboxes by count of missing photos descending
+                active_bboxes = sorted(box_to_photos.keys(), key=lambda b: len(box_to_photos[b]), reverse=True)
+                print(f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
             except Exception as se:
                 print(f"Spatial join optimization failed or geopandas not available: {se}")
                 print("Falling back to scanning all discovered bounding boxes...")
                 active_bboxes = list(bboxes)
+                box_to_photos = {}
             
             if active_bboxes:
-                print(f"Running bulk search scan on {len(active_bboxes)} active boxes (250x faster)...")
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    futures = {executor.submit(fetch_flickr_bbox_timestamps, bbox): bbox for bbox in active_bboxes}
-                    for future in tqdm(as_completed(futures), total=len(futures), desc="Bulk Scan Flickr BBoxes"):
-                        res_box = future.result()
-                        for pid, timestamp in res_box.items():
-                            if pid in flickr_ids:
-                                flickr_timestamps[pid] = timestamp
+                print(f"Running optimized bulk search scan on active boxes...")
+                for bbox in tqdm(active_bboxes, desc="Bulk Scan Flickr BBoxes"):
+                    # Dynamic Pruning: Skip if all photos in this box have already been resolved
+                    if box_to_photos and bbox in box_to_photos:
+                        box_photos = box_to_photos[bbox]
+                        needed_photos = box_photos - set(flickr_timestamps.keys())
+                        if not needed_photos:
+                            # Skip this box completely as all its images were resolved by overlapping queries
+                            continue
+                            
+                    res_box = fetch_flickr_bbox_timestamps(bbox)
+                    for pid, timestamp in res_box.items():
+                        if pid in flickr_ids:
+                            flickr_timestamps[pid] = timestamp
+                            
+                    # Early Termination: Stop if all missing Flickr IDs are resolved
+                    if len(flickr_timestamps) >= len(flickr_ids):
+                        print("\nAll missing Flickr timestamps successfully backfilled! Terminating early...")
+                        break
+                        
             print(f"Retrieved {len(flickr_timestamps)} Flickr timestamps using bulk search.")
         else:
             # Fallback Individual Queries (Warning user first)
             print(f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(flickr_ids)} photos.")
             print(f"This will take approximately {len(flickr_ids) / 3600:.1f} hours due to Flickr's rate limit.")
             print("Provide --log_dirs with your completed box text files to speed this up by 250x.")
-
+ 
             with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = {executor.submit(fetch_flickr_individual_timestamp, pid): pid for pid in flickr_ids}
                 for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch Flickr (1-by-1)"):
                     pid, timestamp = future.result()
                     if timestamp:
                         flickr_timestamps[pid] = timestamp
+
+    # --- 2. Mapillary (Batch ID Queries) ---
+    mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
+    mapillary_timestamps = {}
+    if mapillary_ids:
+        print(f"Found {len(mapillary_ids)} Mapillary images. Running batch queries...")
+        batch_size = 100
+        for i in tqdm(range(0, len(mapillary_ids), batch_size), desc="Bulk Fetch Mapillary"):
+            batch = mapillary_ids[i:i + batch_size]
+            res_batch = fetch_mapillary_timestamps(batch)
+            mapillary_timestamps.update(res_batch)
+            time.sleep(0.1)
 
     # --- 3. KartaView (Throttled Parallel Queries) ---
     kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])][
