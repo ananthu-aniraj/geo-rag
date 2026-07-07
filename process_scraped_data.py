@@ -132,11 +132,23 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
             metadata = chunk_metadata[idx]
             embedding = all_embeddings[i]
 
-            # Flickr-only Indoor/Outdoor Filter
-            if metadata['Platform'] == 'Flickr' and text_features is not None:
+            # Zero-shot filtering (Indoor and Macro/Close-up)
+            if text_features is not None:
                 sims = all_io_sims[i]
-                if sims[0] > sims[1]:
-                    continue # Skip indoor Flickr image
+                is_macro_enabled = (text_features.shape[0] == 3)
+                
+                if is_macro_enabled:
+                    best_class = np.argmax(sims)
+                    # Flickr-only Indoor Filter (Class 0)
+                    if metadata['Platform'] == 'Flickr' and best_class == 0:
+                        continue
+                    # iNaturalist-only Macro/Close-up Filter (Class 2)
+                    if str(metadata['Platform']).lower() == 'inaturalist' and best_class == 2:
+                        continue
+                else:
+                    # Standard Flickr-only Indoor Filter
+                    if metadata['Platform'] == 'Flickr' and sims[0] > sims[1]:
+                        continue
 
             # Deduplication check
             is_duplicate = False
@@ -194,6 +206,8 @@ def main():
     parser.add_argument("--h3_res", type=int, default=11, help="H3 resolution (~25m).")
     parser.add_argument("--sim_threshold", type=float, default=0.95, help="TIPSv2 cosine similarity threshold.")
     parser.add_argument("--no_filter", action="store_true", help="Disable Flickr indoor/outdoor filtering.")
+    parser.add_argument("--filter_macro", action="store_true",
+                        help="Filter out macro/close-up photos of leaves, flowers, bark, and insects using zero-shot embeddings.")
     parser.add_argument("--limit_cells", type=int, default=0, help="Limit number of cells to process (for testing).")
     parser.add_argument("--resume_from", type=str, default=None, help="Path to a previously generated .pkl or parquet file to resume from.")
     parser.add_argument("--checkpoint_interval", type=int, default=1800, help="Interval in seconds to save checkpoints (0 to disable).")
@@ -301,9 +315,11 @@ def main():
     # Pre-compute text features for Zero-Shot filtering
     text_features = None
     if not args.no_filter:
-        print("Pre-computing indoor/outdoor text embeddings...")
+        print("Pre-computing zero-shot filter text embeddings...")
         with torch.no_grad():
             prompts = ["An indoor scene", "An outdoor landscape or street view"]
+            if args.filter_macro:
+                prompts.append("A close-up macro photo of a animal, single leaf, plant petal, flower, insect, mushroom, or tree bark")
             text_features = model.encode_text(prompts).cpu().numpy()
 
     # 4. Process and Deduplicate

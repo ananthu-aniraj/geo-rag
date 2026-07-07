@@ -73,7 +73,7 @@ def resolve_place_id(place_name):
     return None
 
 
-def fetch_top_species_for_place(place_id, taxon_id=47126, limit=10):
+def fetch_top_species_for_place(place_id, taxon_id=47126, without_taxon_id=None, limit=10):
     """
     Queries iNaturalist Species Counts API to get the most commonly observed species in a place.
     """
@@ -83,6 +83,8 @@ def fetch_top_species_for_place(place_id, taxon_id=47126, limit=10):
         "taxon_id": taxon_id,
         "per_page": limit
     }
+    if without_taxon_id:
+        params["without_taxon_id"] = without_taxon_id
 
     species_list = []
     try:
@@ -159,7 +161,7 @@ def resolve_taxon_id(query_str):
     return None
 
 
-def fetch_observations(bbox=None, place_id=None, limit=1000, taxon_id=47126):
+def fetch_observations(bbox=None, place_id=None, limit=1000, taxon_id=47126, without_taxon_id=None):
     """
     Fetches research-grade observations from iNaturalist API.
     """
@@ -174,6 +176,8 @@ def fetch_observations(bbox=None, place_id=None, limit=1000, taxon_id=47126):
         "order": "desc",
         "order_by": "created_at"
     }
+    if without_taxon_id:
+        params["without_taxon_id"] = without_taxon_id
 
     if bbox:
         sw_lat, sw_lng, ne_lat, ne_lng = bbox
@@ -267,6 +271,8 @@ def main():
                         help="Number of top native species to dynamically discover and balance when --country is specified (default: 10).")
     parser.add_argument("--target_taxon", type=str, default="plants",
                         help="The taxon kingdom/group for dynamic species counts discovery (e.g. 'plants', 'animals', 'birds', 'insects').")
+    parser.add_argument("--exclude_flying", action="store_true",
+                        help="Exclude flying animals (specifically Birds and Insects) from dynamic discovery and queries.")
     parser.add_argument("--out", type=str, default=None, help="Output CSV file path.")
     args = parser.parse_args()
 
@@ -278,35 +284,61 @@ def main():
         if not place_id:
             print("Failed to resolve country. Running without geographic place boundaries.")
 
+    # 2. Determine target taxon exclusions
+    without_taxon_id = None
+    if args.exclude_flying:
+        # Exclude Aves (3) and Insecta (47158)
+        without_taxon_id = "3,47158"
+        print("Flag active: Excluding flying animal kingdoms (Birds and Insects) from observations.")
+
     dfs = []
 
-    # 2. Dynamic Country Species Discovery
+    # 3. Dynamic Country Species Discovery
     if place_id and not args.taxon_id and not args.preset and not args.query:
         # Resolve target_taxon string to its Taxon ID dynamically
         print(f"Resolving target taxon '{args.target_taxon}'...")
         target_taxon_id = resolve_taxon_id(args.target_taxon)
         if not target_taxon_id:
-            print(f"Could not resolve target taxon '{args.target_taxon}'. Falling back to Plantae (Plants) (ID: 47126).")
+            print(
+                f"Could not resolve target taxon '{args.target_taxon}'. Falling back to Plantae (Plants) (ID: 47126).")
             target_taxon_id = 47126
-            
-        print(f"\nDynamically discovering the top {args.num_species} species under target taxon '{args.target_taxon}' (ID: {target_taxon_id}) in {args.country}...")
-        top_species = fetch_top_species_for_place(place_id, taxon_id=target_taxon_id, limit=args.num_species)
+
+        print(
+            f"\nDynamically discovering the top {args.num_species} species under target taxon '{args.target_taxon}' (ID: {target_taxon_id}) in {args.country}...")
+        top_species = fetch_top_species_for_place(
+            place_id,
+            taxon_id=target_taxon_id,
+            without_taxon_id=without_taxon_id,
+            limit=args.num_species
+        )
 
         if top_species:
             limit_per_species = max(1, args.limit // len(top_species))
             for sp in top_species:
                 print(f"\nFetching observations for '{sp['name']}' ({sp['common']}) in {args.country}...")
-                df_sp = fetch_observations(bbox=None, place_id=place_id, limit=limit_per_species, taxon_id=sp['id'])
+                df_sp = fetch_observations(
+                    bbox=None,
+                    place_id=place_id,
+                    limit=limit_per_species,
+                    taxon_id=sp['id'],
+                    without_taxon_id=without_taxon_id
+                )
                 if not df_sp.empty:
                     dfs.append(df_sp)
         else:
             print(
                 f"Failed to discover species list. Falling back to downloading generic taxon (ID: {target_taxon_id}) for the place...")
-            df_generic = fetch_observations(bbox=None, place_id=place_id, limit=args.limit, taxon_id=target_taxon_id)
+            df_generic = fetch_observations(
+                bbox=None,
+                place_id=place_id,
+                limit=args.limit,
+                taxon_id=target_taxon_id,
+                without_taxon_id=without_taxon_id
+            )
             if not df_generic.empty:
                 dfs.append(df_generic)
 
-    # 3. Standard queries (With/Without Country Place Filter)
+    # 4. Standard queries (With/Without Country Place Filter)
     else:
         # Compile queries and explicit taxon IDs to fetch
         queries_to_fetch = []
@@ -327,7 +359,13 @@ def main():
         if explicit_taxon_ids:
             limit_per_id = max(1, args.limit // len(explicit_taxon_ids))
             for t_id in explicit_taxon_ids:
-                df_taxon = fetch_observations(bbox=args.bbox, place_id=place_id, limit=limit_per_id, taxon_id=t_id)
+                df_taxon = fetch_observations(
+                    bbox=args.bbox,
+                    place_id=place_id,
+                    limit=limit_per_id,
+                    taxon_id=t_id,
+                    without_taxon_id=without_taxon_id
+                )
                 if not df_taxon.empty:
                     dfs.append(df_taxon)
 
@@ -341,8 +379,13 @@ def main():
                     print(f"Skipping query '{q}' (could not resolve taxon ID)")
                     continue
 
-                df_taxon = fetch_observations(bbox=args.bbox, place_id=place_id, limit=limit_per_query,
-                                              taxon_id=resolved_id)
+                df_taxon = fetch_observations(
+                    bbox=args.bbox,
+                    place_id=place_id,
+                    limit=limit_per_query,
+                    taxon_id=resolved_id,
+                    without_taxon_id=without_taxon_id
+                )
                 if not df_taxon.empty:
                     dfs.append(df_taxon)
 
@@ -368,8 +411,10 @@ def main():
 
         if not suffix:
             suffix = "taxon_default"
+        if args.preset is None:
+            suffix += "_"+args.target_taxon
 
-        out_file = f"inaturalist_{suffix}_global.csv"
+        out_file = f"inaturalist_{suffix}.csv"
 
     if not df.empty:
         df.to_csv(out_file, index=False)
