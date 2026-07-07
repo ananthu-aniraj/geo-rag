@@ -34,6 +34,21 @@ def clean_photo_id(val):
     return val_str
 
 
+def standardize_timestamp(ts):
+    """Standardizes various timestamp formats from Flickr, Mapillary, and iNaturalist to ISO 8601 (YYYY-MM-DDTHH:MM:SSZ)."""
+    if pd.isna(ts) or not ts:
+        return None
+    ts_str = str(ts).strip()
+    try:
+        # pd.to_datetime handles timezone-aware, custom strings, and timestamps gracefully
+        dt = pd.to_datetime(ts_str, errors='coerce', utc=True)
+        if pd.notna(dt):
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    except Exception:
+        pass
+    return ts_str
+
+
 def download_image(url):
     """Downloads an image and returns a PIL Image object."""
     try:
@@ -261,8 +276,24 @@ def main():
                 df['Captured_At'] = df['datetime_local'] if 'datetime_local' in df.columns else None
                 df['Image_URL'] = df.apply(lambda r: f"mapillary://{r['orig_id']}" if str(r['source']).lower() == 'mapillary' else (f"kartaview://{r['orig_id']}" if str(r['source']).lower() == 'kartaview' else (r['url'] if 'url' in r else None)), axis=1)
             else:
-                platform = 'Flickr' if 'flickr' in f.lower() else 'Mapillary'
-                col_map = {'latitude': 'Latitude', 'longitude': 'Longitude', 'image_url': 'Image_URL', 'photo_id': 'Photo_ID', 'ID': 'Photo_ID', 'captured_at': 'Captured_At', 'Captured_At': 'Captured_At'}
+                if 'inaturalist' in f.lower():
+                    platform = 'iNaturalist'
+                elif 'flickr' in f.lower():
+                    platform = 'Flickr'
+                else:
+                    platform = 'Mapillary'
+                
+                col_map = {
+                    'latitude': 'Latitude', 
+                    'longitude': 'Longitude', 
+                    'image_url': 'Image_URL', 
+                    'photo_id': 'Photo_ID', 
+                    'ID': 'Photo_ID', 
+                    'captured_at': 'Captured_At', 
+                    'Captured_At': 'Captured_At',
+                    'Date_Observed': 'Captured_At',
+                    'observed_on_string': 'Captured_At'
+                }
                 df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
                 if 'Platform' not in df.columns:
                     df['Platform'] = platform
@@ -284,6 +315,8 @@ def main():
 
     # Vectorized H3 cell computation and filtering
     if not df_all.empty:
+        # Standardize timestamps across all platforms (Flickr, Mapillary, iNaturalist)
+        df_all['Captured_At'] = df_all['Captured_At'].apply(standardize_timestamp)
         df_all['H3_Cell'] = df_all.apply(lambda r: h3.latlng_to_cell(float(r['Latitude']), float(r['Longitude']), args.h3_res) if pd.notna(r['Latitude']) and pd.notna(r['Longitude']) else None, axis=1)
         df_all = df_all.dropna(subset=['H3_Cell', 'Photo_ID'])
         df_all['Photo_ID'] = df_all['Photo_ID'].apply(clean_photo_id)
