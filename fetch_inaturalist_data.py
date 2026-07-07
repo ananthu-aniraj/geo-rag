@@ -3,6 +3,7 @@ import pandas as pd
 import argparse
 import time
 import os
+import re
 
 # Map preset biomes to a list of plant & animal search terms to ensure a balanced ecological representation
 BIOME_PRESETS = {
@@ -10,7 +11,9 @@ BIOME_PRESETS = {
         "Cactaceae",  # Cacti (plants)
         "Camelus",  # Camels (mammals)
         "Larrea tridentata",  # Creosote Bush (desert shrubs)
-        "Artemisia tridentata"  # Sagebrush (dry scrublands)
+        "Artemisia tridentata",  # Sagebrush (dry scrublands)
+        "Struthio camelus",  # Ostrich (desert birds)
+        "Struthio molybdophanes" # Somali Ostrich (desert birds)
     ],
     "tundra": [
         "Cladonia",  # Reindeer Lichens (polar groundcover)
@@ -43,6 +46,112 @@ BIOME_PRESETS = {
         "Aptenodytes forsteri"  # Emperor Penguin (Antarctic ice caps)
     ]
 }
+
+
+def scrape_species_from_wikipedia(biome_name, limit=10):
+    """
+    Searches Wikipedia for species lists associated with a biome or ecosystem
+    and extracts binomial scientific names.
+    """
+    search_url = "https://en.wikipedia.org/w/api.php"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    # Try different search terms in a fallback loop to maximize probability of page discovery
+    search_queries = [
+        f"List of {biome_name} plants",
+        f"List of {biome_name} species",
+        f"{biome_name} flora",
+        f"{biome_name} plants",
+        f"{biome_name}"
+    ]
+
+    search_results = []
+    for q in search_queries:
+        print(f" -> Searching Wikipedia for: '{q}'...")
+        search_params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": q,
+            "format": "json"
+        }
+        try:
+            res = requests.get(search_url, params=search_params, headers=headers, timeout=10)
+            if res.status_code == 200:
+                results = res.json().get("query", {}).get("search", [])
+                if results:
+                    search_results = results
+                    break
+            else:
+                print(f"    (Wikipedia returned HTTP status code {res.status_code})")
+        except Exception as e:
+            print(f"    (Wikipedia request failed: {e})")
+
+    if not search_results:
+        print(" -> No Wikipedia page matches found for any search queries.")
+        return []
+
+    page_title = search_results[0]["title"]
+    print(f" -> Found Wikipedia page: '{page_title}'")
+
+    # Fetch full page wikitext content (revisions)
+    content_params = {
+        "action": "query",
+        "prop": "revisions",
+        "rvprop": "content",
+        "titles": page_title,
+        "format": "json"
+    }
+
+    try:
+        res_content = requests.get(search_url, params=content_params, headers=headers, timeout=10)
+        if res_content.status_code != 200:
+            print(f" -> Failed to fetch content: HTTP {res_content.status_code}")
+            return []
+
+        pages = res_content.json().get("query", {}).get("pages", {})
+        page_id = list(pages.keys())[0]
+        revisions = pages[page_id].get("revisions", [])
+        if not revisions:
+            return []
+
+        # Extract full wikitext (standard content is under '*')
+        text = revisions[0].get("*", "")
+        if not text:
+            # Fallback if modern slots structure is returned
+            slots = revisions[0].get("slots", {})
+            text = slots.get("main", {}).get("*", "")
+
+        if not text:
+            print(" -> Page content is empty.")
+            return []
+
+        # Extract binomial scientific names (Genus species)
+        # Capitalized genus name + lowercase species name of length 3-20
+        binomial_pattern = re.compile(r'\b([A-Z][a-z]+ [a-z]{3,20})\b')
+        potential_names = binomial_pattern.findall(text)
+
+        # Deduplicate
+        unique_names = list(set(potential_names))
+
+        # Exclude common false positive English words that look like binomial names
+        exclude_set = {
+            "North", "South", "East", "West", "New", "The", "In", "On", "Of", "For", "With",
+            "United", "States", "America", "Africa", "Europe", "Asia", "Australia", "Pacific",
+            "Atlantic", "Indian", "Ocean", "Sea", "National", "Park", "Forest", "Desert",
+            "Common", "List", "Flora", "Fauna", "Species", "Genus", "Family", "Order", "Class",
+            "This", "That", "These", "Those", "Under", "Between", "During", "Throughout", "Although",
+            "Main", "Article", "Many", "Some", "Most", "Also", "From", "Here", "There"
+        }
+
+        cleaned_names = [n for n in unique_names if not any(w in n for w in exclude_set)]
+        print(f" -> Extracted {len(cleaned_names)} potential scientific names from Wikipedia.")
+        return cleaned_names
+    except Exception as e:
+        print(f" -> Wikipedia content extraction failed: {e}")
+
+    return []
 
 
 def resolve_place_id(place_name):
@@ -152,11 +261,12 @@ def resolve_taxon_id(query_str):
                 print(f"    Taxon ID: {best_match.get('id')} | Rank: {best_match.get('rank')}")
                 return best_match.get("id")
             else:
-                print(f" -> No active taxon matches found on iNaturalist for '{query_str}'")
+                # Silently return None so loop validation works cleanly
+                pass
         else:
-            print(f" -> Taxa API returned status code {response.status_code}")
-    except Exception as e:
-        print(f" -> Connection failed during taxon lookup: {e}")
+            pass
+    except Exception:
+        pass
 
     return None
 
@@ -273,10 +383,12 @@ def main():
                         help="The taxon kingdom/group for dynamic species counts discovery (e.g. 'plants', 'animals', 'birds', 'insects').")
     parser.add_argument("--exclude_flying", action="store_true",
                         help="Exclude flying animals (specifically Birds and Insects) from dynamic discovery and queries.")
+    parser.add_argument("--scrape_wiki", action="store_true",
+                        help="Treat --query or --preset as a biome, scrape Wikipedia for species names, and fetch them.")
     parser.add_argument("--out", type=str, default=None, help="Output CSV file path.")
     args = parser.parse_args()
 
-    # 1. Resolve Country/Place boundary
+    # 1. Resolve Country/Place boundary if specified
     place_id = None
     if args.country:
         print(f"Resolving Place ID for country/region '{args.country}'...")
@@ -293,9 +405,48 @@ def main():
 
     dfs = []
 
-    # 3. Dynamic Country Species Discovery
-    if place_id and not args.taxon_id and not args.preset and not args.query:
-        # Resolve target_taxon string to its Taxon ID dynamically
+    # 3. Dynamic Wikipedia Biome Scraping
+    if args.scrape_wiki and (args.query or args.preset):
+        biome_name = args.preset if args.preset else args.query
+        scraped_names = scrape_species_from_wikipedia(biome_name, limit=args.num_species)
+
+        validated_taxon_ids = []
+        validated_names = []
+
+        if scraped_names:
+            print("\nValidating Wikipedia species names on iNaturalist API...")
+            for name in scraped_names:
+                if len(validated_taxon_ids) >= args.num_species:
+                    break
+                resolved_id = resolve_taxon_id(name)
+                if resolved_id:
+                    validated_taxon_ids.append(resolved_id)
+                    validated_names.append(name)
+                    time.sleep(0.1)
+
+            print(f"Validated {len(validated_taxon_ids)} species out of {len(scraped_names)} candidates.")
+        else:
+            print("No species names could be extracted from Wikipedia.")
+
+        if validated_taxon_ids:
+            limit_per_species = max(1, args.limit // len(validated_taxon_ids))
+            for i, t_id in enumerate(validated_taxon_ids):
+                name = validated_names[i]
+                print(f"\nFetching observations for dynamically resolved Wikipedia species '{name}'...")
+                df_sp = fetch_observations(
+                    bbox=args.bbox,
+                    place_id=place_id,
+                    limit=limit_per_species,
+                    taxon_id=t_id,
+                    without_taxon_id=without_taxon_id
+                )
+                if not df_sp.empty:
+                    dfs.append(df_sp)
+        else:
+            print("No Wikipedia species could be validated. Falling back to default search...")
+
+    # 4. Dynamic Country Species Discovery
+    elif place_id and not args.taxon_id and not args.preset and not args.query:
         print(f"Resolving target taxon '{args.target_taxon}'...")
         target_taxon_id = resolve_taxon_id(args.target_taxon)
         if not target_taxon_id:
@@ -338,9 +489,8 @@ def main():
             if not df_generic.empty:
                 dfs.append(df_generic)
 
-    # 4. Standard queries (With/Without Country Place Filter)
+    # 5. Standard queries (With/Without Country Place Filter)
     else:
-        # Compile queries and explicit taxon IDs to fetch
         queries_to_fetch = []
         explicit_taxon_ids = []
 
@@ -355,7 +505,6 @@ def main():
         else:
             explicit_taxon_ids.append(47126)  # Default to Plantae (Plants)
 
-        # Case A: Fetching explicit Taxon IDs
         if explicit_taxon_ids:
             limit_per_id = max(1, args.limit // len(explicit_taxon_ids))
             for t_id in explicit_taxon_ids:
@@ -369,7 +518,6 @@ def main():
                 if not df_taxon.empty:
                     dfs.append(df_taxon)
 
-        # Case B: Resolving and fetching query strings
         elif queries_to_fetch:
             limit_per_query = max(1, args.limit // len(queries_to_fetch))
             for q in queries_to_fetch:
@@ -409,12 +557,13 @@ def main():
         elif args.taxon_id:
             suffix += f"_taxon_{args.taxon_id}" if suffix else f"taxon_{args.taxon_id}"
 
+        if args.scrape_wiki:
+            suffix += "_wiki_scraped"
+
         if not suffix:
             suffix = "taxon_default"
-        if args.preset is None:
-            suffix += "_"+args.target_taxon
 
-        out_file = f"inaturalist_{suffix}.csv"
+        out_file = f"inaturalist_{suffix}_global.csv"
 
     if not df.empty:
         df.to_csv(out_file, index=False)
