@@ -147,3 +147,8 @@ if [ -d "$HDD_DIR/.dvc" ]; then
     echo "Done! Commit '$(basename "$OUTPUT_DIR").dvc' to Git to share this version."
     echo "=========================================================="
 fi
+
+# Run git commands to add and commit the updated .dvc file
+git add "$(basename "$OUTPUT_DIR").dvc"
+git commit -m "Update DVC tracking for $(basename "$OUTPUT_DIR")"
+git push
