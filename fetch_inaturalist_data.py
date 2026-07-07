@@ -4,7 +4,6 @@ import argparse
 import time
 import os
 import re
-from pathlib import Path
 
 # Map preset biomes to a list of plant & animal search terms to ensure a balanced ecological representation
 BIOME_PRESETS = {
@@ -387,7 +386,6 @@ def main():
     parser.add_argument("--scrape_wiki", action="store_true",
                         help="Treat --query or --preset as a biome, scrape Wikipedia for species names, and fetch them.")
     parser.add_argument("--out", type=str, default=None, help="Output CSV file path.")
-    parser.add_argument("--out_dir", type=str, default="inaturalist_output", help="Output directory for CSV files.")
     args = parser.parse_args()
 
     # 1. Resolve Country/Place boundary if specified
@@ -547,8 +545,6 @@ def main():
 
     # Determine Output File Name
     out_file = args.out
-    out_dir = args.out_dir
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
     if not out_file:
         suffix = ""
         if args.country:
@@ -568,11 +564,10 @@ def main():
             suffix = "taxon_default"
 
         out_file = f"inaturalist_{suffix}_global.csv"
-    out_path = os.path.join(out_dir, out_file)
 
     if not df.empty:
-        df.to_csv(out_path, index=False)
-        print(f"\nSaved total of {len(df)} observations to {out_path}")
+        df.to_csv(out_file, index=False)
+        print(f"\nSaved total of {len(df)} observations to {out_file}")
         print(df.groupby(["Scientific_Name", "Common_Name"]).size().reset_index(name="count"))
     else:
         print("No observations fetched.")
