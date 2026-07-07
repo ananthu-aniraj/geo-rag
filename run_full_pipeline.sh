@@ -120,7 +120,7 @@ echo "Generating H3 spatial-semantic map"
 python3 generate_h3_semantic_map.py \
   --index "$H3_SEMANTIC_INDEX" \
   --output "$SEMANTIC_MAP" \
-  --res 6
+  --res 5
 
 echo ""
 echo "=========================================================="
