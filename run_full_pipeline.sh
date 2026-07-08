@@ -63,6 +63,14 @@ python3 process_scraped_data.py \
   $RESUME_FLAG
 
 echo ""
+echo "[Step 1b/5] Standardizing Dataset Timestamps..."
+python3 standardize_timestamps.py --input "$RAW_PARQUET"
+RAW_CSV="$OUTPUT_DIR/${BASE_NAME}_deduplicated.csv"
+if [ -f "$RAW_CSV" ]; then
+    python3 standardize_timestamps.py --input "$RAW_CSV"
+fi
+
+echo ""
 echo "[Step 2/5] Global Unsupervised Clustering (K-Means)..."
 python3 cluster_images_global.py \
   --pkl "$RAW_PARQUET" \

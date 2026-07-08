@@ -427,6 +427,8 @@ def main():
 
     os.makedirs(args.save_path, exist_ok=True)
     out_df = pd.DataFrame(final_data)
+    if 'Captured_At' in out_df.columns:
+        out_df['Captured_At'] = out_df['Captured_At'].apply(standardize_timestamp)
     csv_path = os.path.join(args.save_path, f"{args.output_name}.csv")
     parquet_path = os.path.join(args.save_path, f"{args.output_name}.parquet")
 
