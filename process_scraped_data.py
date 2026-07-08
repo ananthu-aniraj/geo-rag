@@ -99,7 +99,7 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32):
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
@@ -147,22 +147,23 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
             metadata = chunk_metadata[idx]
             embedding = all_embeddings[i]
 
-            # Zero-shot filtering (Indoor and Macro/Close-up)
+            # Zero-shot filtering (Indoor, Macro, and Sky/Flying)
             if text_features is not None:
                 sims = all_io_sims[i]
-                is_macro_enabled = (text_features.shape[0] == 3)
+                best_class = np.argmax(sims)
                 
-                if is_macro_enabled:
-                    best_class = np.argmax(sims)
-                    # Flickr-only Indoor Filter (Class 0)
-                    if metadata['Platform'] == 'Flickr' and best_class == 0:
+                # 1. Flickr-only Indoor Filter (always Class 0)
+                if metadata['Platform'] == 'Flickr' and best_class == 0:
+                    continue
+                    
+                # 2. iNaturalist-only Macro/Close-up Filter
+                if macro_idx != -1 and best_class == macro_idx:
+                    if str(metadata['Platform']).lower() == 'inaturalist':
                         continue
-                    # iNaturalist-only Macro/Close-up Filter (Class 2)
-                    if str(metadata['Platform']).lower() == 'inaturalist' and best_class == 2:
-                        continue
-                else:
-                    # Standard Flickr-only Indoor Filter
-                    if metadata['Platform'] == 'Flickr' and sims[0] > sims[1]:
+                        
+                # 3. iNaturalist-only Sky/Flying Filter
+                if sky_idx != -1 and best_class == sky_idx:
+                    if str(metadata['Platform']).lower() == 'inaturalist':
                         continue
 
             # Deduplication check
@@ -223,6 +224,8 @@ def main():
     parser.add_argument("--no_filter", action="store_true", help="Disable Flickr indoor/outdoor filtering.")
     parser.add_argument("--filter_macro", action="store_true",
                         help="Filter out macro/close-up photos of leaves, flowers, bark, and insects using zero-shot embeddings.")
+    parser.add_argument("--filter_sky", action="store_true",
+                        help="Filter out photos of the sky, clouds, and flying objects (birds/insects in flight) for iNaturalist.")
     parser.add_argument("--limit_cells", type=int, default=0, help="Limit number of cells to process (for testing).")
     parser.add_argument("--resume_from", type=str, default=None, help="Path to a previously generated .pkl or parquet file to resume from.")
     parser.add_argument("--checkpoint_interval", type=int, default=1800, help="Interval in seconds to save checkpoints (0 to disable).")
@@ -347,12 +350,18 @@ def main():
 
     # Pre-compute text features for Zero-Shot filtering
     text_features = None
+    macro_idx = -1
+    sky_idx = -1
     if not args.no_filter:
         print("Pre-computing zero-shot filter text embeddings...")
         with torch.no_grad():
             prompts = ["An indoor scene", "An outdoor landscape or street view"]
             if args.filter_macro:
-                prompts.append("A close-up macro photo of a animal, single leaf, plant petal, flower, insect, mushroom, or tree bark")
+                prompts.append("A close-up macro photo of a single leaf, plant petal, flower, insect, mushroom, or tree bark")
+                macro_idx = len(prompts) - 1
+            if args.filter_sky:
+                prompts.append("A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible")
+                sky_idx = len(prompts) - 1
             text_features = model.encode_text(prompts).cpu().numpy()
 
     # 4. Process and Deduplicate
@@ -409,7 +418,9 @@ def main():
             deduped = process_cell(cell, new_metadata, model, device, args.sim_threshold, executor, 
                                    text_features, existing_items, 
                                    cell_chunk_size=args.cell_chunk_size, 
-                                   tips_batch_size=args.tips_batch_size)
+                                   tips_batch_size=args.tips_batch_size,
+                                   macro_idx=macro_idx,
+                                   sky_idx=sky_idx)
             final_data.extend(deduped)
             processed_cells.add(cell)
             

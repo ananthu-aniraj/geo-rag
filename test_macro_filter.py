@@ -76,7 +76,8 @@ def main():
     prompts = [
         "An indoor scene",
         "An outdoor landscape or street view",
-        "A close-up macro photo of a animal, single leaf, plant petal, flower, insect, mushroom, or tree bark"
+        "A close-up macro photo of a animal, single leaf, plant petal, flower, insect, mushroom, or tree bark",
+        "A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible"
     ]
     print("Pre-computing filter text embeddings...")
     with torch.no_grad():
@@ -87,7 +88,8 @@ def main():
     kept_dir = os.path.join(args.out_dir, "kept_landscape")
     macro_dir = os.path.join(args.out_dir, "dropped_macro")
     indoor_dir = os.path.join(args.out_dir, "dropped_indoor")
-    for d in [kept_dir, macro_dir, indoor_dir]:
+    sky_dir = os.path.join(args.out_dir, "dropped_sky")
+    for d in [kept_dir, macro_dir, indoor_dir, sky_dir]:
         os.makedirs(d, exist_ok=True)
 
     results_summary = []
@@ -115,7 +117,7 @@ def main():
         sims = np.dot(emb_norm, text_norms.T)[0]
 
         best_class = np.argmax(sims)
-        classes_map = {0: "Indoor", 1: "Landscape", 2: "Macro/Close-up"}
+        classes_map = {0: "Indoor", 1: "Landscape", 2: "Macro/Close-up", 3: "Sky/Flying"}
         prediction = classes_map[best_class]
 
         # Determine decision
@@ -127,6 +129,9 @@ def main():
         elif best_class == 2:
             decision = "DROPPED (Macro/Close-up)"
             save_target_dir = macro_dir
+        elif best_class == 3:
+            decision = "DROPPED (Sky/Flying)"
+            save_target_dir = sky_dir
 
         # Save image to respective folder
         img.save(os.path.join(save_target_dir, f"{photo_id}_{common_name.replace(' ', '_')}.jpg"))
@@ -137,11 +142,12 @@ def main():
             "Indoor_Sim": sims[0],
             "Landscape_Sim": sims[1],
             "Macro_Sim": sims[2],
+            "Sky_Sim": sims[3],
             "Prediction": prediction,
             "Decision": decision
         })
 
-        print(f" -> Cosine Sims: Indoor={sims[0]:.4f} | Landscape={sims[1]:.4f} | Macro={sims[2]:.4f}")
+        print(f" -> Cosine Sims: Indoor={sims[0]:.4f} | Landscape={sims[1]:.4f} | Macro={sims[2]:.4f} | Sky={sims[3]:.4f}")
         print(f" -> Predicted: {prediction} | Decision: {decision}")
 
     # Display final table
@@ -155,6 +161,7 @@ def main():
     print(" - kept_landscape/: True outdoor views")
     print(" - dropped_macro/: Plant/animal close-ups (discarded)")
     print(" - dropped_indoor/: Indoor scenes (discarded)")
+    print(" - dropped_sky/: Sky-only or flying objects (discarded)")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml')
 MLLM_BACKEND=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('mllm_backend', 'sglang'))" 2>/dev/null || echo "sglang")
 MLLM_MODEL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('mllm_model', 'google/gemma-4-E4B-it'))" 2>/dev/null || echo "google/gemma-4-E4B-it")
 CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('chunk_size', 64))" 2>/dev/null || echo "64")
+FILTER_MACRO=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('filter_macro', False)).lower())" 2>/dev/null || echo "false")
+FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('filter_sky', False)).lower())" 2>/dev/null || echo "false")
 
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
@@ -52,6 +54,16 @@ elif [ -f "$OUTPUT_DIR/${BASE_NAME}_deduplicated.pkl" ]; then
     RESUME_FLAG="--resume_from $OUTPUT_DIR/${BASE_NAME}_deduplicated.pkl"
 fi
 
+FILTER_FLAGS=""
+if [ "$FILTER_MACRO" = "true" ]; then
+    echo " -> iNaturalist Macro Filter: Enabled"
+    FILTER_FLAGS="$FILTER_FLAGS --filter_macro"
+fi
+if [ "$FILTER_SKY" = "true" ]; then
+    echo " -> iNaturalist Sky/Flying Object Filter: Enabled"
+    FILTER_FLAGS="$FILTER_FLAGS --filter_sky"
+fi
+
 python3 process_scraped_data.py \
   --dirs $INPUT_DIRS \
   --save_path "$OUTPUT_DIR" \
@@ -60,7 +72,8 @@ python3 process_scraped_data.py \
   --checkpoint_interval "$CHECKPOINT_INTERVAL" \
   --tips_batch_size "$BATCH_SIZE" \
   --cell_chunk_size "$CELL_CHUNK_SIZE" \
-  $RESUME_FLAG
+  $RESUME_FLAG \
+  $FILTER_FLAGS
 
 echo ""
 echo "[Step 1b/5] Standardizing Dataset Timestamps..."
