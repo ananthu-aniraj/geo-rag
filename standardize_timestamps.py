@@ -50,51 +50,53 @@ def main():
 
     ts_raw = df['Captured_At']
     
-    # Initialize unified parsed Datetime series
-    dt_col = pd.Series(pd.NaT, index=df.index, dtype='datetime64[ns, UTC]')
+    # Initialize output Series with None as default
+    standardized = pd.Series([None] * len(df), index=df.index, dtype=object)
     
     # Identify Unix epoch numeric timestamps vs. string representations
     numeric_ts = pd.to_numeric(ts_raw, errors='coerce')
     is_numeric = numeric_ts.notna() & (numeric_ts > 1e8)
     
-    # Parse Unix numeric timestamps (Flickr uses seconds, Mapillary uses milliseconds)
+    # Parse Unix numeric timestamps
     if is_numeric.any():
         is_ms_mask = is_numeric & (numeric_ts > 5e10)
         is_s_mask = is_numeric & ~is_ms_mask
         
         if is_ms_mask.any():
-            dt_col.loc[is_ms_mask] = pd.to_datetime(numeric_ts[is_ms_mask], unit='ms', utc=True, errors='coerce')
-        if is_s_mask.any():
-            dt_col.loc[is_s_mask] = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
+            parsed_ms = pd.to_datetime(numeric_ts[is_ms_mask], unit='ms', utc=True, errors='coerce')
+            try:
+                valid_ms = (parsed_ms.dt.year >= 1) & (parsed_ms.dt.year <= 9999)
+            except Exception:
+                valid_ms = pd.Series(True, index=parsed_ms.index)
+            standardized.loc[is_ms_mask] = parsed_ms.dt.strftime('%Y-%m-%dT%H:%M:%SZ').where(valid_ms, None)
             
-    # Parse string representations (Flickr EXIF space-colons, ISO strings, etc.)
+        if is_s_mask.any():
+            parsed_s = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
+            try:
+                valid_s = (parsed_s.dt.year >= 1) & (parsed_s.dt.year <= 9999)
+            except Exception:
+                valid_s = pd.Series(True, index=parsed_s.index)
+            standardized.loc[is_s_mask] = parsed_s.dt.strftime('%Y-%m-%dT%H:%M:%SZ').where(valid_s, None)
+            
+    # Parse string representations
     is_string = ts_raw.notna() & ~is_numeric
     if is_string.any():
         str_vals = ts_raw[is_string].astype(str).str.strip()
-        
-        # Clean Flickr EXIF datetime strings like "2023:05:14 18:22:10" to standard "2023-05-14 18:22:10"
         has_colon_date = str_vals.str.match(r'^\d{4}:\d{2}:\d{2}')
         if has_colon_date.any():
             str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(':', '-', n=2)
             
-        dt_col.loc[is_string] = pd.to_datetime(str_vals, errors='coerce', utc=True)
-
-    # Filter years to [1, 9999] range to avoid Python strftime out-of-range limitations
-    valid_years = pd.Series(True, index=df.index)
-    try:
-        years = dt_col.dt.year
-        valid_years = (years >= 1) & (years <= 9999)
-    except Exception:
-        pass
-
-    valid_mask = dt_col.notna() & valid_years
-
-    # Create new Series with None as default
-    standardized = pd.Series([None] * len(df), index=df.index, dtype=object)
-    standardized[valid_mask] = dt_col[valid_mask].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        parsed_str = pd.to_datetime(str_vals, errors='coerce', utc=True)
+        try:
+            valid_str = (parsed_str.dt.year >= 1) & (parsed_str.dt.year <= 9999)
+        except Exception:
+            valid_str = pd.Series(True, index=parsed_str.index)
+        standardized.loc[is_string] = parsed_str.dt.strftime('%Y-%m-%dT%H:%M:%SZ').where(valid_str, None)
 
     # Fallback to original strings if parsing failed but was not null/empty
-    invalid_mask = ~valid_mask & df['Captured_At'].notna() & (df['Captured_At'] != '')
+    ts_series = ts_raw.astype(str).str.strip()
+    is_parsed = standardized.notna()
+    invalid_mask = ~is_parsed & ts_raw.notna() & (ts_raw != '')
     standardized[invalid_mask] = ts_series[invalid_mask]
 
     df['Captured_At'] = standardized
@@ -104,8 +106,8 @@ def main():
     # 3. Add dynamic season classification (Vectorized)
     print("Classifying local seasons based on latitude and month...")
     
-    # Extract month and numeric latitude
-    months = dt_col.dt.month
+    # Extract month from standardized ISO 8601 string (e.g. "YYYY-MM-DD...")
+    months = pd.to_numeric(standardized.str[5:7], errors='coerce')
     lats = pd.to_numeric(df['Latitude'], errors='coerce')
     
     # Initialize Series
