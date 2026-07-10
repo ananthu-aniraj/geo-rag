@@ -48,12 +48,46 @@ def main():
     print("Standardizing timestamps...")
     initial_nulls = df['Captured_At'].isna().sum()
 
-    # Convert entire column to string and strip
-    ts_series = df['Captured_At'].astype(str).str.strip()
+    ts_raw = df['Captured_At']
     
-    # Fast vectorized datetime parser
-    dt_col = pd.to_datetime(ts_series, errors='coerce', utc=True)
-    valid_mask = dt_col.notna()
+    # Initialize unified parsed Datetime series
+    dt_col = pd.Series(pd.NaT, index=df.index, dtype='datetime64[ns, UTC]')
+    
+    # Identify Unix epoch numeric timestamps vs. string representations
+    numeric_ts = pd.to_numeric(ts_raw, errors='coerce')
+    is_numeric = numeric_ts.notna() & (numeric_ts > 1e8)
+    
+    # Parse Unix numeric timestamps (Flickr uses seconds, Mapillary uses milliseconds)
+    if is_numeric.any():
+        is_ms_mask = is_numeric & (numeric_ts > 5e10)
+        is_s_mask = is_numeric & ~is_ms_mask
+        
+        if is_ms_mask.any():
+            dt_col.loc[is_ms_mask] = pd.to_datetime(numeric_ts[is_ms_mask], unit='ms', utc=True, errors='coerce')
+        if is_s_mask.any():
+            dt_col.loc[is_s_mask] = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
+            
+    # Parse string representations (Flickr EXIF space-colons, ISO strings, etc.)
+    is_string = ts_raw.notna() & ~is_numeric
+    if is_string.any():
+        str_vals = ts_raw[is_string].astype(str).str.strip()
+        
+        # Clean Flickr EXIF datetime strings like "2023:05:14 18:22:10" to standard "2023-05-14 18:22:10"
+        has_colon_date = str_vals.str.match(r'^\d{4}:\d{2}:\d{2}')
+        if has_colon_date.any():
+            str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(':', '-', n=2)
+            
+        dt_col.loc[is_string] = pd.to_datetime(str_vals, errors='coerce', utc=True)
+
+    # Filter years to [1, 9999] range to avoid Python strftime out-of-range limitations
+    valid_years = pd.Series(True, index=df.index)
+    try:
+        years = dt_col.dt.year
+        valid_years = (years >= 1) & (years <= 9999)
+    except Exception:
+        pass
+
+    valid_mask = dt_col.notna() & valid_years
 
     # Create new Series with None as default
     standardized = pd.Series([None] * len(df), index=df.index, dtype=object)
