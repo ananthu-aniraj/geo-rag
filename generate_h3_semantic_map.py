@@ -8,6 +8,7 @@ from tqdm import tqdm
 import branca.colormap as cm
 import json
 
+
 def main():
     parser = argparse.ArgumentParser(description="Generate an interactive H3 spatial-semantic world map.")
     parser.add_argument("--index", type=str, default="full_pipeline_output/geo_space_h3_semantic_index.parquet",
@@ -27,38 +28,34 @@ def main():
 
     print(f"Loading spatial-semantic index from {args.index}...")
     df = pd.read_parquet(args.index)
-    
+
     # Filter for the target resolution
     df_res = df[df['resolution'] == args.res]
-    
+
     if df_res.empty:
         print(f"Error: No records found for resolution {args.res} in the index.")
         return
 
-    # Calculate total image counts per H3 cell at this resolution
-    cell_totals = df_res.groupby('query_cell')['image_count'].sum().reset_index()
-    
-    # Filter by minimum image count
-    cell_totals = cell_totals[cell_totals['image_count'] >= args.min_count]
-    
-    if cell_totals.empty:
+    # Calculate global cell totals to set a stable density colormap scale
+    global_cell_totals = df_res.groupby('query_cell')['image_count'].sum().reset_index()
+    global_cell_totals = global_cell_totals[global_cell_totals['image_count'] >= args.min_count]
+
+    if global_cell_totals.empty:
         print(f"No H3 cells found with at least {args.min_count} images at resolution {args.res}.")
         return
 
-    print(f"Preparing map features for {len(cell_totals)} cells...")
-    
-    # Initialize Folium Map centered globally
-    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
-
-    # Set up colormap based on log density of images
-    counts = cell_totals['image_count'].values
+    # Set up global colormap based on log density of images
+    counts = global_cell_totals['image_count'].values
     min_log = np.log10(min(counts))
     max_log = np.log10(max(counts))
     if min_log == max_log:
         max_log += 0.1
-        
+
     colormap = cm.linear.YlOrRd_09.scale(min_log, max_log)
     colormap.caption = f"Image Density (Log10 scale, H3 Res {args.res})"
+
+    # Initialize Folium Map centered globally
+    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
 
     def get_clean_boundary(cell):
         """Get cell boundary coordinates, adjusting for antimeridian crossing."""
@@ -67,56 +64,6 @@ def main():
         if max(lngs) - min(lngs) > 180:
             coords = [(lat, lng + 360 if lng < 0 else lng) for lat, lng in coords]
         return coords
-
-    # Create GeoJSON Features List
-    features = []
-    
-    for _, item in tqdm(cell_totals.iterrows(), total=len(cell_totals), desc="Processing Hexagons"):
-        cell = item['query_cell']
-        total_images = item['image_count']
-        
-        try:
-            boundary = get_clean_boundary(cell)
-            # GeoJSON polygon expects [lng, lat] and a closed loop
-            geojson_coords = [[lng, lat] for lat, lng in boundary]
-            geojson_coords.append(geojson_coords[0])
-            
-            # Retrieve cluster breakdown for this cell, sorted by image count
-            df_cell = df_res[df_res['query_cell'] == cell].sort_values(by='image_count', ascending=False)
-            
-            # Construct a lightweight JSON string of cluster data to prevent HTML duplication bloat
-            cluster_list = []
-            for _, row in df_cell.head(5).iterrows():
-                pct = float((row['image_count'] / total_images) * 100)
-                # Keep only first 200 chars of description to reduce JSON size
-                desc = row['cluster_description'] if row['cluster_description'] else ""
-                cluster_list.append([row['cluster_label'], pct, int(row['image_count']), desc[:200]])
-            
-            clusters_json = json.dumps(cluster_list)
-            log_val = np.log10(total_images)
-            
-            feature = {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [geojson_coords]
-                },
-                "properties": {
-                    "cell": cell,
-                    "count": int(total_images),
-                    "log_count": float(log_val),
-                    "clusters": clusters_json  # Compact serialized data
-                }
-            }
-            features.append(feature)
-            
-        except Exception as e:
-            continue
-
-    geojson_data = {
-        "type": "FeatureCollection",
-        "features": features
-    }
 
     # Style function mapping density to color
     def style_fn(feature):
@@ -128,6 +75,9 @@ def main():
             "weight": 1,
             "fillOpacity": 0.6,
         }
+
+    # Discover unique seasons in the index (backward compatible if Season is not present)
+    unique_seasons = sorted(df_res['Season'].unique()) if 'Season' in df_res.columns else ['Unknown']
 
     # Javascript dynamic HTML tooltip builder (corrected quoting issues)
     js_tooltip_builder = f"""
@@ -141,7 +91,7 @@ def main():
                    '<hr style="margin: 6px 0; border: 0; border-top: 1px solid #ddd;"/>' +
                    '<b style="color: #16a085; text-transform: uppercase; font-size: 10px; display: block; margin-bottom: 4px;">Dominant Land Use / Cover:</b>' +
                    '<ul style="margin: 0; padding-left: 14px; list-style-type: square; color: #34495e;">';
-        
+         
         try {{
             var clusters = JSON.parse(props.clusters);
             for (var i = 0; i < clusters.length; i++) {{
@@ -149,12 +99,12 @@ def main():
                 var cCount = Number(clusters[i][2]).toLocaleString();
                 var label = clusters[i][0];
                 var desc = clusters[i][3];
-                
+                 
                 // Truncate description if too long
                 if (desc.length > 150) {{
                     desc = desc.substring(0, 147) + '...';
                 }}
-                
+                 
                 html += '<li style="margin-bottom: 6px;">' +
                         '<b>' + label + ':</b> ' + pct + '% (' + cCount + ' images)' +
                         '<br/><span style="color: #7f8c8d; font-size: 10.5px; font-style: italic;">' + desc + '</span>' +
@@ -163,7 +113,7 @@ def main():
         }} catch(e) {{
             html += '<li>Error parsing cluster details</li>';
         }}
-        
+         
         html += '</ul></div>';
         layer.bindTooltip(html, {{
             sticky: true,
@@ -173,19 +123,85 @@ def main():
     }}
     """
 
-    print("Adding GeoJSON layer to map with dynamic JavaScript tooltips...")
-    folium.GeoJson(
-        geojson_data,
-        style_function=style_fn,
-        on_each_feature=js_tooltip_builder
-    ).add_to(m)
+    for season in unique_seasons:
+        df_season = df_res[df_res['Season'] == season] if 'Season' in df_res.columns else df_res
+        
+        # Calculate cell totals for this season
+        cell_totals = df_season.groupby('query_cell')['image_count'].sum().reset_index()
+        cell_totals = cell_totals[cell_totals['image_count'] >= args.min_count]
+        
+        if cell_totals.empty:
+            continue
+
+        print(f"Preparing map layer for Season: {season} ({len(cell_totals)} cells)...")
+        features = []
+
+        for _, item in tqdm(cell_totals.iterrows(), total=len(cell_totals), desc=f"Hexagons ({season})"):
+            cell = item['query_cell']
+            total_images = item['image_count']
+
+            try:
+                boundary = get_clean_boundary(cell)
+                geojson_coords = [[lng, lat] for lat, lng in boundary]
+                geojson_coords.append(geojson_coords[0])
+
+                # Retrieve cluster breakdown for this cell+season, sorted by image count
+                df_cell = df_season[df_season['query_cell'] == cell].sort_values(by='image_count', ascending=False)
+
+                cluster_list = []
+                for _, row in df_cell.head(5).iterrows():
+                    pct = float((row['image_count'] / total_images) * 100)
+                    desc = row['cluster_description'] if row['cluster_description'] else ""
+                    cluster_list.append([row['cluster_label'], pct, int(row['image_count']), desc[:200]])
+
+                clusters_json = json.dumps(cluster_list)
+                log_val = np.log10(total_images)
+
+                feature = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [geojson_coords]
+                    },
+                    "properties": {
+                        "cell": cell,
+                        "count": int(total_images),
+                        "log_count": float(log_val),
+                        "clusters": clusters_json
+                    }
+                }
+                features.append(feature)
+
+            except Exception:
+                continue
+
+        geojson_data = {
+            "type": "FeatureCollection",
+            "features": features
+        }
+
+        # Show first season (or Summer) by default, others hidden to avoid collision
+        is_default = (season == 'Summer') or (len(unique_seasons) == 1) or (season == unique_seasons[0] and 'Summer' not in unique_seasons)
+        layer_name = f"🍂 Season: {season}" if season != 'Unknown' else "📍 All Observations"
+        
+        fg = folium.FeatureGroup(name=layer_name, show=is_default)
+        
+        folium.GeoJson(
+            geojson_data,
+            style_function=style_fn,
+            on_each_feature=js_tooltip_builder
+        ).add_to(fg)
+        
+        fg.add_to(m)
 
     m.add_child(colormap)
-    
+    folium.LayerControl(collapsed=False).add_to(m)
+
     # Save the output HTML file
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     m.save(args.output)
     print(f"\nSuccessfully generated interactive spatial-semantic map at: {args.output}")
+
 
 if __name__ == "__main__":
     main()

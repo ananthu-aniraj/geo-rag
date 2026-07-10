@@ -20,16 +20,25 @@ def main():
     print(f"Reading metadata columns from {args.input}...")
     start = time.time()
 
-    # Read only the necessary metadata columns to prevent high memory usage
-    table = pq.read_table(
-        args.input,
-        columns=['H3_Cell', 'cluster_id', 'cluster_label', 'cluster_description']
-    )
+    # Read necessary columns, dynamically checking if 'Season' is present in the schema
+    parquet_file = pq.ParquetFile(args.input)
+    available_cols = parquet_file.schema.names
+    
+    read_cols = ['H3_Cell', 'cluster_id', 'cluster_label', 'cluster_description']
+    has_season = 'Season' in available_cols
+    if has_season:
+        read_cols.append('Season')
+        
+    table = pq.read_table(args.input, columns=read_cols)
     df = table.to_pandas()
     print(f"Loaded {len(df)} rows in {time.time() - start:.2f} seconds.")
 
     # Drop rows with null H3 cells or cluster ids
     df = df.dropna(subset=['H3_Cell', 'cluster_id'])
+    if 'Season' not in df.columns:
+        df['Season'] = 'Unknown'
+    else:
+        df['Season'] = df['Season'].fillna('Unknown')
 
     # Build aggregated tables for resolutions 1 through 11
     resolutions = list(range(1, 12))
@@ -47,9 +56,9 @@ def main():
             df_res = df.copy()
             df_res['query_cell'] = df_res['H3_Cell'].apply(lambda x: h3.cell_to_parent(x, res))
 
-        # Group by query cell and cluster metadata
+        # Group by query cell, season, and cluster metadata
         grouped = df_res.groupby(
-            ['query_cell', 'cluster_id', 'cluster_label', 'cluster_description'],
+            ['query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description'],
             observed=True
         ).size().reset_index(name='image_count')
 
@@ -60,9 +69,9 @@ def main():
     print("Combining all resolutions...")
     final_df = pd.concat(aggregated_dfs, ignore_index=True)
 
-    # Reorder columns
+    # Reorder columns to preserve Season
     final_df = final_df[
-        ['resolution', 'query_cell', 'cluster_id', 'cluster_label', 'cluster_description', 'image_count']]
+        ['resolution', 'query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description', 'image_count']]
 
     print(f"Saving aggregated index of {len(final_df)} rows to {args.output}...")
 

@@ -67,7 +67,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "lon": float(item.get('Longitude', 0.0)),
             "h3": item.get('H3_Cell', ''),
             "platform": platform,
-            "captured_at": item.get('Captured_At', '')
+            "captured_at": item.get('Captured_At', ''),
+            "season": item.get('Season', 'Unknown')
         })
 
     print(f"Processing {len(cluster_map)} clusters...")
@@ -102,6 +103,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "lon": float(img["lon"]),
                 "platform": img["platform"],
                 "captured_at": img["captured_at"],
+                "season": img["season"],
                 "is_outlier": False,
                 "rank_label": "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
             })
@@ -121,6 +123,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     "lon": float(img["lon"]),
                     "platform": img["platform"],
                     "captured_at": img["captured_at"],
+                    "season": img["season"],
                     "is_outlier": True,
                     "rank_label": f"Furthest Outlier {i+1}"
                 })
@@ -562,13 +565,24 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         <p>Exploring {len(dashboard_data)} semantic clusters with geographic distributions across global streetscapes.</p>
     </div>
 
-    <div class="controls">
-        <input type="text" id="searchInput" placeholder="Search by Cluster ID, label description, or coordinates..." onkeyup="handleSearch()">
-        <select id="sortSelect" onchange="resetAndRender()">
-            <option value="id">Sort by ID</option>
-            <option value="count">Sort by Size (Large First)</option>
-            <option value="geo">Sort by Geographic Spread</option>
-        </select>
+    <div class="controls" style="display: flex; gap: 16px; margin-bottom: 24px; background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow-sm); flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="searchInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Text Search</label>
+            <input type="text" id="searchInput" placeholder="Search ID, label, or description..." onkeyup="filterDataCombined()">
+        </div>
+        <div style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="locationInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Geographic Filter</label>
+            <input type="text" id="locationInput" placeholder="Filter by place/country (e.g. Alaska, Rome)..." onchange="searchLocation()">
+            <span id="locationStatus" style="font-size: 0.8rem; font-weight: 500; min-height: 18px; margin-top: 2px;"></span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="sortSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Sort Order</label>
+            <select id="sortSelect" onchange="resetAndRender()" style="height: 44px; padding: 10px 16px;">
+                <option value="id">Sort by ID</option>
+                <option value="count">Sort by Size (Large First)</option>
+                <option value="geo">Sort by Geographic Spread</option>
+            </select>
+        </div>
     </div>
 
     <div id="results" class="results-container">
@@ -804,7 +818,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     <div style="width: 140px; text-align: center;">
                         <b>${{label}}</b><br>
                         <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" style="width: 100%; height: 90px; object-fit: cover; margin-top: 6px; border-radius: 4px; border: 1px solid #ddd;"><br>
-                        ${{s.captured_at ? '<span style="font-size: 10px; color: #555;"><b>Taken:</b> ' + s.captured_at + '</span><br>' : ''}}
+                        ${{s.captured_at ? '<span style="font-size: 10px; color: #555;"><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + '</span><br>' : ''}}
                         <a href="${{s.url}}" target="_blank" style="font-size: 11px; color: #4f46e5; font-weight: 600; text-decoration: none;">View Original</a>
                     </div>
                 `);
@@ -833,19 +847,125 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             renderResults(false);
         }}
 
-        function handleSearch() {{
-            const query = document.getElementById('searchInput').value.toLowerCase();
+        let locationBbox = null;
+
+        function getHaversineDistance(lat1, lon1, lat2, lon2) {{
+            const R = 6371; // Radius of Earth in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }}
+
+        async function searchLocation() {{
+            const query = document.getElementById('locationInput').value.trim();
+            const statusLabel = document.getElementById('locationStatus');
+            
             if (!query) {{
-                filteredData = [...data];
-            }} else {{
-                filteredData = data.filter(c => 
-                    c.id.toString().includes(query) || 
-                    c.label.toLowerCase().includes(query) ||
-                    (c.description && c.description.toLowerCase().includes(query)) ||
-                    c.center_lat.toFixed(2).includes(query) ||
-                    c.center_lon.toFixed(2).includes(query)
+                locationBbox = null;
+                statusLabel.innerHTML = "";
+                statusLabel.style.color = "";
+                filterDataCombined();
+                return;
+            }}
+            
+            statusLabel.innerHTML = "⏳ Geocoding location...";
+            statusLabel.style.color = "var(--text-muted)";
+            
+            try {{
+                const url = `https://nominatim.openstreetmap.org/search?q=${{encodeURIComponent(query)}}&format=json&limit=1`;
+                const response = await fetch(url, {{
+                    headers: {{ 'User-Agent': 'GeoRAG-Cluster-Visualizer/1.0' }}
+                }});
+                
+                if (!response.ok) throw new Error("OSM Nominatim API request failed.");
+                const results = await response.json();
+                
+                if (results && results.length > 0) {{
+                    const place = results[0];
+                    const bbox = place.boundingbox.map(Number); // [minlat, maxlat, minlon, maxlon]
+                    locationBbox = {{
+                        min_lat: bbox[0],
+                        max_lat: bbox[1],
+                        min_lon: bbox[2],
+                        max_lon: bbox[3],
+                        lat: Number(place.lat),
+                        lon: Number(place.lon),
+                        display_name: place.display_name
+                    }};
+                    statusLabel.innerHTML = `📍 Found: ${{place.display_name.split(',')[0]}}`;
+                    statusLabel.style.color = "var(--primary)";
+                }} else {{
+                    locationBbox = null;
+                    statusLabel.innerHTML = "❌ Location not found";
+                    statusLabel.style.color = "red";
+                }}
+            }} catch (err) {{
+                console.error(err);
+                locationBbox = null;
+                statusLabel.innerHTML = "❌ Connection error";
+                statusLabel.style.color = "red";
+            }}
+            
+            filterDataCombined();
+        }}
+
+        function filterDataCombined() {{
+            const searchVal = document.getElementById('searchInput').value.toLowerCase();
+            
+            // 1. Text Search filtering
+            let temp = data;
+            if (searchVal) {{
+                temp = temp.filter(c => 
+                    c.id.toString().includes(searchVal) || 
+                    c.label.toLowerCase().includes(searchVal) ||
+                    (c.description && c.description.toLowerCase().includes(searchVal))
                 );
             }}
+            
+            // 2. Location bounding box / proximity filtering
+            if (locationBbox) {{
+                temp = temp.filter(c => {{
+                    // Check if cluster center is inside geocoded bounding box
+                    const centerInBbox = (
+                        c.center_lat >= locationBbox.min_lat &&
+                        c.center_lat <= locationBbox.max_lat &&
+                        c.center_lon >= locationBbox.min_lon &&
+                        c.center_lon <= locationBbox.max_lon
+                    );
+                    if (centerInBbox) return true;
+                    
+                    // Check if any cluster sample coordinates are inside bounding box
+                    const sampleInBbox = c.samples.some(s => 
+                        s.lat >= locationBbox.min_lat &&
+                        s.lat <= locationBbox.max_lat &&
+                        s.lon >= locationBbox.min_lon &&
+                        s.lon <= locationBbox.max_lon
+                    );
+                    if (sampleInBbox) return true;
+
+                    // Check if any density centroid points are inside bounding box
+                    const h3InBbox = c.h3_centroids.some(pt => 
+                        pt[0] >= locationBbox.min_lat &&
+                        pt[0] <= locationBbox.max_lat &&
+                        pt[1] >= locationBbox.min_lon &&
+                        pt[1] <= locationBbox.max_lon
+                    );
+                    if (h3InBbox) return true;
+                    
+                    // Proximity fallback: Check if cluster center is within 60km of search point
+                    const distance = getHaversineDistance(c.center_lat, c.center_lon, locationBbox.lat, locationBbox.lon);
+                    if (distance <= 60.0) return true;
+                    
+                    return false;
+                }});
+            }}
+            
+            filteredData = temp;
             resetAndRender();
         }}
 

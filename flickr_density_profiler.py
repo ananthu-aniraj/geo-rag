@@ -1,79 +1,200 @@
+import os
+import time
+import csv
 import requests
-import geopandas as gpd
-from shapely.geometry import box
+import pandas as pd
+from tqdm import tqdm
+from pathlib import Path
 
 API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
+DELAY_BETWEEN_CALLS = 1.1
 
-# 1. Load the Natural Earth Urban Areas shapefile
-# (Make sure the path matches where you extracted the downloaded files)
-print("Loading Urban Areas map... (This takes a few seconds)")
-path_urban_areas = "/user/aaniraj/home/Documents/Projects/data/ne_10m_urban_areas/ne_10m_urban_areas.shp"
-urban_gdf = gpd.read_file(path_urban_areas)
+# Target Bounding Boxes (min_lon, min_lat, max_lon, max_lat)
+# Centered around the landmarks (~1.5km to 3km boxes)
+WONDERS = {
+    # New Seven Wonders of the World + Giza + Dubai
+    # "Taj Mahal": (78.037, 27.170, 78.047, 27.180),
+    # "Colosseum": (12.487, 41.885, 12.497, 41.895),
+    # "Chichen Itza": (-88.573, 20.679, -88.563, 20.689),
+    # "Machu Picchu": (-72.550, -13.168, -72.540, -13.158),
+    # "Christ the Redeemer": (-43.216, -22.957, -43.205, -22.947),
+    # "Petra": (35.479, 30.315, 35.489, 30.326),
+    # "Great Wall of China (Mutianyu)": (116.559, 40.426, 116.569, 40.436),
+    # "Giza Pyramids": (31.129, 29.974, 31.139, 29.984),
+    # "Dubai (Downtown)": (55.263, 25.179, 55.293, 25.209),
+    
+    # Famous Waterfalls (Continental Representation)
+    "Victoria Falls (Africa)": (25.841, -17.939, 25.871, -17.909),
+    "Iguazu Falls (South America)": (-54.465, -25.681, -54.435, -25.651),
+    "Niagara Falls (North America)": (-79.086, 43.065, -79.056, 43.095),
+    "Angel Falls (South America)": (-62.550, 5.952, -62.520, 5.982),
+    
+    # Special Natural Landmarks
+    "Mount Everest": (86.910, 27.973, 86.940, 28.003),
+    "Mount Fuji": (138.712, 35.345, 138.742, 35.375),
+    "Salar de Uyuni": (-67.504, -20.148, -67.474, -20.118),
+    "Grand Canyon (Mather Point)": (-112.152, 36.039, -112.122, 36.069),
 
-# A dictionary of our test boxes (min_lon, min_lat, max_lon, max_lat)
-test_boxes = {
-    "New York (Midtown)": (-74.015, 40.735, -73.955, 40.780),
-    "Central Paris": (2.30, 48.83, 2.37, 48.88),
-    "Montpellier": (3.85, 43.59, 3.91, 43.63),
-    "Cévennes National Park": (3.55, 44.20, 3.61, 44.24)
+    # Newly Added Visually Striking & Remote Landmarks
+    "Easter Island (Moai)": (-109.365, -27.131, -109.335, -27.101),
+    "Bora Bora Lagoon": (-151.748, -16.498, -151.718, -16.468),
+    "Svalbard (Longyearbyen)": (15.603, 78.201, 15.663, 78.231),
+    "Deception Island (Antarctica)": (-60.655, -62.965, -60.611, -62.935),
+    "Angkor Wat": (103.851, 13.385, 103.881, 13.415),
+    "Stonehenge": (-1.832, 51.151, -1.801, 51.182),
+    "Acropolis of Athens": (23.701, 37.951, 23.732, 37.982),
+    "Arches National Park (Moab)": (-109.265, 38.668, -109.235, 38.698),
+    "Halong Bay": (107.185, 20.885, 107.215, 20.915),
+    "Pamukkale Travertines": (29.101, 37.901, 29.132, 37.932),
+    "Lake Louise (Banff)": (-116.232, 51.385, -116.201, 51.415),
+    "Santorini Caldera": (25.401, 36.385, 25.432, 36.415),
+
+    # Remote Sahara Desert & Polar/Subarctic Landmarks
+    "Richat Structure (Eye of the Sahara)": (-11.409, 21.100, -11.379, 21.130),
+    "Tassili n'Ajjer National Park (Sahara)": (8.985, 25.485, 9.015, 25.515),
+    "Ilulissat Icefjord (Greenland)": (-49.575, 69.135, -49.525, 69.165),
+    "Nuuk (Greenland)": (-51.745, 64.168, -51.698, 64.199),
+    "Yellowknife (Northern Canada)": (-114.392, 62.439, -114.348, 62.469),
+    "Virginia Falls (Nahanni, Canada)": (-125.760, 61.592, -125.713, 61.622),
+    "Olkhon Island (Lake Baikal, Russia)": (107.378, 53.135, 107.422, 53.165),
+    "Lena Pillars (Siberia, Russia)": (127.561, 61.131, 127.608, 61.161)
 }
 
 
-def is_urban(bbox_coords, urban_dataframe):
-    """
-    Checks if a bounding box intersects with any urban area.
-    bbox_coords: tuple of (min_lon, min_lat, max_lon, max_lat)
-    """
-    min_lon, min_lat, max_lon, max_lat = bbox_coords
-
-    # Create a Shapely polygon out of your bounding box coordinates
-    bbox_polygon = box(min_lon, min_lat, max_lon, max_lat)
-
-    # --- OPTIMIZATION: Spatial Indexing ---
-    # Instead of checking every city in the world, the spatial index (sindex) 
-    # instantly filters down to only the cities right next to your box.
-    possible_matches_index = list(urban_dataframe.sindex.intersection(bbox_polygon.bounds))
-
-    # If there are no cities even close by, it's definitely rural
-    if len(possible_matches_index) == 0:
-        return False
-
-    # If there ARE cities nearby, do an exact check to see if the borders touch/overlap
-    possible_matches = urban_dataframe.iloc[possible_matches_index]
-    exact_matches = possible_matches[possible_matches.intersects(bbox_polygon)]
-
-    # If exact_matches is not empty, it means our box overlaps an urban area!
-    return not exact_matches.empty
+# (Urban areas check removed)
 
 
-def check_total_photos(box_name, bbox_str):
+def fetch_flickr_photos(bbox_coords, page=1, geo_context=2):
+    """Fetches geo-tagged photos from Flickr REST API for a bounding box."""
+    bbox_str = f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
     url = (
         f"https://www.flickr.com/services/rest/"
         f"?method=flickr.photos.search"
         f"&api_key={API_KEY}"
         f"&bbox={bbox_str}"
         f"&has_geo=1"
-        f"&geo_context=2"  # Outdoors only
-        f"&per_page=1"  # We only need 1 photo to get the metadata
+        f"&geo_context={geo_context}"
+        f"&extras=url_m,geo,date_taken"
+        f"&per_page=250"
+        f"&page={page}"
         f"&format=json"
         f"&nojsoncallback=1"
     )
-
-    response = requests.get(url)
-    data = response.json()
-
-    if data.get('stat') == 'ok':
-        total = data['photos']['total']
-        print(f"{box_name}:")
-        print(f"  -> Total outdoor photos available: {total}\n")
-    else:
-        print(f"Error checking {box_name}: {data.get('message')}")
+    try:
+        time.sleep(DELAY_BETWEEN_CALLS)
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Error connecting to Flickr: {e}")
+    return {'stat': 'fail'}
 
 
-# Run the test
-print("\n--- Urban vs Rural Profiler ---")
-for name, coords in test_boxes.items():
-    if is_urban(coords, urban_gdf):
-        print(f"[{name}] is URBAN -> Skip API, use public dataset.")
-    else:
-        print(f"[{name}] is RURAL -> Fetch photos from API!")
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Scrape Flickr outdoor images of the Seven Wonders of the World.")
+    parser.add_argument("--limit", type=int, default=500, help="Maximum photos to collect per landmark.")
+    parser.add_argument("--out", type=str, default="seven_wonders_flickr.csv", help="Output CSV path.")
+    args = parser.parse_args()
+
+    # (Urban area profiling removed)
+
+    # Ingest data
+    output_exists = os.path.exists(args.out)
+    processed_landmarks = set()
+
+    # Establish log path for searched boxes
+    log_path = args.out.replace('.csv', '_completed_boxes.txt')
+    completed_boxes = set()
+    if os.path.exists(log_path):
+        with open(log_path, 'r') as f:
+            completed_boxes = set(line.strip() for line in f)
+        print(f"Found {len(completed_boxes)} completed boxes in log: {log_path}")
+
+    if output_exists:
+        try:
+            df_temp = pd.read_csv(args.out)
+            if not df_temp.empty and 'Landmark' in df_temp.columns:
+                processed_landmarks = set(df_temp['Landmark'].unique())
+                print(f"Found existing output file. Landmarks already processed: {processed_landmarks}")
+        except Exception:
+            pass
+
+    csv_file = open(args.out, mode='a', newline='', encoding='utf-8')
+    writer = csv.writer(csv_file)
+
+    if not output_exists:
+        writer.writerow(['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'Landmark'])
+
+    print("\n--- Starting Seven Wonders Flickr Scraper ---")
+    for name, coords in WONDERS.items():
+        box_id = f"{coords[0]:.4f},{coords[1]:.4f},{coords[2]:.4f},{coords[3]:.4f}"
+        if name in processed_landmarks or box_id in completed_boxes:
+            print(f"[{name}] (Box: {box_id}) already scraped or logged. Skipping...")
+            completed_boxes.add(box_id)  # Sync state
+            continue
+
+        print(f"\nProcessing '{name}' | Coords: {coords}")
+
+        photos_saved = 0
+
+        # Priority 1: Outdoors (2). Priority 2: Unlabelled (0).
+        for context in [2, 0]:
+            if photos_saved >= args.limit:
+                break
+                
+            page = 1
+            total_pages = 1
+            
+            while page <= total_pages:
+                print(f" -> Querying Flickr API [Context: {context}, Page: {page}/{total_pages}]...")
+                data = fetch_flickr_photos(coords, page=page, geo_context=context)
+
+                if data.get('stat') == 'ok':
+                    if page == 1:
+                        total_pages = data.get('photos', {}).get('pages', 1)
+
+                    photos = data.get('photos', {}).get('photo', [])
+                    if not photos:
+                        break
+
+                    for p in photos:
+                        if photos_saved >= args.limit:
+                            break
+
+                        p_id = p.get('id')
+                        lat = p.get('latitude')
+                        lon = p.get('longitude')
+                        url = p.get('url_m')
+                        captured = p.get('datetaken', '')
+                        if captured:
+                            captured = captured.replace(" ", "T")
+
+                        if url and lat and lon:
+                            writer.writerow([p_id, 'Flickr', lat, lon, url, captured, name])
+                            photos_saved += 1
+
+                    print(f"    - Collected {photos_saved}/{args.limit} photos so far...")
+                    if photos_saved >= args.limit:
+                        break
+                    page += 1
+                else:
+                    print("    - API call failed. Breaking pagination loop.")
+                    break
+
+        print(f"Finished scraping [{name}]! Total images saved: {photos_saved}")
+
+        # Log this box to file for future backfills / resume tracking
+        with open(log_path, 'a') as log:
+            log.write(box_id + '\n')
+        completed_boxes.add(box_id)
+
+        csv_file.flush()  # Force write to disk
+
+    csv_file.close()
+    print(f"Completed boxes log saved to: {os.path.abspath(log_path)}")
+    print(f"\nAll operations complete! Data saved to: {os.path.abspath(args.out)}")
+
+
+if __name__ == "__main__":
+    main()

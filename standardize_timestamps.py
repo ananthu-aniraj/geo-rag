@@ -63,8 +63,46 @@ def main():
     initial_nulls = df['Captured_At'].isna().sum()
     df['Captured_At'] = df['Captured_At'].apply(standardize_timestamp)
     final_nulls = df['Captured_At'].isna().sum()
-
     print(f" -> Timestamp standardization complete. Null timestamps: {initial_nulls} -> {final_nulls}")
+
+    # 3. Add dynamic season classification
+    print("Classifying local seasons based on latitude and month...")
+
+    def get_local_season(row):
+        lat = row.get('Latitude')
+        captured_at = row.get('Captured_At')
+        if pd.isna(captured_at) or not captured_at or pd.isna(lat):
+            return 'Unknown'
+        try:
+            # Captured_At is now standardized as YYYY-MM-DDTHH:MM:SSZ
+            dt = pd.to_datetime(captured_at)
+            month = dt.month
+            lat_val = float(lat)
+        except Exception:
+            return 'Unknown'
+
+        # Tropical Zone (-23.5 to 23.5 degrees) -> Wet/Dry Season
+        if -23.5 <= lat_val <= 23.5:
+            return 'Wet Season' if month in [6, 7, 8, 9] else 'Dry Season'
+
+        # Northern Temperate/Polar
+        if lat_val > 23.5:
+            if month in [12, 1, 2]: return 'Winter'
+            if month in [3, 4, 5]: return 'Spring'
+            if month in [6, 7, 8]: return 'Summer'
+            return 'Autumn'
+
+        # Southern Temperate/Polar
+        if lat_val < -23.5:
+            if month in [12, 1, 2]: return 'Summer'
+            if month in [3, 4, 5]: return 'Autumn'
+            if month in [6, 7, 8]: return 'Winter'
+            return 'Spring'
+
+        return 'Unknown'
+
+    df['Season'] = df.apply(get_local_season, axis=1)
+    print(" -> Local seasons classified. Column 'Season' added.")
 
     # 3. Save output
     print(f"Saving standardized dataset to: {out_path}")
