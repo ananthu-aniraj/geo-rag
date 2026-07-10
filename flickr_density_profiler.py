@@ -87,7 +87,7 @@ WONDERS = {
 }
 
 
-def fetch_flickr_photos(bbox_coords, page=1, geo_context=2):
+def fetch_flickr_photos(bbox_coords, page=1, geo_context=2, delay=2.0):
     """Fetches geo-tagged photos from Flickr REST API for a bounding box."""
     bbox_str = f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
     url = (
@@ -104,7 +104,7 @@ def fetch_flickr_photos(bbox_coords, page=1, geo_context=2):
         f"&nojsoncallback=1"
     )
     try:
-        time.sleep(DELAY_BETWEEN_CALLS)
+        time.sleep(delay)
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             return response.json()
@@ -118,6 +118,7 @@ def main():
     parser = argparse.ArgumentParser(description="Scrape Flickr outdoor images of the Seven Wonders of the World.")
     parser.add_argument("--limit", type=int, default=500, help="Maximum photos to collect per landmark.")
     parser.add_argument("--out", type=str, default="seven_wonders_flickr.csv", help="Output CSV path.")
+    parser.add_argument("--delay", type=float, default=2.0, help="Delay between API calls in seconds (default: 2.0).")
     args = parser.parse_args()
 
     out_dir = Path(args.out).parent
@@ -172,7 +173,7 @@ def main():
             
             while page <= total_pages:
                 print(f" -> Querying Flickr API [Context: {context}, Page: {page}/{total_pages}]...")
-                data = fetch_flickr_photos(coords, page=page, geo_context=context)
+                data = fetch_flickr_photos(coords, page=page, geo_context=context, delay=args.delay)
 
                 if data.get('stat') == 'ok':
                     if page == 1:
