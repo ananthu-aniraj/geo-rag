@@ -365,16 +365,16 @@ def main():
     valid_counts = counts > 0
     raw_centroids[valid_counts] /= counts[valid_counts, None]
 
-    # Hierarchical parent clustering
-    from sklearn.cluster import AgglomerativeClustering
+    # Hierarchical parent clustering (using Spherical K-Means for sub-second, interruptible execution)
+    from sklearn.cluster import KMeans
     print(f"\nPerforming hierarchical clustering: grouping {args.k} centroids into {args.k_parents} parent clusters...")
     
-    # Normalize centroids for cosine-similarity HAC
+    # Normalize centroids (K-Means on L2-normalized vectors is equivalent to Cosine-Similarity clustering)
     centroids_norm_hac = normalize(raw_centroids)
-    parent_clustering = AgglomerativeClustering(
+    parent_clustering = KMeans(
         n_clusters=args.k_parents,
-        metric='cosine',
-        linkage='average'
+        random_state=42,
+        n_init=3
     )
     parent_ids = parent_clustering.fit_predict(centroids_norm_hac)
 

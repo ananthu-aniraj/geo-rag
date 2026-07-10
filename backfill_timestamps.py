@@ -18,18 +18,18 @@ def fetch_mapillary_timestamps(photo_ids):
     if not photo_ids:
         return {}
 
-    url = f"https://graph.mapillary.com/images?ids={','.join(photo_ids)}&fields=id,captured_at"
+    url = f"https://graph.mapillary.com/?ids={','.join(photo_ids)}&fields=id,captured_at"
     headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
     results = {}
 
     try:
         res = requests.get(url, headers=headers, timeout=15)
         if res.status_code == 200:
-            for item in res.json().get('data', []):
-                pid = str(item.get('id'))
+            data = res.json()
+            for pid, item in data.items():
                 cap_ms = item.get('captured_at')
                 if cap_ms:
-                    results[pid] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
+                    results[str(pid)] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
                         '%Y-%m-%dT%H:%M:%SZ')
     except Exception:
         pass
@@ -137,6 +137,8 @@ def main():
                         help="Where to save the enriched output (defaults to overwriting file_path)")
     parser.add_argument("--log_dirs", nargs="+", default=None,
                         help="Optional list of folders containing the completed_boxes log files (enables 250x faster bulk search backfill for Flickr).")
+    parser.add_argument("--platform", type=str, choices=['flickr', 'mapillary', 'kartaview'], default=None,
+                        help="Only backfill timestamps for a specific platform to save time.")
     args = parser.parse_args()
 
     save_path = args.save_path or args.file_path
@@ -161,7 +163,9 @@ def main():
         return
 
     # --- 1. Flickr (Bulk Box Search or Fallback Individual Queries) ---
-    flickr_ids = set(df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist())
+    flickr_ids = set()
+    if args.platform is None or args.platform == 'flickr':
+        flickr_ids = set(df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist())
     flickr_timestamps = {}
     
     if flickr_ids:
@@ -264,7 +268,9 @@ def main():
                         flickr_timestamps[pid] = timestamp
 
     # --- 2. Mapillary (Batch ID Queries) ---
-    mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
+    mapillary_ids = []
+    if args.platform is None or args.platform == 'mapillary':
+        mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
     mapillary_timestamps = {}
     if mapillary_ids:
         print(f"Found {len(mapillary_ids)} Mapillary images. Running batch queries...")
@@ -276,8 +282,9 @@ def main():
             time.sleep(0.1)
 
     # --- 3. KartaView (Throttled Parallel Queries) ---
-    kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])][
-        'Photo_ID'].tolist()
+    kartaview_ids = []
+    if args.platform is None or args.platform == 'kartaview':
+        kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])]['Photo_ID'].tolist()
     kartaview_timestamps = {}
     if kartaview_ids:
         print(f"Found {len(kartaview_ids)} KartaView images. Querying individual timestamps...")
