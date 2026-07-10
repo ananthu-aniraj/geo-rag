@@ -94,9 +94,15 @@ def create_map(pkl_path, output_html, max_markers=1000):
     for item in plot_data:
         # Determine color based on cluster_id or platform
         if 'cluster_id' in item:
-            color = colors[item['cluster_id'] % len(colors)]
+            # Color by parent_cluster_id for cohesive visual grouping if available
+            group_id = item.get('parent_cluster_id', item['cluster_id'])
+            color = colors[group_id % len(colors)]
             label = item.get('cluster_label', 'Unlabeled')
-            cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br><b>Labels:</b> {label}<br>"
+            
+            parent_lbl = item.get('parent_cluster_label', '')
+            parent_text = f"<b>Parent Cluster:</b> {parent_lbl} (ID: {item['parent_cluster_id']})<br>" if parent_lbl else ""
+            
+            cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br><b>Labels:</b> {label}<br>{parent_text}"
             if 'cluster_description' in item and item['cluster_description']:
                 cluster_text += f"<b>Description:</b> <span style='font-style: italic; font-size: 0.9em; color: #555;'>{item['cluster_description']}</span><br>"
         else:

@@ -30,6 +30,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             cluster_map[c_id] = {
                 "id": c_id,
                 "label": item.get('cluster_label', 'Unlabeled'),
+                "parent_id": int(item.get('parent_cluster_id', -1)),
+                "parent_label": item.get('parent_cluster_label', 'Unlabeled Parent'),
                 "count": 0,
                 "images": []
             }
@@ -175,6 +177,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         dashboard_data.append({
             "id": c_id,
             "label": c["label"],
+            "parent_id": c.get("parent_id", -1),
+            "parent_label": c.get("parent_label", "Unlabeled Parent"),
             "description": centroid_desc,
             "count": c["count"],
             "unique_h3_count": unique_h3_count,
@@ -575,6 +579,12 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             <input type="text" id="locationInput" placeholder="Filter by place/country (e.g. Alaska, Rome)..." onchange="searchLocation()">
             <span id="locationStatus" style="font-size: 0.8rem; font-weight: 500; min-height: 18px; margin-top: 2px;"></span>
         </div>
+        <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="parentSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Parent Category</label>
+            <select id="parentSelect" onchange="filterDataCombined()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px; background: white;">
+                <option value="">All Parent Categories</option>
+            </select>
+        </div>
         <div style="display: flex; flex-direction: column; gap: 6px;">
             <label for="sortSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Sort Order</label>
             <select id="sortSelect" onchange="resetAndRender()" style="height: 44px; padding: 10px 16px;">
@@ -667,6 +677,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     <div class="cluster-header">
                         <div class="cluster-title">Cluster #${{c.id}}: <span>${{c.label}}</span></div>
                         <div class="stats-badges">
+                            ${{c.parent_label ? `<span class="tag-parent" style="background-color: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; margin-right: 6px;">${{c.parent_label}}</span>` : ''}}
                             <span class="tag">${{c.count.toLocaleString()}} images</span>
                             <span class="tag-geo">${{c.unique_h3_count.toLocaleString()}} H3 cells</span>
                         </div>
@@ -916,6 +927,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
         function filterDataCombined() {{
             const searchVal = document.getElementById('searchInput').value.toLowerCase();
+            const parentVal = document.getElementById('parentSelect').value;
             
             // 1. Text Search filtering
             let temp = data;
@@ -927,7 +939,12 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 );
             }}
             
-            // 2. Location bounding box / proximity filtering
+            // 2. Parent Category filtering
+            if (parentVal) {{
+                temp = temp.filter(c => c.parent_label === parentVal);
+            }}
+            
+            // 3. Location bounding box / proximity filtering
             if (locationBbox) {{
                 temp = temp.filter(c => {{
                     // Check if cluster center is inside geocoded bounding box
@@ -968,6 +985,16 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             filteredData = temp;
             resetAndRender();
         }}
+
+        // Populate parent category filter dropdown dynamically
+        const parentSelect = document.getElementById('parentSelect');
+        const parents = [...new Set(data.map(c => c.parent_label).filter(Boolean))].sort();
+        parents.forEach(p => {{
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p;
+            parentSelect.appendChild(opt);
+        }});
 
         // Initial render
         resetAndRender();

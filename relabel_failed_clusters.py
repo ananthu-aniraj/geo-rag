@@ -129,12 +129,13 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url, ti
         return ""
 
 
-def save_dataset(data, final_results, out_path):
+def save_dataset(data, final_results, parent_results, out_path):
     """Helper to update labels in the data list and write them to the output file."""
     updated_clusters = set()
+    updated_parents = set()
     row_update_count = 0
 
-    # Map results
+    # Map child results
     cluster_labels = {}
     cluster_descriptions = {}
     for cid, (lbl, desc) in final_results.items():
@@ -143,11 +144,27 @@ def save_dataset(data, final_results, out_path):
             cluster_descriptions[cid] = desc
             updated_clusters.add(cid)
 
+    # Map parent results
+    parent_labels = {}
+    parent_descriptions = {}
+    for pid, (lbl, desc) in parent_results.items():
+        if lbl != "Error Labeling":
+            parent_labels[pid] = lbl
+            parent_descriptions[pid] = desc
+            updated_parents.add(pid)
+
     for item in data:
         cid = item.get('cluster_id')
         if cid is not None and int(cid) in cluster_labels:
             item['cluster_label'] = cluster_labels[int(cid)]
             item['cluster_description'] = cluster_descriptions[int(cid)]
+            row_update_count += 1
+            
+        pid = item.get('parent_cluster_id')
+        if pid is not None and int(pid) in parent_labels:
+            item['parent_cluster_label'] = parent_labels[int(pid)]
+            if pid in parent_descriptions:
+                item['parent_cluster_description'] = parent_descriptions[int(pid)]
             row_update_count += 1
 
     if out_path.endswith('.pkl'):
@@ -157,7 +174,7 @@ def save_dataset(data, final_results, out_path):
         pd.DataFrame(data).to_parquet(out_path)
 
     print(
-        f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} updated clusters to {out_path}.")
+        f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} child clusters and {len(updated_parents)} parent clusters to {out_path}.")
 
 
 def main():
@@ -232,20 +249,35 @@ def main():
 
     # 3. Identify clusters needing re-labeling
     target_cluster_ids = set()
+    target_parent_ids = set()
+    
+    has_parents = len(data) > 0 and 'parent_cluster_id' in data[0]
+
+    for item in data:
+        label = item.get('cluster_label')
+        cid = item.get('cluster_id')
+        if cid is not None:
+            if label is None or label in ("Error Labeling", "Unlabeled", "", "None"):
+                target_cluster_ids.add(int(cid))
+                
+        if has_parents:
+            p_label = item.get('parent_cluster_label')
+            pid = item.get('parent_cluster_id')
+            if pid is not None:
+                if p_label is None or p_label in ("Error Labeling", "Unlabeled Parent", "", "None", "Unlabeled"):
+                    target_parent_ids.add(int(pid))
+
     if args.cluster_ids:
+        # Override with forced list for child clusters
         target_cluster_ids = set(args.cluster_ids)
         print(f"Forced re-labeling for specific cluster IDs: {sorted(list(target_cluster_ids))}")
     else:
-        for item in data:
-            label = item.get('cluster_label')
-            cid = item.get('cluster_id')
-            if cid is not None:
-                if label is None or label in ("Error Labeling", "Unlabeled", "", "None"):
-                    target_cluster_ids.add(int(cid))
-        print(f"Automatically detected {len(target_cluster_ids)} failed or unlabeled clusters.")
+        print(f"Automatically detected {len(target_cluster_ids)} failed or unlabeled child clusters.")
+        if has_parents:
+            print(f"Automatically detected {len(target_parent_ids)} failed or unlabeled parent clusters.")
 
-    if not target_cluster_ids:
-        print("No failed or unlabeled clusters found! Script will exit without modifying the file.")
+    if not target_cluster_ids and not target_parent_ids:
+        print("No failed or unlabeled child or parent clusters found! Script will exit without modifying the file.")
         sys.exit(0)
 
     # 4. Pre-flight VLM Server Check
@@ -352,61 +384,153 @@ def main():
                 }
         return None
 
-    # 7. Query the VLM sequentially
+    # Helper function to prepare task for a single parent cluster
+    def prepare_parent_task(pid):
+        # We need to map row indices to parent IDs
+        parent_ids_arr = np.array([item.get('parent_cluster_id', -1) for item in data])
+        indices = np.where(parent_ids_arr == pid)[0]
+        if len(indices) == 0:
+            return None
+
+        # Calculate parent centroid directly from raw image embeddings belonging to this parent
+        parent_embs = embeddings_norm[indices]
+        centroid = np.mean(parent_embs, axis=0)
+        centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
+
+        # Sort parent members by similarity to parent centroid
+        sims = np.dot(parent_embs, centroid_norm)
+        sorted_idx_in_parent = np.argsort(sims)[::-1]
+
+        # Try downloading images starting from the closest
+        for rank in range(min(args.fallback_depth, len(sorted_idx_in_parent))):
+            item_idx = indices[sorted_idx_in_parent[rank]]
+            item = data[item_idx]
+            img_url = item['Image_URL']
+            photo_id = item.get('Photo_ID')
+            platform = str(item.get('Platform', '')).lower()
+
+            if photo_id:
+                if platform == 'mapillary' or 'mapillary' in img_url or 'fbcdn.net' in img_url:
+                    img_url = f"mapillary://{photo_id}"
+                elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
+                    img_url = f"kartaview://{photo_id}"
+
+            img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout,
+                                        max_retries=args.max_retries)
+
+            if img is not None:
+                buffered = BytesIO()
+                img.save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                return {
+                    "pid": pid,
+                    "img_str": img_str,
+                    "img_url": img_url,
+                    "rank": rank
+                }
+        return None
+
+    # 7. Query the VLM sequentially for child clusters
     final_results = {}
     sorted_failed_ids = sorted(list(target_cluster_ids))
     total_clusters = len(sorted_failed_ids)
 
-    print(f"\nStarting sequential VLM inference for {total_clusters} clusters (batch size 1)...")
-    print("Press Ctrl+C at any time to interrupt and save your progress.")
+    if total_clusters > 0:
+        print(f"\nStarting sequential VLM inference for {total_clusters} failed child clusters (batch size 1)...")
+        print("Press Ctrl+C at any time to interrupt and save your progress.")
 
-    try:
-        for idx, cid in enumerate(sorted_failed_ids):
-            print(f"[{idx + 1}/{total_clusters}] Processing Cluster #{cid}...")
+        try:
+            for idx, cid in enumerate(sorted_failed_ids):
+                print(f"[{idx + 1}/{total_clusters}] Processing Child Cluster #{cid}...")
 
-            # Download image sequentially
-            task = prepare_cluster_task(cid)
-            if not task:
-                print(f"  [FAILED] Cluster #{cid}: Failed to download any of the top {args.fallback_depth} images.")
-                continue
+                task = prepare_cluster_task(cid)
+                if not task:
+                    print(f"  [FAILED] Child Cluster #{cid}: Failed to download representative images.")
+                    continue
 
-            # Query VLM sequentially
-            response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint,
-                                                 timeout=args.timeout + 15)
+                response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint,
+                                                     timeout=args.timeout + 15)
 
-            if response_text:
-                label = "Unlabeled"
-                description = response_text
+                if response_text:
+                    label = "Unlabeled"
+                    description = response_text
 
-                if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
-                    parts = response_text.split("DESCRIPTION:")
-                    label = parts[0].replace("LABEL:", "").strip()
-                    description = parts[1].strip()
-                elif "LABEL:" in response_text:
-                    label = response_text.replace("LABEL:", "").strip()
+                    if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
+                        parts = response_text.split("DESCRIPTION:")
+                        label = parts[0].replace("LABEL:", "").strip()
+                        description = parts[1].strip()
+                    elif "LABEL:" in response_text:
+                        label = response_text.replace("LABEL:", "").strip()
 
-                label = label.replace("**", "").replace("*", "").replace("`", "").strip()
-                label = label.strip('"\'*#-\t ')
+                    label = label.replace("**", "").replace("*", "").replace("`", "").strip()
+                    label = label.strip('"\'*#-\t ')
 
-                final_results[cid] = (label, description)
-                print(f"  [SUCCESS] Cluster #{cid} labeled: '{label}' (using representative image rank {task['rank']})")
-            else:
-                final_results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
-                print(f"  [FAILED] Cluster #{cid}: VLM returned empty response.")
+                    final_results[cid] = (label, description)
+                    print(f"  [SUCCESS] Child Cluster #{cid} labeled: '{label}'")
+                else:
+                    final_results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
+                    print(f"  [FAILED] Child Cluster #{cid}: VLM returned empty response.")
 
-            # Periodically save intermediate checkpoints
-            if len(final_results) % args.save_interval == 0:
-                save_dataset(data, final_results, args.out)
+                if len(final_results) % args.save_interval == 0:
+                    save_dataset(data, final_results, {}, args.out)
 
-    except KeyboardInterrupt:
-        print("\n\nExecution interrupted by user (Ctrl+C). Saving progress so far...")
-    finally:
-        if final_results:
-            print("\nSaving final results...")
-            save_dataset(data, final_results, args.out)
-            print("Re-labeling session finished.")
-        else:
-            print("\nNo clusters were successfully re-labeled.")
+        except KeyboardInterrupt:
+            print("\nSequential child cluster labeling interrupted by user.")
+
+    # 8. Query the VLM sequentially for parent clusters
+    parent_results = {}
+    sorted_failed_parent_ids = sorted(list(target_parent_ids))
+    total_parents = len(sorted_failed_parent_ids)
+
+    if total_parents > 0:
+        print(f"\nStarting sequential VLM inference for {total_parents} failed parent clusters (batch size 1)...")
+        print("Press Ctrl+C at any time to interrupt and save your progress.")
+
+        try:
+            for idx, pid in enumerate(sorted_failed_parent_ids):
+                print(f"[{idx + 1}/{total_parents}] Processing Parent Cluster #{pid}...")
+
+                task = prepare_parent_task(pid)
+                if not task:
+                    print(f"  [FAILED] Parent Cluster #{pid}: Failed to download representative images.")
+                    continue
+
+                response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint,
+                                                     timeout=args.timeout + 15)
+
+                if response_text:
+                    label = "Unlabeled Parent"
+                    description = response_text
+
+                    if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
+                        parts = response_text.split("DESCRIPTION:")
+                        label = parts[0].replace("LABEL:", "").strip()
+                        description = parts[1].strip()
+                    elif "LABEL:" in response_text:
+                        label = response_text.replace("LABEL:", "").strip()
+
+                    label = label.replace("**", "").replace("*", "").replace("`", "").strip()
+                    label = label.strip('"\'*#-\t ')
+
+                    parent_results[pid] = (label, description)
+                    print(f"  [SUCCESS] Parent Cluster #{pid} labeled: '{label}'")
+                else:
+                    parent_results[pid] = ("Error Labeling", "Inference failed or returned empty response.")
+                    print(f"  [FAILED] Parent Cluster #{pid}: VLM returned empty response.")
+
+                if len(parent_results) % args.save_interval == 0:
+                    save_dataset(data, final_results, parent_results, args.out)
+
+        except KeyboardInterrupt:
+            print("\nSequential parent cluster labeling interrupted by user.")
+
+    # Final Save
+    if final_results or parent_results:
+        print("\nSaving final results...")
+        save_dataset(data, final_results, parent_results, args.out)
+        print("Re-labeling session finished.")
+    else:
+        print("\nNo clusters were successfully re-labeled.")
 
 
 if __name__ == "__main__":

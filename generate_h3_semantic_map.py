@@ -99,14 +99,17 @@ def main():
                 var cCount = Number(clusters[i][2]).toLocaleString();
                 var label = clusters[i][0];
                 var desc = clusters[i][3];
+                var parent_label = clusters[i][4] || "";
                  
                 // Truncate description if too long
                 if (desc.length > 150) {{
                     desc = desc.substring(0, 147) + '...';
                 }}
                  
+                var parent_badge = parent_label ? ' <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: bold; margin-left: 4px; vertical-align: middle;">' + parent_label + '</span>' : '';
+                 
                 html += '<li style="margin-bottom: 6px;">' +
-                        '<b>' + label + ':</b> ' + pct + '% (' + cCount + ' images)' +
+                        '<b>' + label + '</b>' + parent_badge + ': ' + pct + '% (' + cCount + ' images)' +
                         '<br/><span style="color: #7f8c8d; font-size: 10.5px; font-style: italic;">' + desc + '</span>' +
                         '</li>';
             }}
@@ -152,7 +155,8 @@ def main():
                 for _, row in df_cell.head(5).iterrows():
                     pct = float((row['image_count'] / total_images) * 100)
                     desc = row['cluster_description'] if row['cluster_description'] else ""
-                    cluster_list.append([row['cluster_label'], pct, int(row['image_count']), desc[:200]])
+                    parent_label = row.get('parent_cluster_label', '') if 'parent_cluster_label' in df_cell.columns else ''
+                    cluster_list.append([row['cluster_label'], pct, int(row['image_count']), desc[:200], parent_label])
 
                 clusters_json = json.dumps(cluster_list)
                 log_val = np.log10(total_images)

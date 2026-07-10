@@ -20,7 +20,7 @@ def main():
     print(f"Reading metadata columns from {args.input}...")
     start = time.time()
 
-    # Read necessary columns, dynamically checking if 'Season' is present in the schema
+    # Read necessary columns, dynamically checking if 'Season' and parent cluster info are present
     parquet_file = pq.ParquetFile(args.input)
     available_cols = parquet_file.schema.names
     
@@ -28,6 +28,13 @@ def main():
     has_season = 'Season' in available_cols
     if has_season:
         read_cols.append('Season')
+    
+    has_parent_id = 'parent_cluster_id' in available_cols
+    has_parent_label = 'parent_cluster_label' in available_cols
+    if has_parent_id:
+        read_cols.append('parent_cluster_id')
+    if has_parent_label:
+        read_cols.append('parent_cluster_label')
         
     table = pq.read_table(args.input, columns=read_cols)
     df = table.to_pandas()
@@ -56,11 +63,14 @@ def main():
             df_res = df.copy()
             df_res['query_cell'] = df_res['H3_Cell'].apply(lambda x: h3.cell_to_parent(x, res))
 
-        # Group by query cell, season, and cluster metadata
-        grouped = df_res.groupby(
-            ['query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description'],
-            observed=True
-        ).size().reset_index(name='image_count')
+        # Group by query cell, season, and cluster/parent metadata
+        group_cols = ['query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description']
+        if has_parent_id:
+            group_cols.append('parent_cluster_id')
+        if has_parent_label:
+            group_cols.append('parent_cluster_label')
+
+        grouped = df_res.groupby(group_cols, observed=True).size().reset_index(name='image_count')
 
         grouped['resolution'] = res
         aggregated_dfs.append(grouped)
@@ -69,9 +79,14 @@ def main():
     print("Combining all resolutions...")
     final_df = pd.concat(aggregated_dfs, ignore_index=True)
 
-    # Reorder columns to preserve Season
-    final_df = final_df[
-        ['resolution', 'query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description', 'image_count']]
+    # Reorder columns, dynamically preserving parent info
+    final_cols = ['resolution', 'query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description']
+    if has_parent_id:
+        final_cols.append('parent_cluster_id')
+    if has_parent_label:
+        final_cols.append('parent_cluster_label')
+    final_cols.append('image_count')
+    final_df = final_df[final_cols]
 
     print(f"Saving aggregated index of {len(final_df)} rows to {args.output}...")
 

@@ -41,35 +41,45 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
 
     # Prepare DataFrame for plotting
     plot_list = []
+    has_parents = len(data) > 0 and 'parent_cluster_label' in data[0]
+
     for i, item in enumerate(data):
-        label_suffix = f" ({item['cluster_label']})" if 'cluster_label' in item and item['cluster_label'] else ""
+        if has_parents:
+            hue_val = item.get('parent_cluster_label', 'Unknown Parent')
+        else:
+            label_suffix = f" ({item['cluster_label']})" if 'cluster_label' in item and item['cluster_label'] else ""
+            hue_val = f"Cluster {item['cluster_id']}{label_suffix}"
+
         plot_list.append({
             'x': umap_coords[i][0],
             'y': umap_coords[i][1],
-            'cluster': f"Cluster {item['cluster_id']}{label_suffix}",
+            'color_group': hue_val,
             'platform': item['Platform']
         })
     df = pd.DataFrame(plot_list)
 
     # Create Plot
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(13, 9))
     sns.set_style("whitegrid")
 
+    # Use tab20/tab20b/tab20c for categorical coloring if parents exist
+    color_palette = 'tab20' if has_parents else 'viridis'
+    
     scatter = sns.scatterplot(
         data=df,
         x='x', y='y',
-        hue='cluster',
+        hue='color_group',
         style='platform',
-        palette='viridis',
+        palette=color_palette,
         alpha=0.7,
-        s=60,
-        edgecolor='w'
+        s=45,
+        edgecolor='none'
     )
 
     plt.title("Geo-RAG: Semantic Visual Clusters (UMAP 2D Projection)", fontsize=15)
     plt.xlabel("UMAP Dimension 1")
     plt.ylabel("UMAP Dimension 2")
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
     plt.tight_layout()
 
     print(f"Saving scatter plot to {output_png}...")

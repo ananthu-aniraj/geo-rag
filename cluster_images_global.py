@@ -231,6 +231,7 @@ def main():
     parser = argparse.ArgumentParser(description="Global Semantic Clustering of Geo-Images.")
     parser.add_argument("--pkl", type=str, required=True, help="Path to the .pkl or parquet file.")
     parser.add_argument("--k", type=int, default=10, help="Number of clusters.")
+    parser.add_argument("--k_parents", type=int, default=None, help="Number of parent clusters for hierarchical clustering (default: k // 80).")
     parser.add_argument("--use_umap", action="store_true", help="Use UMAP dimensionality reduction before clustering.")
     parser.add_argument("--reduce_dim", type=int, default=10,
                         help="Dimensions to reduce to via UMAP if --use_umap is set.")
@@ -253,6 +254,9 @@ def main():
                         help="Target maximum dimension to resize images before VLM processing (default: 448). Prevents OOM on wide panoramic images.")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
+
+    if args.k_parents is None:
+        args.k_parents = max(2, args.k // 80)
 
     # Pre-flight check for VLM server
     if args.label_method == "mllm" and not args.no_label:
@@ -351,32 +355,125 @@ def main():
     print(f"\nClustering subset on {clustering_mode} space...")
     global_cluster_ids, _ = cluster_subset(cluster_input, args.k, args.gpu, args.minibatch, faiss)
 
-    # Centroid derivation and labeling
+    # Centroid derivation (run unconditionally to support hierarchical grouping)
+    print("\nComputing centroids in original 768D space...")
+    d = embeddings_norm.shape[1]
+    raw_centroids = np.zeros((args.k, d), dtype=embeddings_norm.dtype)
+    valid_mask = (global_cluster_ids >= 0)
+    np.add.at(raw_centroids, global_cluster_ids[valid_mask], embeddings_norm[valid_mask])
+    counts = np.bincount(global_cluster_ids[valid_mask], minlength=args.k)
+    valid_counts = counts > 0
+    raw_centroids[valid_counts] /= counts[valid_counts, None]
+
+    # Hierarchical parent clustering
+    from sklearn.cluster import AgglomerativeClustering
+    print(f"\nPerforming hierarchical clustering: grouping {args.k} centroids into {args.k_parents} parent clusters...")
+    
+    # Normalize centroids for cosine-similarity HAC
+    centroids_norm_hac = normalize(raw_centroids)
+    parent_clustering = AgglomerativeClustering(
+        n_clusters=args.k_parents,
+        metric='cosine',
+        linkage='average'
+    )
+    parent_ids = parent_clustering.fit_predict(centroids_norm_hac)
+
+    # Compute parent centroids (weighted by flat cluster sizes)
+    parent_centroids = np.zeros((args.k_parents, d), dtype=embeddings_norm.dtype)
+    np.add.at(parent_centroids, parent_ids, raw_centroids * counts[:, None])
+    parent_counts = np.bincount(parent_ids, minlength=args.k_parents)
+    valid_parent_counts = parent_counts > 0
+    parent_centroids[valid_parent_counts] /= parent_counts[valid_parent_counts, None]
+
+    # Label parent clusters
+    parent_labels = {}
+    parent_descriptions = {}
+
+    if not args.no_label and args.label_method == "mllm":
+        print(f"\nPreparing parent clusters for MLLM labeling ({args.mllm_model} via {args.mllm_backend})...")
+        parent_tasks = []
+        
+        # Load prompt template from prompts/shared/prompt.txt
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        prompt_path = os.path.join(script_dir, "prompts", "shared", "prompt.txt")
+
+        print(f"Loading shared prompt template from {prompt_path}")
+        with open(prompt_path, 'r') as f:
+            prompt_template = f.read()
+
+        lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
+        prompt_text = prompt_template.format(lulc_list=lulc_list_str)
+
+        for pid in range(args.k_parents):
+            cids_in_parent = np.where(parent_ids == pid)[0]
+            if len(cids_in_parent) == 0:
+                continue
+
+            # Find the closest child cluster centroid to the parent cluster centroid
+            p_centroid = parent_centroids[pid]
+            p_centroid_norm = p_centroid / (np.linalg.norm(p_centroid) + 1e-9)
+            child_embs = centroids_norm_hac[cids_in_parent]
+            sims = np.dot(child_embs, p_centroid_norm)
+            closest_child_cid = cids_in_parent[np.argmax(sims)]
+
+            # Find the closest image in that child cluster to use as parent's representative image
+            indices = np.where(global_cluster_ids == closest_child_cid)[0]
+            if len(indices) == 0:
+                continue
+            child_centroid = raw_centroids[closest_child_cid]
+            child_centroid_norm = child_centroid / (np.linalg.norm(child_centroid) + 1e-9)
+            cluster_embs = embeddings_norm[indices]
+            img_sims = np.dot(cluster_embs, child_centroid_norm)
+            closest_img_idx = indices[np.argmax(img_sims)]
+            representative_item = data[closest_img_idx]
+            img_url = representative_item['Image_URL']
+
+            # Resolve potentially expired Mapillary or Kartaview URLs dynamically
+            photo_id = representative_item.get('Photo_ID')
+            platform = str(representative_item.get('Platform', '')).lower()
+            if photo_id:
+                photo_str = str(photo_id).strip()
+                if photo_str.endswith('.0'):
+                    photo_str = photo_str[:-2]
+                if platform == 'mapillary' or 'mapillary' in img_url or 'fbcdn.net' in img_url:
+                    img_url = f"mapillary://{photo_str}"
+                elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
+                    img_url = f"kartaview://{photo_str}"
+
+            parent_tasks.append({
+                "cid": pid,
+                "img_url": img_url,
+                "prompt": prompt_text
+            })
+
+        # Resolve API Endpoint
+        endpoint = args.mllm_endpoint
+        if not endpoint:
+            if args.mllm_backend == "sglang":
+                endpoint = "http://localhost:30000"
+            else:
+                endpoint = "http://localhost:11434"
+
+        print(f"Total parent tasks prepared: {len(parent_tasks)}. Starting batch parent MLLM labeling...")
+        parent_results = label_clusters_mllm_batched(
+            parent_tasks, args.mllm_model, endpoint,
+            chunk_size=args.chunk_size, img_max_dim=args.img_max_dim
+        )
+        for pid, (lbl, desc) in parent_results.items():
+            parent_labels[pid] = lbl
+            parent_descriptions[pid] = desc
+    else:
+        print("Labeling parent clusters zero-shot...")
+        parent_labels_list = label_clusters(parent_centroids, all_features, all_categories)
+        parent_labels = {pid: label for pid, label in enumerate(parent_labels_list)}
+
+    # Label child clusters
     cluster_labels = {}
     cluster_descriptions = {}
 
     if not args.no_label:
-        print("\nComputing centroids in original 768D space for labeling...")
-        d = embeddings_norm.shape[1]
-        raw_centroids = np.zeros((args.k, d), dtype=embeddings_norm.dtype)
-        valid_mask = (global_cluster_ids >= 0)
-        np.add.at(raw_centroids, global_cluster_ids[valid_mask], embeddings_norm[valid_mask])
-        counts = np.bincount(global_cluster_ids[valid_mask], minlength=args.k)
-        valid_counts = counts > 0
-        raw_centroids[valid_counts] /= counts[valid_counts, None]
-
         if args.label_method == "mllm":
             print(f"\nPreparing tasks for MLLM labeling ({args.mllm_model} via {args.mllm_backend})...")
-            # Load prompt template from prompts/shared/prompt.txt
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            prompt_path = os.path.join(script_dir, "prompts", "shared", "prompt.txt")
-
-            print(f"Loading shared prompt template from {prompt_path}")
-            with open(prompt_path, 'r') as f:
-                prompt_template = f.read()
-
-            lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
-
             tasks = []
             for cid in range(args.k):
                 indices = np.where(global_cluster_ids == cid)[0]
@@ -442,6 +539,14 @@ def main():
             item['cluster_label'] = cluster_labels[cid]
         if cid in cluster_descriptions:
             item['cluster_description'] = cluster_descriptions[cid]
+            
+        # Add parent cluster metadata
+        if cid >= 0:
+            pid = int(parent_ids[cid])
+            item['parent_cluster_id'] = pid
+            item['parent_cluster_label'] = parent_labels.get(pid, "Unlabeled Parent")
+            if pid in parent_descriptions:
+                item['parent_cluster_description'] = parent_descriptions[pid]
 
     print(f"Saving to {args.out}...")
     if args.out.endswith('.pkl'):
