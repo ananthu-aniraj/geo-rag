@@ -68,7 +68,11 @@ def main():
                 valid_ms = (parsed_ms.dt.year >= 1) & (parsed_ms.dt.year <= 9999)
             except Exception:
                 valid_ms = pd.Series(True, index=parsed_ms.index)
-            standardized.loc[is_ms_mask] = parsed_ms.dt.strftime('%Y-%m-%dT%H:%M:%SZ').where(valid_ms, None)
+            
+            formatted_ms = pd.Series([None] * len(parsed_ms), index=parsed_ms.index, dtype=object)
+            if valid_ms.any():
+                formatted_ms[valid_ms] = parsed_ms[valid_ms].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            standardized.loc[is_ms_mask] = formatted_ms
             
         if is_s_mask.any():
             parsed_s = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
@@ -76,7 +80,11 @@ def main():
                 valid_s = (parsed_s.dt.year >= 1) & (parsed_s.dt.year <= 9999)
             except Exception:
                 valid_s = pd.Series(True, index=parsed_s.index)
-            standardized.loc[is_s_mask] = parsed_s.dt.strftime('%Y-%m-%dT%H:%M:%SZ').where(valid_s, None)
+                
+            formatted_s = pd.Series([None] * len(parsed_s), index=parsed_s.index, dtype=object)
+            if valid_s.any():
+                formatted_s[valid_s] = parsed_s[valid_s].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            standardized.loc[is_s_mask] = formatted_s
             
     # Parse string representations
     is_string = ts_raw.notna() & ~is_numeric
@@ -91,7 +99,11 @@ def main():
             valid_str = (parsed_str.dt.year >= 1) & (parsed_str.dt.year <= 9999)
         except Exception:
             valid_str = pd.Series(True, index=parsed_str.index)
-        standardized.loc[is_string] = parsed_str.dt.strftime('%Y-%m-%dT%H:%M:%SZ').where(valid_str, None)
+            
+        formatted_str = pd.Series([None] * len(parsed_str), index=parsed_str.index, dtype=object)
+        if valid_str.any():
+            formatted_str[valid_str] = parsed_str[valid_str].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        standardized.loc[is_string] = formatted_str
 
     # Fallback to original strings if parsing failed but was not null/empty
     ts_series = ts_raw.astype(str).str.strip()
