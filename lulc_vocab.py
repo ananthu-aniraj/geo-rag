@@ -12,7 +12,11 @@ NATURAL_LULC_VOCAB = {
     "Sandy desert / Dunes": "Sand sheets, active dunes, or sandy flats.",
     "Rocky desert / Gravel plains": "Stony hamadas, gravel plains, or barren volcanic ash fields.",
     "Barren soil / Badlands": "Highly eroded clay hills, bare dry earth, or dry salt flats.",
-    "Bare rock / Cliffs": "Exposed bedrock, cliffs, scree slopes, or mountain peaks.",
+    "Bare rock / Cliffs": "Exposed bedrock, cliffs, or scree slopes.",
+    "Mountain peak / Alpine ridge": "High-altitude rocky ridges, jagged summits, or mountain peaks.",
+    "Waterfall / Cascade": "Water flowing vertically over a cliff or steep drop.",
+    "Volcanic terrain / Lava flow": "Barren basalt fields, volcanic craters, or active geothermal areas.",
+    "Salt flat / Playa": "Dry lake beds covered with salt crusts or mineral deposits (e.g. Salar de Uyuni).",
     "Coastal beach / Spit": "Sandy or pebbly sea coast.",
     "Wetland / Marsh / Bog": "Marshes, peat bogs, fens, reed beds, or swamps.",
     "River / Stream": "Flowing freshwater channels, creeks, or canals.",
@@ -37,5 +41,6 @@ MAN_MADE_LULC_VOCAB = {
     "Transportation network": "Highways, railways, runways, or shipping ports.",
     "Mine / Quarry / Landfill": "Open-pit mines, gravel quarries, or landfill sites.",
     "Urban green space": "City parks, golf courses, botanical gardens, or sports fields.",
+    "Historical / Cultural monument / Archaeological site": "Ancient ruins, monuments, pyramids, historic temples, stone circles, or archaeological landmarks (e.g. Giza Pyramids, Taj Mahal, Stonehenge).",
     "Other man-made surface": "Any other artificial or managed land cover or surface."
 }
