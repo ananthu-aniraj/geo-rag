@@ -13,15 +13,15 @@ DELAY_BETWEEN_CALLS = 1.1
 # Centered around the landmarks (~1.5km to 3km boxes)
 WONDERS = {
     # New Seven Wonders of the World + Giza + Dubai
-    # "Taj Mahal": (78.037, 27.170, 78.047, 27.180),
-    # "Colosseum": (12.487, 41.885, 12.497, 41.895),
-    # "Chichen Itza": (-88.573, 20.679, -88.563, 20.689),
-    # "Machu Picchu": (-72.550, -13.168, -72.540, -13.158),
-    # "Christ the Redeemer": (-43.216, -22.957, -43.205, -22.947),
-    # "Petra": (35.479, 30.315, 35.489, 30.326),
-    # "Great Wall of China (Mutianyu)": (116.559, 40.426, 116.569, 40.436),
-    # "Giza Pyramids": (31.129, 29.974, 31.139, 29.984),
-    # "Dubai (Downtown)": (55.263, 25.179, 55.293, 25.209),
+    "Taj Mahal": (78.037, 27.170, 78.047, 27.180),
+    "Colosseum": (12.487, 41.885, 12.497, 41.895),
+    "Chichen Itza": (-88.573, 20.679, -88.563, 20.689),
+    "Machu Picchu": (-72.550, -13.168, -72.540, -13.158),
+    "Christ the Redeemer": (-43.216, -22.957, -43.205, -22.947),
+    "Petra": (35.479, 30.315, 35.489, 30.326),
+    "Great Wall of China (Mutianyu)": (116.559, 40.426, 116.569, 40.436),
+    "Giza Pyramids": (31.129, 29.974, 31.139, 29.984),
+    "Dubai (Downtown)": (55.263, 25.179, 55.293, 25.209),
     
     # Famous Waterfalls (Continental Representation)
     "Victoria Falls (Africa)": (25.841, -17.939, 25.871, -17.909),
@@ -57,11 +57,18 @@ WONDERS = {
     "Yellowknife (Northern Canada)": (-114.392, 62.439, -114.348, 62.469),
     "Virginia Falls (Nahanni, Canada)": (-125.760, 61.592, -125.713, 61.622),
     "Olkhon Island (Lake Baikal, Russia)": (107.378, 53.135, 107.422, 53.165),
-    "Lena Pillars (Siberia, Russia)": (127.561, 61.131, 127.608, 61.161)
+    "Lena Pillars (Siberia, Russia)": (127.561, 61.131, 127.608, 61.161),
+
+    # Famous Man-made Landmarks (Continental Representation)
+    "Eiffel Tower": (2.285, 48.852, 2.304, 48.864),
+    "Leaning Tower of Pisa": (10.389, 43.717, 10.404, 43.729),
+    "Statue of Liberty": (-74.052, 40.683, -74.037, 40.695),
+    "Sydney Opera House": (151.202, -33.860, 151.216, -33.848),
+    "Forbidden City": (116.381, 39.907, 116.401, 39.925),
+    "Djinguereber Mosque (Timbuktu)": (-3.020, 16.762, -3.000, 16.781),
+    "Fushimi Inari Shrine (Kyoto)": (135.762, 34.959, 135.783, 34.975),
+    "Palace of Westminster (Big Ben)": (-0.132, 51.493, -0.117, 51.505)
 }
-
-
-# (Urban areas check removed)
 
 
 def fetch_flickr_photos(bbox_coords, page=1, geo_context=2):
