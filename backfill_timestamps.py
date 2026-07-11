@@ -14,7 +14,8 @@ FLICKR_DELAY = 1.1
 
 
 def fetch_mapillary_timestamps(photo_ids):
-    """Fetches captured_at timestamps for multiple Mapillary photo IDs in batches of 100."""
+    """Fetches captured_at timestamps for multiple Mapillary photo IDs in batches of 100.
+    Falls back to individual queries if the batch contains deleted/invalid IDs."""
     if not photo_ids:
         return {}
 
@@ -31,6 +32,21 @@ def fetch_mapillary_timestamps(photo_ids):
                 if cap_ms:
                     results[str(pid)] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
                         '%Y-%m-%dT%H:%M:%SZ')
+        elif len(photo_ids) > 1:
+            # Batch query failed (likely due to a deleted/invalid ID in the batch).
+            # Fall back to individual queries for this specific batch
+            for pid in photo_ids:
+                single_url = f"https://graph.mapillary.com/{pid}?fields=id,captured_at"
+                try:
+                    s_res = requests.get(single_url, headers=headers, timeout=5)
+                    if s_res.status_code == 200:
+                        s_data = s_res.json()
+                        cap_ms = s_data.get('captured_at')
+                        if cap_ms:
+                            results[str(pid)] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
+                                '%Y-%m-%dT%H:%M:%SZ')
+                except Exception:
+                    pass
     except Exception:
         pass
     return results
