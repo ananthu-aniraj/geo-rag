@@ -23,6 +23,24 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
 
     # Group data by cluster and prepare a compact JSON-like structure
     print("Aggregating cluster data for the dashboard...")
+    
+    # Load H3 res 4 parent cells from the pre-built spatial-semantic index
+    cluster_h3_res4 = {}
+    import glob
+    dir_name = os.path.dirname(os.path.abspath(pkl_path))
+    index_candidates = glob.glob(os.path.join(dir_name, "*h3_semantic_index.parquet"))
+    if index_candidates:
+        index_path = index_candidates[0]
+        print(f"Loading pre-built H3 index from {index_path}...")
+        try:
+            import pandas as pd
+            index_df = pd.read_parquet(index_path)
+            res4_df = index_df[index_df['resolution'] == 4]
+            cluster_h3_res4 = res4_df.groupby('cluster_id')['query_cell'].apply(lambda x: list(set(x.dropna()))).to_dict()
+        except Exception as e:
+            print(f"Warning: Failed to load H3 index: {e}")
+    else:
+        print("Warning: Pre-built H3 index (*h3_semantic_index.parquet) not found in same folder. Location search will fall back to coordinate bounds check.")
     cluster_map = {}
     for item in data:
         c_id = int(item['cluster_id'])
@@ -185,6 +203,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "center_lat": float(center_lat),
             "center_lon": float(center_lon),
             "h3_centroids": h3_centroids,
+            "h3_res4": [str(x) for x in cluster_h3_res4.get(c_id, [])],
             "samples": samples
         })
     # Collect samples to check: first two representatives, last two representatives, and outliers
@@ -306,6 +325,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.basic.min.js"></script>
+    <script src="https://unpkg.com/h3-js@3.7.2/dist/h3-js.umd.js"></script>
     <script src="{data_js_filename}"></script>
     <style>
         :root {{
@@ -925,6 +945,35 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             filterDataCombined();
         }}
 
+        function latLngToH3Cell(lat, lon, res) {{
+            if (typeof h3 !== 'undefined') {{
+                if (typeof h3.latLngToCell === 'function') {{
+                    return h3.latLngToCell(lat, lon, res);
+                }} else if (typeof h3.geoToH3 === 'function') {{
+                    return h3.geoToH3(lat, lon, res);
+                }}
+            }}
+            return null;
+        }}
+
+        function getH3CellsInBbox(bbox, resolution = 4) {{
+            const cells = new Set();
+            const latStep = (bbox.max_lat - bbox.min_lat) / 8;
+            const lonStep = (bbox.max_lon - bbox.min_lon) / 8;
+            
+            for (let i = 0; i <= 8; i++) {{
+                for (let j = 0; j <= 8; j++) {{
+                    const lat = bbox.min_lat + i * latStep;
+                    const lon = bbox.min_lon + j * lonStep;
+                    const cell = latLngToH3Cell(lat, lon, resolution);
+                    if (cell) {{
+                        cells.add(cell);
+                    }}
+                }}
+            }}
+            return Array.from(cells);
+        }}
+
         function filterDataCombined() {{
             const searchVal = document.getElementById('searchInput').value.toLowerCase();
             const parentVal = document.getElementById('parentSelect').value;
@@ -946,7 +995,19 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             
             // 3. Location bounding box / proximity filtering
             if (locationBbox) {{
+                let queryCells = [];
+                if (typeof h3 !== 'undefined') {{
+                    queryCells = getH3CellsInBbox(locationBbox, 4);
+                }}
+                
                 temp = temp.filter(c => {{
+                    // Check H3 overlap if H3 library is loaded and cluster has coverage
+                    if (queryCells.length > 0 && c.h3_res4 && c.h3_res4.length > 0) {{
+                        const hasOverlap = c.h3_res4.some(cell => queryCells.includes(cell));
+                        if (hasOverlap) return true;
+                    }}
+                    
+                    // Fallback to coordinates bounding box check
                     // Check if cluster center is inside geocoded bounding box
                     const centerInBbox = (
                         c.center_lat >= locationBbox.min_lat &&
