@@ -149,7 +149,22 @@ def main():
     df['Season'] = seasons
     print(" -> Local seasons classified. Column 'Season' added.")
 
-    # 3. Save output
+    # 4. Add dynamic time of day classification (Vectorized)
+    print("Classifying time of day based on hour...")
+    hours = pd.to_numeric(standardized.str[11:13], errors='coerce')
+    time_of_days = pd.Series(['Unknown'] * len(df), index=df.index, dtype=object)
+    valid_hour_mask = hours.notna()
+
+    time_of_days[valid_hour_mask & (hours >= 5) & (hours < 8)] = 'Dawn'
+    time_of_days[valid_hour_mask & (hours >= 8) & (hours < 12)] = 'Morning'
+    time_of_days[valid_hour_mask & (hours >= 12) & (hours < 17)] = 'Afternoon'
+    time_of_days[valid_hour_mask & (hours >= 17) & (hours < 20)] = 'Dusk'
+    time_of_days[valid_hour_mask & ((hours >= 20) | (hours < 5))] = 'Night'
+
+    df['Time_Of_Day'] = time_of_days
+    print(" -> Time of day classified. Column 'Time_Of_Day' added.")
+
+    # 5. Save output
     print(f"Saving standardized dataset to: {out_path}")
     if out_path.endswith('.pkl'):
         # Save as pickle list of dicts if original was a pickle

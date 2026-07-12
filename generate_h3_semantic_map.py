@@ -148,8 +148,16 @@ def main():
                 geojson_coords = [[lng, lat] for lat, lng in boundary]
                 geojson_coords.append(geojson_coords[0])
 
-                # Retrieve cluster breakdown for this cell+season, sorted by image count
-                df_cell = df_season[df_season['query_cell'] == cell].sort_values(by='image_count', ascending=False)
+                # Retrieve cluster breakdown for this cell+season
+                df_cell_raw = df_season[df_season['query_cell'] == cell]
+                
+                # Aggregate across different times of day to prevent duplicate cluster entries in the tooltip
+                agg_cols = ['cluster_label', 'cluster_description']
+                if 'parent_cluster_label' in df_cell_raw.columns:
+                    agg_cols.append('parent_cluster_label')
+                
+                df_cell = df_cell_raw.groupby(agg_cols, observed=True)['image_count'].sum().reset_index()
+                df_cell = df_cell.sort_values(by='image_count', ascending=False)
 
                 cluster_list = []
                 for _, row in df_cell.head(5).iterrows():

@@ -20,7 +20,7 @@ def main():
     print(f"Reading metadata columns from {args.input}...")
     start = time.time()
 
-    # Read necessary columns, dynamically checking if 'Season' and parent cluster info are present
+    # Read necessary columns, dynamically checking if 'Season', 'Time_Of_Day' and parent cluster info are present
     parquet_file = pq.ParquetFile(args.input)
     available_cols = parquet_file.schema.names
     
@@ -29,6 +29,10 @@ def main():
     if has_season:
         read_cols.append('Season')
     
+    has_tod = 'Time_Of_Day' in available_cols
+    if has_tod:
+        read_cols.append('Time_Of_Day')
+        
     has_parent_id = 'parent_cluster_id' in available_cols
     has_parent_label = 'parent_cluster_label' in available_cols
     if has_parent_id:
@@ -47,6 +51,11 @@ def main():
     else:
         df['Season'] = df['Season'].fillna('Unknown')
 
+    if 'Time_Of_Day' not in df.columns:
+        df['Time_Of_Day'] = 'Unknown'
+    else:
+        df['Time_Of_Day'] = df['Time_Of_Day'].fillna('Unknown')
+
     # Build aggregated tables for resolutions 1 through 11
     resolutions = list(range(1, 12))
     aggregated_dfs = []
@@ -63,8 +72,11 @@ def main():
             df_res = df.copy()
             df_res['query_cell'] = df_res['H3_Cell'].apply(lambda x: h3.cell_to_parent(x, res))
 
-        # Group by query cell, season, and cluster/parent metadata
-        group_cols = ['query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description']
+        # Group by query cell, season, time of day, and cluster/parent metadata
+        group_cols = ['query_cell', 'Season']
+        if has_tod:
+            group_cols.append('Time_Of_Day')
+        group_cols.extend(['cluster_id', 'cluster_label', 'cluster_description'])
         if has_parent_id:
             group_cols.append('parent_cluster_id')
         if has_parent_label:
@@ -79,8 +91,11 @@ def main():
     print("Combining all resolutions...")
     final_df = pd.concat(aggregated_dfs, ignore_index=True)
 
-    # Reorder columns, dynamically preserving parent info
-    final_cols = ['resolution', 'query_cell', 'Season', 'cluster_id', 'cluster_label', 'cluster_description']
+    # Reorder columns, dynamically preserving parent and time of day info
+    final_cols = ['resolution', 'query_cell', 'Season']
+    if has_tod:
+        final_cols.append('Time_Of_Day')
+    final_cols.extend(['cluster_id', 'cluster_label', 'cluster_description'])
     if has_parent_id:
         final_cols.append('parent_cluster_id')
     if has_parent_label:

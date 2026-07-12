@@ -88,7 +88,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "h3": item.get('H3_Cell', ''),
             "platform": platform,
             "captured_at": item.get('Captured_At', ''),
-            "season": item.get('Season', 'Unknown')
+            "season": item.get('Season', 'Unknown'),
+            "time_of_day": item.get('Time_Of_Day', 'Unknown')
         })
 
     print(f"Processing {len(cluster_map)} clusters...")
@@ -124,6 +125,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 "platform": img["platform"],
                 "captured_at": img["captured_at"],
                 "season": img["season"],
+                "time_of_day": img["time_of_day"],
                 "is_outlier": False,
                 "rank_label": "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
             })
@@ -144,6 +146,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     "platform": img["platform"],
                     "captured_at": img["captured_at"],
                     "season": img["season"],
+                    "time_of_day": img["time_of_day"],
                     "is_outlier": True,
                     "rank_label": f"Furthest Outlier {i+1}"
                 })
@@ -732,7 +735,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                                     <div class="image-meta">
                                         <b>ID:</b> ${{s.id}}<br>
                                         <b>Similarity:</b> ${{s.sim.toFixed(4)}}<br>
-                                        <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at : ''}}
+                                        <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}}
                                     </div>
                                 </div>
                             `;
@@ -849,7 +852,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     <div style="width: 140px; text-align: center;">
                         <b>${{label}}</b><br>
                         <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" style="width: 100%; height: 90px; object-fit: cover; margin-top: 6px; border-radius: 4px; border: 1px solid #ddd;"><br>
-                        ${{s.captured_at ? '<span style="font-size: 10px; color: #555;"><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + '</span><br>' : ''}}
+                        ${{s.captured_at ? '<span style="font-size: 10px; color: #555;"><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') + '</span><br>' : ''}}
                         <a href="${{s.url}}" target="_blank" style="font-size: 11px; color: #4f46e5; font-weight: 600; text-decoration: none;">View Original</a>
                     </div>
                 `);
