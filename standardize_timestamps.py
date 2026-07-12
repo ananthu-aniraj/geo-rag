@@ -94,7 +94,7 @@ def main():
         if has_colon_date.any():
             str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(':', '-', n=2)
             
-        parsed_str = pd.to_datetime(str_vals, errors='coerce', utc=True)
+        parsed_str = pd.to_datetime(str_vals, errors='coerce', utc=True, format='mixed')
         try:
             valid_str = (parsed_str.dt.year >= 1) & (parsed_str.dt.year <= 9999)
         except Exception:

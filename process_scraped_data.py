@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoModel
 from torchvision import transforms
@@ -34,19 +34,70 @@ def clean_photo_id(val):
     return val_str
 
 
-def standardize_timestamp(ts):
-    """Standardizes various timestamp formats from Flickr, Mapillary, and iNaturalist to ISO 8601 (YYYY-MM-DDTHH:MM:SSZ)."""
-    if pd.isna(ts) or not ts:
-        return None
-    ts_str = str(ts).strip()
-    try:
-        # pd.to_datetime handles timezone-aware, custom strings, and timestamps gracefully
-        dt = pd.to_datetime(ts_str, errors='coerce', utc=True)
-        if pd.notna(dt):
-            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-    except Exception:
-        pass
-    return ts_str
+def standardize_timestamps_vectorized(ts_raw):
+    """Standardizes a Pandas Series of timestamps (numeric or string) to ISO 8601 (YYYY-MM-DDTHH:MM:SSZ)."""
+    # Initialize output Series with None as default
+    standardized = pd.Series([None] * len(ts_raw), index=ts_raw.index, dtype=object)
+    
+    # Identify Unix epoch numeric timestamps vs. string representations
+    numeric_ts = pd.to_numeric(ts_raw, errors='coerce')
+    is_numeric = numeric_ts.notna() & (numeric_ts > 1e8)
+    
+    # Parse Unix numeric timestamps
+    if is_numeric.any():
+        is_ms_mask = is_numeric & (numeric_ts > 5e10)
+        is_s_mask = is_numeric & ~is_ms_mask
+        
+        if is_ms_mask.any():
+            parsed_ms = pd.to_datetime(numeric_ts[is_ms_mask], unit='ms', utc=True, errors='coerce')
+            try:
+                valid_ms = (parsed_ms.dt.year >= 1) & (parsed_ms.dt.year <= 9999)
+            except Exception:
+                valid_ms = pd.Series(True, index=parsed_ms.index)
+            
+            formatted_ms = pd.Series([None] * len(parsed_ms), index=parsed_ms.index, dtype=object)
+            if valid_ms.any():
+                formatted_ms[valid_ms] = parsed_ms[valid_ms].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            standardized.loc[is_ms_mask] = formatted_ms
+            
+        if is_s_mask.any():
+            parsed_s = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
+            try:
+                valid_s = (parsed_s.dt.year >= 1) & (parsed_s.dt.year <= 9999)
+            except Exception:
+                valid_s = pd.Series(True, index=parsed_s.index)
+                
+            formatted_s = pd.Series([None] * len(parsed_s), index=parsed_s.index, dtype=object)
+            if valid_s.any():
+                formatted_s[valid_s] = parsed_s[valid_s].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            standardized.loc[is_s_mask] = formatted_s
+            
+    # Parse string representations
+    is_string = ts_raw.notna() & ~is_numeric
+    if is_string.any():
+        str_vals = ts_raw[is_string].astype(str).str.strip()
+        has_colon_date = str_vals.str.match(r'^\d{4}:\d{2}:\d{2}')
+        if has_colon_date.any():
+            str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(':', '-', n=2)
+            
+        parsed_str = pd.to_datetime(str_vals, errors='coerce', utc=True, format='mixed')
+        try:
+            valid_str = (parsed_str.dt.year >= 1) & (parsed_str.dt.year <= 9999)
+        except Exception:
+            valid_str = pd.Series(True, index=parsed_str.index)
+            
+        formatted_str = pd.Series([None] * len(parsed_str), index=parsed_str.index, dtype=object)
+        if valid_str.any():
+            formatted_str[valid_str] = parsed_str[valid_str].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        standardized.loc[is_string] = formatted_str
+
+    # Fallback to original strings if parsing failed but was not null/empty
+    ts_series = ts_raw.astype(str).str.strip()
+    is_parsed = standardized.notna()
+    invalid_mask = ~is_parsed & ts_raw.notna() & (ts_raw != '')
+    standardized[invalid_mask] = ts_series[invalid_mask]
+    
+    return standardized
 
 
 def download_image(url):
@@ -214,6 +265,60 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
         print(f"\nError saving checkpoint: {e}")
 
 
+def load_and_preprocess_csv(f):
+    """Loads a single CSV file, normalizes column names, and converts Mapillary/KartaView URLs."""
+    try:
+        df = pd.read_csv(f)
+        if df.empty:
+            return None
+
+        if 'uuid' in df.columns and 'source' in df.columns and 'orig_id' in df.columns:
+            df['Platform'] = df['source']
+            df['Latitude'] = df['lat']
+            df['Longitude'] = df['lon']
+            df['Photo_ID'] = df['orig_id']
+            df['Captured_At'] = df['datetime_local'] if 'datetime_local' in df.columns else None
+            
+            urls = df['url'] if 'url' in df.columns else [None] * len(df)
+            df['Image_URL'] = [
+                f"mapillary://{oid}" if str(src).lower() == 'mapillary'
+                else (f"kartaview://{oid}" if str(src).lower() == 'kartaview' else url)
+                for oid, src, url in zip(df['orig_id'], df['source'], urls)
+            ]
+        else:
+            if 'inaturalist' in f.lower():
+                platform = 'iNaturalist'
+            elif 'flickr' in f.lower():
+                platform = 'Flickr'
+            else:
+                platform = 'Mapillary'
+            
+            col_map = {
+                'latitude': 'Latitude', 
+                'longitude': 'Longitude', 
+                'image_url': 'Image_URL', 
+                'photo_id': 'Photo_ID', 
+                'ID': 'Photo_ID', 
+                'captured_at': 'Captured_At', 
+                'Captured_At': 'Captured_At',
+                'Date_Observed': 'Captured_At',
+                'observed_on_string': 'Captured_At'
+            }
+            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            if 'Platform' not in df.columns:
+                df['Platform'] = platform
+
+        required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At']
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = None
+        df = df[required_cols]
+        return df
+    except Exception as e:
+        print(f"Error reading {f}: {e}")
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Consolidate, Filter, and Deduplicate Geo-Scraped Data using TIPSv2.")
     parser.add_argument("--dirs", nargs="+", required=True, help="List of directories containing chunked CSVs.")
@@ -256,80 +361,61 @@ def main():
         
         seen_photo_ids = set(df_existing['Photo_ID'].apply(clean_photo_id))
         
-        # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView
+        # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
         if not df_existing.empty and 'Image_URL' in df_existing.columns:
-            df_existing['Image_URL'] = df_existing.apply(
-                lambda r: f"mapillary://{r['Photo_ID']}" if str(r['Platform']).lower() == 'mapillary'
-                else (f"kartaview://{r['Photo_ID']}" if str(r['Platform']).lower() == 'kartaview' else r['Image_URL']),
-                axis=1
-            )
+            platforms = df_existing['Platform'].to_numpy()
+            photo_ids = df_existing['Photo_ID'].to_numpy()
+            image_urls = df_existing['Image_URL'].to_numpy()
+            df_existing['Image_URL'] = [
+                f"mapillary://{pid}" if str(plat).lower() == 'mapillary'
+                else (f"kartaview://{pid}" if str(plat).lower() == 'kartaview' else url)
+                for plat, pid, url in zip(platforms, photo_ids, image_urls)
+            ]
         print(f"Loaded {len(df_existing)} existing images across {df_existing['H3_Cell'].nunique()} cells.")
 
+    # Read CSVs in parallel using ThreadPoolExecutor
     all_dfs = []
-    for f in tqdm(csv_files, desc="Reading CSVs"):
-        try:
-            df = pd.read_csv(f)
-            if df.empty: continue
-
-            if 'uuid' in df.columns and 'source' in df.columns and 'orig_id' in df.columns:
-                df['Platform'] = df['source']
-                df['Latitude'] = df['lat']
-                df['Longitude'] = df['lon']
-                df['Photo_ID'] = df['orig_id']
-                df['Captured_At'] = df['datetime_local'] if 'datetime_local' in df.columns else None
-                df['Image_URL'] = df.apply(lambda r: f"mapillary://{r['orig_id']}" if str(r['source']).lower() == 'mapillary' else (f"kartaview://{r['orig_id']}" if str(r['source']).lower() == 'kartaview' else (r['url'] if 'url' in r else None)), axis=1)
-            else:
-                if 'inaturalist' in f.lower():
-                    platform = 'iNaturalist'
-                elif 'flickr' in f.lower():
-                    platform = 'Flickr'
-                else:
-                    platform = 'Mapillary'
-                
-                col_map = {
-                    'latitude': 'Latitude', 
-                    'longitude': 'Longitude', 
-                    'image_url': 'Image_URL', 
-                    'photo_id': 'Photo_ID', 
-                    'ID': 'Photo_ID', 
-                    'captured_at': 'Captured_At', 
-                    'Captured_At': 'Captured_At',
-                    'Date_Observed': 'Captured_At',
-                    'observed_on_string': 'Captured_At'
-                }
-                df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-                if 'Platform' not in df.columns:
-                    df['Platform'] = platform
-
-            required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At']
-            for col in required_cols:
-                if col not in df.columns:
-                    df[col] = None
-            df = df[required_cols]
-            all_dfs.append(df)
-        except Exception as e:
-            print(f"Error reading {f}: {e}")
+    if csv_files:
+        print(f"Reading {len(csv_files)} CSV files in parallel...")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(load_and_preprocess_csv, f) for f in csv_files]
+            for fut in tqdm(as_completed(futures), total=len(csv_files), desc="Reading CSVs"):
+                res = fut.result()
+                if res is not None:
+                    all_dfs.append(res)
 
     if all_dfs:
         df_all = pd.concat(all_dfs, ignore_index=True)
     else:
-        df_all = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL'])
+        df_all = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At'])
     all_dfs = []  # Free memory
 
     # Vectorized H3 cell computation and filtering
     if not df_all.empty:
-        # Standardize timestamps across all platforms (Flickr, Mapillary, iNaturalist)
-        df_all['Captured_At'] = df_all['Captured_At'].apply(standardize_timestamp)
-        df_all['H3_Cell'] = df_all.apply(lambda r: h3.latlng_to_cell(float(r['Latitude']), float(r['Longitude']), args.h3_res) if pd.notna(r['Latitude']) and pd.notna(r['Longitude']) else None, axis=1)
+        # Standardize timestamps across all platforms (Flickr, Mapillary, iNaturalist) in a vectorized way
+        df_all['Captured_At'] = standardize_timestamps_vectorized(df_all['Captured_At'])
+
+        # Vectorized H3 cell calculation
+        lats = df_all['Latitude'].to_numpy()
+        lons = df_all['Longitude'].to_numpy()
+        h3_res = args.h3_res
+        df_all['H3_Cell'] = [
+            h3.latlng_to_cell(float(lat), float(lon), h3_res) if pd.notna(lat) and pd.notna(lon) else None
+            for lat, lon in zip(lats, lons)
+        ]
+
         df_all = df_all.dropna(subset=['H3_Cell', 'Photo_ID'])
         df_all['Photo_ID'] = df_all['Photo_ID'].apply(clean_photo_id)
         
-        # Convert any raw Mapillary/KartaView URLs to virtual URIs to prevent CDN expiration
-        df_all['Image_URL'] = df_all.apply(
-            lambda r: f"mapillary://{r['Photo_ID']}" if str(r['Platform']).lower() == 'mapillary' 
-            else (f"kartaview://{r['Photo_ID']}" if str(r['Platform']).lower() == 'kartaview' else r['Image_URL']),
-            axis=1
-        )
+        # Convert any raw Mapillary/KartaView URLs to virtual URIs to prevent CDN expiration (vectorized)
+        platforms = df_all['Platform'].to_numpy()
+        photo_ids = df_all['Photo_ID'].to_numpy()
+        image_urls = df_all['Image_URL'].to_numpy()
+        df_all['Image_URL'] = [
+            f"mapillary://{pid}" if str(plat).lower() == 'mapillary'
+            else (f"kartaview://{pid}" if str(plat).lower() == 'kartaview' else url)
+            for plat, pid, url in zip(platforms, photo_ids, image_urls)
+        ]
         
         df_all = df_all.drop_duplicates(subset=['Photo_ID'])
         if seen_photo_ids:
