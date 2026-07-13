@@ -527,13 +527,50 @@ def main():
     last_checkpoint_time = time.time()
     
     print("Grouping metadata by H3 cell...")
-    new_metadata_dict = {}
+    from collections import defaultdict
+    new_metadata_dict = defaultdict(list)
     if not df_all.empty:
-        new_metadata_dict = {cell: grp.to_dict('records') for cell, grp in df_all.groupby('H3_Cell')}
+        pids = df_all['Photo_ID'].to_numpy()
+        plats = df_all['Platform'].to_numpy()
+        lats = df_all['Latitude'].to_numpy()
+        lons = df_all['Longitude'].to_numpy()
+        urls = df_all['Image_URL'].to_numpy()
+        caps = df_all['Captured_At'].to_numpy()
+        cells = df_all['H3_Cell'].to_numpy()
+
+        for pid, plat, lat, lon, url, cap, cell in zip(pids, plats, lats, lons, urls, caps, cells):
+            new_metadata_dict[cell].append({
+                'Photo_ID': pid,
+                'Platform': plat,
+                'Latitude': lat,
+                'Longitude': lon,
+                'Image_URL': url,
+                'Captured_At': cap,
+                'H3_Cell': cell
+            })
         
-    existing_items_dict = {}
-    if df_existing is not None:
-        existing_items_dict = {cell: grp.to_dict('records') for cell, grp in df_existing.groupby('H3_Cell')}
+    existing_items_dict = defaultdict(list)
+    if df_existing is not None and not df_existing.empty:
+        pids = df_existing['Photo_ID'].to_numpy()
+        plats = df_existing['Platform'].to_numpy()
+        lats = df_existing['Latitude'].to_numpy()
+        lons = df_existing['Longitude'].to_numpy()
+        urls = df_existing['Image_URL'].to_numpy()
+        caps = df_existing['Captured_At'].to_numpy()
+        cells = df_existing['H3_Cell'].to_numpy()
+        embs = df_existing['embedding'].to_numpy() if 'embedding' in df_existing.columns else [None] * len(df_existing)
+
+        for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
+            existing_items_dict[cell].append({
+                'Photo_ID': pid,
+                'Platform': plat,
+                'Latitude': lat,
+                'Longitude': lon,
+                'Image_URL': url,
+                'Captured_At': cap,
+                'H3_Cell': cell,
+                'embedding': emb
+            })
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):
