@@ -517,6 +517,11 @@ def main():
                     save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path)
                     last_checkpoint_time = current_time
 
+    # Save a final checkpoint upon loop completion so that raw data is never lost if saving fails
+    if args.checkpoint_interval > 0:
+        print("\nSaving final completed checkpoint...")
+        save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path)
+
     # 5. Save Results
     if not final_data:
         print("No data processed successfully.")
