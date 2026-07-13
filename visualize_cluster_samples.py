@@ -593,27 +593,58 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
     </div>
 
     <div class="controls" style="display: flex; gap: 16px; margin-bottom: 24px; background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow-sm); flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="flex: 2; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
             <label for="searchInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Text Search</label>
             <input type="text" id="searchInput" placeholder="Search ID, label, or description..." onkeyup="filterDataCombined()">
         </div>
-        <div style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="flex: 2; min-width: 250px; display: flex; flex-direction: column; gap: 6px;">
             <label for="locationInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Geographic Filter</label>
             <input type="text" id="locationInput" placeholder="Filter by place/country (e.g. Alaska, Rome)..." onchange="searchLocation()">
             <span id="locationStatus" style="font-size: 0.8rem; font-weight: 500; min-height: 18px; margin-top: 2px;"></span>
         </div>
-        <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="flex: 1.5; min-width: 180px; display: flex; flex-direction: column; gap: 6px;">
             <label for="parentSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Parent Category</label>
             <select id="parentSelect" onchange="filterDataCombined()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px; background: white;">
                 <option value="">All Parent Categories</option>
             </select>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="flex: 1.2; min-width: 150px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="seasonSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Season</label>
+            <select id="seasonSelect" onchange="filterDataCombined()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px; background: white;">
+                <option value="">All Seasons</option>
+                <option value="Spring">Spring</option>
+                <option value="Summer">Summer</option>
+                <option value="Autumn">Autumn</option>
+                <option value="Winter">Winter</option>
+                <option value="Wet Season">Wet Season</option>
+                <option value="Dry Season">Dry Season</option>
+            </select>
+        </div>
+        <div style="flex: 1.2; min-width: 150px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="todSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Time of Day</label>
+            <select id="todSelect" onchange="filterDataCombined()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px; background: white;">
+                <option value="">All Times</option>
+                <option value="Dawn">Dawn</option>
+                <option value="Morning">Morning</option>
+                <option value="Afternoon">Afternoon</option>
+                <option value="Dusk">Dusk</option>
+                <option value="Night">Night</option>
+            </select>
+        </div>
+        <div style="flex: 1.2; min-width: 140px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="minDateInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">From Date</label>
+            <input type="date" id="minDateInput" onchange="filterDataCombined()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px;">
+        </div>
+        <div style="flex: 1.2; min-width: 140px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="maxDateInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">To Date</label>
+            <input type="date" id="maxDateInput" onchange="filterDataCombined()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 140px;">
             <label for="sortSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Sort Order</label>
-            <select id="sortSelect" onchange="resetAndRender()" style="height: 44px; padding: 10px 16px;">
+            <select id="sortSelect" onchange="resetAndRender()" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px; background: white;">
                 <option value="id">Sort by ID</option>
-                <option value="count">Sort by Size (Large First)</option>
-                <option value="geo">Sort by Geographic Spread</option>
+                <option value="count">Sort by Size</option>
+                <option value="geo">Sort by Geo Spread</option>
             </select>
         </div>
     </div>
@@ -717,7 +748,22 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     <div id="map-container-${{c.id}}" class="map-container" style="display: none;"></div>
 
                     <div class="image-grid">
-                        ${{c.samples.map((s, i) => {{
+                        ${{c.samples.filter(s => {{
+                            const minDate = document.getElementById('minDateInput').value;
+                            const maxDate = document.getElementById('maxDateInput').value;
+                            const seasonVal = document.getElementById('seasonSelect').value;
+                            const todVal = document.getElementById('todSelect').value;
+                            
+                            if (seasonVal && s.season !== seasonVal) return false;
+                            if (todVal && s.time_of_day !== todVal) return false;
+                            if (minDate || maxDate) {{
+                                if (!s.captured_at) return false;
+                                const dateStr = s.captured_at.substring(0, 10);
+                                if (minDate && dateStr < minDate) return false;
+                                if (maxDate && dateStr > maxDate) return false;
+                            }}
+                            return true;
+                        }}).map((s, i) => {{
                             let roleColor = '#4f46e5';
                             if (s.is_outlier) {{
                                 roleColor = '#e65100';
@@ -909,6 +955,36 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             
             statusLabel.innerHTML = "⏳ Geocoding location...";
             statusLabel.style.color = "var(--text-muted)";
+
+            // Offline continent overrides
+            const locClean = query.toLowerCase().trim();
+            const CONTINENT_BOUNDS = {{
+                "africa": [-35.0, 38.0, -26.0, 52.0],
+                "europe": [35.0, 72.0, -25.0, 45.0],
+                "asia": [1.0, 77.0, 26.0, 180.0],
+                "north america": [7.0, 85.0, -168.0, -52.0],
+                "south america": [-56.0, 13.0, -82.0, -34.0],
+                "oceania": [-48.0, 0.0, 110.0, 180.0],
+                "australia": [-48.0, -10.0, 110.0, 155.0],
+                "antarctica": [-90.0, -60.0, -180.0, 180.0]
+            }};
+
+            if (CONTINENT_BOUNDS[locClean]) {{
+                const bbox = CONTINENT_BOUNDS[locClean];
+                locationBbox = {{
+                    min_lat: bbox[0],
+                    max_lat: bbox[1],
+                    min_lon: bbox[2],
+                    max_lon: bbox[3],
+                    lat: (bbox[0] + bbox[1]) / 2,
+                    lon: (bbox[2] + bbox[3]) / 2,
+                    display_name: query.charAt(0).toUpperCase() + query.slice(1)
+                }};
+                statusLabel.innerHTML = `📍 Found: ${{locationBbox.display_name}}`;
+                statusLabel.style.color = "var(--primary)";
+                filterDataCombined();
+                return;
+            }}
             
             try {{
                 const url = `https://nominatim.openstreetmap.org/search?q=${{encodeURIComponent(query)}}&format=json&limit=1`;
@@ -980,6 +1056,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         function filterDataCombined() {{
             const searchVal = document.getElementById('searchInput').value.toLowerCase();
             const parentVal = document.getElementById('parentSelect').value;
+            const minDate = document.getElementById('minDateInput').value;
+            const maxDate = document.getElementById('maxDateInput').value;
+            const seasonVal = document.getElementById('seasonSelect').value;
+            const todVal = document.getElementById('todSelect').value;
             
             // 1. Text Search filtering
             let temp = data;
@@ -1044,6 +1124,33 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                     
                     return false;
                 }});
+            }}
+
+            // 4. Season filtering
+            if (seasonVal) {{
+                temp = temp.filter(c => 
+                    c.samples.some(s => s.season === seasonVal)
+                );
+            }}
+
+            // 5. Time of Day filtering
+            if (todVal) {{
+                temp = temp.filter(c => 
+                    c.samples.some(s => s.time_of_day === todVal)
+                );
+            }}
+
+            // 6. Date Range filtering
+            if (minDate || maxDate) {{
+                temp = temp.filter(c => 
+                    c.samples.some(s => {{
+                        if (!s.captured_at) return false;
+                        const dateStr = s.captured_at.substring(0, 10);
+                        const isAfterMin = !minDate || dateStr >= minDate;
+                        const isBeforeMax = !maxDate || dateStr <= maxDate;
+                        return isAfterMin && isBeforeMax;
+                    }})
+                );
             }}
             
             filteredData = temp;
