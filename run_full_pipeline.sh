@@ -20,6 +20,7 @@ OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))[
 
 # Input dirs
 INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
+IWILDCAM_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('iwildcam_dir', ''))" 2>/dev/null || echo "")
 
 # MLLM config
 LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('label_method', 'mllm'))" 2>/dev/null || echo "mllm")
@@ -64,6 +65,12 @@ if [ "$FILTER_SKY" = "true" ]; then
     FILTER_FLAGS="$FILTER_FLAGS --filter_sky"
 fi
 
+IWILDCAM_FLAG=""
+if [ -n "$IWILDCAM_DIR" ]; then
+    echo " -> iWildCam Directory: $IWILDCAM_DIR"
+    IWILDCAM_FLAG="--iwildcam_dir $IWILDCAM_DIR"
+fi
+
 python3 process_scraped_data.py \
   --dirs $INPUT_DIRS \
   --save_path "$OUTPUT_DIR" \
@@ -73,7 +80,8 @@ python3 process_scraped_data.py \
   --tips_batch_size "$BATCH_SIZE" \
   --cell_chunk_size "$CELL_CHUNK_SIZE" \
   $RESUME_FLAG \
-  $FILTER_FLAGS
+  $FILTER_FLAGS \
+  $IWILDCAM_FLAG
 
 echo ""
 echo "[Step 1b/5] Standardizing Dataset Timestamps..."

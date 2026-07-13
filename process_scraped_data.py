@@ -100,9 +100,22 @@ def standardize_timestamps_vectorized(ts_raw):
     return standardized
 
 
-def download_image(url):
+def download_image(url, iwildcam_dir=None):
     """Downloads an image and returns a PIL Image object."""
     try:
+        # Check if url is a local path first
+        if not (url.startswith("http://") or url.startswith("https://") or url.startswith("mapillary://") or url.startswith("kartaview://")):
+            if os.path.exists(url):
+                return Image.open(url).convert("RGB")
+            if iwildcam_dir:
+                alt_path = os.path.join(iwildcam_dir, os.path.basename(url))
+                if os.path.exists(alt_path):
+                    return Image.open(alt_path).convert("RGB")
+                alt_path_train = os.path.join(iwildcam_dir, "train", os.path.basename(url))
+                if os.path.exists(alt_path_train):
+                    return Image.open(alt_path_train).convert("RGB")
+            return None
+
         if url.startswith("mapillary://"):
             orig_id = url.split("://")[1]
             api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
@@ -150,10 +163,13 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1):
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1, iwildcam_dir=None):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
+
+    from functools import partial
+    download_fn = partial(download_image, iwildcam_dir=iwildcam_dir)
 
     # Process new images in chunks to limit peak memory usage
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
@@ -161,7 +177,7 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
         urls = [m['Image_URL'] for m in chunk_metadata]
         
         # Download images in parallel for this chunk
-        imgs = list(executor.map(download_image, urls))
+        imgs = list(executor.map(download_fn, urls))
         
         valid_indices = [i for i, img in enumerate(imgs) if img is not None]
         if not valid_indices:
@@ -272,6 +288,9 @@ def load_and_preprocess_csv(f):
         if df.empty:
             return None
 
+        # Check if this is the iWildCam CSV
+        is_iwildcam = 'iwildcam' in f.lower() or ('Platform' in df.columns and df['Platform'].astype(str).str.lower().eq('iwildcam').any())
+
         if 'uuid' in df.columns and 'source' in df.columns and 'orig_id' in df.columns:
             df['Platform'] = df['source']
             df['Latitude'] = df['lat']
@@ -285,11 +304,33 @@ def load_and_preprocess_csv(f):
                 else (f"kartaview://{oid}" if str(src).lower() == 'kartaview' else url)
                 for oid, src, url in zip(df['orig_id'], df['source'], urls)
             ]
+        elif is_iwildcam:
+            platform = 'iWildCam'
+            col_map = {
+                'latitude': 'Latitude', 
+                'longitude': 'Longitude', 
+                'photo_id': 'Photo_ID', 
+                'ID': 'Photo_ID', 
+                'captured_at': 'Captured_At', 
+                'Captured_At': 'Captured_At',
+            }
+            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            df['Platform'] = platform
+            
+            # Resolve image locations to absolute paths relative to the CSV's directory
+            csv_dir = os.path.dirname(os.path.abspath(f))
+            image_col = 'Image_Location' if 'Image_Location' in df.columns else 'Image_URL'
+            df['Image_URL'] = [
+                os.path.join(csv_dir, "train", os.path.basename(str(loc)))
+                for loc in df[image_col]
+            ]
         else:
             if 'inaturalist' in f.lower():
                 platform = 'iNaturalist'
             elif 'flickr' in f.lower():
                 platform = 'Flickr'
+            elif 'iwildcam' in f.lower():
+                platform = 'iWildCam'
             else:
                 platform = 'Mapillary'
             
@@ -297,6 +338,7 @@ def load_and_preprocess_csv(f):
                 'latitude': 'Latitude', 
                 'longitude': 'Longitude', 
                 'image_url': 'Image_URL', 
+                'Image_Location': 'Image_URL',
                 'photo_id': 'Photo_ID', 
                 'ID': 'Photo_ID', 
                 'captured_at': 'Captured_At', 
@@ -336,6 +378,7 @@ def main():
     parser.add_argument("--checkpoint_interval", type=int, default=1800, help="Interval in seconds to save checkpoints (0 to disable).")
     parser.add_argument("--cell_chunk_size", type=int, default=128, help="Number of images within a cell to download/process in a chunk.")
     parser.add_argument("--tips_batch_size", type=int, default=32, help="Batch size for TIPSv2 embedding inference.")
+    parser.add_argument("--iwildcam_dir", type=str, default=None, help="Base directory containing iWildCam CSV index and images folder.")
     args = parser.parse_args()
 
     # 1. Gather all CSVs
@@ -343,7 +386,12 @@ def main():
     for d in args.dirs:
         csv_files.extend(glob.glob(os.path.join(d, "*.csv")))
 
-    print(f"Found {len(csv_files)} CSV files.")
+    if args.iwildcam_dir:
+        iwildcam_csvs = glob.glob(os.path.join(args.iwildcam_dir, "*.csv"))
+        print(f"Found {len(iwildcam_csvs)} iWildCam CSV files in {args.iwildcam_dir}.")
+        csv_files.extend(iwildcam_csvs)
+
+    print(f"Found {len(csv_files)} total CSV files to process.")
 
     # 2. Aggregating Metadata & Handling Resume
     df_existing = None
@@ -506,7 +554,8 @@ def main():
                                    cell_chunk_size=args.cell_chunk_size, 
                                    tips_batch_size=args.tips_batch_size,
                                    macro_idx=macro_idx,
-                                   sky_idx=sky_idx)
+                                   sky_idx=sky_idx,
+                                   iwildcam_dir=args.iwildcam_dir)
             final_data.extend(deduped)
             processed_cells.add(cell)
             

@@ -46,3 +46,5 @@ vlm_*.txt
 full_pipeline_output/
 macro_test_results*/
 special_loc_scrape*/
+retrieval_exps/
+iwildcam_subset/

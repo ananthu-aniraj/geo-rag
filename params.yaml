@@ -20,3 +20,6 @@ pipeline:
   # Zero-shot filters for iNaturalist data (true/false)
   filter_macro: true
   filter_sky: true
+  
+  # Optional local iWildCam dataset path
+  iwildcam_dir: "/home/ananthu/DATA/data_ananthu/iwildcam_subset"
