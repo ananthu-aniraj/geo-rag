@@ -12,9 +12,12 @@ def get_h3_polygon(cell):
     """Convert H3 cell to a Shapely Polygon."""
     coords = h3.cell_to_boundary(cell)
     # H3 returns (lat, lng), Shapely expects (lng, lat)
-    # Handle antimeridian crossing
+    # Handle antimeridian crossing, but ignore polar cells where longitudes naturally converge
     lngs = [c[1] for c in coords]
-    if max(lngs) - min(lngs) > 180:
+    lats = [c[0] for c in coords]
+    
+    is_polar = any(abs(lat) > 85.0 for lat in lats)
+    if not is_polar and (max(lngs) - min(lngs) > 180):
         coords = [(lat, lng + 360 if lng < 0 else lng) for lat, lng in coords]
 
     return Polygon([[lng, lat] for lat, lng in coords])
@@ -78,6 +81,7 @@ def main():
 
     # Optional: Combine overlapping covered hexagons to speed up difference
     print("Unioning covered geometries...")
+    covered_gdf.geometry = covered_gdf.geometry.make_valid().buffer(0)
     covered_geom = covered_gdf.union_all()
 
     # 4. Subtract Covered from Land
