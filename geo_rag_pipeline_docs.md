@@ -1,12 +1,12 @@
-# Geo-RAG Pipeline & Data Architecture Documentation
+#  Data Engineering Documentation
 
-This document provides a comprehensive guide to the **Geo-RAG (Geographic Retrieval-Augmented Generation)** data processing, clustering, and spatial-semantic mapping pipeline.
+This document provides a comprehensive guide to the data processing, clustering, and spatial-semantic mapping pipeline.
 
 ---
 
 ## 🗺️ 1. Pipeline Overview & Architecture
 
-The Geo-RAG pipeline is designed to ingest raw street-level and outdoor image databases (Flickr, Mapillary, camera traps), deduplicate them spatially, cluster them semantically using image embeddings, auto-label clusters using Multi-Modal LLMs (MLLMs), and build interactive web visualizations.
+The pipeline is designed to ingest raw street-level and outdoor image databases (Flickr, Mapillary, camera traps), deduplicate them spatially, cluster them semantically using image embeddings, auto-label clusters using Multi-Modal LLMs (MLLMs), and build interactive web visualizations.
 
 ![Pipeline Flowchart](pipeline_flowchart_clean.jpg)
 
