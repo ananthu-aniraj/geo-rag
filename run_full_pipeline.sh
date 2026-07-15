@@ -39,6 +39,9 @@ SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
 SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
 OCCUPANCY_MAP="$OUTPUT_DIR/global_h3_occupancy_map.html"
 SEMANTIC_MAP="$OUTPUT_DIR/global_h3_semantic_map.html"
+STATS_PLOT="$OUTPUT_DIR/global_dataset_stats.png"
+STATS_TEXT="$OUTPUT_DIR/global_dataset_stats.txt"
+STATS_MAP="$OUTPUT_DIR/global_dataset_map.html"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
@@ -150,6 +153,14 @@ python3 generate_h3_semantic_map.py \
   --index "$H3_SEMANTIC_INDEX" \
   --output "$SEMANTIC_MAP" \
   --res 5
+
+echo ""
+echo "Generating dataset statistics report, plots, and optimized H3 map..."
+python3 dataset_statistics.py \
+  --input "$RAW_PARQUET" \
+  --output_plot "$STATS_PLOT" \
+  --output_text "$STATS_TEXT" \
+  --output_map "$STATS_MAP"
 
 echo ""
 echo "=========================================================="

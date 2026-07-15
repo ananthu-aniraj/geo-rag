@@ -3,10 +3,11 @@ import argparse
 import pandas as pd
 import requests
 
+
 def geocode_location(location_name):
     """Resolve location to bounding box [min_lat, max_lat, min_lon, max_lon] (with continent overrides)."""
     loc_clean = location_name.strip().lower()
-    
+
     # Continent geographic bounding box overrides (since geocoding databases often return truncated ranges for continent nodes)
     CONTINENT_BOUNDS = {
         "africa": [-35.0, 38.0, -26.0, 52.0],
@@ -18,7 +19,7 @@ def geocode_location(location_name):
         "australia": [-48.0, -10.0, 110.0, 155.0],
         "antarctica": [-90.0, -60.0, -180.0, 180.0]
     }
-    
+
     if loc_clean in CONTINENT_BOUNDS:
         bbox = CONTINENT_BOUNDS[loc_clean]
         print(f" -> Resolved using offline continent bounds for '{location_name}':")
@@ -40,15 +41,24 @@ def geocode_location(location_name):
         print(f"Warning: Geocoding failed: {e}")
     return None
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Filter the Geo-RAG Parquet/CSV dataset by location, date ranges, seasons, and times of day.")
-    parser.add_argument("--input", type=str, required=True, help="Path to the input clustered or deduplicated dataset (.parquet or .csv).")
+    parser = argparse.ArgumentParser(
+        description="Filter the Geo-RAG Parquet/CSV dataset by location, date ranges, seasons, and times of day.")
+    parser.add_argument("--input", type=str, required=True,
+                        help="Path to the input clustered or deduplicated dataset (.parquet or .csv).")
     parser.add_argument("--output", type=str, required=True, help="Path to save the filtered output dataset.")
-    parser.add_argument("--location", type=str, default=None, help="Place name to filter by (e.g. 'Rome', 'Tokyo'). Resolves to a bounding box.")
-    parser.add_argument("--start_date", type=str, default=None, help="Start date in YYYY-MM-DD or ISO 8601 format (inclusive).")
-    parser.add_argument("--end_date", type=str, default=None, help="End date in YYYY-MM-DD or ISO 8601 format (inclusive).")
-    parser.add_argument("--season", type=str, default=None, choices=['Spring', 'Summer', 'Autumn', 'Winter', 'Wet Season', 'Dry Season'], help="Filter by season.")
-    parser.add_argument("--time_of_day", type=str, default=None, choices=['Dawn', 'Morning', 'Afternoon', 'Dusk', 'Night'], help="Filter by time of day.")
+    parser.add_argument("--location", type=str, default=None,
+                        help="Place name to filter by (e.g. 'Rome', 'Tokyo'). Resolves to a bounding box.")
+    parser.add_argument("--start_date", type=str, default=None,
+                        help="Start date in YYYY-MM-DD or ISO 8601 format (inclusive).")
+    parser.add_argument("--end_date", type=str, default=None,
+                        help="End date in YYYY-MM-DD or ISO 8601 format (inclusive).")
+    parser.add_argument("--season", type=str, default=None,
+                        choices=['Spring', 'Summer', 'Autumn', 'Winter', 'Wet Season', 'Dry Season'],
+                        help="Filter by season.")
+    parser.add_argument("--time_of_day", type=str, default=None,
+                        choices=['Dawn', 'Morning', 'Afternoon', 'Dusk', 'Night'], help="Filter by time of day.")
     parser.add_argument("--platform", type=str, default=None, help="Filter by platform (e.g. Flickr, Mapillary).")
     parser.add_argument("--cluster_id", type=int, default=None, help="Filter by specific cluster ID.")
     args = parser.parse_args()
@@ -70,7 +80,7 @@ def main():
             df = df[
                 (df['Latitude'] >= min_lat) & (df['Latitude'] <= max_lat) &
                 (df['Longitude'] >= min_lon) & (df['Longitude'] <= max_lon)
-            ]
+                ]
             print(f" -> Location filter applied. Kept {len(df)} records.")
         else:
             print("Error: Could not resolve location. Aborting location filtering.")
@@ -124,12 +134,13 @@ def main():
     output_dir = os.path.dirname(os.path.abspath(args.output))
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        
+
     if args.output.endswith('.csv'):
         df.to_csv(args.output, index=False)
     else:
         df.to_parquet(args.output, index=False)
     print("Filtering complete!")
+
 
 if __name__ == "__main__":
     main()
