@@ -8,17 +8,42 @@ MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 def create_sample_grid(pkl_path, output_html, top_n=5):
     print(f"Loading clustered data from {pkl_path}...")
+    import pandas as pd
+    import pyarrow.parquet as pq
+    import numpy as np
+    
     if pkl_path.endswith('.pkl'):
         with open(pkl_path, 'rb') as f:
             data = pickle.load(f)
+        df = pd.DataFrame(data)
+        del data
+        embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
-        # Assume Parquet
-        import pandas as pd
-        df = pd.read_parquet(pkl_path)
-        data = df.to_dict('records')
+        # Load metadata only (uses ~200MB RAM)
+        df = pd.read_parquet(pkl_path, columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'cluster_id', 'cluster_label', 'cluster_description', 'parent_cluster_id', 'parent_cluster_label', 'parent_cluster_description', 'Season', 'Time_Of_Day', 'H3_Cell'])
+        
+        # Load embeddings via PyArrow
+        print("Loading raw embedding matrix using PyArrow...")
+        t0 = time.time()
+        table = pq.read_table(pkl_path, columns=["embedding"])
+        
+        num_rows = len(table)
+        chunked_arr = table['embedding']
+        dim = len(chunked_arr.chunk(0)[0].as_py())
+        
+        embeddings = np.empty((num_rows, dim), dtype=np.float32)
+        current_row = 0
+        for chunk in chunked_arr.chunks:
+            chunk_len = len(chunk)
+            flat_chunk = chunk.flatten().to_numpy()
+            embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+            current_row += chunk_len
+            
+        del table
+        print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
-    if not data or 'cluster_id' not in data[0]:
-        print("Error: Data is not clustered. Please run cluster_images_global.py first.")
+    if len(df) == 0 or 'cluster_id' not in df.columns:
+        print("Error: Data is empty or not clustered.")
         return
 
     # Group data by cluster and prepare a compact JSON-like structure
@@ -33,76 +58,21 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         index_path = index_candidates[0]
         print(f"Loading pre-built H3 index from {index_path}...")
         try:
-            import pandas as pd
             index_df = pd.read_parquet(index_path)
             res4_df = index_df[index_df['resolution'] == 4]
             cluster_h3_res4 = res4_df.groupby('cluster_id')['query_cell'].apply(lambda x: list(set(x.dropna()))).to_dict()
         except Exception as e:
             print(f"Warning: Failed to load H3 index: {e}")
-    else:
-        print("Warning: Pre-built H3 index (*h3_semantic_index.parquet) not found in same folder. Location search will fall back to coordinate bounds check.")
-    cluster_map = {}
-    for item in data:
-        c_id = int(item['cluster_id'])
-        if c_id not in cluster_map:
-            cluster_map[c_id] = {
-                "id": c_id,
-                "label": item.get('cluster_label', 'Unlabeled'),
-                "parent_id": int(item.get('parent_cluster_id', -1)),
-                "parent_label": item.get('parent_cluster_label', 'Unlabeled Parent'),
-                "count": 0,
-                "images": []
-            }
-        cluster_map[c_id]["count"] += 1
-
-        photo_id = item.get('Photo_ID')
-        if photo_id is not None:
-            # Handle float or NaN values
-            if isinstance(photo_id, float):
-                import math as py_math
-                if not py_math.isnan(photo_id):
-                    photo_id = str(int(photo_id))
-                else:
-                    photo_id = ""
-            else:
-                photo_id = str(photo_id).strip()
-                if photo_id.endswith('.0'):
-                    photo_id = photo_id[:-2]
-        else:
-            photo_id = ""
-
-        platform = item.get('Platform', '')
-        if platform is not None:
-            platform = str(platform).strip()
-        else:
-            platform = ""
-
-        # Store metadata for similarity sorting later
-        cluster_map[c_id]["images"].append({
-            "url": item['Image_URL'],
-            "id": photo_id,
-            "emb": item['embedding'],
-            "desc": item.get('cluster_description', ''),
-            "lat": float(item.get('Latitude', 0.0)),
-            "lon": float(item.get('Longitude', 0.0)),
-            "h3": item.get('H3_Cell', ''),
-            "platform": platform,
-            "captured_at": item.get('Captured_At', ''),
-            "season": item.get('Season', 'Unknown'),
-            "time_of_day": item.get('Time_Of_Day', 'Unknown')
-        })
-
-    print(f"Processing {len(cluster_map)} clusters...")
-
-    # Final data to embed in HTML
+            
+    # Group by cluster ID
+    cluster_to_indices = df.groupby('cluster_id').groups
     dashboard_data = []
-    sorted_ids = sorted(cluster_map.keys())
+    sorted_ids = sorted(cluster_to_indices.keys())
 
     import math
     for c_id in sorted_ids:
-        c = cluster_map[c_id]
-        # Calculate centroid and find top_n representative images
-        embs = np.array([img['emb'] for img in c["images"]])
+        indices = cluster_to_indices[c_id]
+        embs = embeddings[indices]
         centroid = np.mean(embs, axis=0)
 
         # Cosine similarity
@@ -111,21 +81,41 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         sims = np.dot(norm_embs, norm_centroid)
 
         sorted_indices = np.argsort(sims)[::-1][:top_n]
+        
+        # Load first row to pull cluster metadata
+        first_row = df.iloc[indices[0]]
 
         # Keep only the representative samples to save space in the HTML
         samples = []
-        for rank, idx in enumerate(sorted_indices):
-            img = c["images"][idx]
+        for rank, local_idx in enumerate(sorted_indices):
+            global_idx = indices[local_idx]
+            img = df.iloc[global_idx]
+            
+            photo_id = img.get('Photo_ID')
+            if photo_id is not None:
+                if isinstance(photo_id, float):
+                    import math as py_math
+                    if not py_math.isnan(photo_id):
+                        photo_id = str(int(photo_id))
+                    else:
+                        photo_id = ""
+                else:
+                    photo_id = str(photo_id).strip()
+                    if photo_id.endswith('.0'):
+                        photo_id = photo_id[:-2]
+            else:
+                photo_id = ""
+                
             samples.append({
-                "url": img["url"],
-                "id": img["id"],
-                "sim": float(sims[idx]),
-                "lat": float(img["lat"]),
-                "lon": float(img["lon"]),
-                "platform": img["platform"],
-                "captured_at": img["captured_at"],
-                "season": img["season"],
-                "time_of_day": img["time_of_day"],
+                "url": img["Image_URL"],
+                "id": photo_id,
+                "sim": float(sims[local_idx]),
+                "lat": float(img.get("Latitude", 0.0)),
+                "lon": float(img.get("Longitude", 0.0)),
+                "platform": str(img.get("Platform", "")).strip(),
+                "captured_at": img.get("Captured_At", ""),
+                "season": img.get("Season", "Unknown"),
+                "time_of_day": img.get("Time_Of_Day", "Unknown"),
                 "is_outlier": False,
                 "rank_label": "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
             })
@@ -135,44 +125,62 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             lowest_indices = np.argsort(sims)[:2]  # Two absolute lowest similarity images
             # Deduplicate just in case any overlap
             lowest_indices = [idx for idx in lowest_indices if idx not in sorted_indices]
-            for i, idx in enumerate(lowest_indices):
-                img = c["images"][idx]
+            for i, local_idx in enumerate(lowest_indices):
+                global_idx = indices[local_idx]
+                img = df.iloc[global_idx]
+                
+                photo_id = img.get('Photo_ID')
+                if photo_id is not None:
+                    if isinstance(photo_id, float):
+                        import math as py_math
+                        if not py_math.isnan(photo_id):
+                            photo_id = str(int(photo_id))
+                        else:
+                            photo_id = ""
+                    else:
+                        photo_id = str(photo_id).strip()
+                        if photo_id.endswith('.0'):
+                            photo_id = photo_id[:-2]
+                else:
+                    photo_id = ""
+                    
                 samples.append({
-                    "url": img["url"],
-                    "id": img["id"],
-                    "sim": float(sims[idx]),
-                    "lat": float(img["lat"]),
-                    "lon": float(img["lon"]),
-                    "platform": img["platform"],
-                    "captured_at": img["captured_at"],
-                    "season": img["season"],
-                    "time_of_day": img["time_of_day"],
+                    "url": img["Image_URL"],
+                    "id": photo_id,
+                    "sim": float(sims[local_idx]),
+                    "lat": float(img.get("Latitude", 0.0)),
+                    "lon": float(img.get("Longitude", 0.0)),
+                    "platform": str(img.get("Platform", "")).strip(),
+                    "captured_at": img.get("Captured_At", ""),
+                    "season": img.get("Season", "Unknown"),
+                    "time_of_day": img.get("Time_Of_Day", "Unknown"),
                     "is_outlier": True,
                     "rank_label": f"Furthest Outlier {i+1}"
                 })
 
         # Grab description from the centroid sample (highest similarity, sorted_indices[0])
-        centroid_desc = c["images"][sorted_indices[0]].get("desc", "")
+        centroid_img = df.iloc[indices[sorted_indices[0]]]
+        centroid_desc = centroid_img.get("cluster_description", "")
 
         # Calculate robust geographic center (handling wrap-around for longitude)
-        lats = [img['lat'] for img in c["images"]]
-        lons = [img['lon'] for img in c["images"]]
+        cluster_rows = df.iloc[indices]
+        lats = cluster_rows["Latitude"].dropna().tolist()
+        lons = cluster_rows["Longitude"].dropna().tolist()
 
-        center_lat = sum(lats) / len(lats)
-        x = sum(math.cos(math.radians(lon)) for lon in lons) / len(lons)
-        y = sum(math.sin(math.radians(lon)) for lon in lons) / len(lons)
-        center_lon = math.degrees(math.atan2(y, x))
+        if lats:
+            center_lat = sum(lats) / len(lats)
+            x = sum(math.cos(math.radians(lon)) for lon in lons) / len(lons)
+            y = sum(math.sin(math.radians(lon)) for lon in lons) / len(lons)
+            center_lon = math.degrees(math.atan2(y, x))
+        else:
+            center_lat, center_lon = 0.0, 0.0
 
         # Calculate unique H3 cells count
-        h3_cells = set(img['h3'] for img in c["images"] if img['h3'])
+        h3_cells = set(cluster_rows["H3_Cell"].dropna())
         unique_h3_count = len(h3_cells)
 
         # Compute H3 cell frequency and centroids
-        h3_counts = {}
-        for img in c["images"]:
-            h3_cell = img.get("h3")
-            if h3_cell:
-                h3_counts[h3_cell] = h3_counts.get(h3_cell, 0) + 1
+        h3_counts = cluster_rows["H3_Cell"].dropna().value_counts().to_dict()
 
         h3_centroids = []
         try:

@@ -404,8 +404,31 @@ def main():
                 existing_data = pickle.load(f)
             df_existing = pd.DataFrame(existing_data)
             del existing_data  # Free list from RAM
+            existing_embeddings = np.vstack(df_existing['embedding'].values).astype(np.float32)
         else:
-            df_existing = pd.read_parquet(args.resume_from)
+            # Load metadata columns only (uses ~200MB RAM)
+            df_existing = pd.read_parquet(args.resume_from, columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL'])
+            
+            # Load embeddings directly into memory as flat float32 array using PyArrow
+            print("Loading existing embeddings matrix using PyArrow...")
+            t0 = time.time()
+            import pyarrow.parquet as pq
+            table = pq.read_table(args.resume_from, columns=["embedding"])
+            
+            num_rows = len(table)
+            chunked_arr = table['embedding']
+            dim = len(chunked_arr.chunk(0)[0].as_py())
+            
+            existing_embeddings = np.empty((num_rows, dim), dtype=np.float32)
+            current_row = 0
+            for chunk in chunked_arr.chunks:
+                chunk_len = len(chunk)
+                flat_chunk = chunk.flatten().to_numpy()
+                existing_embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+                current_row += chunk_len
+                
+            del table
+            print(f" -> Loaded existing embeddings in {time.time() - t0:.2f}s.")
         
         seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
         
@@ -560,7 +583,7 @@ def main():
         urls = df_existing['Image_URL'].to_numpy()
         caps = df_existing['Captured_At'].to_numpy()
         cells = df_existing['H3_Cell'].to_numpy()
-        embs = df_existing['embedding'].to_numpy() if 'embedding' in df_existing.columns else [None] * len(df_existing)
+        embs = existing_embeddings if 'existing_embeddings' in locals() else [None] * len(df_existing)
 
         for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
             existing_items_dict[cell].append({

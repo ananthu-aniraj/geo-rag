@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import h3
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 try:
     import faiss
@@ -79,10 +80,10 @@ def main():
         print(f"Error: Input dataset not found at '{args.input}'")
         sys.exit(1)
 
-    print(f"Loading H3 cells and embeddings from '{args.input}'...")
+    print(f"Loading H3 cells from '{args.input}'...")
     t0 = time.time()
-    df = pd.read_parquet(args.input, columns=["H3_Cell", "embedding"])
-    print(f" -> Loaded {len(df):,} records in {time.time() - t0:.2f}s.")
+    df = pd.read_parquet(args.input, columns=["H3_Cell"])
+    print(f" -> Loaded {len(df):,} H3 cell records in {time.time() - t0:.2f}s.")
 
     # 2. Downscale H3 cells to coarse block resolution (Res 4)
     print(f"Downscaling H3 cells to resolution {args.block_res} parent blocks...")
@@ -122,10 +123,31 @@ def main():
             print(f"Downsampling validation set to {val_limit:,} images...")
             val_df = val_df.sample(n=val_limit, random_state=42)
 
-    # 5. Extract Embeddings to Float32 Numpy Arrays (required by FAISS)
-    print("Preparing embedding matrices (float32)...")
-    train_emb = np.stack(train_df["embedding"].values).astype("float32")
-    val_emb = np.stack(val_df["embedding"].values).astype("float32")
+    # 5. Extract Embeddings to Float32 Numpy Arrays (required by FAISS) using PyArrow
+    print("Loading raw embedding matrix using PyArrow...")
+    t0 = time.time()
+    import pyarrow.parquet as pq
+    table = pq.read_table(args.input, columns=["embedding"])
+    
+    num_rows = len(table)
+    chunked_arr = table['embedding']
+    dim = len(chunked_arr.chunk(0)[0].as_py())
+    
+    embeddings_matrix = np.empty((num_rows, dim), dtype=np.float32)
+    current_row = 0
+    for chunk in tqdm(chunked_arr.chunks, desc="Processing embedding chunks"):
+        chunk_len = len(chunk)
+        flat_chunk = chunk.flatten().to_numpy()
+        embeddings_matrix[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+        current_row += chunk_len
+        
+    del table
+    print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
+
+    print("Slicing train/val embedding matrices...")
+    train_emb = embeddings_matrix[train_df.index.values]
+    val_emb = embeddings_matrix[val_df.index.values]
+    del embeddings_matrix  # Free memory immediately
     print(f" -> Train embeddings shape: {train_emb.shape}")
     print(f" -> Val embeddings shape: {val_emb.shape}")
 

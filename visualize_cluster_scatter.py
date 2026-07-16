@@ -15,25 +15,55 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
             data = pickle.load(f)
     else:
         # Assume Parquet
-        df = pd.read_parquet(pkl_path)
-        data = df.to_dict('records')
+        import pyarrow.parquet as pq
+        import time
+        try:
+            meta = pq.read_metadata(pkl_path)
+            available_cols = meta.schema.names
+            target_cols = ['Platform', 'cluster_id', 'cluster_label', 'parent_cluster_label']
+            load_cols = [c for c in target_cols if c in available_cols]
+            df = pd.read_parquet(pkl_path, columns=load_cols)
+        except Exception:
+            df = pd.read_parquet(pkl_path)
 
-    if not data or 'cluster_id' not in data[0]:
-        print("Error: Data must be clustered first.")
+    if len(df) == 0:
+        print("Error: Dataset is empty.")
         return
 
     # Sample data if too large for plotting (and for UMAP speed)
-    if len(data) > max_points:
-        print(f"Sampling {max_points} points from {len(data)} for UMAP visualization...")
-        import random
-        random.seed(42)
-        data = random.sample(data, max_points)
+    if len(df) > max_points:
+        print(f"Sampling {max_points} points from {len(df)} for UMAP visualization...")
+        df_sampled = df.sample(n=max_points, random_state=42)
+    else:
+        df_sampled = df.copy()
+
+    print("Loading raw embedding matrix using PyArrow...")
+    t0 = time.time()
+    table = pq.read_table(pkl_path, columns=["embedding"])
+    
+    num_rows = len(table)
+    chunked_arr = table['embedding']
+    dim = len(chunked_arr.chunk(0)[0].as_py())
+    
+    embeddings = np.empty((num_rows, dim), dtype=np.float32)
+    current_row = 0
+    for chunk in chunked_arr.chunks:
+        chunk_len = len(chunk)
+        flat_chunk = chunk.flatten().to_numpy()
+        embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+        current_row += chunk_len
+        
+    del table
+    print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
+
+    # Slice embeddings for the sampled indices
+    embeddings_sampled = embeddings[df_sampled.index.values]
+    del embeddings  # Free memory of full matrix immediately
 
     print("Extracting and normalizing embeddings for 2D projection...")
-    embeddings = np.array([item['embedding'] for item in data]).squeeze()
-    if embeddings.ndim == 1:
-        embeddings = embeddings.reshape(1, -1)
-    embeddings_norm = normalize(embeddings)
+    if embeddings_sampled.ndim == 1:
+        embeddings_sampled = embeddings_sampled.reshape(1, -1)
+    embeddings_norm = normalize(embeddings_sampled)
 
     print("Computing 2D UMAP projection...")
     reducer = umap.UMAP(n_components=2, metric='cosine', random_state=42)
@@ -41,9 +71,9 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
 
     # Prepare DataFrame for plotting
     plot_list = []
-    has_parents = len(data) > 0 and 'parent_cluster_label' in data[0]
+    has_parents = 'parent_cluster_label' in df_sampled.columns
 
-    for i, item in enumerate(data):
+    for i, (_, item) in enumerate(df_sampled.iterrows()):
         if has_parents:
             hue_val = item.get('parent_cluster_label', 'Unknown Parent')
         else:
@@ -56,7 +86,7 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
             'color_group': hue_val,
             'platform': item['Platform']
         })
-    df = pd.DataFrame(plot_list)
+    df_plot = pd.DataFrame(plot_list)
 
     # Create Plot
     plt.figure(figsize=(13, 9))
@@ -66,7 +96,7 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
     color_palette = 'tab20' if has_parents else 'viridis'
     
     scatter = sns.scatterplot(
-        data=df,
+        data=df_plot,
         x='x', y='y',
         hue='color_group',
         style='platform',

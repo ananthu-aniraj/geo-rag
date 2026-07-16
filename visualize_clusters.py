@@ -27,7 +27,19 @@ def create_map(pkl_path, output_html, max_markers=1000):
             data = pickle.load(f)
     else:
         # Assume Parquet
-        df = pd.read_parquet(pkl_path)
+        import pyarrow.parquet as pq
+        try:
+            meta = pq.read_metadata(pkl_path)
+            available_cols = meta.schema.names
+            target_cols = [
+                'Latitude', 'Longitude', 'H3_Cell', 'cluster_id', 'cluster_label', 
+                'cluster_description', 'parent_cluster_id', 'parent_cluster_label', 
+                'parent_cluster_description', 'Platform', 'Captured_At', 'Image_URL', 'Photo_ID'
+            ]
+            load_cols = [c for c in target_cols if c in available_cols]
+            df = pd.read_parquet(pkl_path, columns=load_cols)
+        except Exception:
+            df = pd.read_parquet(pkl_path)
         data = df.to_dict('records')
 
     print(f"Total unique images: {len(data)}")

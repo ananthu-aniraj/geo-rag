@@ -294,16 +294,39 @@ def main():
     if args.pkl.endswith('.pkl'):
         with open(args.pkl, 'rb') as f:
             data = pickle.load(f)
+        df = pd.DataFrame(data)
+        del data
+        embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
-        df = pd.read_parquet(args.pkl)
-        data = df.to_dict('records')
+        # Load only metadata columns first (uses ~200MB RAM)
+        df = pd.read_parquet(args.pkl, columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At'])
+        
+        # Load embeddings directly into numpy array using PyArrow
+        print("Loading raw embedding matrix using PyArrow...")
+        t0 = time.time()
+        import pyarrow.parquet as pq
+        table = pq.read_table(args.pkl, columns=["embedding"])
+        
+        num_rows = len(table)
+        chunked_arr = table['embedding']
+        dim = len(chunked_arr.chunk(0)[0].as_py())
+        
+        embeddings = np.empty((num_rows, dim), dtype=np.float32)
+        current_row = 0
+        for chunk in chunked_arr.chunks:
+            chunk_len = len(chunk)
+            flat_chunk = chunk.flatten().to_numpy()
+            embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+            current_row += chunk_len
+            
+        del table
+        print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
-    if not data:
+    if len(df) == 0:
         print("No data found.")
         return
 
-    print(f"Extracting embeddings for {len(data)} images...")
-    embeddings = np.array([item['embedding'] for item in data]).squeeze()
+    print(f"Loaded {len(df):,} images.")
     if embeddings.ndim == 1:
         embeddings = embeddings.reshape(1, -1)
 
@@ -425,7 +448,7 @@ def main():
             cluster_embs = embeddings_norm[indices]
             img_sims = np.dot(cluster_embs, child_centroid_norm)
             closest_img_idx = indices[np.argmax(img_sims)]
-            representative_item = data[closest_img_idx]
+            representative_item = df.iloc[closest_img_idx]
             img_url = representative_item['Image_URL']
 
             # Resolve potentially expired Mapillary or Kartaview URLs dynamically
@@ -485,7 +508,7 @@ def main():
                 cluster_embs = embeddings_norm[indices]
                 sims = np.dot(cluster_embs, centroid_norm)
                 closest_idx = indices[np.argmax(sims)]
-                representative_item = data[closest_idx]
+                representative_item = df.iloc[closest_idx]
                 img_url = representative_item['Image_URL']
 
                 # Resolve potentially expired Mapillary or Kartaview URLs dynamically
@@ -532,28 +555,31 @@ def main():
                 cluster_labels[cid] = label
 
     print("\nUpdating metadata...")
-    for i, item in enumerate(data):
-        cid = int(global_cluster_ids[i])
-        item['cluster_id'] = cid
-        if cid in cluster_labels:
-            item['cluster_label'] = cluster_labels[cid]
-        if cid in cluster_descriptions:
-            item['cluster_description'] = cluster_descriptions[cid]
-            
-        # Add parent cluster metadata
-        if cid >= 0:
-            pid = int(parent_ids[cid])
-            item['parent_cluster_id'] = pid
-            item['parent_cluster_label'] = parent_labels.get(pid, "Unlabeled Parent")
-            if pid in parent_descriptions:
-                item['parent_cluster_description'] = parent_descriptions[pid]
+    df['cluster_id'] = global_cluster_ids.astype(int)
+    
+    # Map child cluster metadata
+    df['cluster_label'] = df['cluster_id'].map(cluster_labels)
+    df['cluster_description'] = df['cluster_id'].map(cluster_descriptions)
+
+    # Map parent cluster metadata
+    parent_id_map = {cid: int(parent_ids[cid]) for cid in range(args.k) if cid < len(parent_ids)}
+    df['parent_cluster_id'] = df['cluster_id'].map(parent_id_map)
+    df['parent_cluster_label'] = df['parent_cluster_id'].map(parent_labels)
+    df['parent_cluster_description'] = df['parent_cluster_id'].map(parent_descriptions)
 
     print(f"Saving to {args.out}...")
     if args.out.endswith('.pkl'):
+        # For legacy compatibility, save as list of dicts if writing .pkl
+        data = df.to_dict('records')
+        # Add back embedding to the saved records
+        for i, item in enumerate(data):
+            item['embedding'] = embeddings[i]
         with open(args.out, 'wb') as f:
             pickle.dump(data, f)
     else:
-        pd.DataFrame(data).to_parquet(args.out)
+        # Re-attach embedding column for the final Parquet save
+        df['embedding'] = list(embeddings)
+        df.to_parquet(args.out, index=False)
 
     print(f"\nClustering Complete!")
     unique, counts = np.unique(global_cluster_ids, return_counts=True)
