@@ -6,6 +6,7 @@ import geopandas as gpd
 from shapely.geometry import Polygon
 import argparse
 from tqdm import tqdm
+from collections import Counter
 
 
 def get_h3_polygon(cell):
@@ -29,6 +30,7 @@ def main():
     parser.add_argument("--land_shp", type=str, default="ne_10m_admin_0_countries.shp", help="Path to the base land shapefile.")
     parser.add_argument("--output", type=str, default="uncovered_land_areas.shp", help="Output shapefile path.")
     parser.add_argument("--res", type=int, default=5, help="H3 resolution for covered areas.")
+    parser.add_argument("--threshold", type=int, default=0, help="Threshold for total number of images per H3 cell. Cells with counts <= threshold remain uncovered (default: 0).")
     args = parser.parse_args()
 
     # 1. Load Land
@@ -37,7 +39,7 @@ def main():
 
     # 2. Gather Covered Cells
     print(f"Processing CSVs to find covered H3 res {args.res} cells...")
-    covered_cells = set()
+    covered_cells_counter = Counter()
 
     csv_files = []
     for path in args.csv_paths:
@@ -61,13 +63,15 @@ def main():
                 try:
                     if pd.notna(row[lat_col]) and pd.notna(row[lon_col]):
                         cell = h3.latlng_to_cell(float(row[lat_col]), float(row[lon_col]), args.res)
-                        covered_cells.add(cell)
+                        covered_cells_counter[cell] += 1
                 except Exception:
                     continue
         except Exception as e:
             print(f"Error reading {f}: {e}")
 
-    print(f"Found {len(covered_cells)} unique covered cells at res {args.res}.")
+    # Filter cells by threshold
+    covered_cells = {cell for cell, count in covered_cells_counter.items() if count > args.threshold}
+    print(f"Found {len(covered_cells_counter):,} unique cells. Filtered to {len(covered_cells):,} cells with > {args.threshold} images.")
 
     if not covered_cells:
         print("No covered cells found. Saving unmodified land shapefile.")

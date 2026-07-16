@@ -118,16 +118,109 @@ def fetch_flickr_photos(bbox_coords, page=1, geo_context=2, delay=2.0):
     return {'stat': 'fail'}
 
 
+def geocode_location(location_name):
+    """Geocodes a location name to a bounding box (min_lon, min_lat, max_lon, max_lat) using Nominatim.
+    Automatically pads landmark-sized bounding boxes to at least 2km x 2km to capture camera standpoints."""
+    url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location_name)}&format=json&limit=1"
+    headers = {"User-Agent": "geo-rag-density-profiler"}
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                bbox = data[0].get('boundingbox')
+                if bbox and len(bbox) == 4:
+                    # Nominatim returns [min_lat, max_lat, min_lon, max_lon]
+                    min_lat = float(bbox[0])
+                    max_lat = float(bbox[1])
+                    min_lon = float(bbox[2])
+                    max_lon = float(bbox[3])
+                    
+                    # Pad out small landmark bounding boxes (less than ~2.2km wide)
+                    width = max_lon - min_lon
+                    height = max_lat - min_lat
+                    if width < 0.02 or height < 0.02:
+                        center_lon = (min_lon + max_lon) / 2
+                        center_lat = (min_lat + max_lat) / 2
+                        min_lon = center_lon - 0.01
+                        max_lon = center_lon + 0.01
+                        min_lat = center_lat - 0.01
+                        max_lat = center_lat + 0.01
+                        print(f" -> Small bounding box detected. Padded '{location_name}' to 2km x 2km buffer.")
+                        
+                    return (min_lon, min_lat, max_lon, max_lat)
+    except Exception as e:
+        print(f"Geocoding error for '{location_name}': {e}")
+    return None
+
+
+def generate_grid_boxes(bbox, step_km=5.0):
+    """Divides a bounding box into a grid of step_km * step_km sub-boxes (accounting for latitude cosine)."""
+    import math
+    min_lon, min_lat, max_lon, max_lat = bbox
+    
+    lat_step = step_km / 111.32
+    
+    sub_boxes = []
+    current_lat = min_lat
+    while current_lat < max_lat:
+        next_lat = min(current_lat + lat_step, max_lat)
+        
+        # Calculate cos_lat for the center of this band
+        mid_lat = (current_lat + next_lat) / 2.0
+        cos_lat = math.cos(math.radians(max(-89.9, min(89.9, mid_lat))))
+        lon_step = step_km / (111.32 * cos_lat)
+        
+        current_lon = min_lon
+        while current_lon < max_lon:
+            next_lon = min(current_lon + lon_step, max_lon)
+            sub_boxes.append((current_lon, current_lat, next_lon, next_lat))
+            current_lon += lon_step
+            
+        current_lat += lat_step
+        
+    return sub_boxes
+
+
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Scrape Flickr outdoor images of the Seven Wonders of the World.")
-    parser.add_argument("--limit", type=int, default=500, help="Maximum photos to collect per landmark.")
+    import sys
+    parser = argparse.ArgumentParser(description="Scrape Flickr outdoor images of locations.")
+    parser.add_argument("--limit", type=int, default=500, help="Maximum photos to collect per landmark (only used if grid_size=0).")
+    parser.add_argument("--limit_per_box", type=int, default=100, help="Maximum photos to collect per grid sub-box (default: 100).")
+    parser.add_argument("--grid_size", type=float, default=5.0, help="Grid size in km (default: 5.0). Set to 0 to disable grid splitting.")
     parser.add_argument("--out", type=str, default="seven_wonders_flickr.csv", help="Output CSV path.")
     parser.add_argument("--delay", type=float, default=2.0, help="Delay between API calls in seconds (default: 2.0).")
+    parser.add_argument("--location", type=str, default=None, help="Dynamic location name to geocode and scrape.")
+    parser.add_argument("--bbox", type=str, default=None, help="Manual bounding box coords (min_lon,min_lat,max_lon,max_lat).")
     args = parser.parse_args()
 
     out_dir = Path(args.out).parent
     out_dir.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
+
+    # Determine target bounding boxes
+    targets = {}
+    if args.location:
+        print(f"Geocoding location: '{args.location}'...")
+        coords = geocode_location(args.location)
+        if coords:
+            print(f" -> Found coordinates: {coords}")
+            targets[args.location] = coords
+        else:
+            print(f"Error: Could not geocode location '{args.location}'.")
+            sys.exit(1)
+    elif args.bbox:
+        try:
+            coords = tuple(map(float, args.bbox.split(',')))
+            if len(coords) != 4:
+                raise ValueError("Bounding box must contain exactly 4 coordinates.")
+            targets["Custom_BBox"] = coords
+            print(f"Using manual bounding box: {coords}")
+        except Exception as e:
+            print(f"Error parsing bounding box '{args.bbox}': {e}")
+            sys.exit(1)
+    else:
+        targets = WONDERS
 
     # Ingest data
     output_exists = os.path.exists(args.out)
@@ -156,70 +249,76 @@ def main():
     if not output_exists:
         writer.writerow(['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'Landmark'])
 
-    print("\n--- Starting Seven Wonders Flickr Scraper ---")
-    for name, coords in WONDERS.items():
-        box_id = f"{coords[0]:.4f},{coords[1]:.4f},{coords[2]:.4f},{coords[3]:.4f}"
-        if name in processed_landmarks or box_id in completed_boxes:
-            print(f"[{name}] (Box: {box_id}) already scraped or logged. Skipping...")
-            completed_boxes.add(box_id)  # Sync state
-            continue
+    print("\n--- Starting Flickr Density Profiler ---")
+    for name, coords in targets.items():
+        # Generate sub-boxes
+        if args.grid_size > 0:
+            sub_boxes = generate_grid_boxes(coords, step_km=args.grid_size)
+            print(f"\nProcessing '{name}' | Divided into {len(sub_boxes)} grid cells of {args.grid_size}km x {args.grid_size}km.")
+        else:
+            sub_boxes = [coords]
 
-        print(f"\nProcessing '{name}' | Coords: {coords}")
+        for idx, box in enumerate(sub_boxes):
+            box_id = f"{box[0]:.4f},{box[1]:.4f},{box[2]:.4f},{box[3]:.4f}"
+            if box_id in completed_boxes:
+                print(f" -> Sub-box #{idx+1}/{len(sub_boxes)} ({box_id}) already scraped. Skipping...")
+                continue
 
-        photos_saved = 0
+            print(f"\n -> Scraping Sub-box #{idx+1}/{len(sub_boxes)} ({box_id})...")
+            photos_saved = 0
+            limit_val = args.limit_per_box if args.grid_size > 0 else args.limit
 
-        # Priority 1: Outdoors (2). Priority 2: Unlabelled (0).
-        for context in [2, 0]:
-            if photos_saved >= args.limit:
-                break
-                
-            page = 1
-            total_pages = 1
-            
-            while page <= total_pages:
-                print(f" -> Querying Flickr API [Context: {context}, Page: {page}/{total_pages}]...")
-                data = fetch_flickr_photos(coords, page=page, geo_context=context, delay=args.delay)
-
-                if data.get('stat') == 'ok':
-                    if page == 1:
-                        total_pages = data.get('photos', {}).get('pages', 1)
-
-                    photos = data.get('photos', {}).get('photo', [])
-                    if not photos:
-                        break
-
-                    for p in photos:
-                        if photos_saved >= args.limit:
-                            break
-
-                        p_id = p.get('id')
-                        lat = p.get('latitude')
-                        lon = p.get('longitude')
-                        url = p.get('url_m')
-                        captured = p.get('datetaken', '')
-                        if captured:
-                            captured = captured.replace(" ", "T")
-
-                        if url and lat and lon:
-                            writer.writerow([p_id, 'Flickr', lat, lon, url, captured, name])
-                            photos_saved += 1
-
-                    print(f"    - Collected {photos_saved}/{args.limit} photos so far...")
-                    if photos_saved >= args.limit:
-                        break
-                    page += 1
-                else:
-                    print("    - API call failed. Breaking pagination loop.")
+            # Priority 1: Outdoors (2). Priority 2: Unlabelled (0).
+            for context in [2, 0]:
+                if photos_saved >= limit_val:
                     break
+                    
+                page = 1
+                total_pages = 1
+                
+                while page <= total_pages:
+                    print(f"    - Querying Flickr [Context: {context}, Page: {page}/{total_pages}]...")
+                    data = fetch_flickr_photos(box, page=page, geo_context=context, delay=args.delay)
+                    if data.get('stat') == 'ok':
+                        if page == 1:
+                            total_pages = min(data.get('photos', {}).get('pages', 1), 16)  # limit paging to avoid rate limits
+                        
+                        photos = data.get('photos', {}).get('photo', [])
+                        if not photos:
+                            break
+                            
+                        for photo in photos:
+                            p_id = photo.get('id')
+                            lat = photo.get('latitude')
+                            lon = photo.get('longitude')
+                            url = photo.get('url_m')
+                            captured = photo.get('datetaken', '')
+                            if captured:
+                                captured = captured.replace(" ", "T")
+                                
+                            if url and lat and lon:
+                                writer.writerow([p_id, "Flickr", lat, lon, url, captured, name])
+                                photos_saved += 1
+                                
+                            if photos_saved >= limit_val:
+                                break
+                                
+                        if photos_saved >= limit_val:
+                            break
+                            
+                        page += 1
+                    else:
+                        print("    - API call failed. Breaking pagination loop.")
+                        break
 
-        print(f"Finished scraping [{name}]! Total images saved: {photos_saved}")
+            print(f"Finished scraping sub-box #{idx+1}/{len(sub_boxes)}! Saved: {photos_saved}")
 
-        # Log this box to file for future backfills / resume tracking
-        with open(log_path, 'a') as log:
-            log.write(box_id + '\n')
-        completed_boxes.add(box_id)
+            # Log this box to file for future backfills / resume tracking
+            with open(log_path, 'a') as log:
+                log.write(box_id + '\n')
+            completed_boxes.add(box_id)
 
-        csv_file.flush()  # Force write to disk
+            csv_file.flush()  # Force write to disk
 
     csv_file.close()
     print(f"Completed boxes log saved to: {os.path.abspath(log_path)}")
