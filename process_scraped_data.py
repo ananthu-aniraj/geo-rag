@@ -395,7 +395,7 @@ def main():
 
     # 2. Aggregating Metadata & Handling Resume
     df_existing = None
-    seen_photo_ids = set()
+    seen_keys = set()
 
     if args.resume_from and os.path.exists(args.resume_from):
         print(f"Resuming from existing data: {args.resume_from}")
@@ -407,7 +407,7 @@ def main():
         else:
             df_existing = pd.read_parquet(args.resume_from)
         
-        seen_photo_ids = set(df_existing['Photo_ID'].apply(clean_photo_id))
+        seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
         
         # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
         if not df_existing.empty and 'Image_URL' in df_existing.columns:
@@ -465,9 +465,11 @@ def main():
             for plat, pid, url in zip(platforms, photo_ids, image_urls)
         ]
         
-        df_all = df_all.drop_duplicates(subset=['Photo_ID'])
-        if seen_photo_ids:
-            df_all = df_all[~df_all['Photo_ID'].isin(seen_photo_ids)]
+        df_all = df_all.drop_duplicates(subset=['Platform', 'Photo_ID'])
+        if seen_keys:
+            df_all['temp_key'] = list(zip(df_all['Platform'], df_all['Photo_ID']))
+            df_all = df_all[~df_all['temp_key'].isin(seen_keys)]
+            df_all = df_all.drop(columns=['temp_key'])
 
     print(f"Total NEW raw images: {len(df_all)}")
     
