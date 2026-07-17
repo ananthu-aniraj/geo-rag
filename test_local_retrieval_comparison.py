@@ -1,8 +1,11 @@
 import os
 import argparse
+import math
 import pandas as pd
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import requests
 from PIL import Image
 from io import BytesIO
@@ -34,6 +37,47 @@ def download_image(url, photo_id=None):
     except Exception:
         pass
     return None
+
+
+def encode_image_value_attention(model_image, img):
+    B, _, H, W = img.shape
+    P = model_image.patch_size if hasattr(model_image, 'patch_size') else 14
+    new_H = math.ceil(H / P) * P
+    new_W = math.ceil(W / P) * P
+
+    if (H, W) != (new_H, new_W):
+        img = F.interpolate(img, size=(new_H, new_W), mode='bicubic', align_corners=False)
+
+    B, _, h_i, w_i = img.shape
+    x = model_image.prepare_tokens_with_masks(img)
+
+    num_register = getattr(model_image, 'num_register_tokens', 1)
+    all_blocks = list(model_image.blocks)
+    for i, blk in enumerate(all_blocks):
+        if i < len(all_blocks) - 1:
+            x = blk(x)
+        else:
+            x_normed = blk.norm1(x)
+            b_dim, n_dim, c_dim = x_normed.shape
+            qkv = (
+                blk.attn.qkv(x_normed)
+                .reshape(b_dim, n_dim, 3, blk.attn.num_heads, c_dim // blk.attn.num_heads)
+                .permute(2, 0, 3, 1, 4)
+            )
+            v = qkv[2]
+            v_out = v.transpose(1, 2).reshape(b_dim, n_dim, c_dim)
+            v_out = blk.attn.proj(v_out)
+            v_out = blk.ls1(v_out)
+            x_val = v_out + x
+
+            y_val = blk.norm2(x_val)
+            y_val = blk.ls2(blk.mlp(y_val))
+            x_val = x_val + y_val
+
+    x_val = model_image.norm(x_val)
+    patch_tokens = x_val[:, 1 + num_register:, :]
+    blocks_patches = patch_tokens.reshape(B, h_i // P, w_i // P, -1).contiguous()
+    return blocks_patches
 
 
 def main():
@@ -114,13 +158,29 @@ def main():
         device)
     tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
 
+    # Dynamically extract 150 ADE20K labels from Segformer config for zero-shot text classification
+    ade_labels = [seg_model.config.id2label[i] for i in range(150)]
+    EXTRA_DISCARD = []  # Configurable list to add extra class name substrings to discard (e.g. ['road', 'building'] if needed)
+
+    # Pre-generate 150 distinct colors for ADE20K visualization
+    colors_150 = np.random.RandomState(42).randint(30, 230, size=(150, 3), dtype=np.uint8)
+
+    print("Pre-computing TIPSv2 text embeddings for 150 ADE20K classes...")
+    with torch.no_grad():
+        text_embeds = tipsv2.encode_text(ade_labels)
+        text_embeds_np = text_embeds.cpu().numpy()
+        # Normalize text embeddings
+        text_embeds_norm = text_embeds_np / (np.linalg.norm(text_embeds_np, axis=1, keepdims=True) + 1e-9)
+
     # Compute Embeddings for downloaded images
-    print("\nExtracting [CLS], [Simple-Average], [Background-Average], [CLS+Simple-Avg Concat], and [CLS+BG-Avg Concat] embeddings...")
+    print("\nExtracting [CLS], [Simple-Average], [Segformer BG-Average], [TIPSv2 Zero-Shot BG-Average], and Concatenated variations...")
     cls_embeddings = {}
     bg_embeddings = {}
+    tipsv2_bg_embeddings = {}
     simple_embeddings = {}
     concat_simple_embeddings = {}
     concat_bg_embeddings = {}
+    concat_tipsv2_bg_embeddings = {}
     diagnostic_images = {}
     valid_indices = []
 
@@ -149,52 +209,83 @@ def main():
                     keep_mask[r * patch_size:(r + 1) * patch_size, c * patch_size:(c + 1) * patch_size])
         patch_weights_flat = patch_weights.flatten()[:, np.newaxis]
 
-        # Generate side-by-side diagnostic visualization (Original + binary Keep/Discard mask)
-        binary_mask_visual = np.zeros((448, 448, 3), dtype=np.uint8)
-        binary_mask_visual[keep_mask == 1.0] = [0, 200, 0]   # Keep (Green)
-        binary_mask_visual[keep_mask == 0.0] = [200, 0, 0]   # Discard (Red)
-
-        diag_img = Image.new('RGB', (896, 448))
-        diag_img.paste(img_resized, (0, 0))
-        diag_img.paste(Image.fromarray(binary_mask_visual), (448, 0))
-        diagnostic_images[idx] = diag_img
-
-        # 2. TIPSv2 Extraction
+        # 2. TIPSv2 Feature Extraction and Zero-shot Segmentation
         img_tensor = transform(img).unsqueeze(0).to(device)
         with torch.no_grad():
             out = tipsv2.encode_image(img_tensor)
             cls_token = out.cls_token.squeeze().cpu().numpy()
-            patch_tokens = out.patch_tokens.squeeze(0).cpu().numpy()
+            # Extract features using the MaskCLIP values trick to get highly-aligned spatial features
+            patch_tokens_val = encode_image_value_attention(tipsv2.vision_encoder, img_tensor)
+            patch_tokens = patch_tokens_val.squeeze(0).reshape(1024, -1).cpu().numpy()
 
-        # Background average
+        # Compute cosine similarity between patches and 150 ADE20K text embeddings
+        norm_patches = patch_tokens / (np.linalg.norm(patch_tokens, axis=1, keepdims=True) + 1e-9)
+        patch_text_sim = np.dot(norm_patches, text_embeds_norm.T)  # shape [1024, 150]
+        best_prompt_idx = np.argmax(patch_text_sim, axis=1)
+
+        # Decide whether to keep/discard based on predicted ADE20K class index and extra discard list
+        tipsv2_keep_mask_flat = np.ones(1024, dtype=float)
+        for i in range(1024):
+            idx_class = best_prompt_idx[i]
+            class_name = ade_labels[idx_class].lower()
+            if idx_class in DISCARD_CLASSES or any(extra in class_name for extra in EXTRA_DISCARD):
+                tipsv2_keep_mask_flat[i] = 0.0
+
+        tipsv2_keep_mask_grid = tipsv2_keep_mask_flat.reshape(32, 32)
+        tipsv2_keep_mask_upsampled = np.repeat(np.repeat(tipsv2_keep_mask_grid, 14, axis=0), 14, axis=1)
+
+        # Generate 3-way diagnostic visualization (Original + TIPSv2 Segmentation Map + TIPSv2 Keep/Discard mask)
+        best_prompt_idx_grid = best_prompt_idx.reshape(32, 32)
+        best_prompt_idx_upsampled = np.repeat(np.repeat(best_prompt_idx_grid, 14, axis=0), 14, axis=1)
+        seg_colored = colors_150[best_prompt_idx_upsampled]
+
+        tipsv2_mask_visual = np.zeros((448, 448, 3), dtype=np.uint8)
+        tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 1.0] = [0, 200, 0]
+        tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 0.0] = [200, 0, 0]
+
+        diag_img = Image.new('RGB', (1344, 448))
+        diag_img.paste(img_resized, (0, 0))
+        diag_img.paste(Image.fromarray(seg_colored), (448, 0))
+        diag_img.paste(Image.fromarray(tipsv2_mask_visual), (896, 0))
+        diagnostic_images[idx] = diag_img
+
+        # Compute average patch vectors using both masks
+        # Segformer background average
         total_weight = np.sum(patch_weights_flat)
         bg_avg = np.sum(patch_tokens * patch_weights_flat, axis=0) / total_weight if total_weight > 0 else np.mean(
+            patch_tokens, axis=0)
+
+        # TIPSv2 zero-shot background average
+        tipsv2_total_weight = np.sum(tipsv2_keep_mask_flat)
+        tipsv2_bg_avg = np.sum(patch_tokens * tipsv2_keep_mask_flat[:, np.newaxis], axis=0) / tipsv2_total_weight if tipsv2_total_weight > 0 else np.mean(
             patch_tokens, axis=0)
 
         # Simple average of all patch tokens (unmasked)
         simple_avg = np.mean(patch_tokens, axis=0)
 
-        # Concat CLS and Simple-Average (L2 normalized individually, then combined and normalized)
+        # Normalization and Concatenations
         cls_norm = cls_token / (np.linalg.norm(cls_token) + 1e-9)
         simple_norm = simple_avg / (np.linalg.norm(simple_avg) + 1e-9)
+        bg_norm = bg_avg / (np.linalg.norm(bg_avg) + 1e-9)
+        tipsv2_bg_norm = tipsv2_bg_avg / (np.linalg.norm(tipsv2_bg_avg) + 1e-9)
+
         concat_simple = np.concatenate([cls_norm, simple_norm], axis=0)
         concat_simple /= np.linalg.norm(concat_simple) + 1e-9
 
-        # Concat CLS and Background-Average (L2 normalized individually, then combined and normalized)
-        bg_norm = bg_avg / (np.linalg.norm(bg_avg) + 1e-9)
         concat_bg = np.concatenate([cls_norm, bg_norm], axis=0)
         concat_bg /= np.linalg.norm(concat_bg) + 1e-9
 
-        # L2 normalize individual embeddings
-        cls_token /= np.linalg.norm(cls_token) + 1e-9
-        bg_avg /= np.linalg.norm(bg_avg) + 1e-9
-        simple_avg /= np.linalg.norm(simple_avg) + 1e-9
+        concat_tipsv2_bg = np.concatenate([cls_norm, tipsv2_bg_norm], axis=0)
+        concat_tipsv2_bg /= np.linalg.norm(concat_tipsv2_bg) + 1e-9
 
-        cls_embeddings[idx] = cls_token
-        bg_embeddings[idx] = bg_avg
-        simple_embeddings[idx] = simple_avg
+        # Save embeddings
+        cls_embeddings[idx] = cls_norm
+        bg_embeddings[idx] = bg_norm
+        tipsv2_bg_embeddings[idx] = tipsv2_bg_norm
+        simple_embeddings[idx] = simple_norm
         concat_simple_embeddings[idx] = concat_simple
         concat_bg_embeddings[idx] = concat_bg
+        concat_tipsv2_bg_embeddings[idx] = concat_tipsv2_bg
         valid_indices.append(idx)
 
     # Perform retrieval matching
@@ -207,106 +298,118 @@ def main():
 
     cls_similarities = {}
     bg_similarities = {}
+    tipsv2_bg_similarities = {}
     simple_similarities = {}
     concat_simple_similarities = {}
     concat_bg_similarities = {}
+    concat_tipsv2_bg_similarities = {}
+
     q_cls = cls_embeddings[query_row_idx]
     q_bg = bg_embeddings[query_row_idx]
+    q_tipsv2_bg = tipsv2_bg_embeddings[query_row_idx]
     q_simple = simple_embeddings[query_row_idx]
     q_concat_simple = concat_simple_embeddings[query_row_idx]
     q_concat_bg = concat_bg_embeddings[query_row_idx]
+    q_concat_tipsv2_bg = concat_tipsv2_bg_embeddings[query_row_idx]
 
     for idx in valid_indices:
         if idx == query_row_idx: continue
         cls_similarities[idx] = np.dot(cls_embeddings[idx], q_cls)
         bg_similarities[idx] = np.dot(bg_embeddings[idx], q_bg)
+        tipsv2_bg_similarities[idx] = np.dot(tipsv2_bg_embeddings[idx], q_tipsv2_bg)
         simple_similarities[idx] = np.dot(simple_embeddings[idx], q_simple)
         concat_simple_similarities[idx] = np.dot(concat_simple_embeddings[idx], q_concat_simple)
         concat_bg_similarities[idx] = np.dot(concat_bg_embeddings[idx], q_concat_bg)
+        concat_tipsv2_bg_similarities[idx] = np.dot(concat_tipsv2_bg_embeddings[idx], q_concat_tipsv2_bg)
 
     # Sort results
     top_cls = sorted(cls_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_bg = sorted(bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_tipsv2_bg = sorted(tipsv2_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_simple = sorted(simple_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_concat_simple = sorted(concat_simple_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_concat_bg = sorted(concat_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_concat_tipsv2_bg = sorted(concat_tipsv2_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
 
     # Create organized directories
     exp_dir = os.path.join(args.output_dir, f"exp_query_{query_row_idx}")
     query_dir = os.path.join(exp_dir, "query")
     cls_dir = os.path.join(exp_dir, "cls")
     simple_dir = os.path.join(exp_dir, "simple_avg")
-    bg_dir = os.path.join(exp_dir, "bg_avg")
+    bg_dir = os.path.join(exp_dir, "segformer_bg_avg")
+    tipsv2_bg_dir = os.path.join(exp_dir, "tipsv2_bg_avg")
     concat_simple_dir = os.path.join(exp_dir, "cls_simple_concat")
-    concat_bg_dir = os.path.join(exp_dir, "cls_bg_concat")
+    concat_bg_dir = os.path.join(exp_dir, "cls_segformer_bg_concat")
+    concat_tipsv2_bg_dir = os.path.join(exp_dir, "cls_tipsv2_bg_concat")
 
     os.makedirs(query_dir, exist_ok=True)
     os.makedirs(cls_dir, exist_ok=True)
     os.makedirs(simple_dir, exist_ok=True)
     os.makedirs(bg_dir, exist_ok=True)
+    os.makedirs(tipsv2_bg_dir, exist_ok=True)
     os.makedirs(concat_simple_dir, exist_ok=True)
     os.makedirs(concat_bg_dir, exist_ok=True)
+    os.makedirs(concat_tipsv2_bg_dir, exist_ok=True)
 
-    # Save query image
+    # Save query image and mask
     query_path = os.path.join(query_dir, "query_image.png")
     images[query_row_idx].save(query_path)
-    # Save query diagnostic
-    query_diag_path = os.path.join(query_dir, "query_segmentation.png")
+    query_diag_path = os.path.join(query_dir, "query_segmentations_comparison.png")
     diagnostic_images[query_row_idx].save(query_diag_path)
-    print(f"\nSaved query image and mask to: {query_dir}")
+    print(f"\nSaved query image and mask comparisons to: {query_dir}")
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING STANDARD [CLS] === 🏆")
     for rank, (idx, sim) in enumerate(top_cls, 1):
         row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        # Save image under cls/
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(cls_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
-        print(f"    -> Saved match to: {match_path}")
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [SIMPLE-AVERAGE] === 🏆")
     for rank, (idx, sim) in enumerate(top_simple, 1):
         row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        # Save image under simple_avg/ (no masks)
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(simple_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
-        print(f"    -> Saved match to: {match_path}")
 
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [BACKGROUND-AVERAGE] === 🏆")
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [SEGFORMER BACKGROUND-AVERAGE] === 🏆")
     for rank, (idx, sim) in enumerate(top_bg, 1):
         row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        # Save image under bg_avg/
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
-        # Save diagnostic mask under bg_avg/
         match_diag_path = os.path.join(bg_dir, f"match_{rank}_sim_{sim:.4f}_segmentation.png")
         diagnostic_images[idx].save(match_diag_path)
-        print(f"    -> Saved match to: {match_path}")
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 ZERO-SHOT BACKGROUND-AVERAGE] === 🏆")
+    for rank, (idx, sim) in enumerate(top_tipsv2_bg, 1):
+        row = sampled_df.iloc[idx]
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(tipsv2_bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
+        match_diag_path = os.path.join(tipsv2_bg_dir, f"match_{rank}_sim_{sim:.4f}_segmentation.png")
+        diagnostic_images[idx].save(match_diag_path)
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + SIMPLE-AVG CONCAT] === 🏆")
     for rank, (idx, sim) in enumerate(top_concat_simple, 1):
         row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        # Save image under cls_simple_concat/
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(concat_simple_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
-        print(f"    -> Saved match to: {match_path}")
 
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + BG-AVG CONCAT] === 🏆")
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + SEGFORMER BG CONCAT] === 🏆")
     for rank, (idx, sim) in enumerate(top_concat_bg, 1):
         row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        # Save image under cls_bg_concat/
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(concat_bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
-        print(f"    -> Saved match to: {match_path}")
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + TIPSV2 ZERO-SHOT BG CONCAT] === 🏆")
+    for rank, (idx, sim) in enumerate(top_concat_tipsv2_bg, 1):
+        row = sampled_df.iloc[idx]
+        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(concat_tipsv2_bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
 
     print(f"\nExperiment output saved successfully to: {exp_dir}")
 
