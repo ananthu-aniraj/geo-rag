@@ -72,6 +72,13 @@ To optimize global random search and avoid querying coordinates that already con
   * **Time of Day**: *Dawn* (05-08), *Morning* (08-12), *Afternoon* (12-17), *Dusk* (17-20), *Night* (20-05).
   * **Seasons**: Latitude-aware seasons (Spring/Summer/Autumn/Winter for temperate/polar regions; Wet/Dry seasons for tropical regions).
 
+### Step 1d: Coordinate Anomaly Cleanup (GPS Glitch Removal)
+* **Script**: `cleanup_coordinate_anomalies.py`
+* **Operation**: Scans the deduplicated database to safely purge locked-latitude coordinate lines caused by faulty contributor GPS units at source. Writes the clean data to independent output files (`geo_space_cleaned.parquet` / `geo_space_cleaned.csv`), leaving the raw deduplicated database untouched.
+* **Safety Criteria**: A rounded latitude parallel $L$ (rounded to 5 decimal places, representing $\approx 1.1\text{ meters}$ precision) is flagged and purged only if:
+  $$\text{Count}(L) > 10 \quad \text{and} \quad \text{Longitude Span}(L) > 1.0^{\circ}$$
+  *(A longitude span of $> 1.0^{\circ}$ is $\approx 111\text{ km}$, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
+
 ### Step 2: Global Clustering & MLLM Auto-Labeling
 * **Script**: `cluster_images_global.py` & `relabel_failed_clusters.py`
 * **Operation**: Performs hierarchical two-level clustering on image embeddings:

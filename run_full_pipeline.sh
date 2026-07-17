@@ -14,6 +14,7 @@ AUTO_FIND_K=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yam
 K_MIN=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_min', 10000))" 2>/dev/null || echo "10000")
 K_MAX=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_max', 50000))" 2>/dev/null || echo "50000")
 K_STEP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_step', 10000))" 2>/dev/null || echo "10000")
+CLEANUP_ANOMALIES=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_anomalies', False)).lower())" 2>/dev/null || echo "false")
 MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('max_markers', 10000))" 2>/dev/null || echo "10000")
 LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
 CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
@@ -36,6 +37,8 @@ FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml
 
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
+CLEANED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_cleaned.parquet"
+CLEANED_CSV="$OUTPUT_DIR/${BASE_NAME}_cleaned.csv"
 CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
 H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_h3_semantic_index.parquet"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
@@ -99,11 +102,24 @@ if [ -f "$RAW_CSV" ]; then
 fi
 
 echo ""
+echo "[Step 1d/5] Cleaning Coordinate Anomalies (if enabled)..."
+if [ "$CLEANUP_ANOMALIES" = "true" ]; then
+    echo "Running coordinate anomaly cleanup..."
+    python3 cleanup_coordinate_anomalies.py --input "$RAW_PARQUET" --csv "$RAW_CSV" --output "$CLEANED_PARQUET" --output_csv "$CLEANED_CSV"
+    INPUT_PARQUET="$CLEANED_PARQUET"
+    INPUT_CSV="$CLEANED_CSV"
+else
+    echo "Coordinate anomaly cleanup is disabled."
+    INPUT_PARQUET="$RAW_PARQUET"
+    INPUT_CSV="$RAW_CSV"
+fi
+
+echo ""
 echo "[Step 1c/5] Automatically Finding Optimal k (if enabled)..."
 if [ "$AUTO_FIND_K" = "true" ]; then
     echo "Running spatial block validation to determine optimal k..."
     python3 validate_cluster_count.py \
-      --input "$RAW_PARQUET" \
+      --input "$INPUT_PARQUET" \
       --k_min "$K_MIN" \
       --k_max "$K_MAX" \
       --k_step "$K_STEP" \
@@ -126,7 +142,7 @@ fi
 echo ""
 echo "[Step 2/5] Global Unsupervised Clustering (K-Means)..."
 python3 cluster_images_global.py \
-  --pkl "$RAW_PARQUET" \
+  --pkl "$INPUT_PARQUET" \
   --k "$K_CLUSTERS" \
   --out "$CLUSTERED_PARQUET" \
   --minibatch \
@@ -173,7 +189,7 @@ python3 visualize_cluster_scatter.py \
 echo ""
 echo "Generating occupancy map"
 python3 generate_h3_occupancy_map.py \
-  --dirs "$OUTPUT_DIR" \
+  --dirs "$INPUT_CSV" \
   --output "$OCCUPANCY_MAP"
 
 echo ""
@@ -186,7 +202,7 @@ python3 generate_h3_semantic_map.py \
 echo ""
 echo "Generating dataset statistics report, plots, and optimized H3 map..."
 python3 dataset_statistics.py \
-  --input "$RAW_PARQUET" \
+  --input "$INPUT_PARQUET" \
   --output_plot "$STATS_PLOT" \
   --output_text "$STATS_TEXT" \
   --output_map "$STATS_MAP"

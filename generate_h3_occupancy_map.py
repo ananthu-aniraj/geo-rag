@@ -33,63 +33,70 @@ def main():
     print(f"Found {len(csv_files)} CSV files.")
 
     # 2. Aggregate Data
-    h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}, 'photos': [ids]}
-    seen_photo_ids = set()
+    h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}}
     total_images = 0
 
-    for f in tqdm(csv_files, desc="Reading CSVs"):
+    for f in csv_files:
+        print(f"Reading and aggregating {f}...")
         try:
-            df = pd.read_csv(f)
+            # We only read the necessary columns to save memory
+            df = pd.read_csv(f, usecols=lambda col: col.lower() in ['latitude', 'lat', 'longitude', 'lon', 'photo_id', 'id', 'platform', 'source', 'h3_cell'])
             if df.empty:
                 continue
 
-            # Identify standard columns (consistent with process_scraped_data.py)
+            # Standardize column names
             lat_col = next((c for c in df.columns if c.lower() in ['latitude', 'lat']), None)
             lon_col = next((c for c in df.columns if c.lower() in ['longitude', 'lon']), None)
-            id_col = next((c for c in df.columns if c.lower() in ['photo_id', 'id', 'orig_id', 'uuid']), None)
+            id_col = next((c for c in df.columns if c.lower() in ['photo_id', 'id']), None)
             platform_col = next((c for c in df.columns if c.lower() in ['platform', 'source']), None)
-            h3_col = 'H3_Cell' if 'H3_Cell' in df.columns else None
+            h3_col = next((c for c in df.columns if c.lower() == 'h3_cell'), None)
 
             if not (lat_col and lon_col) and not h3_col:
                 print(f"Skipping {f}: Missing location columns.")
                 continue
-            
-            # Infer platform if not explicitly in columns
+
+            # Deduplicate by photo ID if present
+            if id_col:
+                df = df.drop_duplicates(subset=[id_col])
+
+            # Extract platform
             inferred_platform = 'Flickr' if 'flickr' in f.lower() else 'Mapillary'
+            if platform_col:
+                df['Platform_Clean'] = df[platform_col].fillna(inferred_platform).astype(str)
+            else:
+                df['Platform_Clean'] = inferred_platform
 
-            for _, row in df.iterrows():
-                try:
-                    # Deduplication
-                    photo_id = str(row[id_col]) if id_col else None
-                    if photo_id and photo_id in seen_photo_ids:
-                        continue
+            # Compute/coarsen H3 cells in vectorized way
+            if h3_col:
+                df['H3_Clean'] = df[h3_col]
+                # Coarsen if needed (using unique map is 100x faster than Map/Lambda row-by-row)
+                sample_cell = df['H3_Clean'].dropna().iloc[0] if not df['H3_Clean'].dropna().empty else None
+                if sample_cell and h3.get_resolution(sample_cell) != args.res:
+                    unique_cells = df['H3_Clean'].dropna().unique()
+                    cell_map = {c: h3.cell_to_parent(c, args.res) for c in unique_cells}
+                    df['H3_Clean'] = df['H3_Clean'].map(cell_map)
+            else:
+                # Compute from lat/lon in vectorized way
+                df['H3_Clean'] = df.apply(lambda row: h3.latlng_to_cell(row[lat_col], row[lon_col], args.res), axis=1)
 
-                    if h3_col:
-                        # Use existing H3 cell and coarsen if needed
-                        cell = row[h3_col]
-                        if h3.get_resolution(cell) != args.res:
-                            cell = h3.cell_to_parent(cell, args.res)
-                    else:
-                        # Compute H3 cell from lat/lon
-                        lat, lon = float(row[lat_col]), float(row[lon_col])
-                        cell = h3.latlng_to_cell(lat, lon, args.res)
+            df = df.dropna(subset=['H3_Clean'])
+            
+            # Group by cell and platform and get counts
+            gp = df.groupby(['H3_Clean', 'Platform_Clean']).size().unstack(fill_value=0)
+            
+            # Merge into global h3_stats
+            for cell, row in gp.iterrows():
+                if cell not in h3_stats:
+                    h3_stats[cell] = {'total': 0, 'platforms': {}}
+                
+                for plat, count in row.items():
+                    if count > 0:
+                        h3_stats[cell]['total'] += count
+                        h3_stats[cell]['platforms'][plat] = h3_stats[cell]['platforms'].get(plat, 0) + count
+                        total_images += count
 
-                    platform = str(row[platform_col]) if platform_col else inferred_platform
-                    
-                    if cell not in h3_stats:
-                        h3_stats[cell] = {'total': 0, 'platforms': {}, 'photos': []}
-                    
-                    h3_stats[cell]['total'] += 1
-                    h3_stats[cell]['platforms'][platform] = h3_stats[cell]['platforms'].get(platform, 0) + 1
-                    if photo_id:
-                        h3_stats[cell]['photos'].append(photo_id)
-                        seen_photo_ids.add(photo_id)
-                    
-                    total_images += 1
-                except Exception:
-                    continue
         except Exception as e:
-            print(f"Error reading {f}: {e}")
+            print(f"Error processing {f}: {e}")
 
     if not h3_stats:
         print("No valid data processed.")
