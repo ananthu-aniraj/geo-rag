@@ -59,7 +59,7 @@ To optimize global random search and avoid querying coordinates that already con
 
 ### Step 1: Spatial Deduplication & Filtering
 * **Script**: `process_scraped_data.py`
-* **Operation**: Groups coordinates into H3 Resolution 11 parent cells. Performs spatial-temporal deduplication using TIPSv2 image embeddings to ensure uniform geographic coverage.
+* **Operation**: Groups coordinates into H3 Resolution 11 parent cells [Brodsky, 2018]. Performs spatial-temporal deduplication using TIPSv2 image embeddings [Cao, 2026] to ensure uniform geographic coverage.
 * **Zero-Shot Noise Filters**:
   * **Flickr Indoor/Outdoor Filter**: By default, the script filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts *"An indoor scene"* and *"An outdoor landscape or street view"*. If an image matches the indoor class, it is discarded. This filter applies **only to Flickr images** (since street-view platforms like Mapillary/KartaView are intrinsically outdoor, and iNaturalist observations are filtered by macro characteristics). Can be bypassed with the `--no_filter` flag.
   * `--filter_macro`: Filters out macro close-up flora/fauna images (typically for iNaturalist data) using a zero-shot *"A macro/close-up photo of flowers, leaves, bark, or insects"* classifier.
@@ -82,13 +82,13 @@ To optimize global random search and avoid querying coordinates that already con
 ### Step 2: Global Clustering & MLLM Auto-Labeling
 * **Script**: `cluster_images_global.py` & `relabel_failed_clusters.py`
 * **Operation**: Performs hierarchical two-level clustering on image embeddings:
-  1. **Fine-Grained Child Clustering**: Runs Mini-Batch K-Means on the raw image embeddings (e.g., $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
-  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
+  1. **Fine-Grained Child Clustering**: Runs Mini-Batch K-Means [Sculley, 2010] on the raw image embeddings (e.g., $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
+  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means [Dhillon & Modha, 2001] on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
   3. **Multi-Modal LLM Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang) to automatically generate descriptive semantic labels and descriptions. Script `relabel_failed_clusters.py` acts as a fallback for download/API timeout failures.
 
 ### Step 3: H3 Spatial-Semantic Indexing
 * **Script**: `build_spatial_semantic_index.py`
-* **Operation**: Aggregates the clustered dataset into a multi-resolution H3 spatial index, linking cells to dominant cluster categories, seasons, and times of day.
+* **Operation**: Aggregates the clustered dataset into a multi-resolution H3 spatial index [Brodsky, 2018], linking cells to dominant cluster categories, seasons, and times of day.
 
 ---
 
@@ -205,12 +205,12 @@ To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline
 
 As the dataset grows (e.g., from 3.3M to 5.5M+ images), determining the optimal cluster count $k$ is essential. Standard random cross-validation fails due to **spatial autocorrelation** (spatial data leakage). 
 
-The `validate_cluster_count.py` script implements **Spatial Block Hold-Out validation** using the GPU (FAISS) to systematically find the optimal $k$.
+The `validate_cluster_count.py` script implements **Spatial Block Hold-Out validation** using the GPU (FAISS [Johnson et al., 2019]) to systematically find the optimal $k$.
 
 ### 🔬 Methodology: Spatial Block Hold-Out
 
 #### 1. Spatial Autocorrelation & The Generalization Gap
-In spatial datasets, adjacent data points are highly correlated due to **Tobler's First Law of Geography**: *"Everything is related to everything else, but near things are more related than distant things."* 
+In spatial datasets, adjacent data points are highly correlated due to **Tobler's First Law of Geography** [Tobler, 1970]: *"Everything is related to everything else, but near things are more related than distant things."* 
 
 If we partition the training and validation sets randomly, nearby images (e.g., sequential streetscapes or photos of the same landmark) will appear in both sets. This causes **spatial data leakage**, artificially deflating the validation loss and hiding overfitting. 
 
@@ -230,7 +230,7 @@ The **Validation Reconstruction Loss (Mean Squared Error)** is then evaluated by
 $$\text{MSE}_{\text{val}}(k) = \frac{1}{|X_{\text{val}}|} \sum_{y \in X_{\text{val}}} \min_{c \in C^*} \| y - c \|^2$$
 
 #### 3. Optimal $k$ Selection via the Elbow Method
-As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks. The optimal $k^*$ is determined using the **Elbow Method** on $\text{MSE}_{\text{val}}(k)$—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
+As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks. The optimal $k^*$ is determined using the **Elbow Method** [Thorndike, 1953] on $\text{MSE}_{\text{val}}(k)$—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
 $$k^* = \arg\max_k \left( \frac{\partial^2 \text{MSE}_{\text{val}}}{\partial k^2} \right)$$
 
 ### 💻 Execution Example
@@ -254,7 +254,7 @@ python3 validate_cluster_count.py \
 * Dhillon, I. S., & Modha, D. S. (2001). Concept decompositions for large sparse text document collections with applications to high-dimensional clustering. *Machine Learning*, 42(1), 143–175.
 * Johnson, J., Douze, M., & Jégou, H. (2019). Billion-scale similarity search with GPUs. *IEEE Transactions on Big Data*, 7(3), 535–547.
 * McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. *arXiv preprint arXiv:1802.03426*.
-* Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., ... & Sutskever, I. (2021). Learning transferable visual models from natural language supervision. In *International Conference on Machine Learning* (pp. 8748–8763). PMLR.
+* Cao, B., Chen, K., Maninis, K. K., Chen, K., Karpur, A., Xia, Y., ... & Araujo, A. (2026). Tipsv2: Advancing vision-language pretraining with enhanced patch-text alignment. *CVPR 2026*.
 * Sculley, D. (2010). Web-scale k-means clustering. In *Proceedings of the 19th International Conference on World Wide Web* (pp. 1177–1178).
 * Thorndike, R. L. (1953). Who belongs in the family? *Psychometrika*, 18(4), 267–276.
 * Tobler, W. R. (1970). A computer movie simulating urban growth in the Detroit region. *Economic Geography*, 46(sup1), 234–240.
