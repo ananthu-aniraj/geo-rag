@@ -10,6 +10,10 @@ echo "=========================================================="
 # 1. Load Parameters from params.yaml
 echo "Loading parameters from params.yaml..."
 K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
+AUTO_FIND_K=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('auto_find_k', False)).lower())" 2>/dev/null || echo "false")
+K_MIN=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_min', 10000))" 2>/dev/null || echo "10000")
+K_MAX=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_max', 50000))" 2>/dev/null || echo "50000")
+K_STEP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_step', 10000))" 2>/dev/null || echo "10000")
 MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('max_markers', 10000))" 2>/dev/null || echo "10000")
 LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
 CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
@@ -92,6 +96,31 @@ python3 standardize_timestamps.py --input "$RAW_PARQUET"
 RAW_CSV="$OUTPUT_DIR/${BASE_NAME}_deduplicated.csv"
 if [ -f "$RAW_CSV" ]; then
     python3 standardize_timestamps.py --input "$RAW_CSV"
+fi
+
+echo ""
+echo "[Step 1c/5] Automatically Finding Optimal k (if enabled)..."
+if [ "$AUTO_FIND_K" = "true" ]; then
+    echo "Running spatial block validation to determine optimal k..."
+    python3 validate_cluster_count.py \
+      --input "$RAW_PARQUET" \
+      --k_min "$K_MIN" \
+      --k_max "$K_MAX" \
+      --k_step "$K_STEP" \
+      --update_params \
+      --sample_limit 0
+      
+    # Reload the newly estimated K_CLUSTERS value from params.yaml
+    echo "Reloading k_clusters parameter..."
+    K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
+    echo "Optimal k determined: $K_CLUSTERS"
+    
+    # Update target clustered parquet path with the new K_CLUSTERS
+    CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
+    SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
+    SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
+else
+    echo "Auto-find k is disabled. Using current k_clusters value: $K_CLUSTERS"
 fi
 
 echo ""

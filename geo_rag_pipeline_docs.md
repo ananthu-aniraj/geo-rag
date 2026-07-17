@@ -60,9 +60,10 @@ To optimize global random search and avoid querying coordinates that already con
 ### Step 1: Spatial Deduplication & Filtering
 * **Script**: `process_scraped_data.py`
 * **Operation**: Groups coordinates into H3 Resolution 11 parent cells. Performs spatial-temporal deduplication using TIPSv2 image embeddings to ensure uniform geographic coverage.
-* **Optional Filters**: 
-  * `--filter_macro`: Filters out macro close-up flora/fauna images.
-  * `--filter_sky`: Filters out empty sky views.
+* **Zero-Shot Noise Filters**:
+  * **Flickr Indoor/Outdoor Filter**: By default, the script filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts *"An indoor scene"* and *"An outdoor landscape or street view"*. If an image matches the indoor class, it is discarded. This filter applies **only to Flickr images** (since street-view platforms like Mapillary/KartaView are intrinsically outdoor, and iNaturalist observations are filtered by macro characteristics). Can be bypassed with the `--no_filter` flag.
+  * `--filter_macro`: Filters out macro close-up flora/fauna images (typically for iNaturalist data) using a zero-shot *"A macro/close-up photo of flowers, leaves, bark, or insects"* classifier.
+  * `--filter_sky`: Filters out empty sky views (typically for iNaturalist data) using a zero-shot *"A view of empty sky, clouds, or flying objects"* classifier.
 
 ### Step 1b: Timestamp Standardization
 * **Script**: `standardize_timestamps.py`
@@ -73,7 +74,10 @@ To optimize global random search and avoid querying coordinates that already con
 
 ### Step 2: Global Clustering & MLLM Auto-Labeling
 * **Script**: `cluster_images_global.py` & `relabel_failed_clusters.py`
-* **Operation**: Computes Mini-Batch K-Means on image embeddings. Sends cluster centroid samples to a Multi-Modal LLM (e.g., Gemma-2 via SGLang) to automatically generate descriptive semantic labels and parent categories (e.g., "Forest road", "Residential street").
+* **Operation**: Performs hierarchical two-level clustering on image embeddings:
+  1. **Fine-Grained Child Clustering**: Runs Mini-Batch K-Means on the raw image embeddings (e.g., $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
+  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
+  3. **Multi-Modal LLM Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang) to automatically generate descriptive semantic labels and descriptions. Script `relabel_failed_clusters.py` acts as a fallback for download/API timeout failures.
 
 ### Step 3: H3 Spatial-Semantic Indexing
 * **Script**: `build_spatial_semantic_index.py`
@@ -197,9 +201,30 @@ As the dataset grows (e.g., from 3.3M to 5.5M+ images), determining the optimal 
 The `validate_cluster_count.py` script implements **Spatial Block Hold-Out validation** using the GPU (FAISS) to systematically find the optimal $k$.
 
 ### 🔬 Methodology: Spatial Block Hold-Out
-1. **Parent Block Downscaling**: Downscales the fine-grained `H3_Cell` (resolution 11) to coarse geographic blocks at **Resolution 4** (representing areas of ~11,000 sq km).
-2. **Block-Level Partitioning**: Randomly holds out 10% of these coarse H3 blocks as a validation set, keeping the remaining 90% as the training set. This ensures the model is evaluated on "unseen regions" rather than geographically adjacent coordinates.
-3. **FAISS GPU Acceleration**: Trains K-Means on the training blocks and computes the average reconstruction loss on the validation blocks entirely on the GPU.
+
+#### 1. Spatial Autocorrelation & The Generalization Gap
+In spatial datasets, adjacent data points are highly correlated due to **Tobler's First Law of Geography**: *"Everything is related to everything else, but near things are more related than distant things."* 
+
+If we partition the training and validation sets randomly, nearby images (e.g., sequential streetscapes or photos of the same landmark) will appear in both sets. This causes **spatial data leakage**, artificially deflating the validation loss and hiding overfitting. 
+
+To measure true generalization, we must partition the dataset geographically. We downscale the fine-grained H3 cell $c$ (resolution 11) to its coarse parent block $b$:
+$$b = \text{parent}(c, R_p)$$
+where $R_p = 4$ (coarse blocks of $\approx 11,000\text{ km}^2$). We randomly split the set of unique parent blocks $\mathcal{B}$ into disjoint training and validation blocks:
+$$\mathcal{B}_{\text{train}} \cap \mathcal{B}_{\text{val}} = \emptyset$$
+$$\mathcal{B}_{\text{train}} \cup \mathcal{B}_{\text{val}} = \mathcal{B}$$
+
+#### 2. Optimization Objective & Reconstruction Loss
+Let $X_{\text{train}}$ be the set of image embeddings belonging to $\mathcal{B}_{\text{train}}$, and $X_{\text{val}}$ be the embeddings belonging to $\mathcal{B}_{\text{val}}$.
+
+For a given number of clusters $k$, K-Means learns a set of centroids $C^* = \{c_1, \dots, c_k\}$ by minimizing the Within-Cluster Sum of Squares (WCSS) on the training set:
+$$\mathcal{L}_{\text{train}}(C) = \sum_{x \in X_{\text{train}}} \min_{c \in C} \| x - c \|^2$$
+
+The **Validation Reconstruction Loss (Mean Squared Error)** is then evaluated by measuring how well the centroids $C^*$ represent the unseen validation blocks:
+$$\text{MSE}_{\text{val}}(k) = \frac{1}{|X_{\text{val}}|} \sum_{y \in X_{\text{val}}} \min_{c \in C^*} \| y - c \|^2$$
+
+#### 3. Optimal $k$ Selection via the Elbow Method
+As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks. The optimal $k^*$ is determined using the **Elbow Method** on $\text{MSE}_{\text{val}}(k)$—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
+$$k^* = \arg\max_k \left( \frac{\partial^2 \text{MSE}_{\text{val}}}{\partial k^2} \right)$$
 
 ### 💻 Execution Example
 Run the validation script across a range of $k$ values ($k \in [10000, 50000]$):

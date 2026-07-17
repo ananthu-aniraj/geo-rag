@@ -15,6 +15,24 @@ except ImportError:
     FAISS_AVAILABLE = False
 
 
+def find_elbow_point(k_values, losses):
+    """Finds the elbow point on a curve using the distance-to-diagonal method."""
+    if len(k_values) < 3:
+        return k_values[-1]
+    coords = np.column_stack((k_values, losses))
+    p1 = coords[0]
+    p2 = coords[-1]
+    line_vec = p2 - p1
+    line_vec_norm = line_vec / np.linalg.norm(line_vec)
+    distances = []
+    for p in coords:
+        p_vec = p - p1
+        proj = np.dot(p_vec, line_vec_norm) * line_vec_norm
+        perp = p_vec - proj
+        distances.append(np.linalg.norm(perp))
+    return k_values[np.argmax(distances)]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Find the optimal number of clusters (k) using Spatial Block Cross-Validation with FAISS GPU."
@@ -63,6 +81,11 @@ def main():
         type=str,
         default="cluster_count_validation.png",
         help="Path to save the validation loss elbow plot.",
+    )
+    parser.add_argument(
+        "--update_params",
+        action="store_true",
+        help="If set, mathematically calculates the elbow point and updates 'k_clusters' in params.yaml."
     )
     args = parser.parse_args()
 
@@ -198,6 +221,26 @@ def main():
     print("================================================================================")
     print(df_results.to_string(index=False))
     print("================================================================================")
+
+    # Find the optimal k using the elbow method on validation loss
+    optimal_k = find_elbow_point(df_results["k"].tolist(), df_results["val_loss"].tolist())
+    print(f"\n💡 Mathematical Elbow Analysis suggests optimal k = {optimal_k}")
+    
+    if args.update_params:
+        params_path = "params.yaml"
+        if os.path.exists(params_path):
+            try:
+                import re
+                with open(params_path, 'r') as f:
+                    content = f.read()
+                new_content = re.sub(r'(k_clusters:\s*)\d+', f'\\g<1>{optimal_k}', content)
+                with open(params_path, 'w') as f:
+                    f.write(new_content)
+                print(f"✅ Successfully updated 'k_clusters' to {optimal_k} in {params_path}!")
+            except Exception as e:
+                print(f"Warning: Failed to update params.yaml: {e}")
+        else:
+            print(f"Warning: params.yaml not found at current directory. Skipping auto-update.")
 
     # 8. Generate & Save Plot
     print(f"Generating elbow plot and saving to '{args.output_plot}'...")
