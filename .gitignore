@@ -41,6 +41,7 @@ wandb/
 exps/
 ne_10m_urban_areas.VERSION.txt
 *.log
+*.txt
 
 vlm_*.txt
 full_pipeline_output/
