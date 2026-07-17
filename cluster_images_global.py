@@ -1,6 +1,7 @@
 import pickle
 import numpy as np
 import argparse
+import time
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 import os
