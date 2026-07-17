@@ -1,6 +1,7 @@
 import pickle
 import numpy as np
 import argparse
+import time
 import os
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
@@ -195,7 +196,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         except ImportError:
             # Fallback if h3 library is not present: group by rounded lat/lon
             coord_counts = {}
-            for img in c["images"]:
+            for img in samples:
                 r_lat = round(img['lat'], 2)
                 r_lon = round(img['lon'], 2)
                 coord_counts[(r_lat, r_lon)] = coord_counts.get((r_lat, r_lon), 0) + 1
@@ -204,12 +205,12 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
                 h3_centroids.append([float(r_lat), float(r_lon), int(count), "N/A"])
 
         dashboard_data.append({
-            "id": c_id,
-            "label": c["label"],
-            "parent_id": c.get("parent_id", -1),
-            "parent_label": c.get("parent_label", "Unlabeled Parent"),
+            "id": int(c_id),
+            "label": str(first_row.get("cluster_label", f"Cluster {c_id}")),
+            "parent_id": int(first_row.get("parent_cluster_id", -1)) if pd.notna(first_row.get("parent_cluster_id")) else -1,
+            "parent_label": str(first_row.get("parent_cluster_label", "Unlabeled Parent")) if pd.notna(first_row.get("parent_cluster_label")) else "Unlabeled Parent",
             "description": centroid_desc,
-            "count": c["count"],
+            "count": int(len(indices)),
             "unique_h3_count": unique_h3_count,
             "center_lat": float(center_lat),
             "center_lon": float(center_lon),
