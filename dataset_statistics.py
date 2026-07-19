@@ -141,7 +141,7 @@ def load_dataset(file_path):
     else:
         # Parquet
         parquet_file = pq.ParquetFile(file_path)
-        available_cols = parquet_file.schema.names
+        available_cols = parquet_file.schema_arrow.names
         cols_to_read = [c for c in target_cols if c in available_cols]
         table = pq.read_table(file_path, columns=cols_to_read)
         df = table.to_pandas()

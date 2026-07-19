@@ -18,8 +18,8 @@ def create_scatter_plot(pkl_path, output_png, max_points=10000):
         import pyarrow.parquet as pq
         import time
         try:
-            meta = pq.read_metadata(pkl_path)
-            available_cols = meta.schema.names
+            parquet_file = pq.ParquetFile(pkl_path)
+            available_cols = parquet_file.schema_arrow.names
             target_cols = ['Platform', 'cluster_id', 'cluster_label', 'parent_cluster_label']
             load_cols = [c for c in target_cols if c in available_cols]
             df = pd.read_parquet(pkl_path, columns=load_cols)

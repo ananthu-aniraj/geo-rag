@@ -29,8 +29,8 @@ def create_map(pkl_path, output_html, max_markers=1000):
         # Assume Parquet
         import pyarrow.parquet as pq
         try:
-            meta = pq.read_metadata(pkl_path)
-            available_cols = meta.schema.names
+            parquet_file = pq.ParquetFile(pkl_path)
+            available_cols = parquet_file.schema_arrow.names
             target_cols = [
                 'Latitude', 'Longitude', 'H3_Cell', 'cluster_id', 'cluster_label', 
                 'cluster_description', 'parent_cluster_id', 'parent_cluster_label', 

@@ -329,7 +329,7 @@ def main():
         # Discover all available columns and read everything except 'embedding' to prevent dropping metadata columns (like H3_Cell)
         import pyarrow.parquet as pq
         parquet_file = pq.ParquetFile(args.pkl)
-        metadata_cols = [c for c in parquet_file.schema.names if c != 'embedding']
+        metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
         df = pd.read_parquet(args.pkl, columns=metadata_cols)
         
         # Load embeddings directly into numpy array using PyArrow

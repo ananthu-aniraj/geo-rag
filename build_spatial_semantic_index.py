@@ -22,7 +22,7 @@ def main():
 
     # Read necessary columns, dynamically checking what's available
     parquet_file = pq.ParquetFile(args.input)
-    available_cols = parquet_file.schema.names
+    available_cols = parquet_file.schema_arrow.names
     
     read_cols = ['cluster_id']
     
