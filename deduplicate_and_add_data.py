@@ -28,8 +28,8 @@ def main():
     seen_keys = set()
     if os.path.exists(args.existing_csv):
         print(f"Loading existing dataset keys from: {args.existing_csv}")
-        # Load only key columns to optimize memory
-        df_existing = pd.read_csv(args.existing_csv, usecols=['Platform', 'Photo_ID'])
+        # Load only key columns to optimize memory and enforce string format to prevent warnings
+        df_existing = pd.read_csv(args.existing_csv, usecols=['Platform', 'Photo_ID'], dtype={'Platform': str, 'Photo_ID': str})
         df_existing['Photo_ID'] = df_existing['Photo_ID'].apply(clean_photo_id)
         seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID']))
         print(f" -> Loaded {len(seen_keys)} existing keys.")
@@ -57,7 +57,7 @@ def main():
     # 3. Process and clean each CSV file individually
     for f in new_csv_files:
         try:
-            df = pd.read_csv(f)
+            df = pd.read_csv(f, dtype=str)
             original_len = len(df)
             if original_len == 0:
                 print(f"Skipping empty file: {f}")

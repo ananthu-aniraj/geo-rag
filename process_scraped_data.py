@@ -284,7 +284,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
 def load_and_preprocess_csv(f):
     """Loads a single CSV file, normalizes column names, and converts Mapillary/KartaView URLs."""
     try:
-        df = pd.read_csv(f)
+        df = pd.read_csv(f, dtype=str)
         if df.empty:
             return None
 

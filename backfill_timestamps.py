@@ -196,7 +196,7 @@ def main():
         if current_file.endswith('.parquet'):
             df = pd.read_parquet(current_file)
         else:
-            df = pd.read_csv(current_file)
+            df = pd.read_csv(current_file, dtype={'Platform': str, 'Photo_ID': str})
 
         if 'Captured_At' not in df.columns:
             df['Captured_At'] = None
@@ -384,7 +384,7 @@ def main():
             if os.path.exists(csv_pair):
                 print(f"Auto-discovered corresponding CSV file: {csv_pair}. Enriching it...")
                 try:
-                    df_csv = pd.read_csv(csv_pair)
+                    df_csv = pd.read_csv(csv_pair, dtype={'Platform': str, 'Photo_ID': str})
                     df_csv['Photo_ID'] = df_csv['Photo_ID'].astype(str)
                     if 'Captured_At' not in df_csv.columns:
                         df_csv['Captured_At'] = None

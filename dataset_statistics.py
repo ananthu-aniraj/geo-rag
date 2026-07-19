@@ -137,7 +137,7 @@ def load_dataset(file_path):
         sample_df = pd.read_csv(file_path, nrows=1)
         available_cols = sample_df.columns.tolist()
         cols_to_read = [c for c in target_cols if c in available_cols]
-        df = pd.read_csv(file_path, usecols=cols_to_read)
+        df = pd.read_csv(file_path, usecols=cols_to_read, dtype={'Platform': str, 'Photo_ID': str})
     else:
         # Parquet
         parquet_file = pq.ParquetFile(file_path)

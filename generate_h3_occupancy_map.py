@@ -40,7 +40,11 @@ def main():
         print(f"Reading and aggregating {f}...")
         try:
             # We only read the necessary columns to save memory
-            df = pd.read_csv(f, usecols=lambda col: col.lower() in ['latitude', 'lat', 'longitude', 'lon', 'photo_id', 'id', 'platform', 'source', 'h3_cell'])
+            df = pd.read_csv(
+                f,
+                usecols=lambda col: col.lower() in ['latitude', 'lat', 'longitude', 'lon', 'photo_id', 'id', 'platform', 'source', 'h3_cell'],
+                dtype={'photo_id': str, 'Photo_ID': str, 'id': str, 'ID': str, 'platform': str, 'Platform': str, 'source': str, 'Source': str}
+            )
             if df.empty:
                 continue
 

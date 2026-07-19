@@ -112,7 +112,7 @@ def main():
         t_csv = time.time()
         temp_csv_path = output_csv_path + ".tmp"
         first = True
-        for chunk in pd.read_csv(csv_path, chunksize=100000):
+        for chunk in pd.read_csv(csv_path, chunksize=100000, dtype={'Platform': str, 'Photo_ID': str}):
             chunk["lat_round"] = chunk["Latitude"].round(5)
             cleaned_chunk = chunk[~chunk["lat_round"].isin(flagged_lats)].drop(columns=["lat_round"])
 

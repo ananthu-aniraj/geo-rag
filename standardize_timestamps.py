@@ -24,7 +24,7 @@ def main():
             data = pickle.load(f)
         df = pd.DataFrame(data)
     elif is_csv:
-        df = pd.read_csv(args.input)
+        df = pd.read_csv(args.input, dtype=str)
     else:
         df = pd.read_parquet(args.input)
 
