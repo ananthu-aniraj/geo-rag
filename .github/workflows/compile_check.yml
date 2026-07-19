@@ -1,0 +1,26 @@
+name: Python Compilation Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  compile-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Run compilation check
+      run: |
+        echo "Running AST syntax validation on all Python files..."
+        python -m compileall -q -x "venv|\.venv|\.git|scratch" .
+        echo "All files successfully verified!"
