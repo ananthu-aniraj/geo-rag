@@ -3,7 +3,7 @@ pipeline:
   k_clusters: 40000
   auto_find_k: true  # Mathematically estimate and update k before clustering
   k_min: 30000       # Minimum cluster count for validation search range
-  k_max: 80000       # Maximum cluster count for validation search range
+  k_max: 60000       # Maximum cluster count for validation search range
   k_step: 10000      # Step size for validation search range
   cleanup_anomalies: false  # Safely purge locked-latitude GPS coordinates before clustering
   max_markers: 10000
