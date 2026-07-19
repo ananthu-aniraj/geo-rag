@@ -224,17 +224,22 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             url = sample["url"]
             resolved_path = None
             if image_root_dir:
-                path1 = os.path.join(image_root_dir, url)
-                if os.path.exists(path1):
-                    resolved_path = path1
-                else:
-                    path2 = os.path.join(image_root_dir, os.path.basename(url))
+                dirs = [image_root_dir] if isinstance(image_root_dir, str) else image_root_dir
+                for d in dirs:
+                    if not d:
+                        continue
+                    path1 = os.path.join(d, url)
+                    if os.path.exists(path1):
+                        resolved_path = path1
+                        break
+                    path2 = os.path.join(d, os.path.basename(url))
                     if os.path.exists(path2):
                         resolved_path = path2
-                    else:
-                        path3 = os.path.join(image_root_dir, "train", os.path.basename(url))
-                        if os.path.exists(path3):
-                            resolved_path = path3
+                        break
+                    path3 = os.path.join(d, "train", os.path.basename(url))
+                    if os.path.exists(path3):
+                        resolved_path = path3
+                        break
             if not resolved_path and os.path.exists(url):
                 resolved_path = url
             
@@ -1220,7 +1225,7 @@ if __name__ == "__main__":
     parser.add_argument("--pkl", type=str, required=True, help="Path to the clustered .pkl file.")
     parser.add_argument("--out", type=str, default="cluster_samples.html", help="Output HTML file name.")
     parser.add_argument("--top_n", type=int, default=6, help="Number of samples to show per cluster.")
-    parser.add_argument("--image_root_dir", type=str, default=None, help="Optional root directory containing local images (for offline datasets like iWildCam).")
+    parser.add_argument("--image_root_dir", type=str, nargs="+", default=None, help="Optional root directories containing local images (for offline datasets).")
     args = parser.parse_args()
 
     create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir)
