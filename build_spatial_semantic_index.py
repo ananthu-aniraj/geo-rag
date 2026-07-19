@@ -20,11 +20,33 @@ def main():
     print(f"Reading metadata columns from {args.input}...")
     start = time.time()
 
-    # Read necessary columns, dynamically checking if 'Season', 'Time_Of_Day' and parent cluster info are present
+    # Read necessary columns, dynamically checking what's available
     parquet_file = pq.ParquetFile(args.input)
     available_cols = parquet_file.schema.names
     
-    read_cols = ['H3_Cell', 'cluster_id', 'cluster_label', 'cluster_description']
+    read_cols = ['cluster_id']
+    
+    # Handle H3 Cell fallback
+    has_h3 = 'H3_Cell' in available_cols
+    if has_h3:
+        read_cols.append('H3_Cell')
+    else:
+        if 'Latitude' in available_cols and 'Longitude' in available_cols:
+            print("[WARNING] H3_Cell column is missing in input dataset. Reading coordinates to reconstruct H3_Cell...")
+            read_cols.extend(['Latitude', 'Longitude'])
+        else:
+            print("Error: Input dataset is missing required columns H3_Cell (or Latitude & Longitude).")
+            sys.exit(1)
+            
+    # Check other columns
+    has_label = 'cluster_label' in available_cols
+    if has_label:
+        read_cols.append('cluster_label')
+        
+    has_desc = 'cluster_description' in available_cols
+    if has_desc:
+        read_cols.append('cluster_description')
+
     has_season = 'Season' in available_cols
     if has_season:
         read_cols.append('Season')
@@ -44,8 +66,28 @@ def main():
     df = table.to_pandas()
     print(f"Loaded {len(df)} rows in {time.time() - start:.2f} seconds.")
 
+    # Reconstruct H3_Cell if missing
+    if 'H3_Cell' not in df.columns:
+        print("Reconstructing H3 cells at resolution 11 from coordinates...")
+        df['H3_Cell'] = [
+            h3.latlng_to_cell(float(lat), float(lon), 11) if pd.notna(lat) and pd.notna(lon) else None
+            for lat, lon in zip(df['Latitude'], df['Longitude'])
+        ]
+
     # Drop rows with null H3 cells or cluster ids
     df = df.dropna(subset=['H3_Cell', 'cluster_id'])
+    
+    # Default populate other missing columns to ensure schema consistency
+    if 'cluster_label' not in df.columns:
+        df['cluster_label'] = df['cluster_id'].apply(lambda x: f"Cluster {x}")
+    if 'cluster_description' not in df.columns:
+        df['cluster_description'] = "No description available"
+        
+    if 'parent_cluster_id' not in df.columns:
+        df['parent_cluster_id'] = df['cluster_id'] // 80
+    if 'parent_cluster_label' not in df.columns:
+        df['parent_cluster_label'] = df['parent_cluster_id'].apply(lambda x: f"Parent Cluster {x}")
+
     if 'Season' not in df.columns:
         df['Season'] = 'Unknown'
     else:
