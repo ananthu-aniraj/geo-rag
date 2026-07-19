@@ -373,7 +373,7 @@ def main():
         clustering_mode = "Raw 768D (Normalized)"
 
     # Cluster subsets
-    global_cluster_ids = np.zeros(len(data), dtype=int)
+    global_cluster_ids = np.zeros(len(df), dtype=int)
 
     # Cluster     
     print(f"\nClustering subset on {clustering_mode} space...")
