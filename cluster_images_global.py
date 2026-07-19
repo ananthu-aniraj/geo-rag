@@ -163,7 +163,7 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url):
         return ""
 
 
-def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128, img_max_dim=448):
+def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128, img_max_dim=448, image_root_dir=None):
     """Runs VLM labeling in chunks to utilize batch inference via OpenAI-compatible API."""
     results = {}
 
@@ -179,7 +179,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
 
         def prepare_image(task):
             cid = task['cid']
-            img = load_image(task['img_url'], target_max=img_max_dim, image_root_dir=args.image_root_dir)
+            img = load_image(task['img_url'], target_max=img_max_dim, image_root_dir=image_root_dir)
             if img is not None:
                 buffered = BytesIO()
                 img.save(buffered, format="JPEG")
@@ -326,8 +326,11 @@ def main():
         del data
         embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
-        # Load only metadata columns first (uses ~200MB RAM)
-        df = pd.read_parquet(args.pkl, columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At'])
+        # Discover all available columns and read everything except 'embedding' to prevent dropping metadata columns (like H3_Cell)
+        import pyarrow.parquet as pq
+        parquet_file = pq.ParquetFile(args.pkl)
+        metadata_cols = [c for c in parquet_file.schema.names if c != 'embedding']
+        df = pd.read_parquet(args.pkl, columns=metadata_cols)
         
         # Load embeddings directly into numpy array using PyArrow
         print("Loading raw embedding matrix using PyArrow...")
@@ -508,7 +511,8 @@ def main():
         print(f"Total parent tasks prepared: {len(parent_tasks)}. Starting batch parent MLLM labeling...")
         parent_results = label_clusters_mllm_batched(
             parent_tasks, args.mllm_model, endpoint,
-            chunk_size=args.chunk_size, img_max_dim=args.img_max_dim
+            chunk_size=args.chunk_size, img_max_dim=args.img_max_dim,
+            image_root_dir=args.image_root_dir
         )
         for pid, (lbl, desc) in parent_results.items():
             parent_labels[pid] = lbl
@@ -571,7 +575,8 @@ def main():
                 f"Total tasks prepared: {len(tasks)}. Starting batch inference via VLM API at {endpoint} (chunk size {args.chunk_size})...")
             results = label_clusters_mllm_batched(
                 tasks, args.mllm_model, endpoint,
-                chunk_size=args.chunk_size, img_max_dim=args.img_max_dim
+                chunk_size=args.chunk_size, img_max_dim=args.img_max_dim,
+                image_root_dir=args.image_root_dir
             )
             for cid, (lbl, desc) in results.items():
                 cluster_labels[cid] = lbl
