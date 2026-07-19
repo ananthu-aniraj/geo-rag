@@ -76,9 +76,11 @@ if [ "$FILTER_SKY" = "true" ]; then
 fi
 
 IWILDCAM_FLAG=""
+IMAGE_ROOT_FLAG=""
 if [ -n "$IWILDCAM_DIR" ]; then
     echo " -> iWildCam Directory: $IWILDCAM_DIR"
     IWILDCAM_FLAG="--iwildcam_dir $IWILDCAM_DIR"
+    IMAGE_ROOT_FLAG="--image_root_dir $IWILDCAM_DIR"
 fi
 
 python3 process_scraped_data.py \
@@ -150,7 +152,8 @@ python3 cluster_images_global.py \
   --mllm_backend "$MLLM_BACKEND" \
   --mllm_model "$MLLM_MODEL" \
   --chunk_size "$CHUNK_SIZE" \
-  --gpu
+  --gpu \
+  $IMAGE_ROOT_FLAG
 
 echo ""
 echo "[Step 2b/5] Re-labeling Failed Clusters (due to download timeouts)..."
@@ -158,7 +161,8 @@ python3 relabel_failed_clusters.py \
   --in "$CLUSTERED_PARQUET" \
   --mllm_model "$MLLM_MODEL" \
   --mllm_backend "$MLLM_BACKEND" \
-  --fallback_depth 10
+  --fallback_depth 10 \
+  $IMAGE_ROOT_FLAG
 
 echo ""
 echo "[Step 2c/5] Building H3 Spatial-Semantic Index..."
@@ -178,7 +182,8 @@ echo "[Step 4/5] Generating Cluster Representative Samples..."
 python3 visualize_cluster_samples.py \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SAMPLES_FILE" \
-  --top_n 6
+  --top_n 6 \
+  $IMAGE_ROOT_FLAG
 
 echo ""
 echo "[Step 5/5] Generating Semantic Scatter Plot (UMAP 2D)..."

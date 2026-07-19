@@ -38,14 +38,34 @@ def resize_image_aspect(img, target_max=448):
     return img.resize((new_w, new_h), resample)
 
 
-def load_image(url, target_max=448, timeout=15):
+def load_image(url, target_max=448, timeout=15, image_root_dir=None):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
-    if os.path.exists(url):
+    resolved_path = None
+    if image_root_dir:
+        # Try direct relative path join
+        path1 = os.path.join(image_root_dir, url)
+        if os.path.exists(path1):
+            resolved_path = path1
+        else:
+            # Try joining filename only
+            path2 = os.path.join(image_root_dir, os.path.basename(url))
+            if os.path.exists(path2):
+                resolved_path = path2
+            else:
+                # Try joining train/filename or other subdirs
+                path3 = os.path.join(image_root_dir, "train", os.path.basename(url))
+                if os.path.exists(path3):
+                    resolved_path = path3
+    
+    if not resolved_path and os.path.exists(url):
+        resolved_path = url
+
+    if resolved_path:
         try:
-            img = Image.open(url).convert("RGB")
+            img = Image.open(resolved_path).convert("RGB")
             return resize_image_aspect(img, target_max)
         except Exception as e:
-            print(f"Error loading local image {url}: {e}")
+            print(f"Error loading local image {resolved_path}: {e}")
             return None
     try:
         if url.startswith("mapillary://"):
@@ -79,11 +99,11 @@ def load_image(url, target_max=448, timeout=15):
     return None
 
 
-def load_image_with_retry(url, target_max=448, timeout=15, max_retries=3):
+def load_image_with_retry(url, target_max=448, timeout=15, max_retries=3, image_root_dir=None):
     """Wrapper around load_image that retries with exponential backoff on failure."""
     for attempt in range(max_retries):
         try:
-            img = load_image(url, target_max=target_max, timeout=timeout)
+            img = load_image(url, target_max=target_max, timeout=timeout, image_root_dir=image_root_dir)
             if img is not None:
                 return img
         except Exception as e:
@@ -226,6 +246,8 @@ def main():
                         help="Number of top closest images in a cluster to check if the closest one fails to download.")
     parser.add_argument("--timeout", type=int, default=15,
                         help="Timeout in seconds for image download HTTP requests.")
+    parser.add_argument("--image_root_dir", type=str, default=None,
+                        help="Optional root directory containing local images (for offline datasets like iWildCam).")
     parser.add_argument("--save_interval", type=int, default=50,
                         help="Interval of successfully re-labeled clusters at which to save intermediate checkpoints.")
     args = parser.parse_args()
@@ -370,7 +392,7 @@ def main():
                     img_url = f"kartaview://{photo_id}"
 
             img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout,
-                                        max_retries=args.max_retries)
+                                        max_retries=args.max_retries, image_root_dir=args.image_root_dir)
 
             if img is not None:
                 buffered = BytesIO()
@@ -416,7 +438,7 @@ def main():
                     img_url = f"kartaview://{photo_id}"
 
             img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout,
-                                        max_retries=args.max_retries)
+                                        max_retries=args.max_retries, image_root_dir=args.image_root_dir)
 
             if img is not None:
                 buffered = BytesIO()

@@ -57,14 +57,34 @@ def resize_image_aspect(img, target_max=448):
     return img.resize((new_w, new_h), resample)
 
 
-def load_image(url, target_max=448):
+def load_image(url, target_max=448, image_root_dir=None):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
-    if os.path.exists(url):
+    resolved_path = None
+    if image_root_dir:
+        # Try direct relative path join
+        path1 = os.path.join(image_root_dir, url)
+        if os.path.exists(path1):
+            resolved_path = path1
+        else:
+            # Try joining filename only
+            path2 = os.path.join(image_root_dir, os.path.basename(url))
+            if os.path.exists(path2):
+                resolved_path = path2
+            else:
+                # Try joining train/filename or other subdirs
+                path3 = os.path.join(image_root_dir, "train", os.path.basename(url))
+                if os.path.exists(path3):
+                    resolved_path = path3
+    
+    if not resolved_path and os.path.exists(url):
+        resolved_path = url
+
+    if resolved_path:
         try:
-            img = Image.open(url).convert("RGB")
+            img = Image.open(resolved_path).convert("RGB")
             return resize_image_aspect(img, target_max)
         except Exception as e:
-            print(f"Error loading local image {url}: {e}")
+            print(f"Error loading local image {resolved_path}: {e}")
             return None
     try:
         if url.startswith("mapillary://"):
@@ -154,7 +174,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
 
         def prepare_image(task):
             cid = task['cid']
-            img = load_image(task['img_url'], target_max=img_max_dim)
+            img = load_image(task['img_url'], target_max=img_max_dim, image_root_dir=args.image_root_dir)
             if img is not None:
                 buffered = BytesIO()
                 img.save(buffered, format="JPEG")
@@ -253,6 +273,8 @@ def main():
                         help="Batch chunk size for parallel VLM API requests.")
     parser.add_argument("--img_max_dim", type=int, default=672,
                         help="Target maximum dimension to resize images before VLM processing (default: 448). Prevents OOM on wide panoramic images.")
+    parser.add_argument("--image_root_dir", type=str, default=None,
+                        help="Optional root directory containing local images (for offline datasets like iWildCam).")
     parser.add_argument("--out", type=str, default="clustered_data.pkl", help="Output path.")
     args = parser.parse_args()
 

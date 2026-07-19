@@ -7,7 +7,7 @@ import os
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
-def create_sample_grid(pkl_path, output_html, top_n=5):
+def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     print(f"Loading clustered data from {pkl_path}...")
     import pandas as pd
     import pyarrow.parquet as pq
@@ -218,6 +218,29 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
             "h3_res4": [str(x) for x in cluster_h3_res4.get(c_id, [])],
             "samples": samples
         })
+    # Pre-resolve local image paths if image_root_dir is supplied or they already exist
+    for item in dashboard_data:
+        for sample in item["samples"]:
+            url = sample["url"]
+            resolved_path = None
+            if image_root_dir:
+                path1 = os.path.join(image_root_dir, url)
+                if os.path.exists(path1):
+                    resolved_path = path1
+                else:
+                    path2 = os.path.join(image_root_dir, os.path.basename(url))
+                    if os.path.exists(path2):
+                        resolved_path = path2
+                    else:
+                        path3 = os.path.join(image_root_dir, "train", os.path.basename(url))
+                        if os.path.exists(path3):
+                            resolved_path = path3
+            if not resolved_path and os.path.exists(url):
+                resolved_path = url
+            
+            if resolved_path:
+                sample["url"] = "file://" + os.path.abspath(resolved_path)
+
     # Collect samples to check: first two representatives, last two representatives, and outliers
     samples_to_check = []
     for item in dashboard_data:
@@ -254,6 +277,9 @@ def create_sample_grid(pkl_path, output_html, top_n=5):
         photo_id = sample["id"]
         platform = sample["platform"]
         
+        if url.startswith("file://"):
+            return
+            
         if os.path.exists(url):
             return
             
@@ -1194,6 +1220,7 @@ if __name__ == "__main__":
     parser.add_argument("--pkl", type=str, required=True, help="Path to the clustered .pkl file.")
     parser.add_argument("--out", type=str, default="cluster_samples.html", help="Output HTML file name.")
     parser.add_argument("--top_n", type=int, default=6, help="Number of samples to show per cluster.")
+    parser.add_argument("--image_root_dir", type=str, default=None, help="Optional root directory containing local images (for offline datasets like iWildCam).")
     args = parser.parse_args()
 
-    create_sample_grid(args.pkl, args.out, args.top_n)
+    create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir)
