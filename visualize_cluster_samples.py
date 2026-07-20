@@ -708,7 +708,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             if (isMapillary && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
                 const apiUrl = `https://graph.mapillary.com/${{cleanPhotoId}}?fields=thumb_1024_url`;
                 fetch(apiUrl, {{
-                    headers: {{ 'Authorization': `OAuth ${MAPILLARY_TOKEN}` }}
+                    headers: {{ 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }}
                 }})
                 .then(res => res.json())
                 .then(resData => {{
@@ -737,6 +737,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                 }})
                 .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
             }}
+        }}
+
         function renderResults(append = false) {{
             const container = document.getElementById('results');
             const sortVal = document.getElementById('sortSelect').value;
