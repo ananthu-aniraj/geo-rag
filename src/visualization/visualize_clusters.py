@@ -134,54 +134,6 @@ def create_map(pkl_path, output_html, max_markers=1000):
                 <b>H3 Cell:</b> {item['H3_Cell']}<br>
                 <a href="{item['Image_URL']}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a></p>
             </div>
-            <script>
-                const MAPILLARY_TOKEN = '{MAPILLARY_TOKEN}';
-                function handleImageError(img, photoId, platform) {{
-                    if (img.dataset.retryAttempt) return;
-                    img.dataset.retryAttempt = '1';
-                    
-                    const platformLower = String(platform).toLowerCase().trim();
-                    const isMapillary = platformLower === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
-                    const isKartaview = platformLower === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
-                    
-                    let cleanPhotoId = String(photoId).trim();
-                    if (cleanPhotoId.endsWith('.0')) {{
-                        cleanPhotoId = cleanPhotoId.slice(0, -2);
-                    }}
-                    
-                    if (isMapillary && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
-                        const apiUrl = 'https://graph.mapillary.com/' + cleanPhotoId + '?fields=thumb_1024_url';
-                        fetch(apiUrl, {{
-                            headers: {{ 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }}
-                        }})
-                        .then(res => res.json())
-                        .then(resData => {{
-                            if (resData.thumb_1024_url) {{
-                                img.src = resData.thumb_1024_url;
-                                const link = img.closest('div').querySelector('a');
-                                if (link) link.href = resData.thumb_1024_url;
-                            }}
-                        }})
-                        .catch(err => console.error('Error fetching Mapillary fresh URL:', err));
-                    }} else if (isKartaview && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {{
-                        const apiUrl = 'https://api.openstreetcam.org/2.0/photo/' + cleanPhotoId;
-                        fetch(apiUrl)
-                        .then(res => res.json())
-                        .then(resData => {{
-                            const data = resData.result && resData.result.data;
-                            if (data) {{
-                                const freshUrl = data.fileurlLTh || data.fileurlTh || data.fileurl;
-                                if (freshUrl) {{
-                                    img.src = freshUrl;
-                                    const link = img.closest('div').querySelector('a');
-                                    if (link) link.href = freshUrl;
-                                }}
-                            }}
-                        }})
-                        .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
-                    }}
-                }}
-            </script>
         """
         iframe_height = 350 if ('cluster_description' in item and item['cluster_description']) else 280
         iframe = folium.IFrame(html=html, width=240, height=iframe_height)
@@ -192,6 +144,18 @@ def create_map(pkl_path, output_html, max_markers=1000):
             popup=popup,
             icon=folium.Icon(color=color, icon='camera')
         ).add_to(marker_cluster)
+
+    # Inject global JS helper template from templates/image_error_handler.js
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    js_template_path = os.path.join(root_dir, "templates", "image_error_handler.js")
+    if not os.path.exists(js_template_path):
+        js_template_path = "templates/image_error_handler.js"
+
+    with open(js_template_path, 'r', encoding='utf-8') as f:
+        js_code = f.read().replace("{{MAPILLARY_TOKEN}}", MAPILLARY_TOKEN)
+
+    js_header = f"<script>\n{js_code}\n</script>"
+    m.get_root().html.add_child(folium.Element(js_header))
 
     m.save(output_html)
     print(f"Interactive map saved to: {output_html}")

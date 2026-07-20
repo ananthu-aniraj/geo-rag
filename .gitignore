@@ -49,3 +49,6 @@ macro_test_results*/
 special_loc_scrape*/
 retrieval_exps/
 iwildcam_subset/
+
+# Do not ignore
+!templates/cluster_dashboard.html

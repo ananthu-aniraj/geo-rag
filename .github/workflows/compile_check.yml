@@ -1,4 +1,4 @@
-name: Python Compilation Check
+name: Code Syntax & Compilation Check
 
 on:
   push:
@@ -19,8 +19,20 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Run compilation check
+    - name: Run Python compilation check
       run: |
         echo "Running AST syntax validation on all Python files..."
         python -m compileall -q -x "venv|\.venv|\.git|scratch" .
-        echo "All files successfully verified!"
+        echo "All Python files successfully verified!"
+
+    - name: Run JavaScript template syntax check
+      run: |
+        echo "Running syntax validation on JavaScript template files..."
+        for f in templates/*.js; do
+          if [ -f "$f" ]; then
+            echo "Checking $f..."
+            node -e "const fs = require('fs'); const code = fs.readFileSync('$f', 'utf8').replace(/\{\{.*?\}\}/g, '1'); require('vm').runInNewContext(code);"
+            echo "  -> $f syntax OK"
+          fi
+        done
+        echo "All JavaScript templates successfully verified!"
