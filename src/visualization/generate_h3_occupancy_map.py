@@ -36,8 +36,7 @@ def main():
     h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}}
     total_images = 0
 
-    for f in csv_files:
-        print(f"Reading and aggregating {f}...")
+    for f in tqdm(csv_files, desc="Reading csv files"):
         try:
             # We only read the necessary columns to save memory
             df = pd.read_csv(
