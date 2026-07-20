@@ -25,8 +25,6 @@ The pipeline processes diverse geotagged image sources, unifies their schemas, a
 | **iNaturalist** | Species observations | Coordinates (filtered for sky/macro) | Standardized observation datetimes |
 
 > [!NOTE]
-> **Global Streetscapes Integration**: The next version of the dataset integrates a balanced subset from the **Global Streetscapes** dataset (containing ~1.55M Mapillary and ~145K KartaView images), providing comprehensive global coverage of urban and rural transport networks.
-> 
 > **Timezone Standardization**: Because naive local time strings are parsed with `utc=True` during ingestion, the numeric hour digit is preserved exactly as it was captured (e.g. 10:00 PM local is stored as `22:00:00Z`). This allows accurate local Time of Day profiling without external timezone database queries.
 
 ### 📡 2.1 Ingestion & Scraping Utilities
