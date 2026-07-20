@@ -21,7 +21,9 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
         # Load metadata only (uses ~200MB RAM)
-        df = pd.read_parquet(pkl_path, columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'cluster_id', 'cluster_label', 'cluster_description', 'parent_cluster_id', 'parent_cluster_label', 'parent_cluster_description', 'Season', 'Time_Of_Day', 'H3_Cell'])
+        parquet_file = pq.ParquetFile(pkl_path)
+        metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
+        df = pd.read_parquet(pkl_path, columns=metadata_cols)
         
         # Load embeddings via PyArrow
         print("Loading raw embedding matrix using PyArrow...")
@@ -59,9 +61,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         index_path = index_candidates[0]
         print(f"Loading pre-built H3 index from {index_path}...")
         try:
-            index_df = pd.read_parquet(index_path)
-            res4_df = index_df[index_df['resolution'] == 4]
-            cluster_h3_res4 = res4_df.groupby('cluster_id')['query_cell'].apply(lambda x: list(set(x.dropna()))).to_dict()
+            index_df = pd.read_parquet(index_path, columns=['resolution', 'cluster_id', 'query_cell'])
+            res4_df = index_df[index_df['resolution'] == 4].dropna(subset=['query_cell'])
+            res4_df = res4_df[['cluster_id', 'query_cell']].drop_duplicates()
+            cluster_h3_res4 = res4_df.groupby('cluster_id')['query_cell'].agg(list).to_dict()
         except Exception as e:
             print(f"Warning: Failed to load H3 index: {e}")
             
