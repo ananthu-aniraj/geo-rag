@@ -3,7 +3,7 @@
 # Configuration
 TOTAL_CHUNKS=10000
 SCRIPT_NAME="src.scrapers.flickr_5km_grid_search"
-BASE_DIR="/home/ananthu/DATA/data_ananthu/flickr_scrape"
+BASE_DIR="/home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
 # Ensure base directory exists

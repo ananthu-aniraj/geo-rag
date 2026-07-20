@@ -3,7 +3,7 @@
 # Configuration
 TOTAL_CHUNKS=10000
 SCRIPT_NAME="src.scrapers.mapillary_scraper"
-BASE_DIR="/home/ananthu/DATA/data_ananthu/mapillary_scrape"
+BASE_DIR="/home/ananthu/DATA/data_ananthu/mapillary_scrape_rand_5"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
 # Ensure base directory exists
