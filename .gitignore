@@ -49,6 +49,7 @@ macro_test_results*/
 special_loc_scrape*/
 retrieval_exps/
 iwildcam_subset/
+shapefiles/uncovered_land_areas_test.*
 
 # Do not ignore
 !templates/cluster_dashboard.html
