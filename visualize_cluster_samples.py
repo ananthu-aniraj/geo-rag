@@ -200,6 +200,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             "parent_id": first_parent_id,
             "parent_label": first_parent_label,
             "size": len(indices),
+            "count": len(indices),
             "description": centroid_desc,
             "unique_h3_count": unique_h3_count,
             "center_lat": float(center_lat),
@@ -341,7 +342,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     data_js_path = output_html.replace('.html', '_data.js')
     print(f"Writing data payload to {data_js_path}...")
     with open(data_js_path, 'w', encoding='utf-8') as f:
-        f.write(f"const CLUSTER_DATA = {json_data};")
+        f.write(f"var CLUSTER_DATA = {json_data};")
 
     data_js_filename = os.path.basename(data_js_path)
 
@@ -736,8 +737,6 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                 }})
                 .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
             }}
-        }}
-
         function renderResults(append = false) {{
             const container = document.getElementById('results');
             const sortVal = document.getElementById('sortSelect').value;
