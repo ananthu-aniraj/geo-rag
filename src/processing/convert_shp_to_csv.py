@@ -43,8 +43,12 @@ def main():
     elapsed = time.time() - t0
     print(f" -> Successfully loaded {len(gdf):,} geometries in {elapsed:.2f} seconds.")
 
-    # 1. Resolve columns (handle slightly different shapefile naming conventions)
-    # Check for photo ID column
+    # 1. Reproject to EPSG:4326 (WGS84) if needed
+    if gdf.crs and gdf.crs.to_string() != "EPSG:4326":
+        print(f" -> Reprojecting CRS from {gdf.crs} to EPSG:4326...")
+        gdf = gdf.to_crs(epsg=4326)
+
+    # 2. Resolve ID column
     id_col = None
     for possible_name in ["id", "image_id", "photo_id"]:
         if possible_name in gdf.columns:
@@ -57,27 +61,26 @@ def main():
 
     print(f" -> Mapping ID column: '{id_col}'")
 
-    # Check coordinates columns (fall back to extracting from geometry if not explicit)
-    lat_col = "lat" if "lat" in gdf.columns else None
-    lon_col = "lon" if "lon" in gdf.columns else None
+    # 3. Extract coordinates directly from Point geometries (Point(x, y) where x=Longitude, y=Latitude)
+    print(" -> Extracting Latitude from geometry.y and Longitude from geometry.x...")
+    lats = gdf.geometry.y
+    lons = gdf.geometry.x
 
-    if not lat_col or not lon_col:
-        print(" -> Extracting coordinates directly from Point geometries...")
-        gdf["lon"] = gdf.geometry.x
-        gdf["lat"] = gdf.geometry.y
-        lat_col = "lat"
-        lon_col = "lon"
+    # Smart swap validation: If Y coordinate values exceed +/-90, swap X and Y
+    if (lats.abs() > 90).any():
+        print(" [WARNING] Detected inverted (X=lat, Y=lon) coordinates in geometry. Auto-correcting...")
+        lats, lons = lons, lats
 
     # Surface type attribute
     surface_val = gdf["surface"] if "surface" in gdf.columns else "unknown"
 
-    # 2. Build standard pipeline DataFrame
+    # 4. Build standard pipeline DataFrame
     print(" -> Formatting columns to Geo-RAG schema...")
     df = pd.DataFrame({
         "Photo_ID": gdf[id_col].astype(str),
         "Platform": "Mapillary",
-        "Latitude": gdf[lat_col],
-        "Longitude": gdf[lon_col],
+        "Latitude": lats,
+        "Longitude": lons,
         "Image_URL": "https://www.mapillary.com/app/?pKey=" + gdf[id_col].astype(str),
         "Captured_At": None,
         "Surface_Type": surface_val
