@@ -66,7 +66,7 @@ To download the latest version of the dataset locally (requires SSH access to th
 
 ### Generating Uncovered Land Area Shapefiles
 To generate an uncovered land areas shapefile:
-1. Run [`src/visualization/create_uncovered_land_areas_shp.py`](src/visualization/create_uncovered_land_areas_shp.py), providing the input directory of the latest dataset version.
+1. Run [`src/utils/create_uncovered_land_areas_shp.pyy`](src/utils/create_uncovered_land_areas_shp.py), providing the input directory of the latest dataset version.
 2. (Optional) Visualize the generated shapefile using [`src/visualization/visualize_shp.py`](src/visualization/visualize_shp.py) to inspect the target scraping areas.
 
 ---
