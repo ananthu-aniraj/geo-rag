@@ -160,7 +160,16 @@ python3 -m src.indexing.label_clusters_mllm \
   $IMAGE_ROOT_FLAG
 
 echo ""
-echo "[Step 2c/5] Building H3 Spatial-Semantic Index..."
+echo "[Step 2c/5] Re-labeling Failed Clusters (due to download timeouts)..."
+python3 -m src.indexing.relabel_failed_clusters \
+  --in "$CLUSTERED_PARQUET" \
+  --mllm_model "$MLLM_MODEL" \
+  --mllm_backend "$MLLM_BACKEND" \
+  --fallback_depth 10 \
+  $IMAGE_ROOT_FLAG
+
+echo ""
+echo "[Step 2d/5] Building H3 Spatial-Semantic Index..."
 python3 -m src.indexing.build_spatial_semantic_index \
   --input "$CLUSTERED_PARQUET" \
   --output "$H3_SEMANTIC_INDEX"
