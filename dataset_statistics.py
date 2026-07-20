@@ -32,87 +32,104 @@ def geocode_location(location_name):
     return None, None
 
 
-def map_coordinates_to_regions(df, land_shp_path):
-    """Map coordinates to countries and continents using a fast spatial join at H3 resolution 3."""
+def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None):
+    """Map coordinates to countries and continents using H3 resolution 5 cells and nearest-land fallback."""
     if not os.path.exists(land_shp_path):
         print(f"Warning: Shapefile '{land_shp_path}' not found. Cannot map points to countries/continents.")
         df['continent'] = 'Unknown'
         df['country'] = 'Unknown'
         return df
 
-    print("Mapping coordinates to countries/continents using H3 spatial index and shapefile...")
+    print("Mapping coordinates to countries/continents using H3 spatial index & shapefile...")
     t0 = time.time()
 
-    # 1. Check if H3_Cell column exists
+    # Load shapefile once
+    countries = gpd.read_file(land_shp_path)
+    col_mapping = {col: col.upper() for col in countries.columns if col.upper() in ['NAME', 'CONTINENT']}
+    countries_subset = countries[list(col_mapping.keys()) + ['geometry']].rename(columns=col_mapping)
+
+    # 1. Determine unique res 5 H3 cells
+    target_res = 5
+    unique_res5 = set()
+
+    # If pre-built spatial index exists, load res 5 query cells to accelerate/prime mapping
+    if spatial_index_path and os.path.exists(spatial_index_path):
+        print(f" -> Loading pre-built spatial index from '{spatial_index_path}'...")
+        try:
+            index_parquet = pq.ParquetFile(spatial_index_path)
+            avail = index_parquet.schema_arrow.names
+            if 'resolution' in avail and 'query_cell' in avail:
+                idx_df = pd.read_parquet(spatial_index_path, columns=['resolution', 'query_cell'])
+                idx_res5 = idx_df[idx_df['resolution'] == target_res]['query_cell'].dropna().unique()
+                unique_res5.update(idx_res5)
+                print(f" -> Found {len(idx_res5):,} pre-indexed H3 resolution {target_res} cells.")
+        except Exception as e:
+            print(f" -> Warning: Could not read spatial index: {e}")
+
+    # Also extract res 5 cells from input df to ensure complete coverage
+    res11_to_res5 = {}
     if 'H3_Cell' in df.columns:
-        unique_res11 = df['H3_Cell'].unique()
-        # Convert unique res 11 cells to res 3 parents
-        res11_to_res3 = {cell: h3.cell_to_parent(cell, 3) for cell in unique_res11}
-        unique_res3 = list(set(res11_to_res3.values()))
+        unique_res11 = df['H3_Cell'].dropna().unique()
+        res11_to_res5 = {c: h3.cell_to_parent(c, target_res) if h3.get_resolution(c) >= target_res else c for c in unique_res11}
+        unique_res5.update(res11_to_res5.values())
+    else:
+        print("H3_Cell column not found. Deriving H3 cells from coordinates...")
+        df_coords = df[['Latitude', 'Longitude']].dropna().drop_duplicates()
+        df_coords['h3_res5'] = [h3.latlng_to_cell(lat, lon, target_res) for lat, lon in zip(df_coords['Latitude'], df_coords['Longitude'])]
+        unique_res5.update(df_coords['h3_res5'].unique())
 
-        # Get centroids for the unique res 3 cells
-        centroids = [h3.cell_to_latlng(cell) for cell in unique_res3]
-        gdf_centroids = gpd.GeoDataFrame(
-            {'h3_res3': unique_res3},
-            geometry=gpd.points_from_xy([c[1] for c in centroids], [c[0] for c in centroids]),
-            crs='EPSG:4326'
-        )
+    unique_res5_list = list(unique_res5)
+    print(f" -> Mapping {len(unique_res5_list):,} unique H3 resolution {target_res} cells against country boundaries...")
 
-        # Load countries shapefile
-        countries = gpd.read_file(land_shp_path)
-        col_mapping = {col: col.upper() for col in countries.columns if col.upper() in ['NAME', 'CONTINENT']}
-        countries_subset = countries[list(col_mapping.keys()) + ['geometry']].rename(columns=col_mapping)
+    # Build GeoDataFrame of cell centroids
+    centroids = [h3.cell_to_latlng(cell) for cell in unique_res5_list]
+    gdf_centroids = gpd.GeoDataFrame(
+        {'h3_cell': unique_res5_list},
+        geometry=gpd.points_from_xy([c[1] for c in centroids], [c[0] for c in centroids]),
+        crs='EPSG:4326'
+    )
 
-        # Spatial Join
-        joined = gpd.sjoin(gdf_centroids, countries_subset, how='left', predicate='intersects')
-        joined['CONTINENT'] = joined['CONTINENT'].fillna('Ocean / Unknown')
-        joined['NAME'] = joined['NAME'].fillna('Ocean / Unknown')
+    # Step 1: Primary Spatial Join (Intersects)
+    joined = gpd.sjoin(gdf_centroids, countries_subset, how='left', predicate='intersects')
 
-        res3_to_continent = joined.set_index('h3_res3')['CONTINENT'].to_dict()
-        res3_to_country = joined.set_index('h3_res3')['NAME'].to_dict()
+    # Identify coastal water cells or unmapped cells
+    invalid_mask = joined['CONTINENT'].isna() | (joined['CONTINENT'] == 'Seven seas (open ocean)')
+    unmatched = joined[invalid_mask].copy()
+    matched = joined[~invalid_mask].copy()
 
-        # Map back to main df
-        res11_to_continent = {c11: res3_to_continent.get(c3, 'Ocean / Unknown') for c11, c3 in res11_to_res3.items()}
-        res11_to_country = {c11: res3_to_country.get(c3, 'Ocean / Unknown') for c11, c3 in res11_to_res3.items()}
+    # Step 2: Nearest-Land Snapping for Coastal Water Cells (max 0.8 degrees / ~88 km)
+    if len(unmatched) > 0:
+        unmatched_clean = unmatched[['h3_cell', 'geometry']].copy()
+        nearest = gpd.sjoin_nearest(unmatched_clean, countries_subset, how='left', max_distance=0.8)
+        nearest['CONTINENT'] = nearest['CONTINENT'].fillna('Ocean / Unknown')
+        nearest['NAME'] = nearest['NAME'].fillna('Ocean / Unknown')
+        nearest.loc[nearest['CONTINENT'] == 'Seven seas (open ocean)', 'CONTINENT'] = 'Ocean / Unknown'
+        nearest = nearest.drop_duplicates(subset=['h3_cell'])
+        final_gdf = pd.concat([matched, nearest], ignore_index=True)
+    else:
+        final_gdf = joined
+
+    res5_to_continent = final_gdf.set_index('h3_cell')['CONTINENT'].to_dict()
+    res5_to_country = final_gdf.set_index('h3_cell')['NAME'].to_dict()
+
+    # Assign mapped regions back to main dataframe
+    if 'H3_Cell' in df.columns:
+        res11_to_continent = {c11: res5_to_continent.get(c5, 'Ocean / Unknown') for c11, c5 in res11_to_res5.items()}
+        res11_to_country = {c11: res5_to_country.get(c5, 'Ocean / Unknown') for c11, c5 in res11_to_res5.items()}
 
         df['continent'] = df['H3_Cell'].map(res11_to_continent).fillna('Ocean / Unknown')
         df['country'] = df['H3_Cell'].map(res11_to_country).fillna('Ocean / Unknown')
     else:
-        # Fallback if H3_Cell column is not available: map unique coordinates
-        print("H3_Cell column not found. Mapping using unique coordinate rounding fallback...")
-        df_uniq = df[['Latitude', 'Longitude']].round(3).drop_duplicates().copy()
-        df_uniq['h3_res3'] = df_uniq.apply(lambda r: h3.latlng_to_cell(r['Latitude'], r['Longitude'], 3), axis=1)
+        # Fallback coordinate mapping
+        df_coords['continent'] = df_coords['h3_res5'].map(res5_to_continent).fillna('Ocean / Unknown')
+        df_coords['country'] = df_coords['h3_res5'].map(res5_to_country).fillna('Ocean / Unknown')
+        coord_map = df_coords.set_index(['Latitude', 'Longitude'])[['continent', 'country']].to_dict('index')
 
-        unique_res3 = df_uniq['h3_res3'].unique().tolist()
-        centroids = [h3.cell_to_latlng(cell) for cell in unique_res3]
-        gdf_centroids = gpd.GeoDataFrame(
-            {'h3_res3': unique_res3},
-            geometry=gpd.points_from_xy([c[1] for c in centroids], [c[0] for c in centroids]),
-            crs='EPSG:4326'
-        )
-
-        countries = gpd.read_file(land_shp_path)
-        col_mapping = {col: col.upper() for col in countries.columns if col.upper() in ['NAME', 'CONTINENT']}
-        countries_subset = countries[list(col_mapping.keys()) + ['geometry']].rename(columns=col_mapping)
-
-        joined = gpd.sjoin(gdf_centroids, countries_subset, how='left', predicate='intersects')
-        joined['CONTINENT'] = joined['CONTINENT'].fillna('Ocean / Unknown')
-        joined['NAME'] = joined['NAME'].fillna('Ocean / Unknown')
-
-        res3_to_continent = joined.set_index('h3_res3')['CONTINENT'].to_dict()
-        res3_to_country = joined.set_index('h3_res3')['NAME'].to_dict()
-
-        df_uniq['continent'] = df_uniq['h3_res3'].map(res3_to_continent)
-        df_uniq['country'] = df_uniq['h3_res3'].map(res3_to_country)
-
-        coord_map = df_uniq.set_index(['Latitude', 'Longitude'])[['continent', 'country']].to_dict('index')
-
-        df_rounded = df[['Latitude', 'Longitude']].round(3)
-        tuples = list(zip(df_rounded['Latitude'], df_rounded['Longitude']))
+        tuples = list(zip(df['Latitude'], df['Longitude']))
         df['continent'] = [coord_map.get(t, {'continent': 'Ocean / Unknown'})['continent'] for t in tuples]
         df['country'] = [coord_map.get(t, {'country': 'Ocean / Unknown'})['country'] for t in tuples]
 
-    print(f" -> Mapping completed in {time.time() - t0:.2f}s.")
+    print(f" -> High-quality region mapping completed in {time.time() - t0:.2f}s.")
     return df
 
 
@@ -658,6 +675,8 @@ def main():
                         help="Path to save the interactive HTML map. Defaults to {location}_map.html.")
     parser.add_argument("--land_shp", type=str, default="ne_10m_admin_0_countries.shp",
                         help="Path to the country shapefile for spatial region mapping.")
+    parser.add_argument("--spatial_index", type=str, default=None,
+                        help="Path to pre-built H3 spatial semantic index Parquet file.")
     args = parser.parse_args()
 
     # Load dataset
@@ -666,8 +685,16 @@ def main():
     # Classify time of day if needed
     df = ensure_time_of_day(df)
 
+    # Auto-detect pre-built spatial index if not provided
+    spatial_index_path = args.spatial_index
+    if not spatial_index_path and args.input:
+        input_dir = os.path.dirname(os.path.abspath(args.input))
+        possible_index = os.path.join(input_dir, "geo_space_h3_semantic_index.parquet")
+        if os.path.exists(possible_index):
+            spatial_index_path = possible_index
+
     # Map points to continent/country
-    df = map_coordinates_to_regions(df, args.land_shp)
+    df = map_coordinates_to_regions(df, args.land_shp, spatial_index_path=spatial_index_path)
 
     # Handle filtering
     is_global = True

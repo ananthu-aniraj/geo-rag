@@ -208,6 +208,7 @@ echo ""
 echo "Generating dataset statistics report, plots, and optimized H3 map..."
 python3 dataset_statistics.py \
   --input "$INPUT_PARQUET" \
+  --spatial_index "$H3_SEMANTIC_INDEX" \
   --output_plot "$STATS_PLOT" \
   --output_text "$STATS_TEXT" \
   --output_map "$STATS_MAP"
