@@ -346,8 +346,11 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
 
     data_js_filename = os.path.basename(data_js_path)
 
-    # Load HTML template from templates/cluster_dashboard.html
-    template_path = os.path.join(os.path.dirname(__file__), "templates", "cluster_dashboard.html")
+    # Load HTML template from root templates/cluster_dashboard.html
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    template_path = os.path.join(root_dir, "templates", "cluster_dashboard.html")
+    if not os.path.exists(template_path):
+        template_path = os.path.join(os.path.dirname(__file__), "templates", "cluster_dashboard.html")
     if not os.path.exists(template_path):
         template_path = "templates/cluster_dashboard.html"
 

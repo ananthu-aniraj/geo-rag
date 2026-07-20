@@ -5,7 +5,7 @@ conda activate ananthu_venv
 # CONFIGURATION
 # ==========================================
 # Update these variables to match your environment
-PYTHON_SCRIPT="src.scrapers.caption_test"
+PYTHON_SCRIPT="src.evaluation.caption_test"
 IMG_DIR="/home/ananthu/DATA/data_ananthu/places365/versions/1/val"      # Path to your val/train directory
 LABELS_FILE="/home/ananthu/DATA/data_ananthu/places365/versions/1/Scene_hierarchy.xlsx"
 MAX_IMAGES=1000                    # Set to 0 to run the entire dataset
