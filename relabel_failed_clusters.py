@@ -9,6 +9,8 @@ from io import BytesIO
 from PIL import Image
 import numpy as np
 import pandas as pd
+import yaml
+import urllib.request
 from sklearn.preprocessing import normalize
 
 
@@ -30,11 +32,7 @@ def resize_image_aspect(img, target_max=448):
     else:
         new_h = target_max
         new_w = int(w * (target_max / h))
-    try:
-        resample = Image.Resampling.LANCZOS
-    except AttributeError:
-        resample = Image.LANCZOS
-
+    resample = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS', 1)
     return img.resize((new_w, new_h), resample)
 
 
@@ -212,7 +210,6 @@ def main():
 
     if os.path.exists("params.yaml"):
         try:
-            import yaml
             with open("params.yaml", "r") as f:
                 params = yaml.safe_load(f)
                 if 'pipeline' in params:
@@ -318,7 +315,6 @@ def main():
     print(f"Pre-flight check: Verifying VLM server is running at {endpoint}...")
     server_running = False
     try:
-        import urllib.request
         test_url = endpoint.rstrip("/")
         if args.mllm_backend == "sglang":
             test_url += "/v1/models"

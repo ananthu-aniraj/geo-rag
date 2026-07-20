@@ -2,22 +2,21 @@ import pickle
 import numpy as np
 import argparse
 import time
+import os
+import base64
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
-import os
 import pandas as pd
+import pyarrow.parquet as pq
 import torch
 from transformers import AutoModel
 import requests
 from io import BytesIO
 from PIL import Image
-
-
-try:
-    import faiss
-except ImportError:
-    faiss = None
-
+import faiss
+import umap
 # Shared LULC Vocabularies
 from lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
 
@@ -49,11 +48,7 @@ def resize_image_aspect(img, target_max=448):
     else:
         new_h = target_max
         new_w = int(w * (target_max / h))
-    try:
-        resample = Image.Resampling.LANCZOS
-    except AttributeError:
-        resample = Image.LANCZOS
-
+    resample = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS', 1)
     return img.resize((new_w, new_h), resample)
 
 
@@ -170,9 +165,6 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
     for i in range(0, len(tasks), chunk_size):
         chunk = tasks[i: i + chunk_size]
         print(f"Processing batch {i // chunk_size + 1}/{(len(tasks) - 1) // chunk_size + 1} ({len(chunk)} clusters)...")
-
-        from concurrent.futures import ThreadPoolExecutor
-        import base64
 
         # Dictionary to store base64 encoded images
         images_base64 = {}
@@ -298,7 +290,6 @@ def main():
         print(f"Pre-flight check: Verifying VLM server is running at {endpoint}...")
         server_running = False
         try:
-            import urllib.request
             test_url = endpoint.rstrip("/")
             if args.mllm_backend == "sglang":
                 test_url += "/v1/models"
@@ -327,15 +318,17 @@ def main():
         embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
         # Discover all available columns and read everything except 'embedding' to prevent dropping metadata columns (like H3_Cell)
-        import pyarrow.parquet as pq
-        parquet_file = pq.ParquetFile(args.pkl)
-        metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
-        df = pd.read_parquet(args.pkl, columns=metadata_cols)
+        try:
+            parquet_file = pq.ParquetFile(args.pkl)
+            metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
+            df = pd.read_parquet(args.pkl, columns=metadata_cols)
+        except Exception as e:
+            print(f"Warning: PyArrow schema inspection fallback: {e}")
+            df = pd.read_parquet(args.pkl)
         
         # Load embeddings directly into numpy array using PyArrow
         print("Loading raw embedding matrix using PyArrow...")
         t0 = time.time()
-        import pyarrow.parquet as pq
         table = pq.read_table(args.pkl, columns=["embedding"])
         
         num_rows = len(table)
@@ -393,7 +386,6 @@ def main():
 
     # Prepare inputs for clustering
     if args.use_umap:
-        import umap
         print(f"\nReducing dimensions to {args.reduce_dim}D using UMAP...")
         reducer = umap.UMAP(n_components=args.reduce_dim, metric='cosine', random_state=42)
         cluster_input = reducer.fit_transform(embeddings_norm)
@@ -420,7 +412,6 @@ def main():
     raw_centroids[valid_counts] /= counts[valid_counts, None]
 
     # Hierarchical parent clustering (using Spherical K-Means for sub-second, interruptible execution)
-    from sklearn.cluster import KMeans
     print(f"\nPerforming hierarchical clustering: grouping {args.k} centroids into {args.k_parents} parent clusters...")
     
     # Normalize centroids (K-Means on L2-normalized vectors is equivalent to Cosine-Similarity clustering)

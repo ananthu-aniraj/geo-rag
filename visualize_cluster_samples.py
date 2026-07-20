@@ -9,7 +9,13 @@ import time
 import os
 import glob
 import math
+import json
+from collections import Counter
 from tqdm import tqdm
+try:
+    import h3
+except ImportError:
+    h3 = None
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
@@ -78,6 +84,49 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     dashboard_data = []
     sorted_ids = sorted(cluster_to_indices.keys())
 
+    # Pre-extract numpy arrays from DataFrame for fast O(1) indexing (eliminates df.iloc overhead)
+    print("Start pre-extracting columns for fast access...")
+    col_photo_id = df['Photo_ID'].to_numpy() if 'Photo_ID' in df.columns else np.array([""] * len(df))
+    col_platform = df['Platform'].to_numpy() if 'Platform' in df.columns else np.array([""] * len(df))
+    col_lat = df['Latitude'].to_numpy() if 'Latitude' in df.columns else np.zeros(len(df))
+    col_lon = df['Longitude'].to_numpy() if 'Longitude' in df.columns else np.zeros(len(df))
+    col_url = df['Image_URL'].to_numpy() if 'Image_URL' in df.columns else np.array([""] * len(df))
+    col_captured_at = df['Captured_At'].to_numpy() if 'Captured_At' in df.columns else np.array([""] * len(df))
+    col_label = df['cluster_label'].to_numpy() if 'cluster_label' in df.columns else np.array([""] * len(df))
+    col_desc = df['cluster_description'].to_numpy() if 'cluster_description' in df.columns else np.array([""] * len(df))
+    col_parent_id = df['parent_cluster_id'].to_numpy() if 'parent_cluster_id' in df.columns else np.array([-1] * len(df))
+    col_parent_label = df['parent_cluster_label'].to_numpy() if 'parent_cluster_label' in df.columns else np.array([""] * len(df))
+    col_season = df['Season'].to_numpy() if 'Season' in df.columns else np.array(["Unknown"] * len(df))
+    col_tod = df['Time_Of_Day'].to_numpy() if 'Time_Of_Day' in df.columns else np.array(["Unknown"] * len(df))
+    col_h3 = df['H3_Cell'].to_numpy() if 'H3_Cell' in df.columns else np.array([""] * len(df))
+    print("Successfully pre-extracted columns for fast access.")
+
+    def make_sample(global_idx, sim_score, is_outlier, rank_label):
+        pid = col_photo_id[global_idx]
+        if pid is not None and not (isinstance(pid, float) and np.isnan(pid)):
+            pid_str = str(int(pid)) if isinstance(pid, (float, int)) and not isinstance(pid, bool) else str(pid).strip()
+            if pid_str.endswith('.0'):
+                pid_str = pid_str[:-2]
+        else:
+            pid_str = ""
+
+        cap = col_captured_at[global_idx]
+        cap_str = str(cap) if cap is not None and not (isinstance(cap, float) and np.isnan(cap)) else ""
+
+        return {
+            "url": str(col_url[global_idx]),
+            "id": pid_str,
+            "sim": float(sim_score),
+            "lat": float(col_lat[global_idx]) if pd.notna(col_lat[global_idx]) else 0.0,
+            "lon": float(col_lon[global_idx]) if pd.notna(col_lon[global_idx]) else 0.0,
+            "platform": str(col_platform[global_idx]).strip() if pd.notna(col_platform[global_idx]) else "",
+            "captured_at": cap_str,
+            "season": str(col_season[global_idx]) if pd.notna(col_season[global_idx]) else "Unknown",
+            "time_of_day": str(col_tod[global_idx]) if pd.notna(col_tod[global_idx]) else "Unknown",
+            "is_outlier": is_outlier,
+            "rank_label": rank_label
+        }
+
     for c_id in tqdm(sorted_ids, desc="Processing clusters"):
         indices = cluster_to_indices[c_id]
         embs = embeddings[indices]
@@ -90,136 +139,68 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
 
         sorted_indices = np.argsort(sims)[::-1][:top_n]
 
-        # Load first row to pull cluster metadata
-        first_row = df.iloc[indices[0]]
+        idx0 = indices[0]
+        first_label = str(col_label[idx0]) if pd.notna(col_label[idx0]) and str(col_label[idx0]) != "" else f"Cluster {c_id}"
+        first_parent_id = int(col_parent_id[idx0]) if pd.notna(col_parent_id[idx0]) else -1
+        first_parent_label = str(col_parent_label[idx0]) if pd.notna(col_parent_label[idx0]) and str(col_parent_label[idx0]) != "" else "Unlabeled Parent"
 
-        # Keep only the representative samples to save space in the HTML
+        # Keep representative samples
         samples = []
         for rank, local_idx in enumerate(sorted_indices):
-            global_idx = indices[local_idx]
-            img = df.iloc[global_idx]
+            label_text = "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
+            samples.append(make_sample(indices[local_idx], float(sims[local_idx]), False, label_text))
 
-            photo_id = img.get('Photo_ID')
-            if photo_id is not None:
-                if isinstance(photo_id, float):
-                    import math as py_math
-                    if not py_math.isnan(photo_id):
-                        photo_id = str(int(photo_id))
-                    else:
-                        photo_id = ""
-                else:
-                    photo_id = str(photo_id).strip()
-                    if photo_id.endswith('.0'):
-                        photo_id = photo_id[:-2]
-            else:
-                photo_id = ""
-
-            samples.append({
-                "url": img["Image_URL"],
-                "id": photo_id,
-                "sim": float(sims[local_idx]),
-                "lat": float(img.get("Latitude", 0.0)),
-                "lon": float(img.get("Longitude", 0.0)),
-                "platform": str(img.get("Platform", "")).strip(),
-                "captured_at": img.get("Captured_At", ""),
-                "season": img.get("Season", "Unknown"),
-                "time_of_day": img.get("Time_Of_Day", "Unknown"),
-                "is_outlier": False,
-                "rank_label": "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
-            })
-
-        # Add the least representative (outlier) images if the cluster is larger than top_n
+        # Add outlier samples if cluster is larger than top_n
         if len(sims) > top_n:
-            lowest_indices = np.argsort(sims)[:2]  # Two absolute lowest similarity images
-            # Deduplicate just in case any overlap
-            lowest_indices = [idx for idx in lowest_indices if idx not in sorted_indices]
+            lowest_indices = [idx for idx in np.argsort(sims)[:2] if idx not in sorted_indices]
             for i, local_idx in enumerate(lowest_indices):
-                global_idx = indices[local_idx]
-                img = df.iloc[global_idx]
+                samples.append(make_sample(indices[local_idx], float(sims[local_idx]), True, f"Furthest Outlier {i + 1}"))
 
-                photo_id = img.get('Photo_ID')
-                if photo_id is not None:
-                    if isinstance(photo_id, float):
-                        import math as py_math
-                        if not py_math.isnan(photo_id):
-                            photo_id = str(int(photo_id))
-                        else:
-                            photo_id = ""
-                    else:
-                        photo_id = str(photo_id).strip()
-                        if photo_id.endswith('.0'):
-                            photo_id = photo_id[:-2]
-                else:
-                    photo_id = ""
+        # Centroid description
+        centroid_g_idx = indices[sorted_indices[0]]
+        centroid_desc = str(col_desc[centroid_g_idx]) if pd.notna(col_desc[centroid_g_idx]) else ""
 
-                samples.append({
-                    "url": img["Image_URL"],
-                    "id": photo_id,
-                    "sim": float(sims[local_idx]),
-                    "lat": float(img.get("Latitude", 0.0)),
-                    "lon": float(img.get("Longitude", 0.0)),
-                    "platform": str(img.get("Platform", "")).strip(),
-                    "captured_at": img.get("Captured_At", ""),
-                    "season": img.get("Season", "Unknown"),
-                    "time_of_day": img.get("Time_Of_Day", "Unknown"),
-                    "is_outlier": True,
-                    "rank_label": f"Furthest Outlier {i + 1}"
-                })
+        # Vectorized geographic center calculation
+        c_lats = col_lat[indices]
+        c_lons = col_lon[indices]
+        valid_mask = ~np.isnan(c_lats) & ~np.isnan(c_lons)
+        v_lats = c_lats[valid_mask]
+        v_lons = c_lons[valid_mask]
 
-        # Grab description from the centroid sample (highest similarity, sorted_indices[0])
-        centroid_img = df.iloc[indices[sorted_indices[0]]]
-        centroid_desc = centroid_img.get("cluster_description", "")
-
-        # Calculate robust geographic center (handling wrap-around for longitude)
-        cluster_rows = df.iloc[indices]
-        lats = cluster_rows["Latitude"].dropna().tolist()
-        lons = cluster_rows["Longitude"].dropna().tolist()
-
-        if lats:
-            center_lat = sum(lats) / len(lats)
-            x = sum(math.cos(math.radians(lon)) for lon in lons) / len(lons)
-            y = sum(math.sin(math.radians(lon)) for lon in lons) / len(lons)
-            center_lon = math.degrees(math.atan2(y, x))
+        if len(v_lats) > 0:
+            center_lat = float(np.mean(v_lats))
+            rad_lons = np.radians(v_lons)
+            x = float(np.mean(np.cos(rad_lons)))
+            y = float(np.mean(np.sin(rad_lons)))
+            center_lon = float(np.degrees(np.arctan2(y, x)))
         else:
             center_lat, center_lon = 0.0, 0.0
 
-        # Calculate unique H3 cells count
-        h3_cells = set(cluster_rows["H3_Cell"].dropna())
-        unique_h3_count = len(h3_cells)
-
-        # Compute H3 cell frequency and centroids
-        h3_counts = cluster_rows["H3_Cell"].dropna().value_counts().to_dict()
+        # Fast H3 cell frequency calculation using Counter
+        c_h3s = col_h3[indices]
+        h3_counts = Counter(cell for cell in c_h3s if cell and pd.notna(cell))
+        unique_h3_count = len(h3_counts)
 
         h3_centroids = []
-        try:
-            import h3
-            sorted_h3 = sorted(h3_counts.items(), key=lambda x: x[1], reverse=True)[:50]
-            for cell, count in sorted_h3:
-                try:
-                    h3_lat, h3_lon = h3.cell_to_latlon(cell)
-                    h3_centroids.append([float(h3_lat), float(h3_lon), int(count), cell])
-                except Exception:
-                    continue
-        except ImportError:
-            # Fallback if h3 library is not present: group by rounded lat/lon
-            coord_counts = {}
-            for img in samples:
-                r_lat = round(img['lat'], 2)
-                r_lon = round(img['lon'], 2)
-                coord_counts[(r_lat, r_lon)] = coord_counts.get((r_lat, r_lon), 0) + 1
-            sorted_coords = sorted(coord_counts.items(), key=lambda x: x[1], reverse=True)[:50]
-            for (r_lat, r_lon), count in sorted_coords:
-                h3_centroids.append([float(r_lat), float(r_lon), int(count), "N/A"])
+        if h3_counts and h3 is not None:
+            try:
+                top_h3 = h3_counts.most_common(50)
+                for cell, count in top_h3:
+                    try:
+                        h3_lat, h3_lon = h3.cell_to_latlon(cell)
+                        h3_centroids.append([float(h3_lat), float(h3_lon), int(count), cell])
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
         dashboard_data.append({
             "id": int(c_id),
-            "label": str(first_row.get("cluster_label", f"Cluster {c_id}")),
-            "parent_id": int(first_row.get("parent_cluster_id", -1)) if pd.notna(
-                first_row.get("parent_cluster_id")) else -1,
-            "parent_label": str(first_row.get("parent_cluster_label", "Unlabeled Parent")) if pd.notna(
-                first_row.get("parent_cluster_label")) else "Unlabeled Parent",
+            "label": first_label,
+            "parent_id": first_parent_id,
+            "parent_label": first_parent_label,
+            "size": len(indices),
             "description": centroid_desc,
-            "count": int(len(indices)),
             "unique_h3_count": unique_h3_count,
             "center_lat": float(center_lat),
             "center_lon": float(center_lon),
@@ -354,7 +335,6 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     print("Signature check and resolution complete.")
 
     # Generate the Dynamic Dashboard HTML
-    import json
     json_data = json.dumps(dashboard_data)
 
     # Save data to an external JS file to prevent browser freezing on massive inline scripts
