@@ -142,26 +142,21 @@ else
 fi
 
 echo ""
-echo "[Step 2/5] Global Unsupervised Clustering (K-Means)..."
+echo "[Step 2/5] Global Unsupervised FAISS GPU Clustering..."
 python3 -m src.indexing.cluster_images_global \
   --pkl "$INPUT_PARQUET" \
   --k "$K_CLUSTERS" \
   --out "$CLUSTERED_PARQUET" \
-  --minibatch \
+  --gpu
+
+echo ""
+echo "[Step 2b/5] MLLM Cluster Auto-Labeling..."
+python3 -m src.indexing.label_clusters_mllm \
+  --in "$CLUSTERED_PARQUET" \
   --label_method "$LABEL_METHOD" \
   --mllm_backend "$MLLM_BACKEND" \
   --mllm_model "$MLLM_MODEL" \
   --chunk_size "$CHUNK_SIZE" \
-  --gpu \
-  $IMAGE_ROOT_FLAG
-
-echo ""
-echo "[Step 2b/5] Re-labeling Failed Clusters (due to download timeouts)..."
-python3 -m src.indexing.relabel_failed_clusters \
-  --in "$CLUSTERED_PARQUET" \
-  --mllm_model "$MLLM_MODEL" \
-  --mllm_backend "$MLLM_BACKEND" \
-  --fallback_depth 10 \
   $IMAGE_ROOT_FLAG
 
 echo ""
