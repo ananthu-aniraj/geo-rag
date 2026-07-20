@@ -200,6 +200,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             "parent_id": first_parent_id,
             "parent_label": first_parent_label,
             "size": len(indices),
+            "count": len(indices),
             "description": centroid_desc,
             "unique_h3_count": unique_h3_count,
             "center_lat": float(center_lat),
@@ -341,7 +342,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     data_js_path = output_html.replace('.html', '_data.js')
     print(f"Writing data payload to {data_js_path}...")
     with open(data_js_path, 'w', encoding='utf-8') as f:
-        f.write(f"const CLUSTER_DATA = {json_data};")
+        f.write(f"var CLUSTER_DATA = {json_data};")
 
     data_js_filename = os.path.basename(data_js_path)
 
@@ -743,79 +744,93 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             const sortVal = document.getElementById('sortSelect').value;
             
             let toRender = [...filteredData];
-            if (sortVal === 'count') {{
-                toRender.sort((a, b) => b.count - a.count);
-            }} else if (sortVal === 'geo') {{
-                toRender.sort((a, b) => b.unique_h3_count - a.unique_h3_count);
-            }} else {{
+            if (sortVal === 'count') {
+                toRender.sort((a, b) => ((b.count !== undefined ? b.count : (b.size || 0)) - (a.count !== undefined ? a.count : (a.size || 0))));
+            } else if (sortVal === 'geo') {
+                toRender.sort((a, b) => ((b.unique_h3_count || 0) - (a.unique_h3_count || 0)));
+            } else {
                 toRender.sort((a, b) => a.id - b.id);
-            }}
+            }
 
             const slice = toRender.slice(append ? renderLimit - 50 : 0, renderLimit);
             
-            const html = slice.map(c => `
-                <div class="cluster-card" id="cluster-card-${{c.id}}">
+            const html = slice.map(c => {
+                const countVal = (c.count !== undefined) ? c.count : (c.size !== undefined ? c.size : 0);
+                const h3Val = (c.unique_h3_count !== undefined) ? c.unique_h3_count : 0;
+                
+                return `
+                <div class="cluster-card" id="cluster-card-${c.id}">
                     <div class="cluster-header">
-                        <div class="cluster-title">Cluster #${{c.id}}: <span>${{c.label}}</span></div>
+                        <div class="cluster-title">Cluster #${c.id}: <span>${c.label || ''}</span></div>
                         <div class="stats-badges">
-                            ${{c.parent_label ? `<span class="tag-parent" style="background-color: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; margin-right: 6px;">${{c.parent_label}}</span>` : ''}}
-                            <span class="tag">${{c.count.toLocaleString()}} images</span>
-                            <span class="tag-geo">${{c.unique_h3_count.toLocaleString()}} H3 cells</span>
+                            ${c.parent_label ? `<span class="tag-parent" style="background-color: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; margin-right: 6px;">${c.parent_label}</span>` : ''}
+                            <span class="tag">${countVal.toLocaleString()} images</span>
+                            <span class="tag-geo">${h3Val.toLocaleString()} H3 cells</span>
                         </div>
                     </div>
-                    ${{c.description ? `
+                    ${c.description ? `
                     <div class="desc-box">
-                        <b>VLM Prototypical Description:</b> ${{c.description}}
-                    </div>` : ''}}
+                        <b>VLM Prototypical Description:</b> ${c.description}
+                    </div>` : ''}
                     
-                    <button class="map-toggle-btn" id="map-btn-${{c.id}}" onclick="toggleMap(${{c.id}})">
+                    <button class="map-toggle-btn" id="map-btn-${c.id}" onclick="toggleMap(${c.id})">
                         🗺️ Show Geographic Spread Map
                     </button>
                     
-                    <div id="map-container-${{c.id}}" class="map-container" style="display: none;"></div>
+                    <div id="map-container-${c.id}" class="map-container" style="display: none;"></div>
 
                     <div class="image-grid">
-                        ${{c.samples.filter(s => {{
-                            const minDate = document.getElementById('minDateInput').value;
-                            const maxDate = document.getElementById('maxDateInput').value;
-                            const seasonVal = document.getElementById('seasonSelect').value;
-                            const todVal = document.getElementById('todSelect').value;
+                        ${(c.samples || []).filter(s => {
+                            const minDateEl = document.getElementById('minDateInput');
+                            const maxDateEl = document.getElementById('maxDateInput');
+                            const seasonSelectEl = document.getElementById('seasonSelect');
+                            const todSelectEl = document.getElementById('todSelect');
+
+                            const minDate = minDateEl ? minDateEl.value : '';
+                            const maxDate = maxDateEl ? maxDateEl.value : '';
+                            const seasonVal = seasonSelectEl ? seasonSelectEl.value : '';
+                            const todVal = todSelectEl ? todSelectEl.value : '';
                             
                             if (seasonVal && s.season !== seasonVal) return false;
                             if (todVal && s.time_of_day !== todVal) return false;
-                            if (minDate || maxDate) {{
+                            if (minDate || maxDate) {
                                 if (!s.captured_at) return false;
-                                const dateStr = s.captured_at.substring(0, 10);
+                                const dateStr = String(s.captured_at).substring(0, 10);
                                 if (minDate && dateStr < minDate) return false;
                                 if (maxDate && dateStr > maxDate) return false;
-                            }}
+                            }
                             return true;
-                        }}).map((s, i) => {{
+                        }).map((s, i) => {
                             let roleColor = '#4f46e5';
-                            if (s.is_outlier) {{
+                            if (s.is_outlier) {
                                 roleColor = '#e65100';
-                            }} else if (s.rank_label === 'Centroid Image') {{
+                            } else if (s.rank_label === 'Centroid Image') {
                                 roleColor = '#d93025';
-                            }}
+                            }
+                            const simVal = (s.sim !== undefined && s.sim !== null) ? Number(s.sim).toFixed(4) : '0.0000';
+                            const latVal = (s.lat !== undefined && s.lat !== null) ? Number(s.lat).toFixed(4) : '0.0000';
+                            const lonVal = (s.lon !== undefined && s.lon !== null) ? Number(s.lon).toFixed(4) : '0.0000';
+                            
                             return `
-                                <div class="image-item" style="${{s.is_outlier ? 'border-color: #ffe0b2; background-color: #fffaf0;' : ''}}">
-                                    <div class="image-role" style="color: ${{roleColor}}">
-                                        ${{s.rank_label}}
+                                <div class="image-item" style="${s.is_outlier ? 'border-color: #ffe0b2; background-color: #fffaf0;' : ''}">
+                                    <div class="image-role" style="color: ${roleColor}">
+                                        ${s.rank_label || ''}
                                     </div>
-                                    <a href="${{s.url}}" target="_blank">
-                                        <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" loading="lazy">
+                                    <a href="${s.url}" target="_blank">
+                                        <img src="${s.url}" onerror="handleImageError(this, '${s.id}', '${s.platform}')" loading="lazy">
                                     </a>
                                     <div class="image-meta">
-                                        <b>ID:</b> ${{s.id}}<br>
-                                        <b>Similarity:</b> ${{s.sim.toFixed(4)}}<br>
-                                        <b>Lat/Lon:</b> ${{s.lat.toFixed(4)}}, ${{s.lon.toFixed(4)}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}}
+                                        <b>ID:</b> ${s.id || ''}<br>
+                                        <b>Similarity:</b> ${simVal}<br>
+                                        <b>Lat/Lon:</b> ${latVal}, ${lonVal}${s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}
                                     </div>
                                 </div>
                             `;
-                        }}).join('')}}
+                        }).join('')}
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
             
             if (append) {{
                 container.innerHTML += html;
