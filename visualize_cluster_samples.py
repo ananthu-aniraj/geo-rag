@@ -737,50 +737,48 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                 }})
                 .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
             }}
-        }}
-
         function renderResults(append = false) {{
             const container = document.getElementById('results');
             const sortVal = document.getElementById('sortSelect').value;
             
             let toRender = [...filteredData];
-            if (sortVal === 'count') {
+            if (sortVal === 'count') {{
                 toRender.sort((a, b) => ((b.count !== undefined ? b.count : (b.size || 0)) - (a.count !== undefined ? a.count : (a.size || 0))));
-            } else if (sortVal === 'geo') {
+            }} else if (sortVal === 'geo') {{
                 toRender.sort((a, b) => ((b.unique_h3_count || 0) - (a.unique_h3_count || 0)));
-            } else {
+            }} else {{
                 toRender.sort((a, b) => a.id - b.id);
-            }
+            }}
 
             const slice = toRender.slice(append ? renderLimit - 50 : 0, renderLimit);
             
-            const html = slice.map(c => {
+            const html = slice.map(c => {{
                 const countVal = (c.count !== undefined) ? c.count : (c.size !== undefined ? c.size : 0);
                 const h3Val = (c.unique_h3_count !== undefined) ? c.unique_h3_count : 0;
                 
                 return `
-                <div class="cluster-card" id="cluster-card-${c.id}">
+                <div class="cluster-card" id="cluster-card-${{c.id}}">
                     <div class="cluster-header">
-                        <div class="cluster-title">Cluster #${c.id}: <span>${c.label || ''}</span></div>
+                        <div class="cluster-title">Cluster #${{c.id}}: <span>${{c.label || ''}}</span></div>
                         <div class="stats-badges">
-                            ${c.parent_label ? `<span class="tag-parent" style="background-color: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; margin-right: 6px;">${c.parent_label}</span>` : ''}
-                            <span class="tag">${countVal.toLocaleString()} images</span>
-                            <span class="tag-geo">${h3Val.toLocaleString()} H3 cells</span>
+                            ${{c.parent_label ? `<span class="tag-parent" style="background-color: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; margin-right: 6px;">${{c.parent_label}}</span>` : ''}}
+                            <span class="tag">${{countVal.toLocaleString()}} images</span>
+                            <span class="tag-geo">${{h3Val.toLocaleString()}} H3 cells</span>
                         </div>
                     </div>
-                    ${c.description ? `
+                    ${{c.description ? `
                     <div class="desc-box">
-                        <b>VLM Prototypical Description:</b> ${c.description}
-                    </div>` : ''}
+                        <b>VLM Prototypical Description:</b> ${{c.description}}
+                    </div>` : ''}}
                     
-                    <button class="map-toggle-btn" id="map-btn-${c.id}" onclick="toggleMap(${c.id})">
+                    <button class="map-toggle-btn" id="map-btn-${{c.id}}" onclick="toggleMap(${{c.id}})">
                         🗺️ Show Geographic Spread Map
                     </button>
                     
-                    <div id="map-container-${c.id}" class="map-container" style="display: none;"></div>
+                    <div id="map-container-${{c.id}}" class="map-container" style="display: none;"></div>
 
                     <div class="image-grid">
-                        ${(c.samples || []).filter(s => {
+                        ${{(c.samples || []).filter(s => {{
                             const minDateEl = document.getElementById('minDateInput');
                             const maxDateEl = document.getElementById('maxDateInput');
                             const seasonSelectEl = document.getElementById('seasonSelect');
@@ -793,44 +791,44 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                             
                             if (seasonVal && s.season !== seasonVal) return false;
                             if (todVal && s.time_of_day !== todVal) return false;
-                            if (minDate || maxDate) {
+                            if (minDate || maxDate) {{
                                 if (!s.captured_at) return false;
                                 const dateStr = String(s.captured_at).substring(0, 10);
                                 if (minDate && dateStr < minDate) return false;
                                 if (maxDate && dateStr > maxDate) return false;
-                            }
+                            }}
                             return true;
-                        }).map((s, i) => {
+                        }}).map((s, i) => {{
                             let roleColor = '#4f46e5';
-                            if (s.is_outlier) {
+                            if (s.is_outlier) {{
                                 roleColor = '#e65100';
-                            } else if (s.rank_label === 'Centroid Image') {
+                            }} else if (s.rank_label === 'Centroid Image') {{
                                 roleColor = '#d93025';
-                            }
+                            }}
                             const simVal = (s.sim !== undefined && s.sim !== null) ? Number(s.sim).toFixed(4) : '0.0000';
                             const latVal = (s.lat !== undefined && s.lat !== null) ? Number(s.lat).toFixed(4) : '0.0000';
                             const lonVal = (s.lon !== undefined && s.lon !== null) ? Number(s.lon).toFixed(4) : '0.0000';
                             
                             return `
-                                <div class="image-item" style="${s.is_outlier ? 'border-color: #ffe0b2; background-color: #fffaf0;' : ''}">
-                                    <div class="image-role" style="color: ${roleColor}">
-                                        ${s.rank_label || ''}
+                                <div class="image-item" style="${{s.is_outlier ? 'border-color: #ffe0b2; background-color: #fffaf0;' : ''}}">
+                                    <div class="image-role" style="color: ${{roleColor}}">
+                                        ${{s.rank_label || ''}}
                                     </div>
-                                    <a href="${s.url}" target="_blank">
-                                        <img src="${s.url}" onerror="handleImageError(this, '${s.id}', '${s.platform}')" loading="lazy">
+                                    <a href="${{s.url}}" target="_blank">
+                                        <img src="${{s.url}}" onerror="handleImageError(this, '${{s.id}}', '${{s.platform}}')" loading="lazy">
                                     </a>
                                     <div class="image-meta">
-                                        <b>ID:</b> ${s.id || ''}<br>
-                                        <b>Similarity:</b> ${simVal}<br>
-                                        <b>Lat/Lon:</b> ${latVal}, ${lonVal}${s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}
+                                        <b>ID:</b> ${{s.id || ''}}<br>
+                                        <b>Similarity:</b> ${{simVal}}<br>
+                                        <b>Lat/Lon:</b> ${{latVal}}, ${{lonVal}}${{s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}}
                                     </div>
                                 </div>
                             `;
-                        }).join('')}
+                        }}).join('')}}
                     </div>
                 </div>
             `;
-            }).join('');
+            }}).join('');
             
             if (append) {{
                 container.innerHTML += html;
