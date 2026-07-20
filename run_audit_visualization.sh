@@ -20,7 +20,7 @@ LIMIT_CELLS=50
 echo ""
 echo "[Step 1] Running processing script on a subset ($LIMIT_CELLS cells)..."
 # Note: Remove "$GS_DIR" from the --dirs argument below if you only want to test scraped data
-python process_scraped_data.py \
+python3 -m src.processing.process_scraped_data \
   --dirs "$FLICKR_DIR" "$MAPILLARY_DIR" "$GS_DIR" \
   --save_path "$OUTPUT_DIR" \
   --output_name "$OUTPUT_NAME" \
@@ -31,7 +31,7 @@ echo "[Step 2] Generating interactive diagnostic map..."
 PKL_FILE="$OUTPUT_DIR/$OUTPUT_NAME.pkl"
 MAP_FILE="$OUTPUT_DIR/diagnostic_map.html"
 
-python visualize_clusters.py \
+python3 -m src.visualization.visualize_clusters \
   --pkl "$PKL_FILE" \
   --out "$MAP_FILE"
 

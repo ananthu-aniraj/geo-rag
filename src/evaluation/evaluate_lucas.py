@@ -53,7 +53,7 @@ def get_class_lists(df):
     """Retrieves class lists from lucas_class_mapping if available, falling back to unique values in the metadata CSV."""
     lc_list, lu_list, eunis_list = [], [], []
     try:
-        import lucas_class_mapping
+        from src.utils import lucas_class_mapping
         lc_list = list(lucas_class_mapping.lc1_class_mapping.values())
         lu_list = list(lucas_class_mapping.lu1_class_mapping.values())
         eunis_list = list(lucas_class_mapping.eunis_mapping.values())

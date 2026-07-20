@@ -19,7 +19,7 @@ MAX_PHOTOS_PER_BOX = 100
 DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 
 # Uncovered Land Configuration
-UNCOVERED_SHAPEFILE = "uncovered_land_areas_test.shp"
+UNCOVERED_SHAPEFILE = "shapefiles/uncovered_land_areas_test.shp" if os.path.exists("shapefiles/uncovered_land_areas_test.shp") else "uncovered_land_areas_test.shp"
 
 argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
 argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')

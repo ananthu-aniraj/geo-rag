@@ -5,7 +5,7 @@ conda activate ananthu_venv
 # CONFIGURATION
 # ==========================================
 # Update these variables to match your environment
-PYTHON_SCRIPT="evaluate_lucas.py"
+PYTHON_SCRIPT="src.evaluation.evaluate_lucas"
 IMG_DIR="/home/ananthu/DATA/data_ananthu/LUCAS2018"                                             # Update this to the actual image directory path
 CSV_FILE="/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"
 MAX_IMAGES=1000                                                             # Set to 0 to run the entire dataset
@@ -28,10 +28,6 @@ VERSIONS=(
 # ==========================================
 # PRE-FLIGHT CHECKS
 # ==========================================
-if [ ! -f "$PYTHON_SCRIPT" ]; then
-    echo "❌ Error: Python script '$PYTHON_SCRIPT' not found in the current directory!"
-    exit 1
-fi
 
 # The user noted that images are not stored on this laptop, so warn and verify if path is set
 if [ "$IMG_DIR" == "/path/to/lucas/images" ] || [ ! -d "$IMG_DIR" ]; then
@@ -65,7 +61,7 @@ for MODEL in "${MODELS[@]}"; do
         echo "-----------------------------------------------------"
 
         # Run the python script with the arguments
-        python3 "$PYTHON_SCRIPT" \
+        python3 -m "$PYTHON_SCRIPT" \
             --model "$MODEL" \
             --img_dir "$IMG_DIR" \
             --csv "$CSV_FILE" \
