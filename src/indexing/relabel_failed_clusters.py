@@ -15,7 +15,7 @@ from sklearn.preprocessing import normalize
 
 
 # Shared LULC Vocabularies
-from lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
+from src.utils.lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 

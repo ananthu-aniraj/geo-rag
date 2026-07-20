@@ -32,31 +32,31 @@ The pipeline processes diverse geotagged image sources, unifies their schemas, a
 Before raw data enters the main pipeline, a set of specialized scrapers are used to harvest geotagged imagery.
 
 #### 1. Flickr Scrapers
-* **`flickr_density_profiler.py`**: Scrapes Flickr outdoor photos for targeted cities/landmarks. Supports geocoding location names via the Nominatim API, automatically padding landmark coordinate boxes, and generating 5km grids with stratified image limits per box.
-* **`flickr_5km_grid_search.py`**: Performs a global grid search to gather representative outdoor photos across the globe. Features an land mask to skip ocean areas.
+* **`src/scrapers/flickr_density_profiler.py`**: Scrapes Flickr outdoor photos for targeted cities/landmarks. Supports geocoding location names via the Nominatim API, automatically padding landmark coordinate boxes, and generating 5km grids with stratified image limits per box.
+* **`src/scrapers/flickr_5km_grid_search.py`**: Performs a global grid search to gather representative outdoor photos across the globe. Features a land mask to skip ocean areas.
 * **`run_flickr_scraper.sh`**: A pipeline runner that loops through 10,000 randomized chunks sequentially to execute the global grid search, with crash-halting checks to ensure continuity.
 
 #### 2. Mapillary Scrapers
-* **`mapillary_density_profiler.py`**: Scrapes street-level coordinate tracks for targeted cities/landmarks. Supports geocoding, landmark padding, and stratified grid-box limits.
-* **`mapillary_scraper.py`**: Standard batch grid scraper for Mapillary.
+* **`src/scrapers/mapillary_density_profiler.py`**: Scrapes street-level coordinate tracks for targeted cities/landmarks. Supports geocoding, landmark padding, and stratified grid-box limits.
+* **`src/scrapers/mapillary_scraper.py`**: Standard batch grid scraper for Mapillary.
 * **`run_mapillary_scraper.sh`**: Orchestrates sequential batch street view scraping over 10,000 randomized grid chunks with crash-halting checks.
 
 #### 3. iNaturalist Scrapers
-* **`fetch_inaturalist_data.py`**: Connects to the iNaturalist API to download species observations.
+* **`src/scrapers/fetch_inaturalist_data.py`**: Connects to the iNaturalist API to download species observations.
 * **`run_inaturalist_scrapers.sh`**: A batch script that loops over specific countries/regions (e.g., Angola, Alaska, Algeria), downloading balanced species distributions and optionally excluding flying fauna.
 * **`run_inaturalist_presets.sh`**: Ingests species observations using predefined biome presets (e.g. `desert`, `tundra`, `wetland`, `boreal`, `rainforest`, `polar`).
 
 #### 4. Uncovered Area Detection (Spatial Filtering)
 To optimize global random search and avoid querying coordinates that already contain dense image coverage, the pipeline uses a spatial difference mask:
-* **`create_uncovered_land_areas_shp.py`**: Reads existing image CSV datasets, aggregates coordinate points into H3 cells at a user-defined resolution (default: resolution 5), and flags cells as "covered" if they exceed an image count threshold (default: 0). It then converts the covered H3 cells to polygon geometry and subtracts them from a standard global land mass shapefile (e.g., Natural Earth admin borders).
-* **Usage in Search**: The resulting output shapefile (`uncovered_land_areas.shp`) represents land areas that are still poorly mapped. The global grid searchers (like `flickr_5km_grid_search.py`) load this shapefile at startup and perform a fast spatial R-tree index check. They skip querying any grid box that does not intersect an uncovered land polygon, which reduces API requests and concentrates scraping efforts on data-poor zones.
+* **`src/visualization/create_uncovered_land_areas_shp.py`**: Reads existing image CSV datasets, aggregates coordinate points into H3 cells at a user-defined resolution (default: resolution 5), and flags cells as "covered" if they exceed an image count threshold (default: 0). It then converts the covered H3 cells to polygon geometry and subtracts them from a standard global land mass shapefile (e.g., Natural Earth admin borders).
+* **Usage in Search**: The resulting output shapefile (`shapefiles/uncovered_land_areas_test.shp`) represents land areas that are still poorly mapped. The global grid searchers (like `src/scrapers/flickr_5km_grid_search.py`) load this shapefile at startup and perform a fast spatial R-tree index check. They skip querying any grid box that does not intersect an uncovered land polygon, which reduces API requests and concentrates scraping efforts on data-poor zones.
 
 ---
 
 ## ⚙️ 3. Pipeline Walkthrough
 
 ### Step 1: Spatial Deduplication & Filtering
-* **Script**: `process_scraped_data.py`
+* **Script**: `src/processing/process_scraped_data.py`
 * **Operation**: Groups coordinates into H3 Resolution 11 parent cells [Brodsky, 2018]. Performs spatial-temporal deduplication using TIPSv2 image embeddings [Cao, 2026] to ensure uniform geographic coverage.
 * **Zero-Shot Noise Filters**:
   * **Flickr Indoor/Outdoor Filter**: By default, the script filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts *"An indoor scene"* and *"An outdoor landscape or street view"*. If an image matches the indoor class, it is discarded. This filter applies **only to Flickr images** (since street-view platforms like Mapillary/KartaView are intrinsically outdoor, and iNaturalist observations are filtered by macro characteristics). Can be bypassed with the `--no_filter` flag.
@@ -64,28 +64,28 @@ To optimize global random search and avoid querying coordinates that already con
   * `--filter_sky`: Filters out empty sky views (typically for iNaturalist data) using a zero-shot *"A view of empty sky, clouds, or flying objects"* classifier.
 
 ### Step 1b: Timestamp Standardization
-* **Script**: `standardize_timestamps.py`
+* **Script**: `src/processing/standardize_timestamps.py`
 * **Operation**: Normalizes inconsistent date/time strings and Unix epochs into ISO 8601 strings (`YYYY-MM-DDTHH:MM:SSZ`).
 * **Categorizations Added**:
   * **Time of Day**: *Dawn* (05-08), *Morning* (08-12), *Afternoon* (12-17), *Dusk* (17-20), *Night* (20-05).
   * **Seasons**: Latitude-aware seasons (Spring/Summer/Autumn/Winter for temperate/polar regions; Wet/Dry seasons for tropical regions).
 
 ### Step 1d: Coordinate Anomaly Cleanup (GPS Glitch Removal)
-* **Script**: `cleanup_coordinate_anomalies.py`
+* **Script**: `src/processing/cleanup_coordinate_anomalies.py`
 * **Operation**: Scans the deduplicated database to safely purge locked-latitude coordinate lines caused by faulty contributor GPS units at source. Writes the clean data to independent output files (`geo_space_cleaned.parquet` / `geo_space_cleaned.csv`), leaving the raw deduplicated database untouched.
 * **Safety Criteria**: A rounded latitude parallel $L$ (rounded to 5 decimal places, representing $\approx 1.1\text{ meters}$ precision) is flagged and purged only if:
   $$\text{Count}(L) > 10 \quad \text{and} \quad \text{Longitude Span}(L) > 1.0^{\circ}$$
   *(A longitude span of $> 1.0^{\circ}$ is $\approx 111\text{ km}$, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
 
 ### Step 2: Global Clustering & MLLM Auto-Labeling
-* **Script**: `cluster_images_global.py` & `relabel_failed_clusters.py`
+* **Script**: `src/indexing/cluster_images_global.py` & `src/indexing/relabel_failed_clusters.py`
 * **Operation**: Performs hierarchical two-level clustering on image embeddings:
   1. **Fine-Grained Child Clustering**: Runs Mini-Batch K-Means [Sculley, 2010] on the raw image embeddings (e.g., $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
   2. **Hierarchical Parent Clustering**: Runs Spherical K-Means [Dhillon & Modha, 2001] on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
-  3. **Multi-Modal LLM Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang) to automatically generate descriptive semantic labels and descriptions. Script `relabel_failed_clusters.py` acts as a fallback for download/API timeout failures.
+  3. **Multi-Modal LLM Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang) to automatically generate descriptive semantic labels and descriptions. Script `src/indexing/relabel_failed_clusters.py` acts as a fallback for download/API timeout failures.
 
 ### Step 3: H3 Spatial-Semantic Indexing
-* **Script**: `build_spatial_semantic_index.py`
+* **Script**: `src/indexing/build_spatial_semantic_index.py`
 * **Operation**: Aggregates the clustered dataset into a multi-resolution H3 spatial index [Brodsky, 2018], linking cells to dominant cluster categories, seasons, and times of day.
 
 ---
@@ -173,15 +173,15 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 
 The pipeline outputs three primary Leaflet-based interactive maps to inspect data density and land usage:
 
-### 1. H3 Occupancy Map (`generate_h3_occupancy_map.py`)
+### 1. H3 Occupancy Map (`src/visualization/generate_h3_occupancy_map.py`)
 * **Purpose**: Heatmap displaying image density across the globe.
 * **Toggles**: Single density layer.
 
-### 2. Spatial-Semantic Index Map (`generate_h3_semantic_map.py`)
+### 2. Spatial-Semantic Index Map (`src/visualization/generate_h3_semantic_map.py`)
 * **Purpose**: Displays the dominant land use/land cover categories on a world map.
 * **Hover Details**: Tooltip displays the percentage breakdown of different semantic clusters within that cell (e.g., `Residential: 60%`, `Urban: 40%`).
 
-### 3. Dynamic Statistics Map (`dataset_statistics.py`)
+### 3. Dynamic Statistics Map (`src/utils/dataset_statistics.py`)
 * **Purpose**: Generates analytics and plots globally or for a specific location.
 * **Dynamic Resolution**: Adapts from global views (H3 res 4) to local city views (H3 res 8).
 * **Smart Performance**: 
@@ -234,7 +234,7 @@ $$k^* = \arg\max_k \left( \frac{\partial^2 \text{MSE}_{\text{val}}}{\partial k^2
 ### 💻 Execution Example
 Run the validation script across a range of $k$ values ($k \in [10000, 50000]$):
 ```bash
-python3 validate_cluster_count.py \
+python3 -m src.utils.validate_cluster_count \
   --input "full_pipeline_output/geo_space_deduplicated.parquet" \
   --k_min 10000 \
   --k_max 50000 \

@@ -1,4 +1,4 @@
-# geo-rag
+# Geo-RAG
 
 A global spatial-semantic mapping, clustering, and data engineering pipeline for geotagged ground-level imagery.
 
@@ -9,6 +9,26 @@ A global spatial-semantic mapping, clustering, and data engineering pipeline for
 For in-depth architectural details, data ingestion specs, MLLM auto-labeling prompts, Land Use/Land Cover (LULC) taxonomies, and mathematical derivations for spatial block cluster validation, please refer to the main technical document:
 
 👉 **[Data Engineering Documentation](geo_rag_pipeline_docs.md)**
+
+---
+
+## 📂 Project Structure
+
+```text
+geo-rag/
+├── src/                          # Core Python Package
+│   ├── scrapers/                 # Data collection (Mapillary, Flickr, iNaturalist, GBIF)
+│   ├── processing/               # Data cleaning, deduplication & timestamp standardization
+│   ├── indexing/                 # K-Means clustering & H3 spatial-semantic index builder
+│   ├── visualization/            # Map generators & HTML dashboard builders
+│   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
+│   └── utils/                    # LULC taxonomies, statistics, & cluster validation
+├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
+├── templates/                    # Standalone HTML/JS frontend templates
+├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
+├── run_full_pipeline.sh          # Full end-to-end data processing pipeline
+└── params.yaml                   # Pipeline configuration parameters
+```
 
 ---
 
@@ -37,26 +57,24 @@ To download the latest version of the dataset locally (requires SSH access to th
 
 ## 📡 Scraping Scripts
 
-* **Flickr Scraping**: [run_flickr_scraper.sh](run_flickr_scraper.sh)
-* **Mapillary Scraping**: [run_mapillary_scraper.sh](run_mapillary_scraper.sh)
+* **Flickr Scraping**: [`run_flickr_scraper.sh`](run_flickr_scraper.sh)
+* **Mapillary Scraping**: [`run_mapillary_scraper.sh`](run_mapillary_scraper.sh)
+* **iNaturalist Scraping**: [`run_inaturalist_scrapers.sh`](run_inaturalist_scrapers.sh)
 
 > [!NOTE]  
-> Both scraping scripts require a shapefile (e.g., [uncovered_land_areas_test.shp](uncovered_land_areas_test.shp)) to define the area of interest.
+> Both scraping scripts use shapefiles located in [`shapefiles/`](shapefiles/) (e.g., [`shapefiles/uncovered_land_areas_test.shp`](shapefiles/uncovered_land_areas_test.shp)) to define target areas of interest.
 
 ### Generating Uncovered Land Area Shapefiles
 To generate an uncovered land areas shapefile:
-1. Run [create_uncovered_land_areas_shp.py](create_uncovered_land_areas_shp.py), providing the input directory of the latest dataset version. This script reads the dataset CSV and the world land map ([ne_10m_admin_0_countries.shp](ne_10m_admin_0_countries.shp)) to generate the shapefile.
-2. (Optional) Visualize the generated shapefile using [visualize_shp.py](visualize_shp.py) to inspect the target scraping areas.
+1. Run [`src/visualization/create_uncovered_land_areas_shp.py`](src/visualization/create_uncovered_land_areas_shp.py), providing the input directory of the latest dataset version.
+2. (Optional) Visualize the generated shapefile using [`src/visualization/visualize_shp.py`](src/visualization/visualize_shp.py) to inspect the target scraping areas.
 
 ---
 
 ## ⚙️ Data Postprocessing
 
-To postprocess scraped images, cluster them semantically, auto-label clusters, and generate interactive spatial maps, run:
+To postprocess scraped images, cluster them semantically, auto-label clusters, build spatial-semantic H3 indices, and generate interactive maps:
 
 ```bash
 ./run_full_pipeline.sh
 ```
- 
-
-

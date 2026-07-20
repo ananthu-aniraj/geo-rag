@@ -673,7 +673,8 @@ def main():
                         help="Path to save the text report/logs (.txt). Defaults to {location}_stats.txt.")
     parser.add_argument("--output_map", type=str, default=None,
                         help="Path to save the interactive HTML map. Defaults to {location}_map.html.")
-    parser.add_argument("--land_shp", type=str, default="ne_10m_admin_0_countries.shp",
+    default_land_shp = "shapefiles/ne_10m_admin_0_countries.shp" if os.path.exists("shapefiles/ne_10m_admin_0_countries.shp") else "ne_10m_admin_0_countries.shp"
+    parser.add_argument("--land_shp", type=str, default=default_land_shp,
                         help="Path to the country shapefile for spatial region mapping.")
     parser.add_argument("--spatial_index", type=str, default=None,
                         help="Path to pre-built H3 spatial semantic index Parquet file.")

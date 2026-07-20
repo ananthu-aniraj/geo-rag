@@ -70,7 +70,7 @@ for country in "${COUNTRIES[@]}"; do
     fi
     
     # Run the python script
-    python3 fetch_inaturalist_data.py "${ARGS[@]}"
+    python3 -m src.scrapers.fetch_inaturalist_data "${ARGS[@]}"
     
     # Sleep to be polite to iNaturalist API rate limits
     echo "Sleeping 5 seconds between requests..."

@@ -18,7 +18,7 @@ from PIL import Image
 import faiss
 import umap
 # Shared LULC Vocabularies
-from lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
+from src.utils.lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
 
 
 def label_clusters(centroids, text_features, categories, top_k=3):

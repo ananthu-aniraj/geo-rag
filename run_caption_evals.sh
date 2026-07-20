@@ -5,7 +5,7 @@ conda activate ananthu_venv
 # CONFIGURATION
 # ==========================================
 # Update these variables to match your environment
-PYTHON_SCRIPT="caption_test.py"
+PYTHON_SCRIPT="src.evaluation.caption_test"
 IMG_DIR="/home/ananthu/DATA/data_ananthu/places365/versions/1/val"      # Path to your val/train directory
 LABELS_FILE="/home/ananthu/DATA/data_ananthu/places365/versions/1/Scene_hierarchy.xlsx"
 MAX_IMAGES=1000                    # Set to 0 to run the entire dataset
@@ -28,10 +28,6 @@ VERSIONS=(
 # ==========================================
 # PRE-FLIGHT CHECKS
 # ==========================================
-if [ ! -f "$PYTHON_SCRIPT" ]; then
-    echo "❌ Error: Python script '$PYTHON_SCRIPT' not found in the current directory!"
-    exit 1
-fi
 
 if [ ! -d "$IMG_DIR" ]; then
     echo "❌ Error: Image directory '$IMG_DIR' not found!"
@@ -57,7 +53,7 @@ for MODEL in "${MODELS[@]}"; do
         echo "-----------------------------------------------------"
 
         # Run the python script with the arguments
-        python3 "$PYTHON_SCRIPT" \
+        python3 -m "$PYTHON_SCRIPT" \
             --model "$MODEL" \
             --img_dir "$IMG_DIR" \
             --labels "$LABELS_FILE" \

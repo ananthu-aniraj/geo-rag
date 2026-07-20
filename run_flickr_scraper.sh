@@ -2,7 +2,7 @@
 
 # Configuration
 TOTAL_CHUNKS=10000
-SCRIPT_NAME="flickr_5km_grid_search.py"
+SCRIPT_NAME="src.scrapers.flickr_5km_grid_search"
 BASE_DIR="/home/ananthu/DATA/data_ananthu/flickr_scrape"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
@@ -23,7 +23,7 @@ echo "Starting Flickr grid search for $TOTAL_CHUNKS chunks..."
 while read -r i
 do
     # Define the output file name (matching the Python script's logic)
-    # Note: Python script uses flickr_data_chunk_{i}.csv
+    # Note: Python script uses flickr_data_chunk_${i}.csv
     CHUNK_FILE="$BASE_DIR/flickr_data_chunk_${i}.csv"
     LOG_FILE="$BASE_DIR/flickr_completed_boxes_chunk_${i}.txt"
 
@@ -39,7 +39,7 @@ do
     echo "========================================"
 
     # Run the Python script
-    python "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"
+    python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"
 
     # Safety Check: If the Python script crashes completely, stop the Bash loop
     if [ $? -ne 0 ]; then

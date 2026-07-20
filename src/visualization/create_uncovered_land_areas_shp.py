@@ -27,7 +27,8 @@ def get_h3_polygon(cell):
 def main():
     parser = argparse.ArgumentParser(description="Generate Uncovered Land Areas Shapefile using H3.")
     parser.add_argument("--csv_paths", nargs="+", required=True, help="List of paths to CSV files or directories containing CSVs.")
-    parser.add_argument("--land_shp", type=str, default="ne_10m_admin_0_countries.shp", help="Path to the base land shapefile.")
+    default_land_shp = "shapefiles/ne_10m_admin_0_countries.shp" if os.path.exists("shapefiles/ne_10m_admin_0_countries.shp") else "ne_10m_admin_0_countries.shp"
+    parser.add_argument("--land_shp", type=str, default=default_land_shp, help="Path to the base land shapefile.")
     parser.add_argument("--output", type=str, default="uncovered_land_areas.shp", help="Output shapefile path.")
     parser.add_argument("--res", type=int, default=5, help="H3 resolution for covered areas.")
     parser.add_argument("--threshold", type=int, default=0, help="Threshold for total number of images per H3 cell. Cells with counts <= threshold remain uncovered (default: 0).")

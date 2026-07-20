@@ -2,7 +2,7 @@
 
 # Configuration
 TOTAL_CHUNKS=10000
-SCRIPT_NAME="mapillary_scraper.py"
+SCRIPT_NAME="src.scrapers.mapillary_scraper"
 BASE_DIR="/home/ananthu/DATA/data_ananthu/mapillary_scrape"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
@@ -37,7 +37,7 @@ do
     echo "========================================"
 
     # Run the Python script
-    python3 "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"
+    python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"
 
     # Safety Check: If the Python script crashes completely, stop the Bash loop
     if [ $? -ne 0 ]; then

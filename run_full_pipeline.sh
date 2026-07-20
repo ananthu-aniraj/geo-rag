@@ -83,7 +83,7 @@ if [ -n "$IWILDCAM_DIR" ]; then
     IMAGE_ROOT_FLAG="--image_root_dir $IWILDCAM_DIR"
 fi
 
-python3 process_scraped_data.py \
+python3 -m src.processing.process_scraped_data \
   --dirs $INPUT_DIRS \
   --save_path "$OUTPUT_DIR" \
   --output_name "${BASE_NAME}_deduplicated" \
@@ -97,17 +97,17 @@ python3 process_scraped_data.py \
 
 echo ""
 echo "[Step 1b/5] Standardizing Dataset Timestamps..."
-python3 standardize_timestamps.py --input "$RAW_PARQUET"
+python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET"
 RAW_CSV="$OUTPUT_DIR/${BASE_NAME}_deduplicated.csv"
 if [ -f "$RAW_CSV" ]; then
-    python3 standardize_timestamps.py --input "$RAW_CSV"
+    python3 -m src.processing.standardize_timestamps --input "$RAW_CSV"
 fi
 
 echo ""
 echo "[Step 1d/5] Cleaning Coordinate Anomalies (if enabled)..."
 if [ "$CLEANUP_ANOMALIES" = "true" ]; then
     echo "Running coordinate anomaly cleanup..."
-    python3 cleanup_coordinate_anomalies.py --input "$RAW_PARQUET" --csv "$RAW_CSV" --output "$CLEANED_PARQUET" --output_csv "$CLEANED_CSV"
+    python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --csv "$RAW_CSV" --output "$CLEANED_PARQUET" --output_csv "$CLEANED_CSV"
     INPUT_PARQUET="$CLEANED_PARQUET"
     INPUT_CSV="$CLEANED_CSV"
 else
@@ -120,7 +120,7 @@ echo ""
 echo "[Step 1c/5] Automatically Finding Optimal k (if enabled)..."
 if [ "$AUTO_FIND_K" = "true" ]; then
     echo "Running spatial block validation to determine optimal k..."
-    python3 validate_cluster_count.py \
+    python3 -m src.utils.validate_cluster_count \
       --input "$INPUT_PARQUET" \
       --k_min "$K_MIN" \
       --k_max "$K_MAX" \
@@ -143,7 +143,7 @@ fi
 
 echo ""
 echo "[Step 2/5] Global Unsupervised Clustering (K-Means)..."
-python3 cluster_images_global.py \
+python3 -m src.indexing.cluster_images_global \
   --pkl "$INPUT_PARQUET" \
   --k "$K_CLUSTERS" \
   --out "$CLUSTERED_PARQUET" \
@@ -157,7 +157,7 @@ python3 cluster_images_global.py \
 
 echo ""
 echo "[Step 2b/5] Re-labeling Failed Clusters (due to download timeouts)..."
-python3 relabel_failed_clusters.py \
+python3 -m src.indexing.relabel_failed_clusters \
   --in "$CLUSTERED_PARQUET" \
   --mllm_model "$MLLM_MODEL" \
   --mllm_backend "$MLLM_BACKEND" \
@@ -166,20 +166,20 @@ python3 relabel_failed_clusters.py \
 
 echo ""
 echo "[Step 2c/5] Building H3 Spatial-Semantic Index..."
-python3 build_spatial_semantic_index.py \
+python3 -m src.indexing.build_spatial_semantic_index \
   --input "$CLUSTERED_PARQUET" \
   --output "$H3_SEMANTIC_INDEX"
 
 echo ""
 echo "[Step 3/5] Generating Cluster Map..."
-python3 visualize_clusters.py \
+python3 -m src.visualization.visualize_clusters \
   --pkl_file "$CLUSTERED_PARQUET" \
   --output "$MAP_FILE" \
   --max_markers "$MAX_MARKERS"
 
 echo ""
 echo "[Step 4/5] Generating Cluster Representative Samples..."
-python3 visualize_cluster_samples.py \
+python3 -m src.visualization.visualize_cluster_samples \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SAMPLES_FILE" \
   --top_n 6 \
@@ -187,26 +187,26 @@ python3 visualize_cluster_samples.py \
 
 echo ""
 echo "[Step 5/5] Generating Semantic Scatter Plot (UMAP 2D)..."
-python3 visualize_cluster_scatter.py \
+python3 -m src.visualization.visualize_cluster_scatter \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SCATTER_FILE"
 
 echo ""
 echo "Generating occupancy map"
-python3 generate_h3_occupancy_map.py \
+python3 -m src.visualization.generate_h3_occupancy_map \
   --dirs "$OUTPUT_DIR" \
   --output "$OCCUPANCY_MAP"
 
 echo ""
 echo "Generating H3 spatial-semantic map"
-python3 generate_h3_semantic_map.py \
+python3 -m src.visualization.generate_h3_semantic_map \
   --index "$H3_SEMANTIC_INDEX" \
   --output "$SEMANTIC_MAP" \
   --res 5
 
 echo ""
 echo "Generating dataset statistics report, plots, and optimized H3 map..."
-python3 dataset_statistics.py \
+python3 -m src.utils.dataset_statistics \
   --input "$INPUT_PARQUET" \
   --spatial_index "$H3_SEMANTIC_INDEX" \
   --output_plot "$STATS_PLOT" \
