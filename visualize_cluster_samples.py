@@ -1,18 +1,22 @@
+import concurrent.futures
+import requests
 import pickle
+import pandas as pd
+import pyarrow.parquet as pq
 import numpy as np
 import argparse
 import time
 import os
+import glob
+import math
+from tqdm import tqdm
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
 def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     print(f"Loading clustered data from {pkl_path}...")
-    import pandas as pd
-    import pyarrow.parquet as pq
-    import numpy as np
-    
+
     if pkl_path.endswith('.pkl'):
         with open(pkl_path, 'rb') as f:
             data = pickle.load(f)
@@ -24,16 +28,16 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         parquet_file = pq.ParquetFile(pkl_path)
         metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
         df = pd.read_parquet(pkl_path, columns=metadata_cols)
-        
+
         # Load embeddings via PyArrow
         print("Loading raw embedding matrix using PyArrow...")
         t0 = time.time()
         table = pq.read_table(pkl_path, columns=["embedding"])
-        
+
         num_rows = len(table)
         chunked_arr = table['embedding']
         dim = len(chunked_arr.chunk(0)[0].as_py())
-        
+
         embeddings = np.empty((num_rows, dim), dtype=np.float32)
         current_row = 0
         for chunk in chunked_arr.chunks:
@@ -41,7 +45,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             flat_chunk = chunk.flatten().to_numpy()
             embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
             current_row += chunk_len
-            
+
         del table
         print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
@@ -51,10 +55,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
 
     # Group data by cluster and prepare a compact JSON-like structure
     print("Aggregating cluster data for the dashboard...")
-    
+
     # Load H3 res 4 parent cells from the pre-built spatial-semantic index
     cluster_h3_res4 = {}
-    import glob
+
     dir_name = os.path.dirname(os.path.abspath(pkl_path))
     index_candidates = glob.glob(os.path.join(dir_name, "*h3_semantic_index.parquet"))
     if index_candidates:
@@ -65,16 +69,16 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             res4_df = index_df[index_df['resolution'] == 4].dropna(subset=['query_cell'])
             res4_df = res4_df[['cluster_id', 'query_cell']].drop_duplicates()
             cluster_h3_res4 = res4_df.groupby('cluster_id')['query_cell'].agg(list).to_dict()
+            print(" -> Successfully loaded H3 res 4 parent cells for clusters.")
         except Exception as e:
             print(f"Warning: Failed to load H3 index: {e}")
-            
+
     # Group by cluster ID
     cluster_to_indices = df.groupby('cluster_id').groups
     dashboard_data = []
     sorted_ids = sorted(cluster_to_indices.keys())
 
-    import math
-    for c_id in sorted_ids:
+    for c_id in tqdm(sorted_ids, desc="Processing clusters"):
         indices = cluster_to_indices[c_id]
         embs = embeddings[indices]
         centroid = np.mean(embs, axis=0)
@@ -85,7 +89,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         sims = np.dot(norm_embs, norm_centroid)
 
         sorted_indices = np.argsort(sims)[::-1][:top_n]
-        
+
         # Load first row to pull cluster metadata
         first_row = df.iloc[indices[0]]
 
@@ -94,7 +98,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         for rank, local_idx in enumerate(sorted_indices):
             global_idx = indices[local_idx]
             img = df.iloc[global_idx]
-            
+
             photo_id = img.get('Photo_ID')
             if photo_id is not None:
                 if isinstance(photo_id, float):
@@ -109,7 +113,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                         photo_id = photo_id[:-2]
             else:
                 photo_id = ""
-                
+
             samples.append({
                 "url": img["Image_URL"],
                 "id": photo_id,
@@ -132,7 +136,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             for i, local_idx in enumerate(lowest_indices):
                 global_idx = indices[local_idx]
                 img = df.iloc[global_idx]
-                
+
                 photo_id = img.get('Photo_ID')
                 if photo_id is not None:
                     if isinstance(photo_id, float):
@@ -147,7 +151,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                             photo_id = photo_id[:-2]
                 else:
                     photo_id = ""
-                    
+
                 samples.append({
                     "url": img["Image_URL"],
                     "id": photo_id,
@@ -159,7 +163,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                     "season": img.get("Season", "Unknown"),
                     "time_of_day": img.get("Time_Of_Day", "Unknown"),
                     "is_outlier": True,
-                    "rank_label": f"Furthest Outlier {i+1}"
+                    "rank_label": f"Furthest Outlier {i + 1}"
                 })
 
         # Grab description from the centroid sample (highest similarity, sorted_indices[0])
@@ -210,8 +214,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         dashboard_data.append({
             "id": int(c_id),
             "label": str(first_row.get("cluster_label", f"Cluster {c_id}")),
-            "parent_id": int(first_row.get("parent_cluster_id", -1)) if pd.notna(first_row.get("parent_cluster_id")) else -1,
-            "parent_label": str(first_row.get("parent_cluster_label", "Unlabeled Parent")) if pd.notna(first_row.get("parent_cluster_label")) else "Unlabeled Parent",
+            "parent_id": int(first_row.get("parent_cluster_id", -1)) if pd.notna(
+                first_row.get("parent_cluster_id")) else -1,
+            "parent_label": str(first_row.get("parent_cluster_label", "Unlabeled Parent")) if pd.notna(
+                first_row.get("parent_cluster_label")) else "Unlabeled Parent",
             "description": centroid_desc,
             "count": int(len(indices)),
             "unique_h3_count": unique_h3_count,
@@ -222,7 +228,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             "samples": samples
         })
     # Pre-resolve local image paths if image_root_dir is supplied or they already exist
-    for item in dashboard_data:
+    for item in tqdm(dashboard_data, desc="Resolving image paths"):
         for sample in item["samples"]:
             url = sample["url"]
             resolved_path = None
@@ -245,17 +251,17 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                         break
             if not resolved_path and os.path.exists(url):
                 resolved_path = url
-            
+
             if resolved_path:
                 sample["url"] = "file://" + os.path.abspath(resolved_path)
 
     # Collect samples to check: first two representatives, last two representatives, and outliers
     samples_to_check = []
-    for item in dashboard_data:
+    for item in tqdm(dashboard_data, desc="Collecting samples to check"):
         cluster_samples = item["samples"]
         reps = [s for s in cluster_samples if not s.get("is_outlier")]
         outliers = [s for s in cluster_samples if s.get("is_outlier")]
-        
+
         selected_for_check = []
         # First two representatives
         if len(reps) > 0:
@@ -269,7 +275,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                 selected_for_check.append(reps[-2])
         # Outliers
         selected_for_check.extend(outliers)
-        
+
         # Deduplicate using python object identity to avoid checking the same sample multiple times
         seen_ids = set()
         for s in selected_for_check:
@@ -277,39 +283,36 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
                 seen_ids.add(id(s))
                 samples_to_check.append(s)
 
-    import concurrent.futures
-    import requests
-
     def check_and_resolve_sample(sample, timeout=5):
         url = sample["url"]
         photo_id = sample["id"]
         platform = sample["platform"]
-        
+
         if url.startswith("file://"):
             return
-            
+
         if os.path.exists(url):
             return
-            
+
         # 1. Quick HEAD check to see if the URL signature has expired
         try:
             res = requests.head(url, timeout=timeout, allow_redirects=True)
             if res.status_code == 200:
-                return # URL is still valid!
+                return  # URL is still valid!
         except Exception:
             pass
-            
+
         if not photo_id or not platform:
             return
-            
+
         platform_lower = str(platform).strip().lower()
         photo_str = str(photo_id).strip()
         if photo_str.endswith('.0'):
             photo_str = photo_str[:-2]
-            
+
         is_mapillary = platform_lower == 'mapillary' or 'mapillary' in url or 'fbcdn.net' in url
         is_kartaview = platform_lower == 'kartaview' or 'kartaview' in url or 'openstreetcam' in url
-        
+
         if not (is_mapillary or is_kartaview):
             return
 
@@ -336,17 +339,18 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
 
     print(f"Checking and resolving signatures for {len(samples_to_check)} critical cluster images in parallel...")
     max_workers = min(32, (len(samples_to_check) + 4) // 5 or 1)
-    
+
     completed_count = 0
     total_count = len(samples_to_check)
-    
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(check_and_resolve_sample, sample): sample for sample in samples_to_check}
         for future in concurrent.futures.as_completed(futures):
             completed_count += 1
             if completed_count % 50 == 0 or completed_count == total_count:
-                print(f"  Progress: {completed_count}/{total_count} images checked ({completed_count * 100 // total_count}%)...")
-                
+                print(
+                    f"  Progress: {completed_count}/{total_count} images checked ({completed_count * 100 // total_count}%)...")
+
     print("Signature check and resolution complete.")
 
     # Generate the Dynamic Dashboard HTML
@@ -1228,7 +1232,8 @@ if __name__ == "__main__":
     parser.add_argument("--pkl", type=str, required=True, help="Path to the clustered .pkl file.")
     parser.add_argument("--out", type=str, default="cluster_samples.html", help="Output HTML file name.")
     parser.add_argument("--top_n", type=int, default=6, help="Number of samples to show per cluster.")
-    parser.add_argument("--image_root_dir", type=str, nargs="+", default=None, help="Optional root directories containing local images (for offline datasets).")
+    parser.add_argument("--image_root_dir", type=str, nargs="+", default=None,
+                        help="Optional root directories containing local images (for offline datasets).")
     args = parser.parse_args()
 
     create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir)
