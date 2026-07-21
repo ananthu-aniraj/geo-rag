@@ -721,7 +721,10 @@
             return null;
         }
 
-        function getH3CellsInBbox(bbox, resolution = 4) {
+        function getH3CellsInBbox(bbox, resolution) {
+            if (!resolution) {
+                resolution = (typeof TARGET_H3_RES !== 'undefined') ? TARGET_H3_RES : 5;
+            }
             const cells = new Set();
             const latStep = (bbox.max_lat - bbox.min_lat) / 8;
             const lonStep = (bbox.max_lon - bbox.min_lon) / 8;
@@ -766,13 +769,14 @@
             if (locationBbox) {
                 let queryCells = [];
                 if (typeof h3 !== 'undefined') {
-                    queryCells = getH3CellsInBbox(locationBbox, 4);
+                    const h3Res = (typeof TARGET_H3_RES !== 'undefined') ? TARGET_H3_RES : 5;
+                    queryCells = getH3CellsInBbox(locationBbox, h3Res);
                 }
                 
                 temp = temp.filter(c => {
                     // Check H3 overlap if H3 library is loaded and cluster has coverage
-                    if (queryCells.length > 0 && c.h3_res4 && c.h3_res4.length > 0) {
-                        const hasOverlap = c.h3_res4.some(cell => queryCells.includes(cell));
+                    if (queryCells.length > 0 && c.h3_res_tgt && c.h3_res_tgt.length > 0) {
+                        const hasOverlap = c.h3_res_tgt.some(cell => queryCells.includes(cell));
                         if (hasOverlap) return true;
                     }
                     

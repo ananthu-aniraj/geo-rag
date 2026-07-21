@@ -20,7 +20,7 @@ except ImportError:
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
-def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
+def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, target_h3_res=5):
     print(f"Loading clustered data from {pkl_path}...")
 
     if pkl_path.endswith('.pkl'):
@@ -63,7 +63,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     print("Aggregating cluster data for the dashboard...")
 
     # Load H3 res 4 parent cells from the pre-built spatial-semantic index
-    cluster_h3_res4 = {}
+    cluster_h3_target_res = {}
 
     dir_name = os.path.dirname(os.path.abspath(pkl_path))
     index_candidates = glob.glob(os.path.join(dir_name, "*h3_semantic_index.parquet"))
@@ -72,10 +72,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
         print(f"Loading pre-built H3 index from {index_path}...")
         try:
             index_df = pd.read_parquet(index_path, columns=['resolution', 'cluster_id', 'query_cell'])
-            res4_df = index_df[index_df['resolution'] == 4].dropna(subset=['query_cell'])
-            res4_df = res4_df[['cluster_id', 'query_cell']].drop_duplicates()
-            cluster_h3_res4 = res4_df.groupby('cluster_id')['query_cell'].agg(list).to_dict()
-            print(" -> Successfully loaded H3 res 4 parent cells for clusters.")
+            target_h3_res_df = index_df[index_df['resolution'] == target_h3_res].dropna(subset=['query_cell'])
+            target_h3_res_df = target_h3_res_df[['cluster_id', 'query_cell']].drop_duplicates()
+            cluster_h3_target_res = target_h3_res_df.groupby('cluster_id')['query_cell'].agg(list).to_dict()
+            print(f" -> Successfully loaded H3 res parent cells for clusters with resolution of {target_h3_res}")
         except Exception as e:
             print(f"Warning: Failed to load H3 index: {e}")
 
@@ -206,7 +206,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
             "center_lat": float(center_lat),
             "center_lon": float(center_lon),
             "h3_centroids": h3_centroids,
-            "h3_res4": [str(x) for x in cluster_h3_res4.get(c_id, [])],
+            "h3_res_tgt": [str(x) for x in cluster_h3_target_res.get(c_id, [])],
             "samples": samples
         })
     # Pre-resolve local image paths if image_root_dir is supplied or they already exist
@@ -342,7 +342,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None):
     data_js_path = output_html.replace('.html', '_data.js')
     print(f"Writing data payload to {data_js_path}...")
     with open(data_js_path, 'w', encoding='utf-8') as f:
-        f.write(f"var CLUSTER_DATA = {json_data};")
+        f.write(f"var CLUSTER_DATA = {json_data};\nvar TARGET_H3_RES = {target_h3_res};")
 
     data_js_filename = os.path.basename(data_js_path)
 
@@ -372,6 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_n", type=int, default=6, help="Number of samples to show per cluster.")
     parser.add_argument("--image_root_dir", type=str, nargs="+", default=None,
                         help="Optional root directories containing local images (for offline datasets).")
+    parser.add_argument("--target_h3_res", type=int, default=5, help="Target H3 resolution for spatial aggregation (default: 5).")
     args = parser.parse_args()
 
-    create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir)
+    create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir, target_h3_res=args.target_h3_res)

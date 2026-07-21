@@ -32,7 +32,7 @@ def geocode_location(location_name):
     return None, None
 
 
-def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None):
+def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None, target_res = 5):
     """Map coordinates to countries and continents using H3 resolution 5 cells and nearest-land fallback."""
     if not os.path.exists(land_shp_path):
         print(f"Warning: Shapefile '{land_shp_path}' not found. Cannot map points to countries/continents.")
@@ -49,8 +49,7 @@ def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None):
     countries_subset = countries[list(col_mapping.keys()) + ['geometry']].rename(columns=col_mapping)
 
     # 1. Determine unique res 5 H3 cells
-    target_res = 5
-    unique_res5 = set()
+    unique_target_res = set()
 
     # If pre-built spatial index exists, load res 5 query cells to accelerate/prime mapping
     if spatial_index_path and os.path.exists(spatial_index_path):
@@ -61,7 +60,7 @@ def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None):
             if 'resolution' in avail and 'query_cell' in avail:
                 idx_df = pd.read_parquet(spatial_index_path, columns=['resolution', 'query_cell'])
                 idx_res5 = idx_df[idx_df['resolution'] == target_res]['query_cell'].dropna().unique()
-                unique_res5.update(idx_res5)
+                unique_target_res.update(idx_res5)
                 print(f" -> Found {len(idx_res5):,} pre-indexed H3 resolution {target_res} cells.")
         except Exception as e:
             print(f" -> Warning: Could not read spatial index: {e}")
@@ -71,14 +70,14 @@ def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None):
     if 'H3_Cell' in df.columns:
         unique_res11 = df['H3_Cell'].dropna().unique()
         res11_to_res5 = {c: h3.cell_to_parent(c, target_res) if h3.get_resolution(c) >= target_res else c for c in unique_res11}
-        unique_res5.update(res11_to_res5.values())
+        unique_target_res.update(res11_to_res5.values())
     else:
         print("H3_Cell column not found. Deriving H3 cells from coordinates...")
         df_coords = df[['Latitude', 'Longitude']].dropna().drop_duplicates()
         df_coords['h3_res5'] = [h3.latlng_to_cell(lat, lon, target_res) for lat, lon in zip(df_coords['Latitude'], df_coords['Longitude'])]
-        unique_res5.update(df_coords['h3_res5'].unique())
+        unique_target_res.update(df_coords['h3_res5'].unique())
 
-    unique_res5_list = list(unique_res5)
+    unique_res5_list = list(unique_target_res)
     print(f" -> Mapping {len(unique_res5_list):,} unique H3 resolution {target_res} cells against country boundaries...")
 
     # Build GeoDataFrame of cell centroids
