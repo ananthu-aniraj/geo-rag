@@ -74,17 +74,31 @@ To optimize global random search and avoid querying coordinates that already con
 * **Script**: `src/processing/cleanup_coordinate_anomalies.py`
 * **Operation**: Scans the deduplicated database to safely purge locked-latitude coordinate lines caused by faulty contributor GPS units at source. Writes the clean data to independent output files (`geo_space_cleaned.parquet` / `geo_space_cleaned.csv`), leaving the raw deduplicated database untouched.
 * **Safety Criteria**: A rounded latitude parallel $L$ (rounded to 5 decimal places, representing $\approx 1.1\text{ meters}$ precision) is flagged and purged only if:
-  $$\text{Count}(L) > 10 \quad \text{and} \quad \text{Longitude Span}(L) > 1.0^{\circ}$$
-  *(A longitude span of $> 1.0^{\circ}$ is $\approx 111\text{ km}$, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
 
-### Step 2: Global Clustering & MLLM Auto-Labeling
-* **Script**: `src/indexing/cluster_images_global.py` & `src/indexing/relabel_failed_clusters.py`
-* **Operation**: Performs hierarchical two-level clustering on image embeddings:
-  1. **Fine-Grained Child Clustering**: Runs Mini-Batch K-Means [Sculley, 2010] on the raw image embeddings (e.g., $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
-  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means [Dhillon & Modha, 2001] on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
-  3. **Multi-Modal LLM Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang) to automatically generate descriptive semantic labels and descriptions. Script `src/indexing/relabel_failed_clusters.py` acts as a fallback for download/API timeout failures.
+$$
+\text{Count}(L) \gt 10 \quad \text{and} \quad \text{Longitude Span}(L) \gt 1.0^{\circ}
+$$
 
-### Step 3: H3 Spatial-Semantic Indexing
+*(A longitude span of $\gt 1.0^{\circ}$ is $\approx 111\text{ km}$, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
+
+### Step 2: Global FAISS GPU Clustering
+* **Script**: `src/indexing/cluster_images_global.py`
+* **Operation**: Performs decoupled, memory-efficient 100% FAISS GPU two-level clustering on image embeddings:
+  1. **Fine-Grained Child Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)`) on raw image embeddings (e.g. $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
+  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k_parents, niter=20, spherical=True, gpu=True)`) on normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
+  3. **Immediate Persistence & RAM Release**: Saves cluster assignments and centroids directly to `geo_space_clustered.parquet` and immediately releases heavy embedding matrices from RAM to avoid CPU memory bottlenecks.
+
+### Step 2b: Multi-Modal LLM Cluster Auto-Labeling
+* **Script**: `src/indexing/label_clusters_mllm.py`
+* **Operation**: Reads the clustered Parquet database (`geo_space_clustered.parquet`) and performs automated semantic labeling:
+  * **MLLM / Zero-Shot Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang or OpenAI API) to automatically generate descriptive semantic labels and structured LULC descriptions.
+  * **Decoupled Execution**: Can be run independently, re-run with different MLLM models, or executed on a separate GPU/CPU instance without having to re-cluster image embeddings.
+
+### Step 2c: Fallback Safety Check (Re-labeling Failed Clusters)
+* **Script**: `src/indexing/relabel_failed_clusters.py`
+* **Operation**: Scans the clustered dataset for any clusters whose initial MLLM labeling failed or timed out (labeled as `"Error Labeling"` or `"Unlabeled"`) and performs fallback depth retries up to `--fallback_depth 10` to guarantee 100% cluster label coverage.
+
+### Step 2d: H3 Spatial-Semantic Indexing
 * **Script**: `src/indexing/build_spatial_semantic_index.py`
 * **Operation**: Aggregates the clustered dataset into a multi-resolution H3 spatial index [Brodsky, 2018], linking cells to dominant cluster categories, seasons, and times of day.
 
@@ -213,23 +227,42 @@ In spatial datasets, adjacent data points are highly correlated due to **Tobler'
 If we partition the training and validation sets randomly, nearby images (e.g., sequential streetscapes or photos of the same landmark) will appear in both sets. This causes **spatial data leakage**, artificially deflating the validation loss and hiding overfitting. 
 
 To measure true generalization, we must partition the dataset geographically. We downscale the fine-grained H3 cell $c$ (resolution 11) to its coarse parent block $b$:
-$$b = \text{parent}(c, R_p)$$
+
+$$
+b = \text{parent}(c, R_p)
+$$
+
 where $R_p = 4$ (coarse blocks of $\approx 11,000\text{ km}^2$). We randomly split the set of unique parent blocks $\mathcal{B}$ into disjoint training and validation blocks:
-$$\mathcal{B}_{\text{train}} \cap \mathcal{B}_{\text{val}} = \emptyset$$
-$$\mathcal{B}_{\text{train}} \cup \mathcal{B}_{\text{val}} = \mathcal{B}$$
+
+$$
+\mathcal{B}_{\text{train}} \cap \mathcal{B}_{\text{val}} = \emptyset
+$$
+
+$$
+\mathcal{B}_{\text{train}} \cup \mathcal{B}_{\text{val}} = \mathcal{B}
+$$
 
 #### 2. Optimization Objective & Reconstruction Loss
 Let $X_{\text{train}}$ be the set of image embeddings belonging to $\mathcal{B}_{\text{train}}$, and $X_{\text{val}}$ be the embeddings belonging to $\mathcal{B}_{\text{val}}$.
 
 For a given number of clusters $k$, K-Means learns a set of centroids $C^* = \{c_1, \dots, c_k\}$ by minimizing the Within-Cluster Sum of Squares (WCSS) on the training set:
-$$\mathcal{L}_{\text{train}}(C) = \sum_{x \in X_{\text{train}}} \min_{c \in C} \| x - c \|^2$$
+
+$$
+\mathcal{L}_{\text{train}}(C) = \sum_{x \in X_{\text{train}}} \min_{c \in C} \| x - c \|^2
+$$
 
 The **Validation Reconstruction Loss (Mean Squared Error)** is then evaluated by measuring how well the centroids $C^*$ represent the unseen validation blocks:
-$$\text{MSE}_{\text{val}}(k) = \frac{1}{|X_{\text{val}}|} \sum_{y \in X_{\text{val}}} \min_{c \in C^*} \| y - c \|^2$$
+
+$$
+\text{MSE}_{\text{val}}(k) = \frac{1}{|X_{\text{val}}|} \sum_{y \in X_{\text{val}}} \min_{c \in C^*} \| y - c \|^2
+$$
 
 #### 3. Optimal $k$ Selection via the Elbow Method
 As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks. The optimal $k^*$ is determined using the **Elbow Method** [Thorndike, 1953] on $\text{MSE}_{\text{val}}(k)$—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
-$$k^* = \arg\max_k \left( \frac{\partial^2 \text{MSE}_{\text{val}}}{\partial k^2} \right)$$
+
+$$
+k^* = \arg\max_k \left( \frac{\partial^2 \text{MSE}_{\text{val}}}{\partial k^2} \right)
+$$
 
 ### 💻 Execution Example
 Run the validation script across a range of $k$ values ($k \in [10000, 50000]$):
