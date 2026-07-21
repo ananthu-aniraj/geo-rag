@@ -73,19 +73,19 @@ To optimize global random search and avoid querying coordinates that already con
 ### Step 1d: Coordinate Anomaly Cleanup (GPS Glitch Removal)
 * **Script**: `src/processing/cleanup_coordinate_anomalies.py`
 * **Operation**: Scans the deduplicated database to safely purge locked-latitude coordinate lines caused by faulty contributor GPS units at source. Writes the clean data to independent output files (`geo_space_cleaned.parquet` / `geo_space_cleaned.csv`), leaving the raw deduplicated database untouched.
-* **Safety Criteria**: A rounded latitude parallel $L$ (rounded to 5 decimal places, representing $\approx 1.1\text{ meters}$ precision) is flagged and purged only if:
+* **Safety Criteria**: A rounded latitude parallel *L* (rounded to 5 decimal places, representing ~1.1 meters precision) is flagged and purged only if:
 
 $$
 \text{Count}(L) \gt 10 \quad \text{and} \quad \text{Longitude Span}(L) \gt 1.0^{\circ}
 $$
 
-*(A longitude span of $\gt 1.0^{\circ}$ is $\approx 111\text{ km}$, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
+*(A longitude span of > 1.0° is ~111 km, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
 
 ### Step 2: Global FAISS GPU Clustering
 * **Script**: `src/indexing/cluster_images_global.py`
 * **Operation**: Performs decoupled, memory-efficient 100% FAISS GPU two-level clustering on image embeddings:
-  1. **Fine-Grained Child Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)`) on raw image embeddings (e.g. $N=3.37\text{M}$ vectors) to partition the data into $k$ fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
-  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k_parents, niter=20, spherical=True, gpu=True)`) on normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$). This groups similar child clusters into high-level visual/semantic classes.
+  1. **Fine-Grained Child Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)`) on raw image embeddings (e.g. *N* = 3.37M vectors) to partition the data into *k* fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
+  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k_parents, niter=20, spherical=True, gpu=True)`) on normalized child centroids to group them into *k_parents* broader parent clusters (where *k_parents* = max(2, *k* / 80)). This groups similar child clusters into high-level visual/semantic classes.
   3. **Immediate Persistence & RAM Release**: Saves cluster assignments and centroids directly to `geo_space_clustered.parquet` and immediately releases heavy embedding matrices from RAM to avoid CPU memory bottlenecks.
 
 ### Step 2b: Multi-Modal LLM Cluster Auto-Labeling
@@ -213,11 +213,11 @@ To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline
 
 ---
 
-## ⚖️ 7. Determining the Optimal Cluster Count (k)
+## ⚖️ 7. Determining the Optimal Cluster Count (*k*)
 
-As the dataset grows (e.g., from 3.3M to 5.5M+ images), determining the optimal cluster count $k$ is essential. Standard random cross-validation fails due to **spatial autocorrelation** (spatial data leakage). 
+As the dataset grows (e.g., from 3.3M to 5.5M+ images), determining the optimal cluster count *k* is essential. Standard random cross-validation fails due to **spatial autocorrelation** (spatial data leakage). 
 
-The `validate_cluster_count.py` script implements **Spatial Block Hold-Out validation** using the GPU (FAISS [Johnson et al., 2019]) to systematically find the optimal $k$.
+The `validate_cluster_count.py` script implements **Spatial Block Hold-Out validation** using the GPU (FAISS [Johnson et al., 2019]) to systematically find the optimal *k*.
 
 ### 🔬 Methodology: Spatial Block Hold-Out
 
@@ -226,13 +226,13 @@ In spatial datasets, adjacent data points are highly correlated due to **Tobler'
 
 If we partition the training and validation sets randomly, nearby images (e.g., sequential streetscapes or photos of the same landmark) will appear in both sets. This causes **spatial data leakage**, artificially deflating the validation loss and hiding overfitting. 
 
-To measure true generalization, we must partition the dataset geographically. We downscale the fine-grained H3 cell $c$ (resolution 11) to its coarse parent block $b$:
+To measure true generalization, we must partition the dataset geographically. We downscale the fine-grained H3 cell *c* (resolution 11) to its coarse parent block *b*:
 
 $$
 b = \text{parent}(c, R_p)
 $$
 
-where $R_p = 4$ (coarse blocks of $\approx 11,000\text{ km}^2$). We randomly split the set of unique parent blocks $\mathcal{B}$ into disjoint training and validation blocks:
+where *R_p* = 4 (coarse blocks of ~11,000 km²). We randomly split the set of unique parent blocks *B* into disjoint training and validation blocks:
 
 $$
 \mathcal{B}_{\text{train}} \cap \mathcal{B}_{\text{val}} = \emptyset
@@ -243,29 +243,29 @@ $$
 $$
 
 #### 2. Optimization Objective & Reconstruction Loss
-Let $X_{\text{train}}$ be the set of image embeddings belonging to $\mathcal{B}_{\text{train}}$, and $X_{\text{val}}$ be the embeddings belonging to $\mathcal{B}_{\text{val}}$.
+Let *X_train* be the set of image embeddings belonging to *B_train*, and *X_val* be the embeddings belonging to *B_val*.
 
-For a given number of clusters $k$, K-Means learns a set of centroids $C^* = \{c_1, \dots, c_k\}$ by minimizing the Within-Cluster Sum of Squares (WCSS) on the training set:
+For a given number of clusters *k*, K-Means learns a set of centroids *C\** = {*c₁*, ..., *c_k*} by minimizing the Within-Cluster Sum of Squares (WCSS) on the training set:
 
 $$
 \mathcal{L}_{\text{train}}(C) = \sum_{x \in X_{\text{train}}} \min_{c \in C} \| x - c \|^2
 $$
 
-The **Validation Reconstruction Loss (Mean Squared Error)** is then evaluated by measuring how well the centroids $C^*$ represent the unseen validation blocks:
+The **Validation Reconstruction Loss (Mean Squared Error)** is then evaluated by measuring how well the centroids *C\** represent the unseen validation blocks:
 
 $$
 \text{MSE}_{\text{val}}(k) = \frac{1}{|X_{\text{val}}|} \sum_{y \in X_{\text{val}}} \min_{c \in C^*} \| y - c \|^2
 $$
 
-#### 3. Optimal $k$ Selection via the Elbow Method
-As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks. The optimal $k^*$ is determined using the **Elbow Method** [Thorndike, 1953] on $\text{MSE}_{\text{val}}(k)$—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
+#### 3. Optimal *k* Selection via the Elbow Method
+As *k* → *N*, the training loss `MSE_train(k)` → 0. However, on the validation set, if *k* is too high, the centroids will overfit to the specific geographic configurations of the training blocks. The optimal *k\** is determined using the **Elbow Method** [Thorndike, 1953] on `MSE_val(k)`—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
 
 $$
 k^* = \arg\max_k \left( \frac{\partial^2 \text{MSE}_{\text{val}}}{\partial k^2} \right)
 $$
 
 ### 💻 Execution Example
-Run the validation script across a range of $k$ values ($k \in [10000, 50000]$):
+Run the validation script across a range of *k* values (*k* ∈ [10,000, 50,000]):
 ```bash
 python3 -m src.utils.validate_cluster_count \
   --input "full_pipeline_output/geo_space_deduplicated.parquet" \
