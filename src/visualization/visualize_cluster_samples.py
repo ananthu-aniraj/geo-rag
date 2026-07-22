@@ -99,6 +99,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
     col_season = df['Season'].to_numpy() if 'Season' in df.columns else np.array(["Unknown"] * len(df))
     col_tod = df['Time_Of_Day'].to_numpy() if 'Time_Of_Day' in df.columns else np.array(["Unknown"] * len(df))
     col_h3 = df['H3_Cell'].to_numpy() if 'H3_Cell' in df.columns else np.array([""] * len(df))
+    col_koppen_code = df['Koppen_Code'].to_numpy() if 'Koppen_Code' in df.columns else np.array([""] * len(df))
+    col_koppen_desc = df['Koppen_Desc'].to_numpy() if 'Koppen_Desc' in df.columns else np.array([""] * len(df))
     print("Successfully pre-extracted columns for fast access.")
 
     def make_sample(global_idx, sim_score, is_outlier, rank_label):
@@ -123,6 +125,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             "captured_at": cap_str,
             "season": str(col_season[global_idx]) if pd.notna(col_season[global_idx]) else "Unknown",
             "time_of_day": str(col_tod[global_idx]) if pd.notna(col_tod[global_idx]) else "Unknown",
+            "koppen_code": str(col_koppen_code[global_idx]) if pd.notna(col_koppen_code[global_idx]) else "",
+            "koppen_desc": str(col_koppen_desc[global_idx]) if pd.notna(col_koppen_desc[global_idx]) else "",
             "is_outlier": is_outlier,
             "rank_label": rank_label
         }

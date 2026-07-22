@@ -480,7 +480,7 @@
                                     <div class="image-meta">
                                         <b>ID:</b> ${s.id || ''}<br>
                                         <b>Similarity:</b> ${simVal}<br>
-                                        <b>Lat/Lon:</b> ${latVal}, ${lonVal}${s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}
+                                        <b>Lat/Lon:</b> ${latVal}, ${lonVal}${s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}${s.koppen_code ? '<br><b>Climate:</b> ' + s.koppen_code + (s.koppen_desc ? ' - ' + s.koppen_desc : '') : ''}
                                     </div>
                                 </div>
                             `;

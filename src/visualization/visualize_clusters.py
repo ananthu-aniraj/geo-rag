@@ -34,13 +34,23 @@ def create_map(pkl_path, output_html, max_markers=1000):
             target_cols = [
                 'Latitude', 'Longitude', 'H3_Cell', 'cluster_id', 'cluster_label', 
                 'cluster_description', 'parent_cluster_id', 'parent_cluster_label', 
-                'parent_cluster_description', 'Platform', 'Captured_At', 'Image_URL', 'Photo_ID'
+                'parent_cluster_description', 'Platform', 'Captured_At', 'Image_URL', 'Photo_ID',
+                'Koppen_Code', 'Koppen_Desc', 'Season'
             ]
             load_cols = [c for c in target_cols if c in available_cols]
             df = pd.read_parquet(pkl_path, columns=load_cols)
         except Exception:
             df = pd.read_parquet(pkl_path)
         data = df.to_dict('records')
+
+    # Load marker popup template
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    popup_template_path = os.path.join(root_dir, "templates", "marker_popup.html")
+    if not os.path.exists(popup_template_path):
+        popup_template_path = "templates/marker_popup.html"
+
+    with open(popup_template_path, 'r', encoding='utf-8') as f:
+        popup_template = f.read()
 
     print(f"Total unique images: {len(data)}")
 
@@ -123,19 +133,20 @@ def create_map(pkl_path, output_html, max_markers=1000):
 
         # Create a popup with the image and metadata
         taken_text = f"<b>Captured At:</b> {item['Captured_At']}<br>" if 'Captured_At' in item and item['Captured_At'] else ""
-        html = f"""
-            <div style="width:220px">
-                <img src="{item['Image_URL']}" onerror="handleImageError(this, '{item['Photo_ID']}', '{item['Platform']}')" width="100%" style="border-radius: 4px;">
-                <p style="font-size: 11px; margin-top: 5px; line-height: 1.4; font-family: sans-serif;">
-                <b>ID:</b> {item['Photo_ID']}<br>
-                <b>Platform:</b> {item['Platform']}<br>
-                {taken_text}
-                {cluster_text}
-                <b>H3 Cell:</b> {item['H3_Cell']}<br>
-                <a href="{item['Image_URL']}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a></p>
-            </div>
-        """
-        iframe_height = 350 if ('cluster_description' in item and item['cluster_description']) else 280
+        koppen_text = f"<b>Climate:</b> {item['Koppen_Code']} - {item['Koppen_Desc']}<br>" if 'Koppen_Code' in item and item['Koppen_Code'] else ""
+        season_text = f"<b>Season:</b> {item['Season']}<br>" if 'Season' in item and item['Season'] else ""
+
+        html = popup_template.format(
+            image_url=item['Image_URL'],
+            photo_id=item['Photo_ID'],
+            platform=item['Platform'],
+            taken_text=taken_text,
+            season_text=season_text,
+            koppen_text=koppen_text,
+            cluster_text=cluster_text,
+            h3_cell=item['H3_Cell']
+        )
+        iframe_height = 360 if ('cluster_description' in item and item['cluster_description']) else 300
         iframe = folium.IFrame(html=html, width=240, height=iframe_height)
         popup = folium.Popup(iframe, max_width=285)
 

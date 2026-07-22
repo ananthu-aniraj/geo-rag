@@ -145,7 +145,8 @@ def load_dataset(file_path):
         'Photo_ID', 'Platform', 'Latitude', 'Longitude',
         'Captured_At', 'Season', 'H3_Cell',
         'cluster_id', 'cluster_label', 'cluster_description',
-        'parent_cluster_id', 'parent_cluster_label'
+        'parent_cluster_id', 'parent_cluster_label',
+        'Koppen_Code', 'Koppen_Desc'
     ]
 
     if file_path.endswith('.csv'):
@@ -254,6 +255,17 @@ def generate_text_report(df, df_filtered, is_global, location_name):
         for season, count in season_counts.items():
             pct = (count / total_filtered) * 100
             lines.append(f"  - {season:<15}: {count:>10,} ({pct:>5.1f}%)")
+
+    # 5b. Koppen-Geiger Climate Zone Breakdown
+    if 'Koppen_Code' in df_filtered.columns and total_filtered > 0:
+        valid_koppen = df_filtered[df_filtered['Koppen_Code'].notna() & (df_filtered['Koppen_Code'] != '')]
+        if len(valid_koppen) > 0:
+            lines.append("\n🌍 KÖPPEN-GEIGER CLIMATE ZONE DISTRIBUTION:")
+            koppen_counts = valid_koppen.groupby(['Koppen_Code', 'Koppen_Desc'], observed=True).size().sort_values(ascending=False)
+            for (code, desc), count in koppen_counts.items():
+                pct = (count / total_filtered) * 100
+                lbl = f"{code} ({desc})"
+                lines.append(f"  - {lbl:<55}: {count:>10,} ({pct:>5.1f}%)")
 
     # 6. Top Cluster Labels (if present)
     if 'cluster_label' in df_filtered.columns and total_filtered > 0:

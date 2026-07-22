@@ -3,6 +3,8 @@ import argparse
 import pandas as pd
 import pickle
 import numpy as np
+import yaml
+from src.utils.koppen_geiger import extract_koppen_geiger
 
 
 def main():
@@ -11,7 +13,21 @@ def main():
     parser.add_argument("--input", type=str, required=True, help="Path to the input file (.parquet, .csv, or .pkl).")
     parser.add_argument("--output", type=str, default=None,
                         help="Path to save the standardized file (omitted to overwrite in-place).")
+    parser.add_argument("--koppen_tif", type=str, default=None,
+                        help="Path to the Köppen-Geiger GeoTIFF file (checks params.yaml if omitted).")
     args = parser.parse_args()
+
+    # Load koppen_tif path from params.yaml if not explicitly passed
+    koppen_tif = args.koppen_tif
+    if not koppen_tif:
+        params_path = "params.yaml"
+        if os.path.exists(params_path):
+            try:
+                with open(params_path, 'r') as f:
+                    params = yaml.safe_load(f)
+                    koppen_tif = params.get('pipeline', {}).get('koppen_geiger_tif', None)
+            except Exception as e:
+                print(f"[WARNING] Could not parse params.yaml: {e}")
 
     out_path = args.output if args.output else args.input
 
@@ -115,8 +131,13 @@ def main():
     final_nulls = df['Captured_At'].isna().sum()
     print(f" -> Timestamp standardization complete. Null timestamps: {initial_nulls} -> {final_nulls}")
 
+    # Extract Köppen-Geiger climate classification if available
+    if koppen_tif:
+        print(f"Extracting Köppen-Geiger climate classification using TIF: {koppen_tif}")
+        df = extract_koppen_geiger(df, koppen_tif)
+
     # 3. Add dynamic season classification (Vectorized)
-    print("Classifying local seasons based on latitude and month...")
+    print("Classifying local seasons...")
     
     # Extract month from standardized ISO 8601 string (e.g. "YYYY-MM-DD...")
     months = pd.to_numeric(standardized.str[5:7], errors='coerce')
@@ -126,25 +147,78 @@ def main():
     seasons = pd.Series(['Unknown'] * len(df), index=df.index, dtype=object)
     valid_season_mask = months.notna() & lats.notna()
 
-    # Tropical Zone (-23.5 <= lat <= 23.5)
-    tropical = valid_season_mask & (lats >= -23.5) & (lats <= 23.5)
-    wet_months = months.isin([6, 7, 8, 9])
-    seasons[tropical & wet_months] = 'Wet Season'
-    seasons[tropical & ~wet_months] = 'Dry Season'
+    has_koppen = 'Koppen_Code' in df.columns and df['Koppen_Code'].notna().any()
 
-    # Northern Temperate/Polar (lat > 23.5)
-    north = valid_season_mask & (lats > 23.5)
-    seasons[north & months.isin([12, 1, 2])] = 'Winter'
-    seasons[north & months.isin([3, 4, 5])] = 'Spring'
-    seasons[north & months.isin([6, 7, 8])] = 'Summer'
-    seasons[north & months.isin([9, 10, 11])] = 'Autumn'
+    if has_koppen:
+        print(" -> Utilizing Köppen-Geiger climate classifications for precise season zoning...")
+        koppen_codes = df['Koppen_Code']
+        is_northern = lats >= 0
 
-    # Southern Temperate/Polar (lat < -23.5)
-    south = valid_season_mask & (lats < -23.5)
-    seasons[south & months.isin([12, 1, 2])] = 'Summer'
-    seasons[south & months.isin([3, 4, 5])] = 'Autumn'
-    seasons[south & months.isin([6, 7, 8])] = 'Winter'
-    seasons[south & months.isin([9, 10, 11])] = 'Spring'
+        # Dry/Desert Climates (BWh, BWk): Dry Season year-round
+        is_desert = valid_season_mask & koppen_codes.isin(['BWh', 'BWk'])
+        seasons[is_desert] = 'Dry Season'
+
+        # Tropical Wet/Dry Savanna & Monsoon (Aw, Am)
+        is_trop_wet_dry = valid_season_mask & koppen_codes.isin(['Aw', 'Am'])
+        # Northern Tropics: Wet season is June to September
+        seasons[is_trop_wet_dry & is_northern & months.isin([6, 7, 8, 9])] = 'Wet Season'
+        seasons[is_trop_wet_dry & is_northern & ~months.isin([6, 7, 8, 9])] = 'Dry Season'
+        # Southern Tropics: Wet season is November to April
+        seasons[is_trop_wet_dry & ~is_northern & months.isin([11, 12, 1, 2, 3, 4])] = 'Wet Season'
+        seasons[is_trop_wet_dry & ~is_northern & ~months.isin([11, 12, 1, 2, 3, 4])] = 'Dry Season'
+
+        # Temperate Dry Summer / Mediterranean Climates (Csa, Csb)
+        is_mediterranean = valid_season_mask & koppen_codes.isin(['Csa', 'Csb'])
+        # Northern Hemisphere Mediterranean: Winter (Rainy/Wet) is Dec-Feb, Summer (Dry) is Jun-Aug
+        seasons[is_mediterranean & is_northern & months.isin([12, 1, 2])] = 'Wet Season'
+        seasons[is_mediterranean & is_northern & months.isin([6, 7, 8])] = 'Dry Season'
+        # Southern Hemisphere Mediterranean: Winter (Rainy/Wet) is Jun-Aug, Summer (Dry) is Dec-Feb
+        seasons[is_mediterranean & ~is_northern & months.isin([6, 7, 8])] = 'Wet Season'
+        seasons[is_mediterranean & ~is_northern & months.isin([12, 1, 2])] = 'Dry Season'
+
+        # Default fallbacks for remaining unassigned classifications
+        unassigned_mask = valid_season_mask & (seasons == 'Unknown')
+        
+        # Tropical Zone fallback
+        tropical = unassigned_mask & (lats >= -23.5) & (lats <= 23.5)
+        wet_months = months.isin([6, 7, 8, 9])
+        seasons[tropical & wet_months] = 'Wet Season'
+        seasons[tropical & ~wet_months] = 'Dry Season'
+
+        # Northern Temperate fallback
+        north = unassigned_mask & (lats > 23.5)
+        seasons[north & months.isin([12, 1, 2])] = 'Winter'
+        seasons[north & months.isin([3, 4, 5])] = 'Spring'
+        seasons[north & months.isin([6, 7, 8])] = 'Summer'
+        seasons[north & months.isin([9, 10, 11])] = 'Autumn'
+
+        # Southern Temperate fallback
+        south = unassigned_mask & (lats < -23.5)
+        seasons[south & months.isin([12, 1, 2])] = 'Summer'
+        seasons[south & months.isin([3, 4, 5])] = 'Autumn'
+        seasons[south & months.isin([6, 7, 8])] = 'Winter'
+        seasons[south & months.isin([9, 10, 11])] = 'Spring'
+    else:
+        # Standard latitude-based fallback if Köppen-Geiger data is not present
+        # Tropical Zone (-23.5 <= lat <= 23.5)
+        tropical = valid_season_mask & (lats >= -23.5) & (lats <= 23.5)
+        wet_months = months.isin([6, 7, 8, 9])
+        seasons[tropical & wet_months] = 'Wet Season'
+        seasons[tropical & ~wet_months] = 'Dry Season'
+
+        # Northern Temperate/Polar (lat > 23.5)
+        north = valid_season_mask & (lats > 23.5)
+        seasons[north & months.isin([12, 1, 2])] = 'Winter'
+        seasons[north & months.isin([3, 4, 5])] = 'Spring'
+        seasons[north & months.isin([6, 7, 8])] = 'Summer'
+        seasons[north & months.isin([9, 10, 11])] = 'Autumn'
+
+        # Southern Temperate/Polar (lat < -23.5)
+        south = valid_season_mask & (lats < -23.5)
+        seasons[south & months.isin([12, 1, 2])] = 'Summer'
+        seasons[south & months.isin([3, 4, 5])] = 'Autumn'
+        seasons[south & months.isin([6, 7, 8])] = 'Winter'
+        seasons[south & months.isin([9, 10, 11])] = 'Spring'
 
     df['Season'] = seasons
     print(" -> Local seasons classified. Column 'Season' added.")

@@ -52,4 +52,4 @@ iwildcam_subset/
 shapefiles/uncovered_land_areas_test.*
 
 # Do not ignore
-!templates/cluster_dashboard.html
+!templates/*.html

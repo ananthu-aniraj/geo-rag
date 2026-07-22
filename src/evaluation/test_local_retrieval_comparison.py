@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import requests
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from transformers import AutoModel, SegformerImageProcessor, SegformerForSemanticSegmentation
 from torchvision import transforms
@@ -86,7 +86,8 @@ def main():
     parser.add_argument("--csv_path", type=str, default=DEFAULT_CSV_PATH, help="Path to the lightweight CSV dataset.")
     parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR,
                         help="Base directory to save downloaded images.")
-    parser.add_argument("--query_idx", type=int, default=0, help="Row index of the query image in the sampled set (or platform subset).")
+    parser.add_argument("--query_idx", type=int, default=0,
+                        help="Row index of the query image in the sampled set (or platform subset).")
     parser.add_argument("--num_images", type=int, default=30, help="Number of diverse images to sample from the CSV.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling.")
     parser.add_argument("--query_platform", type=str, default=None, choices=["flickr", "mapillary"],
@@ -98,7 +99,9 @@ def main():
     if not os.path.exists(args.csv_path):
         print(f"Error: CSV file not found at {args.csv_path}")
         return
-    df = pd.read_csv(args.csv_path)
+    df = pd.read_csv(args.csv_path, dtype=str)
+    df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
     print(f"Loaded {len(df)} rows.")
 
     # Select diverse images representing different platforms/regions
@@ -120,7 +123,8 @@ def main():
             print(f"Error: No images found for platform '{args.query_platform}' in the sampled set.")
             return
         if args.query_idx >= len(platform_indices):
-            print(f"Error: --query_idx must be between 0 and {len(platform_indices) - 1} when filtering for platform '{args.query_platform}'")
+            print(
+                f"Error: --query_idx must be between 0 and {len(platform_indices) - 1} when filtering for platform '{args.query_platform}'")
             return
         query_row_idx = platform_indices[args.query_idx]
     else:
@@ -165,18 +169,55 @@ def main():
     # Pre-generate 150 distinct colors for ADE20K visualization
     colors_150 = np.random.RandomState(42).randint(30, 230, size=(150, 3), dtype=np.uint8)
 
-    print("Pre-computing TIPSv2 text embeddings for 150 ADE20K classes...")
+    # 6-Class Geospatial Taxonomy for TIPSv2 Zero-Shot Patch Decomposition
+    ABSTRACT_PROMPTS = [
+        "the open sky, clouds, horizon, or atmosphere",                     # Class 0: Sky & Weather
+        "trees, foliage, forests, bushes, green plants, or canopy",          # Class 1: Natural Vegetation
+        "bare earth, soil, sand, rocks, mountains, or dry land",            # Class 2: Terrain & Soil
+        "a road, asphalt street, dirt track, sidewalk, or path",            # Class 3: Road & Surface
+        "buildings, houses, walls, fences, bridges, or architecture",       # Class 4: Built Structures
+        "cars, trucks, buses, people, signs, or street furniture"           # Class 5: Vehicles & Dynamic Objects
+    ]
+    ABSTRACT_LABELS = [
+        "Sky & Clouds",
+        "Natural Vegetation",
+        "Terrain & Soil",
+        "Road & Surface",
+        "Built Structures",
+        "Vehicles & Animals & Humans"
+    ]
+    ABSTRACT_COLORS = np.array([
+        [70, 130, 180],  # Steel Blue (Sky)
+        [34, 139, 34],   # Forest Green (Natural Vegetation)
+        [184, 115, 51],  # Copper Brown (Terrain & Soil)
+        [100, 100, 100], # Charcoal Gray (Road & Surface)
+        [138, 43, 226],  # Purple (Built Structures)
+        [220, 20, 60]    # Crimson Red (Vehicles & Animals & Humans)
+    ], dtype=np.uint8)
+
+    print("Pre-computing TIPSv2 text embeddings for ADE20K and Geospatial 6-Class prompts...")
     with torch.no_grad():
         text_embeds = tipsv2.encode_text(ade_labels)
         text_embeds_np = text_embeds.cpu().numpy()
-        # Normalize text embeddings
         text_embeds_norm = text_embeds_np / (np.linalg.norm(text_embeds_np, axis=1, keepdims=True) + 1e-9)
 
+        abstract_text_embeds = tipsv2.encode_text(ABSTRACT_LABELS)
+        abstract_text_embeds_np = abstract_text_embeds.cpu().numpy()
+        abstract_text_embeds_norm = abstract_text_embeds_np / (
+                    np.linalg.norm(abstract_text_embeds_np, axis=1, keepdims=True) + 1e-9)
+
     # Compute Embeddings for downloaded images
-    print("\nExtracting [CLS], [Simple-Average], [Segformer BG-Average], [TIPSv2 Zero-Shot BG-Average], and Concatenated variations...")
+    print(
+        "\nExtracting [CLS], [Simple-Avg], [Segformer BG], [TIPSv2 ADE20K BG], and [TIPSv2 Geospatial 6-Class] embeddings...")
     cls_embeddings = {}
     bg_embeddings = {}
     tipsv2_bg_embeddings = {}
+    tipsv2_scenery_embeddings = {}
+    tipsv2_veg_embeddings = {}
+    tipsv2_terrain_embeddings = {}
+    tipsv2_road_embeddings = {}
+    tipsv2_built_embeddings = {}
+    tipsv2_sky_embeddings = {}
     simple_embeddings = {}
     concat_simple_embeddings = {}
     concat_bg_embeddings = {}
@@ -223,6 +264,10 @@ def main():
         patch_text_sim = np.dot(norm_patches, text_embeds_norm.T)  # shape [1024, 150]
         best_prompt_idx = np.argmax(patch_text_sim, axis=1)
 
+        # Compute cosine similarity between patches and 4 Abstract Class text embeddings
+        patch_abstract_sim = np.dot(norm_patches, abstract_text_embeds_norm.T)  # shape [1024, 4]
+        best_abstract_idx = np.argmax(patch_abstract_sim, axis=1)
+
         # Decide whether to keep/discard based on predicted ADE20K class index and extra discard list
         tipsv2_keep_mask_flat = np.ones(1024, dtype=float)
         for i in range(1024):
@@ -234,19 +279,70 @@ def main():
         tipsv2_keep_mask_grid = tipsv2_keep_mask_flat.reshape(32, 32)
         tipsv2_keep_mask_upsampled = np.repeat(np.repeat(tipsv2_keep_mask_grid, 14, axis=0), 14, axis=1)
 
-        # Generate 3-way diagnostic visualization (Original + TIPSv2 Segmentation Map + TIPSv2 Keep/Discard mask)
+        # Generate 4-panel diagnostic visualization:
+        # [Original Image | Segformer ADE20K Map | TIPSv2 ADE20K Mask | TIPSv2 Abstract 4-Class Map]
         best_prompt_idx_grid = best_prompt_idx.reshape(32, 32)
         best_prompt_idx_upsampled = np.repeat(np.repeat(best_prompt_idx_grid, 14, axis=0), 14, axis=1)
         seg_colored = colors_150[best_prompt_idx_upsampled]
+
+        best_abstract_idx_grid = best_abstract_idx.reshape(32, 32)
+        best_abstract_idx_upsampled = np.repeat(np.repeat(best_abstract_idx_grid, 14, axis=0), 14, axis=1)
+        abstract_colored = ABSTRACT_COLORS[best_abstract_idx_upsampled]
 
         tipsv2_mask_visual = np.zeros((448, 448, 3), dtype=np.uint8)
         tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 1.0] = [0, 200, 0]
         tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 0.0] = [200, 0, 0]
 
-        diag_img = Image.new('RGB', (1344, 448))
+        # 4-Panel image + 60px bottom legend banner -> (1792 x 508)
+        diag_img = Image.new('RGB', (1792, 508), color=(30, 30, 30))
         diag_img.paste(img_resized, (0, 0))
         diag_img.paste(Image.fromarray(seg_colored), (448, 0))
         diag_img.paste(Image.fromarray(tipsv2_mask_visual), (896, 0))
+        diag_img.paste(Image.fromarray(abstract_colored), (1344, 0))
+
+        draw = ImageDraw.Draw(diag_img)
+
+        # Draw panel title headers at top
+        draw.rectangle([0, 0, 448, 22], fill=(0, 0, 0))
+        draw.text((10, 3), "1. Original Image", fill=(255, 255, 255))
+
+        draw.rectangle([448, 0, 896, 22], fill=(0, 0, 0))
+        draw.text((458, 3), "2. SegFormer (ADE20K 150-Class)", fill=(255, 255, 255))
+
+        draw.rectangle([896, 0, 1344, 22], fill=(0, 0, 0))
+        draw.text((906, 3), "3. TIPSv2 ADE20K Discard Mask", fill=(255, 255, 255))
+
+        draw.rectangle([1344, 0, 1792, 22], fill=(0, 0, 0))
+        draw.text((1354, 3), "4. TIPSv2 Geospatial 6-Class Map", fill=(255, 255, 255))
+
+        # Draw bottom legend banner (y: 448 to 508)
+        # Legend for Panel 3 (TIPSv2 Discard Mask) at x=896
+        draw.rectangle([910, 465, 930, 485], fill=(0, 200, 0), outline=(255, 255, 255))
+        draw.text((935, 467), "Keep (Scenery)", fill=(255, 255, 255))
+        draw.rectangle([1060, 465, 1080, 485], fill=(200, 0, 0), outline=(255, 255, 255))
+        draw.text((1085, 467), "Discard (Object/Sky)", fill=(255, 255, 255))
+
+        # Legend for Panel 4 (TIPSv2 Geospatial 6-Class Map) at x=1344
+        # Row 1 (y = 455): Sky, Vegetation, Terrain
+        draw.rectangle([1350, 455, 1362, 467], fill=(70, 130, 180), outline=(255, 255, 255))
+        draw.text((1366, 454), "Sky", fill=(255, 255, 255))
+
+        draw.rectangle([1410, 455, 1422, 467], fill=(34, 139, 34), outline=(255, 255, 255))
+        draw.text((1426, 454), "Vegetation", fill=(255, 255, 255))
+
+        draw.rectangle([1520, 455, 1532, 467], fill=(184, 115, 51), outline=(255, 255, 255))
+        draw.text((1536, 454), "Terrain/Soil", fill=(255, 255, 255))
+
+        # Row 2 (y = 480): Road, Built, Vehicles/Objects
+        draw.rectangle([1350, 480, 1362, 492], fill=(100, 100, 100), outline=(255, 255, 255))
+        draw.text((1366, 479), "Road", fill=(255, 255, 255))
+
+        draw.rectangle([1410, 480, 1422, 492], fill=(138, 43, 226), outline=(255, 255, 255))
+        draw.text((1426, 479), "Built", fill=(255, 255, 255))
+
+        draw.rectangle([1520, 480, 1532, 492], fill=(220, 20, 60), outline=(255, 255, 255))
+        draw.text((1536, 479), "Vehicles/Objs", fill=(255, 255, 255))
+
         diagnostic_images[idx] = diag_img
 
         # Compute average patch vectors using both masks
@@ -257,8 +353,24 @@ def main():
 
         # TIPSv2 zero-shot background average
         tipsv2_total_weight = np.sum(tipsv2_keep_mask_flat)
-        tipsv2_bg_avg = np.sum(patch_tokens * tipsv2_keep_mask_flat[:, np.newaxis], axis=0) / tipsv2_total_weight if tipsv2_total_weight > 0 else np.mean(
+        tipsv2_bg_avg = np.sum(patch_tokens * tipsv2_keep_mask_flat[:, np.newaxis],
+                               axis=0) / tipsv2_total_weight if tipsv2_total_weight > 0 else np.mean(
             patch_tokens, axis=0)
+
+        # TIPSv2 Geospatial 6-Class patch averages
+        sky_mask = (best_abstract_idx == 0).astype(float)[:, np.newaxis]
+        veg_mask = (best_abstract_idx == 1).astype(float)[:, np.newaxis]
+        terrain_mask = (best_abstract_idx == 2).astype(float)[:, np.newaxis]
+        road_mask = (best_abstract_idx == 3).astype(float)[:, np.newaxis]
+        built_mask = (best_abstract_idx == 4).astype(float)[:, np.newaxis]
+        scenery_mask = ((best_abstract_idx >= 1) & (best_abstract_idx <= 4)).astype(float)[:, np.newaxis]
+
+        sky_avg = np.sum(patch_tokens * sky_mask, axis=0) / (np.sum(sky_mask) + 1e-9) if np.sum(sky_mask) > 0 else np.mean(patch_tokens, axis=0)
+        veg_avg = np.sum(patch_tokens * veg_mask, axis=0) / (np.sum(veg_mask) + 1e-9) if np.sum(veg_mask) > 0 else np.mean(patch_tokens, axis=0)
+        terrain_avg = np.sum(patch_tokens * terrain_mask, axis=0) / (np.sum(terrain_mask) + 1e-9) if np.sum(terrain_mask) > 0 else np.mean(patch_tokens, axis=0)
+        road_avg = np.sum(patch_tokens * road_mask, axis=0) / (np.sum(road_mask) + 1e-9) if np.sum(road_mask) > 0 else np.mean(patch_tokens, axis=0)
+        built_avg = np.sum(patch_tokens * built_mask, axis=0) / (np.sum(built_mask) + 1e-9) if np.sum(built_mask) > 0 else np.mean(patch_tokens, axis=0)
+        scenery_avg = np.sum(patch_tokens * scenery_mask, axis=0) / (np.sum(scenery_mask) + 1e-9) if np.sum(scenery_mask) > 0 else np.mean(patch_tokens, axis=0)
 
         # Simple average of all patch tokens (unmasked)
         simple_avg = np.mean(patch_tokens, axis=0)
@@ -268,6 +380,12 @@ def main():
         simple_norm = simple_avg / (np.linalg.norm(simple_avg) + 1e-9)
         bg_norm = bg_avg / (np.linalg.norm(bg_avg) + 1e-9)
         tipsv2_bg_norm = tipsv2_bg_avg / (np.linalg.norm(tipsv2_bg_avg) + 1e-9)
+        tipsv2_scenery_norm = scenery_avg / (np.linalg.norm(scenery_avg) + 1e-9)
+        tipsv2_veg_norm = veg_avg / (np.linalg.norm(veg_avg) + 1e-9)
+        tipsv2_terrain_norm = terrain_avg / (np.linalg.norm(terrain_avg) + 1e-9)
+        tipsv2_road_norm = road_avg / (np.linalg.norm(road_avg) + 1e-9)
+        tipsv2_built_norm = built_avg / (np.linalg.norm(built_avg) + 1e-9)
+        tipsv2_sky_norm = sky_avg / (np.linalg.norm(sky_avg) + 1e-9)
 
         concat_simple = np.concatenate([cls_norm, simple_norm], axis=0)
         concat_simple /= np.linalg.norm(concat_simple) + 1e-9
@@ -282,6 +400,12 @@ def main():
         cls_embeddings[idx] = cls_norm
         bg_embeddings[idx] = bg_norm
         tipsv2_bg_embeddings[idx] = tipsv2_bg_norm
+        tipsv2_scenery_embeddings[idx] = tipsv2_scenery_norm
+        tipsv2_veg_embeddings[idx] = tipsv2_veg_norm
+        tipsv2_terrain_embeddings[idx] = tipsv2_terrain_norm
+        tipsv2_road_embeddings[idx] = tipsv2_road_norm
+        tipsv2_built_embeddings[idx] = tipsv2_built_norm
+        tipsv2_sky_embeddings[idx] = tipsv2_sky_norm
         simple_embeddings[idx] = simple_norm
         concat_simple_embeddings[idx] = concat_simple
         concat_bg_embeddings[idx] = concat_bg
@@ -299,6 +423,11 @@ def main():
     cls_similarities = {}
     bg_similarities = {}
     tipsv2_bg_similarities = {}
+    tipsv2_scenery_similarities = {}
+    tipsv2_veg_similarities = {}
+    tipsv2_terrain_similarities = {}
+    tipsv2_road_similarities = {}
+    tipsv2_built_similarities = {}
     simple_similarities = {}
     concat_simple_similarities = {}
     concat_bg_similarities = {}
@@ -307,6 +436,11 @@ def main():
     q_cls = cls_embeddings[query_row_idx]
     q_bg = bg_embeddings[query_row_idx]
     q_tipsv2_bg = tipsv2_bg_embeddings[query_row_idx]
+    q_tipsv2_scenery = tipsv2_scenery_embeddings[query_row_idx]
+    q_tipsv2_veg = tipsv2_veg_embeddings[query_row_idx]
+    q_tipsv2_terrain = tipsv2_terrain_embeddings[query_row_idx]
+    q_tipsv2_road = tipsv2_road_embeddings[query_row_idx]
+    q_tipsv2_built = tipsv2_built_embeddings[query_row_idx]
     q_simple = simple_embeddings[query_row_idx]
     q_concat_simple = concat_simple_embeddings[query_row_idx]
     q_concat_bg = concat_bg_embeddings[query_row_idx]
@@ -317,6 +451,11 @@ def main():
         cls_similarities[idx] = np.dot(cls_embeddings[idx], q_cls)
         bg_similarities[idx] = np.dot(bg_embeddings[idx], q_bg)
         tipsv2_bg_similarities[idx] = np.dot(tipsv2_bg_embeddings[idx], q_tipsv2_bg)
+        tipsv2_scenery_similarities[idx] = np.dot(tipsv2_scenery_embeddings[idx], q_tipsv2_scenery)
+        tipsv2_veg_similarities[idx] = np.dot(tipsv2_veg_embeddings[idx], q_tipsv2_veg)
+        tipsv2_terrain_similarities[idx] = np.dot(tipsv2_terrain_embeddings[idx], q_tipsv2_terrain)
+        tipsv2_road_similarities[idx] = np.dot(tipsv2_road_embeddings[idx], q_tipsv2_road)
+        tipsv2_built_similarities[idx] = np.dot(tipsv2_built_embeddings[idx], q_tipsv2_built)
         simple_similarities[idx] = np.dot(simple_embeddings[idx], q_simple)
         concat_simple_similarities[idx] = np.dot(concat_simple_embeddings[idx], q_concat_simple)
         concat_bg_similarities[idx] = np.dot(concat_bg_embeddings[idx], q_concat_bg)
@@ -326,6 +465,11 @@ def main():
     top_cls = sorted(cls_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_bg = sorted(bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_tipsv2_bg = sorted(tipsv2_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_scenery = sorted(tipsv2_scenery_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_veg = sorted(tipsv2_veg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_terrain = sorted(tipsv2_terrain_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_road = sorted(tipsv2_road_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_built = sorted(tipsv2_built_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_simple = sorted(simple_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_concat_simple = sorted(concat_simple_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_concat_bg = sorted(concat_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
@@ -338,6 +482,11 @@ def main():
     simple_dir = os.path.join(exp_dir, "simple_avg")
     bg_dir = os.path.join(exp_dir, "segformer_bg_avg")
     tipsv2_bg_dir = os.path.join(exp_dir, "tipsv2_bg_avg")
+    scenery_dir = os.path.join(exp_dir, "tipsv2_6class_scenery")
+    veg_dir = os.path.join(exp_dir, "tipsv2_6class_vegetation")
+    terrain_dir = os.path.join(exp_dir, "tipsv2_6class_terrain")
+    road_dir = os.path.join(exp_dir, "tipsv2_6class_road")
+    built_dir = os.path.join(exp_dir, "tipsv2_6class_built")
     concat_simple_dir = os.path.join(exp_dir, "cls_simple_concat")
     concat_bg_dir = os.path.join(exp_dir, "cls_segformer_bg_concat")
     concat_tipsv2_bg_dir = os.path.join(exp_dir, "cls_tipsv2_bg_concat")
@@ -347,6 +496,11 @@ def main():
     os.makedirs(simple_dir, exist_ok=True)
     os.makedirs(bg_dir, exist_ok=True)
     os.makedirs(tipsv2_bg_dir, exist_ok=True)
+    os.makedirs(scenery_dir, exist_ok=True)
+    os.makedirs(veg_dir, exist_ok=True)
+    os.makedirs(terrain_dir, exist_ok=True)
+    os.makedirs(road_dir, exist_ok=True)
+    os.makedirs(built_dir, exist_ok=True)
     os.makedirs(concat_simple_dir, exist_ok=True)
     os.makedirs(concat_bg_dir, exist_ok=True)
     os.makedirs(concat_tipsv2_bg_dir, exist_ok=True)
@@ -361,21 +515,66 @@ def main():
     print("\n🏆 === TOP 3 LOCAL MATCHES USING STANDARD [CLS] === 🏆")
     for rank, (idx, sim) in enumerate(top_cls, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(cls_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 6-CLASS PERMANENT SCENERY] === 🏆")
+    for rank, (idx, sim) in enumerate(top_scenery, 1):
+        row = sampled_df.iloc[idx]
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(scenery_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
+        match_diag_path = os.path.join(scenery_dir, f"match_{rank}_sim_{sim:.4f}_segmentation.png")
+        diagnostic_images[idx].save(match_diag_path)
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 NATURAL VEGETATION] === 🏆")
+    for rank, (idx, sim) in enumerate(top_veg, 1):
+        row = sampled_df.iloc[idx]
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(veg_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 TERRAIN & SOIL] === 🏆")
+    for rank, (idx, sim) in enumerate(top_terrain, 1):
+        row = sampled_df.iloc[idx]
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(terrain_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 ROAD & SURFACE] === 🏆")
+    for rank, (idx, sim) in enumerate(top_road, 1):
+        row = sampled_df.iloc[idx]
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(road_dir, f"match_{rank}_sim_{sim:.4f}.png")
+        images[idx].save(match_path)
+
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 BUILT STRUCTURES] === 🏆")
+    for rank, (idx, sim) in enumerate(top_built, 1):
+        row = sampled_df.iloc[idx]
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        match_path = os.path.join(built_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [SIMPLE-AVERAGE] === 🏆")
     for rank, (idx, sim) in enumerate(top_simple, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(simple_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [SEGFORMER BACKGROUND-AVERAGE] === 🏆")
     for rank, (idx, sim) in enumerate(top_bg, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
         match_diag_path = os.path.join(bg_dir, f"match_{rank}_sim_{sim:.4f}_segmentation.png")
@@ -384,7 +583,8 @@ def main():
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 ZERO-SHOT BACKGROUND-AVERAGE] === 🏆")
     for rank, (idx, sim) in enumerate(top_tipsv2_bg, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(tipsv2_bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
         match_diag_path = os.path.join(tipsv2_bg_dir, f"match_{rank}_sim_{sim:.4f}_segmentation.png")
@@ -393,21 +593,24 @@ def main():
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + SIMPLE-AVG CONCAT] === 🏆")
     for rank, (idx, sim) in enumerate(top_concat_simple, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(concat_simple_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + SEGFORMER BG CONCAT] === 🏆")
     for rank, (idx, sim) in enumerate(top_concat_bg, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(concat_bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [CLS + TIPSV2 ZERO-SHOT BG CONCAT] === 🏆")
     for rank, (idx, sim) in enumerate(top_concat_tipsv2_bg, 1):
         row = sampled_df.iloc[idx]
-        print(f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
+        print(
+            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(concat_tipsv2_bg_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 

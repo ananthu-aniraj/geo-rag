@@ -26,6 +26,7 @@ OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))[
 # Input dirs
 INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
 IWILDCAM_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('iwildcam_dir', ''))" 2>/dev/null || echo "")
+KOPPEN_GEIGER_TIF=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('koppen_geiger_tif', ''))" 2>/dev/null || echo "")
 
 # MLLM config
 LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('label_method', 'mllm'))" 2>/dev/null || echo "mllm")
@@ -97,10 +98,16 @@ python3 -m src.processing.process_scraped_data \
 
 echo ""
 echo "[Step 1b/5] Standardizing Dataset Timestamps..."
-python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET"
+KOPPEN_FLAG=""
+if [ -n "$KOPPEN_GEIGER_TIF" ]; then
+    echo " -> Köppen-Geiger TIF: $KOPPEN_GEIGER_TIF"
+    KOPPEN_FLAG="--koppen_tif $KOPPEN_GEIGER_TIF"
+fi
+
+python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_FLAG
 RAW_CSV="$OUTPUT_DIR/${BASE_NAME}_deduplicated.csv"
 if [ -f "$RAW_CSV" ]; then
-    python3 -m src.processing.standardize_timestamps --input "$RAW_CSV"
+    python3 -m src.processing.standardize_timestamps --input "$RAW_CSV" $KOPPEN_FLAG
 fi
 
 echo ""
