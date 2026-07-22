@@ -30,4 +30,4 @@ pipeline:
   iwildcam_dir: "/home/ananthu/DATA/data_ananthu/iwildcam_subset"
 
   # Köppen-Geiger climate classification GeoTIFF path
-  koppen_geiger_tif: "/user/aaniraj/home/Documents/Projects/data/koppen_geiger_tif/1991_2020/koppen_geiger_0p00833333.tif"
+  koppen_geiger_tif: "/home/ananthu/DATA/data_ananthu/koppen_geiger_tif/1991_2020/koppen_geiger_0p00833333.tif"
