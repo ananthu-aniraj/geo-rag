@@ -67,7 +67,7 @@ To optimize global random search and avoid querying coordinates that already con
 ### Step 1b: Timestamp Standardization & Climate Zoning
 * **Script**: `src/processing/standardize_timestamps.py`
 * **Operation**: Normalizes inconsistent date/time strings and Unix epochs into ISO 8601 strings (`YYYY-MM-DDTHH:MM:SSZ`).
-* **Köppen-Geiger Climate Mapping**: If a Köppen-Geiger climate classification TIF map is provided (using the `--koppen_tif` argument), coordinates are queried to assign each image a climate code (e.g., `BWh`, `Aw`, `Csa`).
+* **Köppen-Geiger Climate Mapping**: If a Köppen-Geiger climate classification [Beck et al., 2023] TIF map is provided (using the `--koppen_tif` argument), coordinates are queried to assign each image a climate code (e.g., `BWh`, `Aw`, `Csa`). The dataset can be downloaded from [here](https://www.gloh2o.org/koppen/). The script uses `rasterio` to read the TIF and `pyproj` to convert coordinates to the TIF's projection system.
 * **Categorizations Added**:
   * **Time of Day**: *Dawn* (05-08), *Morning* (08-12), *Afternoon* (12-17), *Dusk* (17-20), *Night* (20-05).
   * **Seasons (Climate-Aware Zoning)**:
@@ -299,3 +299,4 @@ python3 -m src.utils.validate_cluster_count \
 * Sculley, D. (2010). Web-scale k-means clustering. In *Proceedings of the 19th International Conference on World Wide Web* (pp. 1177–1178).
 * Thorndike, R. L. (1953). Who belongs in the family? *Psychometrika*, 18(4), 267–276.
 * Tobler, W. R. (1970). A computer movie simulating urban growth in the Detroit region. *Economic Geography*, 46(sup1), 234–240.
+* Beck, H. E., T. R. McVicar, N. Vergopolan, A. Berg, N. J. Lutsko, A. Dufour, Z. Zeng, X. Jiang, A. I. J. M. van Dijk, and D. G. Miralles. High-resolution (1 km) Köppen-Geiger maps for 1901–2099 based on constrained CMIP6 projections. Scientific Data 10, 724 (2023).
