@@ -64,7 +64,7 @@ def fetch_photos(bbox_coords, page=1, geo_context=2):
         f"&bbox={bbox_str}"
         f"&has_geo=1"
         f"&geo_context={geo_context}"  # <--- Now dynamically injected
-        f"&extras=url_m,geo,date_taken"
+        f"&extras=url_m,geo,date_taken,license"
         f"&per_page=250"
         f"&page={page}"
         f"&format=json"
@@ -129,7 +129,7 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
     writer = csv.writer(csv_file)
 
     if not file_exists:
-        writer.writerow(['Photo_ID', 'Title', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At'])
+        writer.writerow(['Photo_ID', 'Title', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License'])
 
     # Use tqdm to create a progress bar
     # CHANGE: Renamed 'box' to 'grid_box' to avoid overwriting Shapely's 'box' function
@@ -186,9 +186,10 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
                         captured_at = photo.get('datetaken', '')
                         if captured_at:
                             captured_at = captured_at.replace(" ", "T")
+                        license_val = photo.get('license', '0')
 
                         if image_url and lat and lon:
-                            writer.writerow([photo_id, title, lat, lon, image_url, captured_at])
+                            writer.writerow([photo_id, title, lat, lon, image_url, captured_at, license_val])
                             photos_saved_this_box += 1
 
                         # Break out if we hit the limit while looping through photos

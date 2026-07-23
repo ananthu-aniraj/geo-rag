@@ -267,6 +267,16 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
     pf = pq.ParquetFile(input_path)
     schema = pf.schema_arrow
 
+    # Dynamically upgrade schema to include License if it is present in the new df
+    # but not in the existing parquet database
+    has_license_in_new = "License" in df_new.columns if df_new is not None else False
+    has_license_in_existing = "License" in schema.names
+    
+    if has_license_in_new and not has_license_in_existing:
+        new_fields = list(schema)
+        new_fields.append(pa.field("License", pa.string()))
+        schema = pa.schema(new_fields)
+
     tmp_output = f"{output_path}.tmp_stream"
     try:
         active_arr = pa.array(list(active_cells))
@@ -274,6 +284,12 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
             # 1. Stream copy inactive rows from original parquet
             for rg in range(pf.num_row_groups):
                 table = pf.read_row_group(rg)
+                
+                # Append a null column for License if we upgraded the schema
+                if has_license_in_new and "License" not in table.column_names:
+                    null_col = pa.array([None] * len(table), type=pa.string())
+                    table = table.append_column("License", null_col)
+
                 h3_col = table["H3_Cell"]
                 mask = pc.invert(pc.is_in(h3_col, value_set=active_arr))
                 filtered_table = table.filter(mask)
@@ -303,7 +319,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
     try:
         # Convert final_data to DataFrame and save to tmp parquet
         if not final_data:
-            df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding', 'Captured_At'])
+            df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding', 'Captured_At', 'License'])
         else:
             df = pd.DataFrame(final_data)
             
@@ -392,16 +408,37 @@ def load_and_preprocess_csv(f):
                 'captured_at': 'Captured_At', 
                 'Captured_At': 'Captured_At',
                 'Date_Observed': 'Captured_At',
-                'observed_on_string': 'Captured_At'
+                'observed_on_string': 'Captured_At',
+                'license': 'License',
+                'License': 'License'
             }
             df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
             if 'Platform' not in df.columns:
                 df['Platform'] = platform
 
-        required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At']
+        required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License']
         for col in required_cols:
             if col not in df.columns:
                 df[col] = None
+
+        # Populate standard platform licenses if missing
+        platform_lower = df['Platform'].astype(str).str.lower()
+        mapillary_mask = (platform_lower == 'mapillary') & (df['License'].isna() | (df['License'] == ''))
+        if mapillary_mask.any():
+            df.loc[mapillary_mask, 'License'] = 'CC BY-SA 4.0'
+            
+        kartaview_mask = (platform_lower == 'kartaview') & (df['License'].isna() | (df['License'] == ''))
+        if kartaview_mask.any():
+            df.loc[kartaview_mask, 'License'] = 'CC BY-SA 4.0'
+
+        iwildcam_mask = (platform_lower == 'iwildcam') & (df['License'].isna() | (df['License'] == ''))
+        if iwildcam_mask.any():
+            df.loc[iwildcam_mask, 'License'] = 'CDLA-Permissive-1.0'
+
+        inat_mask = (platform_lower.str.contains('inaturalist') | (platform_lower == 'inat')) & (df['License'].isna() | (df['License'] == ''))
+        if inat_mask.any():
+            df.loc[inat_mask, 'License'] = 'CC BY-NC 4.0'
+
         df = df[required_cols].copy()
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
@@ -503,7 +540,7 @@ def main():
     if all_dfs:
         df_all = pd.concat(all_dfs, ignore_index=True)
     else:
-        df_all = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At'])
+        df_all = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License'])
     all_dfs = []  # Free memory
 
     # Vectorized H3 cell computation and filtering
@@ -560,9 +597,12 @@ def main():
         active_cells_list = list(active_cells)
         
         filter_expr = ds.field("H3_Cell").isin(active_cells_list)
+        cols_to_load = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL', 'embedding']
+        if 'License' in dataset.schema.names:
+            cols_to_load.append('License')
         table_active = dataset.to_table(
             filter=filter_expr,
-            columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL', 'embedding']
+            columns=cols_to_load
         )
         df_existing_active = table_active.to_pandas()
         
