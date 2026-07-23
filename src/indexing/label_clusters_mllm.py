@@ -252,6 +252,11 @@ def main():
             embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
             current_row += chunk_len
 
+    if 'Latitude' in df.columns:
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    if 'Longitude' in df.columns:
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+
     if 'cluster_id' not in df.columns:
         raise ValueError("Input file missing 'cluster_id'. Please run cluster_images_global.py first.")
 
@@ -446,6 +451,11 @@ def main():
         df['parent_cluster_description'] = df['parent_cluster_id'].map(parent_descriptions)
 
     print(f"Saving labeled dataset to {args.output_file}...")
+    if 'Latitude' in df.columns:
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    if 'Longitude' in df.columns:
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+
     if args.output_file.endswith('.pkl'):
         data = df.to_dict('records')
         for i, item in enumerate(data):

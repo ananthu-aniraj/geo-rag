@@ -164,6 +164,10 @@ def load_dataset(file_path):
         df = table.to_pandas()
 
     print(f" -> Loaded {len(df)} records in {time.time() - t0:.2f}s.")
+    if 'Latitude' in df.columns:
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    if 'Longitude' in df.columns:
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
     return df
 
 

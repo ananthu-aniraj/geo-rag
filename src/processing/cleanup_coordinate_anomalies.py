@@ -46,6 +46,8 @@ def main():
         "Latitude": np.concatenate(lats),
         "Longitude": np.concatenate(lons)
     })
+    df_meta["Latitude"] = pd.to_numeric(df_meta["Latitude"], errors='coerce')
+    df_meta["Longitude"] = pd.to_numeric(df_meta["Longitude"], errors='coerce')
     print(f" -> Loaded coordinates metadata for {len(df_meta):,} records in {time.time() - t0:.2f}s.")
 
     # 2. Group by rounded latitude to detect locked lines
@@ -113,6 +115,8 @@ def main():
         temp_csv_path = output_csv_path + ".tmp"
         first = True
         for chunk in pd.read_csv(csv_path, chunksize=100000, dtype={'Platform': str, 'Photo_ID': str}):
+            chunk["Latitude"] = pd.to_numeric(chunk["Latitude"], errors='coerce')
+            chunk["Longitude"] = pd.to_numeric(chunk["Longitude"], errors='coerce')
             chunk["lat_round"] = chunk["Latitude"].round(5)
             cleaned_chunk = chunk[~chunk["lat_round"].isin(flagged_lats)].drop(columns=["lat_round"])
 

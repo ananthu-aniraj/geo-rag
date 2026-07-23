@@ -194,7 +194,12 @@ def save_dataset(data, final_results, parent_results, out_path):
         with open(out_path, 'wb') as f:
             pickle.dump(data, f)
     else:
-        pd.DataFrame(data).to_parquet(out_path)
+        df = pd.DataFrame(data)
+        if 'Latitude' in df.columns:
+            df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+        if 'Longitude' in df.columns:
+            df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+        df.to_parquet(out_path)
 
     print(
         f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} child clusters and {len(updated_parents)} parent clusters to {out_path}.")
@@ -263,6 +268,10 @@ def main():
             data = pickle.load(f)
     else:
         df = pd.read_parquet(args.file)
+        if 'Latitude' in df.columns:
+            df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+        if 'Longitude' in df.columns:
+            df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
         data = df.to_dict('records')
 
     if not data:

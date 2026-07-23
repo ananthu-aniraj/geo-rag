@@ -44,6 +44,11 @@ def main():
     else:
         df = pd.read_parquet(args.input)
 
+    if 'Latitude' in df.columns:
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    if 'Longitude' in df.columns:
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+
     # 1. Normalise columns to Captured_At if present under other names
     col_map = {
         'captured_at': 'Captured_At',

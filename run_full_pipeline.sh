@@ -50,6 +50,7 @@ SEMANTIC_MAP="$OUTPUT_DIR/global_h3_semantic_map.html"
 STATS_PLOT="$OUTPUT_DIR/global_dataset_stats.png"
 STATS_TEXT="$OUTPUT_DIR/global_dataset_stats.txt"
 STATS_MAP="$OUTPUT_DIR/global_dataset_map.html"
+CLUSTER_COUNT_PLOT="$OUTPUT_DIR/cluster_count_validation.png"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
@@ -111,7 +112,7 @@ if [ -f "$RAW_CSV" ]; then
 fi
 
 echo ""
-echo "[Step 1d/5] Cleaning Coordinate Anomalies (if enabled)..."
+echo "[Step 1c/5] Cleaning Coordinate Anomalies (if enabled)..."
 if [ "$CLEANUP_ANOMALIES" = "true" ]; then
     echo "Running coordinate anomaly cleanup..."
     python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --csv "$RAW_CSV" --output "$CLEANED_PARQUET" --output_csv "$CLEANED_CSV"
@@ -124,7 +125,7 @@ else
 fi
 
 echo ""
-echo "[Step 1c/5] Automatically Finding Optimal k (if enabled)..."
+echo "[Step 1d/5] Automatically Finding Optimal k (if enabled)..."
 if [ "$AUTO_FIND_K" = "true" ]; then
     echo "Running spatial block validation to determine optimal k..."
     python3 -m src.utils.validate_cluster_count \
@@ -133,6 +134,7 @@ if [ "$AUTO_FIND_K" = "true" ]; then
       --k_max "$K_MAX" \
       --k_step "$K_STEP" \
       --update_params \
+      --output_plot "$CLUSTER_COUNT_PLOT" \
       --sample_limit 0
       
     # Reload the newly estimated K_CLUSTERS value from params.yaml
@@ -155,6 +157,35 @@ python3 -m src.indexing.cluster_images_global \
   --k "$K_CLUSTERS" \
   --out "$CLUSTERED_PARQUET" \
   --gpu
+
+# Ensure no stale sglang-server container is running from a previous run
+docker rm -f sglang-server >/dev/null 2>&1 || true
+
+echo "Launching SGLang server container..."
+docker run -d \
+  --name sglang-server \
+  --runtime nvidia \
+  -e NVIDIA_VISIBLE_DEVICES=0 \
+  --shm-size 32g \
+  -p 30000:30000 \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  --env "HF_TOKEN=HF_TOKEN_PLACEHOLDER" \
+  --ipc=host \
+  lmsysorg/sglang:latest-runtime \
+  bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph"
+
+echo "Waiting for SGLang server to initialize..."
+until curl -s http://localhost:30000/health > /dev/null; do
+    if ! docker ps -q --filter "name=sglang-server" | grep -q .; then
+        echo "[ERROR] SGLang server container exited unexpectedly."
+        echo "Showing last 20 lines of docker logs:"
+        docker logs --tail 20 sglang-server
+        exit 1
+    fi
+    sleep 2
+done
+
+echo "SGLang server is live! Executing downstream tasks..."
 
 echo ""
 echo "[Step 2b/5] MLLM Cluster Auto-Labeling..."
@@ -228,6 +259,10 @@ echo ""
 echo "=========================================================="
 echo "  Pipeline Complete!"
 echo "  Outputs located at: $OUTPUT_DIR"
+echo ""
+echo "  ⚠️  REMINDER: SGLang server container is still running in the background."
+echo "     To stop it and free up GPU memory, run:"
+echo "     docker stop sglang-server && docker rm sglang-server"
 echo "=========================================================="
 
 # 3. Handle DVC Standalone Tracking (Option 2)

@@ -5,12 +5,7 @@ import time
 import os
 import pandas as pd
 import pyarrow.parquet as pq
-
-try:
-    import faiss
-except ImportError:
-    faiss = None
-
+import faiss
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 
@@ -65,8 +60,9 @@ def main():
     parser.add_argument("--out", type=str, default="clustered_data.parquet", help="Output Parquet path.")
     args = parser.parse_args()
 
+    k_parents = args.k_parents
     if args.k_parents is None:
-        args.k_parents = max(2, args.k // 80)
+        k_parents = max(2, args.k // 80)
 
     print(f"Loading dataset from {args.pkl}...")
     if args.pkl.endswith('.pkl'):
@@ -101,6 +97,11 @@ def main():
         del table
         print(f" -> Successfully loaded {num_rows:,} embeddings in {time.time() - t0:.2f}s.")
 
+    if 'Latitude' in df.columns:
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    if 'Longitude' in df.columns:
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+
     if len(df) == 0:
         print("No data found.")
         return
@@ -126,9 +127,9 @@ def main():
     raw_centroids[valid_counts] /= counts[valid_counts, None]
 
     # 2. Hierarchical Parent Clustering using FAISS
-    print(f"\n--- [Stage 2/2] Hierarchical Parent Clustering (k_parents={args.k_parents}) ---")
+    print(f"\n--- [Stage 2/2] Hierarchical Parent Clustering (k_parents={k_parents}) ---")
     centroids_norm_hac = normalize(raw_centroids).astype(np.float32)
-    parent_ids, _ = cluster_data(centroids_norm_hac, args.k_parents, gpu_enabled=args.gpu, minibatch_enabled=args.minibatch)
+    parent_ids, _ = cluster_data(centroids_norm_hac, k_parents, gpu_enabled=args.gpu, minibatch_enabled=args.minibatch)
 
     # Assign cluster IDs to DataFrame
     print("\nAssigning cluster IDs to metadata...")

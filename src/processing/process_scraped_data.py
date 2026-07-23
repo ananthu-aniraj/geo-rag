@@ -265,6 +265,8 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
             df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding', 'Captured_At'])
         else:
             df = pd.DataFrame(final_data)
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
         df.to_parquet(tmp_path, index=False)
         
         # Save processed cells to tmp meta
@@ -354,7 +356,9 @@ def load_and_preprocess_csv(f):
         for col in required_cols:
             if col not in df.columns:
                 df[col] = None
-        df = df[required_cols]
+        df = df[required_cols].copy()
+        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
         return df
     except Exception as e:
         print(f"Error reading {f}: {e}")
@@ -442,6 +446,8 @@ def main():
                 else (f"kartaview://{pid}" if str(plat).lower() == 'kartaview' else url)
                 for plat, pid, url in zip(platforms, photo_ids, image_urls)
             ]
+            df_existing['Latitude'] = pd.to_numeric(df_existing['Latitude'], errors='coerce')
+            df_existing['Longitude'] = pd.to_numeric(df_existing['Longitude'], errors='coerce')
         print(f"Loaded {len(df_existing)} existing images across {df_existing['H3_Cell'].nunique()} cells.")
 
     # Read CSVs in parallel using ThreadPoolExecutor
@@ -465,6 +471,8 @@ def main():
     if not df_all.empty:
         # Standardize timestamps across all platforms (Flickr, Mapillary, iNaturalist) in a vectorized way
         df_all['Captured_At'] = standardize_timestamps_vectorized(df_all['Captured_At'])
+        df_all['Latitude'] = pd.to_numeric(df_all['Latitude'], errors='coerce')
+        df_all['Longitude'] = pd.to_numeric(df_all['Longitude'], errors='coerce')
 
         # Vectorized H3 cell calculation
         lats = df_all['Latitude'].to_numpy()
@@ -642,6 +650,8 @@ def main():
     out_df = pd.DataFrame(final_data)
     if 'Captured_At' in out_df.columns:
         out_df['Captured_At'] = standardize_timestamps_vectorized(out_df['Captured_At'])
+    out_df['Latitude'] = pd.to_numeric(out_df['Latitude'], errors='coerce')
+    out_df['Longitude'] = pd.to_numeric(out_df['Longitude'], errors='coerce')
     csv_path = os.path.join(args.save_path, f"{args.output_name}.csv")
     parquet_path = os.path.join(args.save_path, f"{args.output_name}.parquet")
 
