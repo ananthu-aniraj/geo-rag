@@ -671,30 +671,35 @@ def main():
             })
         
     existing_items_dict = defaultdict(list)
-    if df_existing is not None and not df_existing.empty:
-        df_existing_active = df_existing[df_existing['H3_Cell'].isin(active_cells)]
-        if not df_existing_active.empty:
-            pids = df_existing_active['Photo_ID'].to_numpy()
-            plats = df_existing_active['Platform'].to_numpy()
-            lats = df_existing_active['Latitude'].to_numpy()
-            lons = df_existing_active['Longitude'].to_numpy()
-            urls = df_existing_active['Image_URL'].to_numpy()
-            caps = df_existing_active['Captured_At'].to_numpy()
-            cells = df_existing_active['H3_Cell'].to_numpy()
-            active_indices = df_existing_active.index.values
-            embs = existing_embeddings[active_indices] if 'existing_embeddings' in locals() else [None] * len(df_existing_active)
+    if df_existing_active is not None and not df_existing_active.empty:
+        pids = df_existing_active['Photo_ID'].to_numpy()
+        plats = df_existing_active['Platform'].to_numpy()
+        lats = df_existing_active['Latitude'].to_numpy()
+        lons = df_existing_active['Longitude'].to_numpy()
+        urls = df_existing_active['Image_URL'].to_numpy()
+        caps = df_existing_active['Captured_At'].to_numpy()
+        cells = df_existing_active['H3_Cell'].to_numpy()
+        
+        if 'existing_embeddings' in locals() and existing_embeddings is not None:
+            if args.resume_from.endswith('.pkl'):
+                active_indices = df_existing_active.index.values
+                embs = existing_embeddings[active_indices]
+            else:
+                embs = existing_embeddings
+        else:
+            embs = [None] * len(df_existing_active)
 
-            for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
-                existing_items_dict[cell].append({
-                    'Photo_ID': pid,
-                    'Platform': plat,
-                    'Latitude': lat,
-                    'Longitude': lon,
-                    'Image_URL': url,
-                    'Captured_At': cap,
-                    'H3_Cell': cell,
-                    'embedding': emb
-                })
+        for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
+            existing_items_dict[cell].append({
+                'Photo_ID': pid,
+                'Platform': plat,
+                'Latitude': lat,
+                'Longitude': lon,
+                'Image_URL': url,
+                'Captured_At': cap,
+                'H3_Cell': cell,
+                'embedding': emb
+            })
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):
