@@ -299,27 +299,28 @@ def generate_text_report(df, df_filtered, is_global, location_name):
     lines.append("  - Afternoon : 12:00 to 16:59")
     lines.append("  - Dusk      : 17:00 to 19:59")
     lines.append("  - Night     : 20:00 to 04:59")
-    lines.append("\n🍂 Seasonal Classifications (based on month & Latitude):")
-    lines.append("  - Tropical Zone (Latitude between -23.5° and 23.5°):")
-    lines.append("    * Wet Season: June, July, August, September")
-    lines.append("    * Dry Season: October to May")
-    lines.append("  - Northern Temperate/Polar Zone (Latitude > 23.5°):")
-    lines.append("    * Spring: March, April, May")
-    lines.append("    * Summer: June, July, August")
-    lines.append("    * Autumn: September, October, November")
-    lines.append("    * Winter: December, January, February")
-    lines.append("  - Southern Temperate/Polar Zone (Latitude < -23.5°):")
-    lines.append("    * Autumn: March, April, May")
-    lines.append("    * Winter: June, July, August")
-    lines.append("    * Spring: September, October, November")
-    lines.append("    * Summer: December, January, February")
+    lines.append("\n🍂 Seasonal Classifications (Climate-Aware zoning via Köppen-Geiger, with Latitudinal fallbacks):")
+    lines.append("  - Desert / Dry Climates (BWh, BWk):")
+    lines.append("    * Always classified as 'Dry Season' year-round.")
+    lines.append("  - Tropical Savanna & Monsoon (Aw, Am):")
+    lines.append("    * Northern Hemisphere Wet Season: June to September")
+    lines.append("    * Southern Hemisphere Wet Season: November to April")
+    lines.append("  - Mediterranean (Csa, Csb):")
+    lines.append("    * Northern Hemisphere Wet Season (rainy winter): December to February")
+    lines.append("    * Southern Hemisphere Wet Season (rainy winter): June to August")
+    lines.append("  - Standard Latitudinal Zones (Fallbacks if Köppen data is missing or other climate codes):")
+    lines.append("    * Tropical Zone (Latitudes between -23.5° and 23.5°):")
+    lines.append("      + Wet Season: June, July, August, September")
+    lines.append("      + Dry Season: October to May")
+    lines.append("    * Temperate/Polar Zones (Latitudes > 23.5° or < -23.5°):")
+    lines.append("      + Spring / Summer / Autumn / Winter mapped dynamically based on hemisphere.")
     lines.append("=" * 80 + "\n")
 
     return "\n".join(lines)
 
 
 def generate_plots(df_filtered, is_global, location_name, output_path):
-    """Generate a 2x2 multi-panel plot for visualization."""
+    """Generate a multi-panel plot for visualization."""
     if len(df_filtered) == 0:
         print("Warning: No records found. Skipping plot generation.")
         return
@@ -329,7 +330,16 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
 
     # Set modern style
     sns.set_theme(style="whitegrid")
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    
+    has_koppen = 'Koppen_Code' in df_filtered.columns and df_filtered['Koppen_Code'].notna().any()
+    has_parent = 'parent_cluster_label' in df_filtered.columns and df_filtered['parent_cluster_label'].notna().any()
+    use_3x2 = has_koppen or has_parent
+    
+    if use_3x2:
+        fig, axes = plt.subplots(3, 2, figsize=(16, 18))
+    else:
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        
     fig.suptitle(f"Dataset Statistics: {location_name}", fontsize=18, fontweight='bold', y=0.98)
 
     # --- Subplot 1: Spatial Breakdown ---
@@ -422,6 +432,47 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
         ax4.text(0.5, 0.5, "Season not available", ha='center', va='center')
         ax4.set_title("Season Distribution (Unavailable)", fontsize=14, fontweight='bold')
 
+    if use_3x2:
+        # --- Subplot 5: Koppen-Geiger Climate Distribution ---
+        ax5 = axes[2, 0]
+        if 'Koppen_Code' in df_filtered.columns:
+            valid_koppen = df_filtered[df_filtered['Koppen_Code'].notna() & (df_filtered['Koppen_Code'] != '')]
+            if len(valid_koppen) > 0:
+                counts = valid_koppen['Koppen_Code'].value_counts()
+                sns.barplot(x=counts.index, y=counts.values, ax=ax5, palette="tab10", hue=counts.index, legend=False)
+                ax5.set_title("Distribution by Köppen Climate Code", fontsize=14, fontweight='bold')
+                ax5.set_ylabel("Image Count")
+                max_val = counts.values.max() if len(counts) > 0 else 1
+                for i, v in enumerate(counts.values):
+                    ax5.text(i, v + (max_val * 0.01), f"{v:,}", ha='center', fontweight='bold', fontsize=9)
+                ax5.set_ylim(0, max_val * 1.1)
+            else:
+                ax5.text(0.5, 0.5, "No valid Koppen codes found", ha='center', va='center')
+                ax5.set_title("Koppen Climate Distribution", fontsize=14, fontweight='bold')
+        else:
+            ax5.text(0.5, 0.5, "Koppen Code not available", ha='center', va='center')
+            ax5.set_title("Koppen Climate Distribution (Unavailable)", fontsize=14, fontweight='bold')
+
+        # --- Subplot 6: Top Semantic Parent Cluster Labels ---
+        ax6 = axes[2, 1]
+        if 'parent_cluster_label' in df_filtered.columns:
+            counts = df_filtered['parent_cluster_label'].value_counts()
+            plotted_counts = counts.head(10)
+            if len(plotted_counts) > 0:
+                sns.barplot(x=plotted_counts.values, y=plotted_counts.index, ax=ax6, palette="rocket", hue=plotted_counts.index, legend=False)
+                ax6.set_title("Top 10 Semantic Parent Categories", fontsize=14, fontweight='bold')
+                ax6.set_xlabel("Image Count")
+                max_val = plotted_counts.values.max() if len(plotted_counts) > 0 else 1
+                for i, v in enumerate(plotted_counts.values):
+                    ax6.text(v + (max_val * 0.01), i, f" {v:,}", va='center', fontweight='bold', fontsize=9)
+                ax6.set_xlim(0, max_val * 1.15)
+            else:
+                ax6.text(0.5, 0.5, "No parent cluster labels found", ha='center', va='center')
+                ax6.set_title("Parent Cluster Labels", fontsize=14, fontweight='bold')
+        else:
+            ax6.text(0.5, 0.5, "Parent Cluster Label not available", ha='center', va='center')
+            ax6.set_title("Parent Cluster Labels (Unavailable)", fontsize=14, fontweight='bold')
+
     plt.tight_layout()
     output_dir = os.path.dirname(os.path.abspath(output_path))
     if output_dir:
@@ -475,6 +526,7 @@ def generate_interactive_map(df_filtered, location_name, output_html_path):
     platform_counts = pd.DataFrame()
     tod_counts = pd.DataFrame()
     season_counts = pd.DataFrame()
+    koppen_counts = pd.DataFrame()
     
     if 'Platform' in df_filtered.columns:
         platform_counts = df_filtered.groupby(['map_h3', 'Platform']).size().unstack(fill_value=0)
@@ -482,6 +534,8 @@ def generate_interactive_map(df_filtered, location_name, output_html_path):
         tod_counts = df_filtered.groupby(['map_h3', 'Time_Of_Day']).size().unstack(fill_value=0)
     if 'Season' in df_filtered.columns:
         season_counts = df_filtered.groupby(['map_h3', 'Season']).size().unstack(fill_value=0)
+    if 'Koppen_Code' in df_filtered.columns:
+        koppen_counts = df_filtered.groupby(['map_h3', 'Koppen_Code']).size().unstack(fill_value=0)
         
     # 4. Initialize Folium Map
     center_lat = (min_lat + max_lat) / 2
@@ -581,6 +635,12 @@ def generate_interactive_map(df_filtered, location_name, output_html_path):
                         properties["seasons"] = " | ".join([f"{k}: {v:,} ({v/count*100:.0f}%)" for k, v in s_row.items() if v > 0])
                     else:
                         properties["seasons"] = "N/A"
+                        
+                    if not koppen_counts.empty and cell in koppen_counts.index:
+                        k_row = koppen_counts.loc[cell]
+                        properties["koppen_climate"] = " | ".join([f"{k}: {v:,} ({v/count*100:.0f}%)" for k, v in k_row.items() if v > 0])
+                    else:
+                        properties["koppen_climate"] = "N/A"
                 
                 feature = {
                     "type": "Feature",
@@ -615,6 +675,9 @@ def generate_interactive_map(df_filtered, location_name, output_html_path):
             # Base layer has rich, unified tooltips
             tooltip_fields = ["cell", "count", "platforms", "time_of_day", "seasons"]
             tooltip_aliases = ["H3 Cell:", "Total Images:", "Platforms:", "Time of Day:", "Seasons:"]
+            if 'Koppen_Code' in df_filtered.columns:
+                tooltip_fields.append("koppen_climate")
+                tooltip_aliases.append("Köppen Climate:")
         else:
             # Sublayers only show specific count
             tooltip_fields = ["cell", "count"]
@@ -664,6 +727,26 @@ def generate_interactive_map(df_filtered, location_name, output_html_path):
                     continue
                 theme = themes.get(season.lower(), 'red')
                 add_layer('Season', season, f"Season: {season}", theme)
+                
+        # Koppen Climate Layers
+        if 'Koppen_Code' in df_filtered.columns:
+            koppens = df_filtered['Koppen_Code'].dropna().unique()
+            for kop in koppens:
+                if kop == 'Unknown' or kop == '':
+                    continue
+                first_char = kop[0].upper()
+                theme = 'red'
+                if first_char == 'A':
+                    theme = 'viridis'
+                elif first_char == 'B':
+                    theme = 'orange'
+                elif first_char == 'C':
+                    theme = 'green'
+                elif first_char == 'D':
+                    theme = 'blue'
+                elif first_char == 'E':
+                    theme = 'purple'
+                add_layer('Koppen_Code', kop, f"Climate: {kop}", theme)
                 
         # Layer Control (only needed when multiple toggleable layers are rendered)
         folium.LayerControl(collapsed=False).add_to(m)

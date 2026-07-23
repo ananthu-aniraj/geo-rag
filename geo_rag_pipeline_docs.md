@@ -205,11 +205,12 @@ The pipeline outputs three primary Leaflet-based interactive maps to inspect dat
 * **Hover Details**: Tooltip displays the percentage breakdown of different semantic clusters within that cell (e.g., `Residential: 60%`, `Urban: 40%`).
 
 ### 3. Dynamic Statistics Map (`src/utils/dataset_statistics.py`)
-* **Purpose**: Generates analytics and plots globally or for a specific location.
+* **Purpose**: Generates analytics, visual plots, and layered maps globally or for a specific location.
 * **Dynamic Resolution**: Adapts from global views (H3 res 4) to local city views (H3 res 8).
-* **Smart Performance**: 
-  * **Global views** are compiled into a lightweight **11MB** single-layer map showing all 9,888 H3 cells, with Platform, Time of Day, and Season breakdowns compiled directly inside the hover tooltips.
-  * **Regional views** generate multi-layered maps with toggleable layers for visual comparisons of times/seasons.
+* **Interactive Map Elements**:
+  * **Global views** are compiled into a lightweight **11MB** single-layer map showing all 9,888 H3 cells, with Platform, Time of Day, Season, and Köppen Climate breakdowns compiled directly inside the hover tooltips.
+  * **Regional views** generate multi-layered maps with toggleable layers for visual comparisons of times, seasons, and Köppen climate zones.
+* **Visual Plots**: Generates multi-panel summary plots (.png). Dynamically switches from a standard **2x2** grid to a **3x2** layout if climate or semantic categorization columns are present, adding plots for Köppen climate distribution and top 10 semantic parent category distribution.
 
 ---
 
