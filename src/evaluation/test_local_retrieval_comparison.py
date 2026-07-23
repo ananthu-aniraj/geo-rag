@@ -92,6 +92,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling.")
     parser.add_argument("--query_platform", type=str, default=None, choices=["flickr", "mapillary"],
                         help="Choose platform for the query image (selects query_idx index from this platform's subset).")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size for Segformer and TIPSv2 inference.")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -169,42 +170,33 @@ def main():
     # Pre-generate 150 distinct colors for ADE20K visualization
     colors_150 = np.random.RandomState(42).randint(30, 230, size=(150, 3), dtype=np.uint8)
 
-    # 6-Class Geospatial Taxonomy for TIPSv2 Zero-Shot Patch Decomposition
-    ABSTRACT_PROMPTS = [
-        "the open sky, clouds, horizon, or atmosphere",                     # Class 0: Sky & Weather
-        "trees, foliage, forests, bushes, green plants, or canopy",          # Class 1: Natural Vegetation
-        "bare earth, soil, sand, rocks, mountains, or dry land",            # Class 2: Terrain & Soil
-        "a road, asphalt street, dirt track, sidewalk, or path",            # Class 3: Road & Surface
-        "buildings, houses, walls, fences, bridges, or architecture",       # Class 4: Built Structures
-        "cars, trucks, buses, people, signs, or street furniture"           # Class 5: Vehicles & Dynamic Objects
-    ]
-    ABSTRACT_LABELS = [
-        "Sky & Clouds",
-        "Natural Vegetation",
-        "Terrain & Soil",
+    # 3-Class Taxonomy for TIPSv2 Zero-Shot Patch Decomposition
+    THREE_LABELS = [
+        "Sky",
         "Road & Surface",
-        "Built Structures",
-        "Vehicles & Animals & Humans"
+        "Ground Scenery"
     ]
-    ABSTRACT_COLORS = np.array([
-        [70, 130, 180],  # Steel Blue (Sky)
-        [34, 139, 34],   # Forest Green (Natural Vegetation)
-        [184, 115, 51],  # Copper Brown (Terrain & Soil)
-        [100, 100, 100], # Charcoal Gray (Road & Surface)
-        [138, 43, 226],  # Purple (Built Structures)
-        [220, 20, 60]    # Crimson Red (Vehicles & Animals & Humans)
+    THREE_COLORS = np.array([
+        [70, 130, 180],   # Steel Blue (Sky)
+        [100, 100, 100],  # Charcoal Gray (Road)
+        [34, 139, 34]     # Forest Green (Ground Scenery)
     ], dtype=np.uint8)
 
-    print("Pre-computing TIPSv2 text embeddings for ADE20K and Geospatial 6-Class prompts...")
+    print("Pre-computing TIPSv2 text embeddings for ADE20K and 3-Class prompts...")
     with torch.no_grad():
         text_embeds = tipsv2.encode_text(ade_labels)
         text_embeds_np = text_embeds.cpu().numpy()
         text_embeds_norm = text_embeds_np / (np.linalg.norm(text_embeds_np, axis=1, keepdims=True) + 1e-9)
 
-        abstract_text_embeds = tipsv2.encode_text(ABSTRACT_LABELS)
-        abstract_text_embeds_np = abstract_text_embeds.cpu().numpy()
-        abstract_text_embeds_norm = abstract_text_embeds_np / (
-                    np.linalg.norm(abstract_text_embeds_np, axis=1, keepdims=True) + 1e-9)
+        three_prompts = [
+            "the open sky, clouds, horizon, or atmosphere",
+            "a road, asphalt street, concrete sidewalk, dirt path, highway, or pavement",
+            "ground landscape, soil, sand, rocks, mountains, trees, bushes, vegetation, and buildings"
+        ]
+        three_text_embeds = tipsv2.encode_text(three_prompts)
+        three_text_embeds_np = three_text_embeds.cpu().numpy()
+        three_text_embeds_norm = three_text_embeds_np / (
+                    np.linalg.norm(three_text_embeds_np, axis=1, keepdims=True) + 1e-9)
 
     # Compute Embeddings for downloaded images
     print(
@@ -213,10 +205,7 @@ def main():
     bg_embeddings = {}
     tipsv2_bg_embeddings = {}
     tipsv2_scenery_embeddings = {}
-    tipsv2_veg_embeddings = {}
-    tipsv2_terrain_embeddings = {}
     tipsv2_road_embeddings = {}
-    tipsv2_built_embeddings = {}
     tipsv2_sky_embeddings = {}
     simple_embeddings = {}
     concat_simple_embeddings = {}
@@ -227,190 +216,184 @@ def main():
 
     transform = transforms.Compose([transforms.Resize((448, 448)), transforms.ToTensor()])
 
-    for idx, img in tqdm(images.items(), desc="Inference"):
-        img_resized = img.resize((448, 448))
+    # 3. Batched Inference Loop
+    batch_size = args.batch_size
+    image_keys = list(images.keys())
+    
+    for chunk_start in tqdm(range(0, len(image_keys), batch_size), desc="Inference Batches"):
+        batch_keys = image_keys[chunk_start : chunk_start + batch_size]
+        batch_imgs = [images[k] for k in batch_keys]
+        batch_imgs_resized = [img.resize((448, 448)) for img in batch_imgs]
 
-        # 1. Segformer masking
-        inputs = seg_processor(images=img_resized, return_tensors="pt").to(device)
+        # 1. Segformer masking in batch
+        inputs = seg_processor(images=batch_imgs_resized, return_tensors="pt").to(device)
         with torch.no_grad():
             outputs = seg_model(**inputs)
+        
         logits = torch.nn.functional.interpolate(outputs.logits, size=(448, 448), mode="bilinear", align_corners=False)
-        pred_mask = logits.argmax(dim=1).squeeze(0).cpu().numpy()
+        pred_masks = logits.argmax(dim=1).cpu().numpy() # Shape [B, 448, 448]
 
-        keep_mask = np.ones_like(pred_mask, dtype=float)
-        for c in DISCARD_CLASSES:
-            keep_mask[pred_mask == c] = 0.0
-
-        patch_size = 14
-        grid_size = 32
-        patch_weights = np.zeros((grid_size, grid_size))
-        for r in range(grid_size):
-            for c in range(grid_size):
-                patch_weights[r, c] = np.mean(
-                    keep_mask[r * patch_size:(r + 1) * patch_size, c * patch_size:(c + 1) * patch_size])
-        patch_weights_flat = patch_weights.flatten()[:, np.newaxis]
-
-        # 2. TIPSv2 Feature Extraction and Zero-shot Segmentation
-        img_tensor = transform(img).unsqueeze(0).to(device)
+        # 2. TIPSv2 Feature Extraction in batch
+        img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
         with torch.no_grad():
-            out = tipsv2.encode_image(img_tensor)
-            cls_token = out.cls_token.squeeze().cpu().numpy()
-            # Extract features using the MaskCLIP values trick to get highly-aligned spatial features
-            patch_tokens_val = encode_image_value_attention(tipsv2.vision_encoder, img_tensor)
-            patch_tokens = patch_tokens_val.squeeze(0).reshape(1024, -1).cpu().numpy()
+            out = tipsv2.encode_image(img_tensors)
+            cls_tokens = out.cls_token.cpu().numpy()
+            if cls_tokens.ndim == 3: # Handle shape [B, 1, D] if present
+                cls_tokens = cls_tokens.squeeze(1)
+            
+            patch_tokens_vals = encode_image_value_attention(tipsv2.vision_encoder, img_tensors) # Shape [B, 32, 32, D]
+            patch_tokens_vals = patch_tokens_vals.reshape(len(batch_keys), 1024, -1).cpu().numpy() # Shape [B, 1024, D]
 
-        # Compute cosine similarity between patches and 150 ADE20K text embeddings
-        norm_patches = patch_tokens / (np.linalg.norm(patch_tokens, axis=1, keepdims=True) + 1e-9)
-        patch_text_sim = np.dot(norm_patches, text_embeds_norm.T)  # shape [1024, 150]
-        best_prompt_idx = np.argmax(patch_text_sim, axis=1)
+        # Process each image in the batch
+        for batch_i, idx in enumerate(batch_keys):
+            img = batch_imgs[batch_i]
+            img_resized = batch_imgs_resized[batch_i]
+            pred_mask = pred_masks[batch_i]
+            cls_token = cls_tokens[batch_i]
+            patch_tokens = patch_tokens_vals[batch_i]
 
-        # Compute cosine similarity between patches and 4 Abstract Class text embeddings
-        patch_abstract_sim = np.dot(norm_patches, abstract_text_embeds_norm.T)  # shape [1024, 4]
-        best_abstract_idx = np.argmax(patch_abstract_sim, axis=1)
+            keep_mask = np.ones_like(pred_mask, dtype=float)
+            for c in DISCARD_CLASSES:
+                keep_mask[pred_mask == c] = 0.0
 
-        # Decide whether to keep/discard based on predicted ADE20K class index and extra discard list
-        tipsv2_keep_mask_flat = np.ones(1024, dtype=float)
-        for i in range(1024):
-            idx_class = best_prompt_idx[i]
-            class_name = ade_labels[idx_class].lower()
-            if idx_class in DISCARD_CLASSES or any(extra in class_name for extra in EXTRA_DISCARD):
-                tipsv2_keep_mask_flat[i] = 0.0
+            patch_size = 14
+            grid_size = 32
+            patch_weights = np.zeros((grid_size, grid_size))
+            for r in range(grid_size):
+                for c in range(grid_size):
+                    patch_weights[r, c] = np.mean(
+                        keep_mask[r * patch_size:(r + 1) * patch_size, c * patch_size:(c + 1) * patch_size])
+            patch_weights_flat = patch_weights.flatten()[:, np.newaxis]
 
-        tipsv2_keep_mask_grid = tipsv2_keep_mask_flat.reshape(32, 32)
-        tipsv2_keep_mask_upsampled = np.repeat(np.repeat(tipsv2_keep_mask_grid, 14, axis=0), 14, axis=1)
+            # Compute cosine similarity between patches and 150 ADE20K text embeddings
+            norm_patches = patch_tokens / (np.linalg.norm(patch_tokens, axis=1, keepdims=True) + 1e-9)
+            patch_text_sim = np.dot(norm_patches, text_embeds_norm.T)  # shape [1024, 150]
+            best_prompt_idx = np.argmax(patch_text_sim, axis=1)
 
-        # Generate 4-panel diagnostic visualization:
-        # [Original Image | Segformer ADE20K Map | TIPSv2 ADE20K Mask | TIPSv2 Abstract 4-Class Map]
-        best_prompt_idx_grid = best_prompt_idx.reshape(32, 32)
-        best_prompt_idx_upsampled = np.repeat(np.repeat(best_prompt_idx_grid, 14, axis=0), 14, axis=1)
-        seg_colored = colors_150[best_prompt_idx_upsampled]
+            # Compute cosine similarity between patches and 3-Class prompts (Sky, Road, Ground)
+            patch_three_sim = np.dot(norm_patches, three_text_embeds_norm.T)  # shape [1024, 3]
+            best_three_idx = np.argmax(patch_three_sim, axis=1) # 0: Sky, 1: Road, 2: Ground
 
-        best_abstract_idx_grid = best_abstract_idx.reshape(32, 32)
-        best_abstract_idx_upsampled = np.repeat(np.repeat(best_abstract_idx_grid, 14, axis=0), 14, axis=1)
-        abstract_colored = ABSTRACT_COLORS[best_abstract_idx_upsampled]
+            # Decide whether to keep/discard: keep road (1) and ground scenery (2), discard sky (0)
+            tipsv2_keep_mask_flat = ((best_three_idx == 1) | (best_three_idx == 2)).astype(float)
 
-        tipsv2_mask_visual = np.zeros((448, 448, 3), dtype=np.uint8)
-        tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 1.0] = [0, 200, 0]
-        tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 0.0] = [200, 0, 0]
+            tipsv2_keep_mask_grid = tipsv2_keep_mask_flat.reshape(32, 32)
+            tipsv2_keep_mask_upsampled = np.repeat(np.repeat(tipsv2_keep_mask_grid, 14, axis=0), 14, axis=1)
 
-        # 4-Panel image + 60px bottom legend banner -> (1792 x 508)
-        diag_img = Image.new('RGB', (1792, 508), color=(30, 30, 30))
-        diag_img.paste(img_resized, (0, 0))
-        diag_img.paste(Image.fromarray(seg_colored), (448, 0))
-        diag_img.paste(Image.fromarray(tipsv2_mask_visual), (896, 0))
-        diag_img.paste(Image.fromarray(abstract_colored), (1344, 0))
+            # Generate 4-panel diagnostic visualization:
+            # [Original Image | Segformer Keep Mask | TIPSv2 Keep Mask | TIPSv2 3-Class Map]
+            seg_mask_visual = np.zeros((448, 448, 3), dtype=np.uint8)
+            seg_mask_visual[keep_mask == 1.0] = [0, 200, 0] # Green
+            seg_mask_visual[keep_mask == 0.0] = [200, 0, 0] # Red
 
-        draw = ImageDraw.Draw(diag_img)
+            best_three_idx_grid = best_three_idx.reshape(32, 32)
+            best_three_idx_upsampled = np.repeat(np.repeat(best_three_idx_grid, 14, axis=0), 14, axis=1)
+            three_colored = THREE_COLORS[best_three_idx_upsampled]
 
-        # Draw panel title headers at top
-        draw.rectangle([0, 0, 448, 22], fill=(0, 0, 0))
-        draw.text((10, 3), "1. Original Image", fill=(255, 255, 255))
+            tipsv2_mask_visual = np.zeros((448, 448, 3), dtype=np.uint8)
+            tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 1.0] = [0, 200, 0]
+            tipsv2_mask_visual[tipsv2_keep_mask_upsampled == 0.0] = [200, 0, 0]
 
-        draw.rectangle([448, 0, 896, 22], fill=(0, 0, 0))
-        draw.text((458, 3), "2. SegFormer (ADE20K 150-Class)", fill=(255, 255, 255))
+            # 4-Panel image + 60px bottom legend banner -> (1792 x 508)
+            diag_img = Image.new('RGB', (1792, 508), color=(30, 30, 30))
+            diag_img.paste(img_resized, (0, 0))
+            diag_img.paste(Image.fromarray(seg_mask_visual), (448, 0))
+            diag_img.paste(Image.fromarray(tipsv2_mask_visual), (896, 0))
+            diag_img.paste(Image.fromarray(three_colored), (1344, 0))
 
-        draw.rectangle([896, 0, 1344, 22], fill=(0, 0, 0))
-        draw.text((906, 3), "3. TIPSv2 ADE20K Discard Mask", fill=(255, 255, 255))
+            draw = ImageDraw.Draw(diag_img)
 
-        draw.rectangle([1344, 0, 1792, 22], fill=(0, 0, 0))
-        draw.text((1354, 3), "4. TIPSv2 Geospatial 6-Class Map", fill=(255, 255, 255))
+            # Draw panel title headers at top
+            draw.rectangle([0, 0, 448, 22], fill=(0, 0, 0))
+            draw.text((10, 3), "1. Original Image", fill=(255, 255, 255))
 
-        # Draw bottom legend banner (y: 448 to 508)
-        # Legend for Panel 3 (TIPSv2 Discard Mask) at x=896
-        draw.rectangle([910, 465, 930, 485], fill=(0, 200, 0), outline=(255, 255, 255))
-        draw.text((935, 467), "Keep (Scenery)", fill=(255, 255, 255))
-        draw.rectangle([1060, 465, 1080, 485], fill=(200, 0, 0), outline=(255, 255, 255))
-        draw.text((1085, 467), "Discard (Object/Sky)", fill=(255, 255, 255))
+            draw.rectangle([448, 0, 896, 22], fill=(0, 0, 0))
+            draw.text((458, 3), "2. SegFormer Keep Mask", fill=(255, 255, 255))
 
-        # Legend for Panel 4 (TIPSv2 Geospatial 6-Class Map) at x=1344
-        # Row 1 (y = 455): Sky, Vegetation, Terrain
-        draw.rectangle([1350, 455, 1362, 467], fill=(70, 130, 180), outline=(255, 255, 255))
-        draw.text((1366, 454), "Sky", fill=(255, 255, 255))
+            draw.rectangle([896, 0, 1344, 22], fill=(0, 0, 0))
+            draw.text((906, 3), "3. TIPSv2 Binary Keep Mask", fill=(255, 255, 255))
 
-        draw.rectangle([1410, 455, 1422, 467], fill=(34, 139, 34), outline=(255, 255, 255))
-        draw.text((1426, 454), "Vegetation", fill=(255, 255, 255))
+            draw.rectangle([1344, 0, 1792, 22], fill=(0, 0, 0))
+            draw.text((1354, 3), "4. TIPSv2 3-Class Map (Sky/Road/Ground)", fill=(255, 255, 255))
 
-        draw.rectangle([1520, 455, 1532, 467], fill=(184, 115, 51), outline=(255, 255, 255))
-        draw.text((1536, 454), "Terrain/Soil", fill=(255, 255, 255))
+            # Draw bottom legend banner (y: 448 to 508)
+            # Legend for Panel 2 & 3 (Keep/Discard Masks)
+            draw.rectangle([460, 465, 480, 485], fill=(0, 200, 0), outline=(255, 255, 255))
+            draw.text((485, 467), "Keep (Ground/Scenery)", fill=(255, 255, 255))
+            draw.rectangle([610, 465, 630, 485], fill=(200, 0, 0), outline=(255, 255, 255))
+            draw.text((635, 467), "Discard (Object/Sky)", fill=(255, 255, 255))
 
-        # Row 2 (y = 480): Road, Built, Vehicles/Objects
-        draw.rectangle([1350, 480, 1362, 492], fill=(100, 100, 100), outline=(255, 255, 255))
-        draw.text((1366, 479), "Road", fill=(255, 255, 255))
+            draw.rectangle([910, 465, 930, 485], fill=(0, 200, 0), outline=(255, 255, 255))
+            draw.text((935, 467), "Keep (Ground/Scenery)", fill=(255, 255, 255))
+            draw.rectangle([1060, 465, 1080, 485], fill=(200, 0, 0), outline=(255, 255, 255))
+            draw.text((1085, 467), "Discard (Object/Sky)", fill=(255, 255, 255))
 
-        draw.rectangle([1410, 480, 1422, 492], fill=(138, 43, 226), outline=(255, 255, 255))
-        draw.text((1426, 479), "Built", fill=(255, 255, 255))
+            # Legend for Panel 4 (TIPSv2 3-Class Map)
+            draw.rectangle([1350, 465, 1370, 485], fill=(70, 130, 180), outline=(255, 255, 255))
+            draw.text((1375, 467), "Sky (Steel Blue)", fill=(255, 255, 255))
 
-        draw.rectangle([1520, 480, 1532, 492], fill=(220, 20, 60), outline=(255, 255, 255))
-        draw.text((1536, 479), "Vehicles/Objs", fill=(255, 255, 255))
+            draw.rectangle([1475, 465, 1495, 485], fill=(100, 100, 100), outline=(255, 255, 255))
+            draw.text((1500, 467), "Road (Charcoal)", fill=(255, 255, 255))
 
-        diagnostic_images[idx] = diag_img
+            draw.rectangle([1600, 465, 1620, 485], fill=(34, 139, 34), outline=(255, 255, 255))
+            draw.text((1625, 467), "Ground (Green)", fill=(255, 255, 255))
 
-        # Compute average patch vectors using both masks
-        # Segformer background average
-        total_weight = np.sum(patch_weights_flat)
-        bg_avg = np.sum(patch_tokens * patch_weights_flat, axis=0) / total_weight if total_weight > 0 else np.mean(
-            patch_tokens, axis=0)
+            diagnostic_images[idx] = diag_img
 
-        # TIPSv2 zero-shot background average
-        tipsv2_total_weight = np.sum(tipsv2_keep_mask_flat)
-        tipsv2_bg_avg = np.sum(patch_tokens * tipsv2_keep_mask_flat[:, np.newaxis],
-                               axis=0) / tipsv2_total_weight if tipsv2_total_weight > 0 else np.mean(
-            patch_tokens, axis=0)
+            # Compute average patch vectors using both masks
+            # Segformer background average
+            total_weight = np.sum(patch_weights_flat)
+            bg_avg = np.sum(patch_tokens * patch_weights_flat, axis=0) / total_weight if total_weight > 0 else np.mean(
+                patch_tokens, axis=0)
 
-        # TIPSv2 Geospatial 6-Class patch averages
-        sky_mask = (best_abstract_idx == 0).astype(float)[:, np.newaxis]
-        veg_mask = (best_abstract_idx == 1).astype(float)[:, np.newaxis]
-        terrain_mask = (best_abstract_idx == 2).astype(float)[:, np.newaxis]
-        road_mask = (best_abstract_idx == 3).astype(float)[:, np.newaxis]
-        built_mask = (best_abstract_idx == 4).astype(float)[:, np.newaxis]
-        scenery_mask = ((best_abstract_idx >= 1) & (best_abstract_idx <= 4)).astype(float)[:, np.newaxis]
+            # TIPSv2 zero-shot background average
+            tipsv2_total_weight = np.sum(tipsv2_keep_mask_flat)
+            tipsv2_bg_avg = np.sum(patch_tokens * tipsv2_keep_mask_flat[:, np.newaxis],
+                                   axis=0) / tipsv2_total_weight if tipsv2_total_weight > 0 else np.mean(
+                patch_tokens, axis=0)
 
-        sky_avg = np.sum(patch_tokens * sky_mask, axis=0) / (np.sum(sky_mask) + 1e-9) if np.sum(sky_mask) > 0 else np.mean(patch_tokens, axis=0)
-        veg_avg = np.sum(patch_tokens * veg_mask, axis=0) / (np.sum(veg_mask) + 1e-9) if np.sum(veg_mask) > 0 else np.mean(patch_tokens, axis=0)
-        terrain_avg = np.sum(patch_tokens * terrain_mask, axis=0) / (np.sum(terrain_mask) + 1e-9) if np.sum(terrain_mask) > 0 else np.mean(patch_tokens, axis=0)
-        road_avg = np.sum(patch_tokens * road_mask, axis=0) / (np.sum(road_mask) + 1e-9) if np.sum(road_mask) > 0 else np.mean(patch_tokens, axis=0)
-        built_avg = np.sum(patch_tokens * built_mask, axis=0) / (np.sum(built_mask) + 1e-9) if np.sum(built_mask) > 0 else np.mean(patch_tokens, axis=0)
-        scenery_avg = np.sum(patch_tokens * scenery_mask, axis=0) / (np.sum(scenery_mask) + 1e-9) if np.sum(scenery_mask) > 0 else np.mean(patch_tokens, axis=0)
+            # TIPSv2 3-Class patch averages
+            sky_mask = (best_three_idx == 0).astype(float)[:, np.newaxis]
+            road_mask = (best_three_idx == 1).astype(float)[:, np.newaxis]
+            scenery_mask = (best_three_idx == 2).astype(float)[:, np.newaxis]
 
-        # Simple average of all patch tokens (unmasked)
-        simple_avg = np.mean(patch_tokens, axis=0)
+            sky_avg = np.sum(patch_tokens * sky_mask, axis=0) / (np.sum(sky_mask) + 1e-9) if np.sum(sky_mask) > 0 else np.mean(patch_tokens, axis=0)
+            road_avg = np.sum(patch_tokens * road_mask, axis=0) / (np.sum(road_mask) + 1e-9) if np.sum(road_mask) > 0 else np.mean(patch_tokens, axis=0)
+            scenery_avg = np.sum(patch_tokens * scenery_mask, axis=0) / (np.sum(scenery_mask) + 1e-9) if np.sum(scenery_mask) > 0 else np.mean(patch_tokens, axis=0)
 
-        # Normalization and Concatenations
-        cls_norm = cls_token / (np.linalg.norm(cls_token) + 1e-9)
-        simple_norm = simple_avg / (np.linalg.norm(simple_avg) + 1e-9)
-        bg_norm = bg_avg / (np.linalg.norm(bg_avg) + 1e-9)
-        tipsv2_bg_norm = tipsv2_bg_avg / (np.linalg.norm(tipsv2_bg_avg) + 1e-9)
-        tipsv2_scenery_norm = scenery_avg / (np.linalg.norm(scenery_avg) + 1e-9)
-        tipsv2_veg_norm = veg_avg / (np.linalg.norm(veg_avg) + 1e-9)
-        tipsv2_terrain_norm = terrain_avg / (np.linalg.norm(terrain_avg) + 1e-9)
-        tipsv2_road_norm = road_avg / (np.linalg.norm(road_avg) + 1e-9)
-        tipsv2_built_norm = built_avg / (np.linalg.norm(built_avg) + 1e-9)
-        tipsv2_sky_norm = sky_avg / (np.linalg.norm(sky_avg) + 1e-9)
+            # Simple average of all patch tokens (unmasked)
+            simple_avg = np.mean(patch_tokens, axis=0)
 
-        concat_simple = np.concatenate([cls_norm, simple_norm], axis=0)
-        concat_simple /= np.linalg.norm(concat_simple) + 1e-9
+            # Normalization and Concatenations
+            cls_norm = cls_token / (np.linalg.norm(cls_token) + 1e-9)
+            simple_norm = simple_avg / (np.linalg.norm(simple_avg) + 1e-9)
+            bg_norm = bg_avg / (np.linalg.norm(bg_avg) + 1e-9)
+            tipsv2_bg_norm = tipsv2_bg_avg / (np.linalg.norm(tipsv2_bg_avg) + 1e-9)
+            tipsv2_scenery_norm = scenery_avg / (np.linalg.norm(scenery_avg) + 1e-9)
+            tipsv2_road_norm = road_avg / (np.linalg.norm(road_avg) + 1e-9)
+            tipsv2_sky_norm = sky_avg / (np.linalg.norm(sky_avg) + 1e-9)
 
-        concat_bg = np.concatenate([cls_norm, bg_norm], axis=0)
-        concat_bg /= np.linalg.norm(concat_bg) + 1e-9
+            concat_simple = np.concatenate([cls_norm, simple_norm], axis=0)
+            concat_simple /= np.linalg.norm(concat_simple) + 1e-9
 
-        concat_tipsv2_bg = np.concatenate([cls_norm, tipsv2_bg_norm], axis=0)
-        concat_tipsv2_bg /= np.linalg.norm(concat_tipsv2_bg) + 1e-9
+            concat_bg = np.concatenate([cls_norm, bg_norm], axis=0)
+            concat_bg /= np.linalg.norm(concat_bg) + 1e-9
 
-        # Save embeddings
-        cls_embeddings[idx] = cls_norm
-        bg_embeddings[idx] = bg_norm
-        tipsv2_bg_embeddings[idx] = tipsv2_bg_norm
-        tipsv2_scenery_embeddings[idx] = tipsv2_scenery_norm
-        tipsv2_veg_embeddings[idx] = tipsv2_veg_norm
-        tipsv2_terrain_embeddings[idx] = tipsv2_terrain_norm
-        tipsv2_road_embeddings[idx] = tipsv2_road_norm
-        tipsv2_built_embeddings[idx] = tipsv2_built_norm
-        tipsv2_sky_embeddings[idx] = tipsv2_sky_norm
-        simple_embeddings[idx] = simple_norm
-        concat_simple_embeddings[idx] = concat_simple
-        concat_bg_embeddings[idx] = concat_bg
-        concat_tipsv2_bg_embeddings[idx] = concat_tipsv2_bg
-        valid_indices.append(idx)
+            concat_tipsv2_bg = np.concatenate([cls_norm, tipsv2_bg_norm], axis=0)
+            concat_tipsv2_bg /= np.linalg.norm(concat_tipsv2_bg) + 1e-9
+
+            # Save embeddings
+            cls_embeddings[idx] = cls_norm
+            bg_embeddings[idx] = bg_norm
+            tipsv2_bg_embeddings[idx] = tipsv2_bg_norm
+            tipsv2_scenery_embeddings[idx] = tipsv2_scenery_norm
+            tipsv2_road_embeddings[idx] = tipsv2_road_norm
+            tipsv2_sky_embeddings[idx] = tipsv2_sky_norm
+            simple_embeddings[idx] = simple_norm
+            concat_simple_embeddings[idx] = concat_simple
+            concat_bg_embeddings[idx] = concat_bg
+            concat_tipsv2_bg_embeddings[idx] = concat_tipsv2_bg
+            valid_indices.append(idx)
 
     # Perform retrieval matching
     query_row = sampled_df.iloc[query_row_idx]
@@ -424,10 +407,7 @@ def main():
     bg_similarities = {}
     tipsv2_bg_similarities = {}
     tipsv2_scenery_similarities = {}
-    tipsv2_veg_similarities = {}
-    tipsv2_terrain_similarities = {}
     tipsv2_road_similarities = {}
-    tipsv2_built_similarities = {}
     simple_similarities = {}
     concat_simple_similarities = {}
     concat_bg_similarities = {}
@@ -437,10 +417,7 @@ def main():
     q_bg = bg_embeddings[query_row_idx]
     q_tipsv2_bg = tipsv2_bg_embeddings[query_row_idx]
     q_tipsv2_scenery = tipsv2_scenery_embeddings[query_row_idx]
-    q_tipsv2_veg = tipsv2_veg_embeddings[query_row_idx]
-    q_tipsv2_terrain = tipsv2_terrain_embeddings[query_row_idx]
     q_tipsv2_road = tipsv2_road_embeddings[query_row_idx]
-    q_tipsv2_built = tipsv2_built_embeddings[query_row_idx]
     q_simple = simple_embeddings[query_row_idx]
     q_concat_simple = concat_simple_embeddings[query_row_idx]
     q_concat_bg = concat_bg_embeddings[query_row_idx]
@@ -452,10 +429,7 @@ def main():
         bg_similarities[idx] = np.dot(bg_embeddings[idx], q_bg)
         tipsv2_bg_similarities[idx] = np.dot(tipsv2_bg_embeddings[idx], q_tipsv2_bg)
         tipsv2_scenery_similarities[idx] = np.dot(tipsv2_scenery_embeddings[idx], q_tipsv2_scenery)
-        tipsv2_veg_similarities[idx] = np.dot(tipsv2_veg_embeddings[idx], q_tipsv2_veg)
-        tipsv2_terrain_similarities[idx] = np.dot(tipsv2_terrain_embeddings[idx], q_tipsv2_terrain)
         tipsv2_road_similarities[idx] = np.dot(tipsv2_road_embeddings[idx], q_tipsv2_road)
-        tipsv2_built_similarities[idx] = np.dot(tipsv2_built_embeddings[idx], q_tipsv2_built)
         simple_similarities[idx] = np.dot(simple_embeddings[idx], q_simple)
         concat_simple_similarities[idx] = np.dot(concat_simple_embeddings[idx], q_concat_simple)
         concat_bg_similarities[idx] = np.dot(concat_bg_embeddings[idx], q_concat_bg)
@@ -466,10 +440,7 @@ def main():
     top_bg = sorted(bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_tipsv2_bg = sorted(tipsv2_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_scenery = sorted(tipsv2_scenery_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
-    top_veg = sorted(tipsv2_veg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
-    top_terrain = sorted(tipsv2_terrain_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_road = sorted(tipsv2_road_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
-    top_built = sorted(tipsv2_built_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_simple = sorted(simple_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_concat_simple = sorted(concat_simple_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
     top_concat_bg = sorted(concat_bg_similarities.items(), key=lambda x: x[1], reverse=True)[:3]
@@ -482,11 +453,8 @@ def main():
     simple_dir = os.path.join(exp_dir, "simple_avg")
     bg_dir = os.path.join(exp_dir, "segformer_bg_avg")
     tipsv2_bg_dir = os.path.join(exp_dir, "tipsv2_bg_avg")
-    scenery_dir = os.path.join(exp_dir, "tipsv2_6class_scenery")
-    veg_dir = os.path.join(exp_dir, "tipsv2_6class_vegetation")
-    terrain_dir = os.path.join(exp_dir, "tipsv2_6class_terrain")
-    road_dir = os.path.join(exp_dir, "tipsv2_6class_road")
-    built_dir = os.path.join(exp_dir, "tipsv2_6class_built")
+    scenery_dir = os.path.join(exp_dir, "tipsv2_3class_scenery")
+    road_dir = os.path.join(exp_dir, "tipsv2_3class_road")
     concat_simple_dir = os.path.join(exp_dir, "cls_simple_concat")
     concat_bg_dir = os.path.join(exp_dir, "cls_segformer_bg_concat")
     concat_tipsv2_bg_dir = os.path.join(exp_dir, "cls_tipsv2_bg_concat")
@@ -497,10 +465,7 @@ def main():
     os.makedirs(bg_dir, exist_ok=True)
     os.makedirs(tipsv2_bg_dir, exist_ok=True)
     os.makedirs(scenery_dir, exist_ok=True)
-    os.makedirs(veg_dir, exist_ok=True)
-    os.makedirs(terrain_dir, exist_ok=True)
     os.makedirs(road_dir, exist_ok=True)
-    os.makedirs(built_dir, exist_ok=True)
     os.makedirs(concat_simple_dir, exist_ok=True)
     os.makedirs(concat_bg_dir, exist_ok=True)
     os.makedirs(concat_tipsv2_bg_dir, exist_ok=True)
@@ -520,7 +485,7 @@ def main():
         match_path = os.path.join(cls_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 6-CLASS PERMANENT SCENERY] === 🏆")
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 3-CLASS SCENERY] === 🏆")
     for rank, (idx, sim) in enumerate(top_scenery, 1):
         row = sampled_df.iloc[idx]
         print(
@@ -530,36 +495,12 @@ def main():
         match_diag_path = os.path.join(scenery_dir, f"match_{rank}_sim_{sim:.4f}_segmentation.png")
         diagnostic_images[idx].save(match_diag_path)
 
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 NATURAL VEGETATION] === 🏆")
-    for rank, (idx, sim) in enumerate(top_veg, 1):
-        row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        match_path = os.path.join(veg_dir, f"match_{rank}_sim_{sim:.4f}.png")
-        images[idx].save(match_path)
-
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 TERRAIN & SOIL] === 🏆")
-    for rank, (idx, sim) in enumerate(top_terrain, 1):
-        row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        match_path = os.path.join(terrain_dir, f"match_{rank}_sim_{sim:.4f}.png")
-        images[idx].save(match_path)
-
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 ROAD & SURFACE] === 🏆")
+    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 3-CLASS ROAD] === 🏆")
     for rank, (idx, sim) in enumerate(top_road, 1):
         row = sampled_df.iloc[idx]
         print(
             f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
         match_path = os.path.join(road_dir, f"match_{rank}_sim_{sim:.4f}.png")
-        images[idx].save(match_path)
-
-    print("\n🏆 === TOP 3 LOCAL MATCHES USING [TIPSV2 BUILT STRUCTURES] === 🏆")
-    for rank, (idx, sim) in enumerate(top_built, 1):
-        row = sampled_df.iloc[idx]
-        print(
-            f" {rank}. Similarity: {sim:.4f} | Lat/Lon: {row['Latitude']:.4f}, {row['Longitude']:.4f} | URL: {row['Image_URL']}")
-        match_path = os.path.join(built_dir, f"match_{rank}_sim_{sim:.4f}.png")
         images[idx].save(match_path)
 
     print("\n🏆 === TOP 3 LOCAL MATCHES USING [SIMPLE-AVERAGE] === 🏆")
