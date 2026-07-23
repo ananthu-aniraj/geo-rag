@@ -53,3 +53,4 @@ shapefiles/uncovered_land_areas_test.*
 
 # Do not ignore
 !templates/*.html
+!prompts/*/*.txt

@@ -121,15 +121,16 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url, ti
     headers = {
         "Content-Type": "application/json"
     }
+    content = [{"type": "text", "text": prompt_text}]
+    if image_base64:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
+        
     payload = {
         "model": model_name,
         "messages": [
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt_text},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-                ]
+                "content": content
             }
         ],
         "temperature": 0.2
@@ -152,6 +153,43 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url, ti
         return ""
 
 
+def build_prompt_templates(representative_item, prompt_step1_template, prompt_step2_template, lulc_list_str):
+    lat = representative_item.get('Latitude', 'N/A')
+    lon = representative_item.get('Longitude', 'N/A')
+    location = f"Lat {lat}, Lon {lon}"
+    country = representative_item.get('country', 'Unknown')
+    if not country or pd.isna(country):
+        country = 'Unknown'
+    continent = representative_item.get('continent', 'Unknown')
+    if not continent or pd.isna(continent):
+        continent = 'Unknown'
+    season = representative_item.get('Season', 'Unknown')
+    if not season or pd.isna(season):
+        season = 'Unknown'
+    time_of_day = representative_item.get('Time_Of_Day', 'Unknown')
+    if not time_of_day or pd.isna(time_of_day):
+        time_of_day = 'Unknown'
+    koppen_code = representative_item.get('Koppen_Code', 'Unknown')
+    if not koppen_code or pd.isna(koppen_code):
+        koppen_code = 'Unknown'
+    koppen_desc = representative_item.get('Koppen_Desc', 'Unknown')
+    if not koppen_desc or pd.isna(koppen_desc):
+        koppen_desc = 'Unknown'
+
+    step2_prompt = prompt_step2_template.format(
+        location=location,
+        country=country,
+        continent=continent,
+        season=season,
+        time_of_day=time_of_day,
+        koppen_code=koppen_code,
+        koppen_desc=koppen_desc,
+        visual_description="{visual_description}",
+        lulc_list=lulc_list_str
+    )
+    return prompt_step1_template, step2_prompt
+
+
 def save_dataset(data, final_results, parent_results, out_path):
     """Helper to update labels in the data list and write them to the output file."""
     updated_clusters = set()
@@ -161,19 +199,23 @@ def save_dataset(data, final_results, parent_results, out_path):
     # Map child results
     cluster_labels = {}
     cluster_descriptions = {}
-    for cid, (lbl, desc) in final_results.items():
+    cluster_visual_descriptions = {}
+    for cid, (lbl, desc, desc_vis) in final_results.items():
         if lbl != "Error Labeling":
             cluster_labels[cid] = lbl
             cluster_descriptions[cid] = desc
+            cluster_visual_descriptions[cid] = desc_vis
             updated_clusters.add(cid)
 
     # Map parent results
     parent_labels = {}
     parent_descriptions = {}
-    for pid, (lbl, desc) in parent_results.items():
+    parent_visual_descriptions = {}
+    for pid, (lbl, desc, desc_vis) in parent_results.items():
         if lbl != "Error Labeling":
             parent_labels[pid] = lbl
             parent_descriptions[pid] = desc
+            parent_visual_descriptions[pid] = desc_vis
             updated_parents.add(pid)
 
     for item in data:
@@ -181,6 +223,8 @@ def save_dataset(data, final_results, parent_results, out_path):
         if cid is not None and int(cid) in cluster_labels:
             item['cluster_label'] = cluster_labels[int(cid)]
             item['cluster_description'] = cluster_descriptions[int(cid)]
+            if int(cid) in cluster_visual_descriptions:
+                item['visual_description'] = cluster_visual_descriptions[int(cid)]
             row_update_count += 1
             
         pid = item.get('parent_cluster_id')
@@ -188,6 +232,8 @@ def save_dataset(data, final_results, parent_results, out_path):
             item['parent_cluster_label'] = parent_labels[int(pid)]
             if pid in parent_descriptions:
                 item['parent_cluster_description'] = parent_descriptions[int(pid)]
+            if int(pid) in parent_visual_descriptions:
+                item['parent_visual_description'] = parent_visual_descriptions[int(pid)]
             row_update_count += 1
 
     if out_path.endswith('.pkl'):
@@ -359,17 +405,21 @@ def main():
     noise_category = "None of the above / Noise"
     noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
     all_categories = list(NATURAL_LULC_VOCAB.keys()) + list(MAN_MADE_LULC_VOCAB.keys()) + [noise_category]
-    lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
+    all_prompts = list(NATURAL_LULC_VOCAB.values()) + list(MAN_MADE_LULC_VOCAB.values()) + [noise_prompt]
+    lulc_list_str = "\n".join([f"- {k}: {v}" for k, v in zip(all_categories, all_prompts)])
 
-    # Load prompt template from prompts/shared/prompt.txt
+    # Load step 1 and step 2 prompt templates
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    prompt_path = os.path.join(script_dir, "prompts", "shared", "prompt.txt")
+    prompt_step1_path = os.path.join(script_dir, "prompts", "shared", "prompt_step1.txt")
+    prompt_step2_path = os.path.join(script_dir, "prompts", "shared", "prompt_step2.txt")
 
-    print(f"Loading shared prompt template from {prompt_path}")
-    with open(prompt_path, 'r') as f:
-        prompt_template = f.read()
+    print(f"Loading Step 1 prompt template from {prompt_step1_path}")
+    with open(prompt_step1_path, 'r', encoding='utf-8') as f:
+        prompt_step1_template = f.read()
 
-    prompt_text = prompt_template.format(lulc_list=lulc_list_str)
+    print(f"Loading Step 2 prompt template from {prompt_step2_path}")
+    with open(prompt_step2_path, 'r', encoding='utf-8') as f:
+        prompt_step2_template = f.read()
 
     # Helper function to prepare task for a single cluster (downloading with retry and fallback)
     def prepare_cluster_task(cid):
@@ -412,7 +462,8 @@ def main():
                     "cid": cid,
                     "img_str": img_str,
                     "img_url": img_url,
-                    "rank": rank
+                    "rank": rank,
+                    "item": item
                 }
         return None
 
@@ -458,7 +509,8 @@ def main():
                     "pid": pid,
                     "img_str": img_str,
                     "img_url": img_url,
-                    "rank": rank
+                    "rank": rank,
+                    "item": item
                 }
         return None
 
@@ -480,8 +532,21 @@ def main():
                     print(f"  [FAILED] Child Cluster #{cid}: Failed to download representative images.")
                     continue
 
-                response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint,
-                                                     timeout=args.timeout + 15)
+                # Build templates
+                representative_item = task['item']
+                p1_text, p2_text = build_prompt_templates(representative_item, prompt_step1_template, prompt_step2_template, lulc_list_str)
+
+                # Step 1: Vision
+                desc_text = query_vlm_openai_api(task['img_str'], p1_text, args.mllm_model, endpoint,
+                                                 timeout=args.timeout + 15)
+
+                if desc_text:
+                    # Step 2: Text
+                    step2_prompt_formatted = p2_text.format(visual_description=desc_text)
+                    response_text = query_vlm_openai_api(None, step2_prompt_formatted, args.mllm_model, endpoint,
+                                                         timeout=args.timeout + 15)
+                else:
+                    response_text = ""
 
                 if response_text:
                     label = "Unlabeled"
@@ -497,10 +562,10 @@ def main():
                     label = label.replace("**", "").replace("*", "").replace("`", "").strip()
                     label = label.strip('"\'*#-\t ')
 
-                    final_results[cid] = (label, description)
+                    final_results[cid] = (label, description, desc_text)
                     print(f"  [SUCCESS] Child Cluster #{cid} labeled: '{label}'")
                 else:
-                    final_results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
+                    final_results[cid] = ("Error Labeling", "Inference failed or returned empty response.", "")
                     print(f"  [FAILED] Child Cluster #{cid}: VLM returned empty response.")
 
                 if len(final_results) % args.save_interval == 0:
@@ -527,8 +592,21 @@ def main():
                     print(f"  [FAILED] Parent Cluster #{pid}: Failed to download representative images.")
                     continue
 
-                response_text = query_vlm_openai_api(task['img_str'], prompt_text, args.mllm_model, endpoint,
-                                                     timeout=args.timeout + 15)
+                # Build templates
+                representative_item = task['item']
+                p1_text, p2_text = build_prompt_templates(representative_item, prompt_step1_template, prompt_step2_template, lulc_list_str)
+
+                # Step 1: Vision
+                desc_text = query_vlm_openai_api(task['img_str'], p1_text, args.mllm_model, endpoint,
+                                                 timeout=args.timeout + 15)
+
+                if desc_text:
+                    # Step 2: Text
+                    step2_prompt_formatted = p2_text.format(visual_description=desc_text)
+                    response_text = query_vlm_openai_api(None, step2_prompt_formatted, args.mllm_model, endpoint,
+                                                         timeout=args.timeout + 15)
+                else:
+                    response_text = ""
 
                 if response_text:
                     label = "Unlabeled Parent"
@@ -544,10 +622,10 @@ def main():
                     label = label.replace("**", "").replace("*", "").replace("`", "").strip()
                     label = label.strip('"\'*#-\t ')
 
-                    parent_results[pid] = (label, description)
+                    parent_results[pid] = (label, description, desc_text)
                     print(f"  [SUCCESS] Parent Cluster #{pid} labeled: '{label}'")
                 else:
-                    parent_results[pid] = ("Error Labeling", "Inference failed or returned empty response.")
+                    parent_results[pid] = ("Error Labeling", "Inference failed or returned empty response.", "")
                     print(f"  [FAILED] Parent Cluster #{pid}: VLM returned empty response.")
 
                 if len(parent_results) % args.save_interval == 0:

@@ -27,6 +27,7 @@ OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))[
 INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
 IWILDCAM_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('iwildcam_dir', ''))" 2>/dev/null || echo "")
 KOPPEN_GEIGER_TIF=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('koppen_geiger_tif', ''))" 2>/dev/null || echo "")
+LAND_SHP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('land_shp', ''))" 2>/dev/null || echo "")
 
 # MLLM config
 LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('label_method', 'mllm'))" 2>/dev/null || echo "mllm")
@@ -98,17 +99,30 @@ python3 -m src.processing.process_scraped_data \
   $IWILDCAM_FLAG
 
 echo ""
-echo "[Step 1b/5] Standardizing Dataset Timestamps..."
+echo "[Step 1b/5] Standardizing Dataset Timestamps & Mapping Regions..."
 KOPPEN_FLAG=""
 if [ -n "$KOPPEN_GEIGER_TIF" ]; then
     echo " -> Köppen-Geiger TIF: $KOPPEN_GEIGER_TIF"
     KOPPEN_FLAG="--koppen_tif $KOPPEN_GEIGER_TIF"
 fi
 
-python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_FLAG
+LAND_SHP_FLAG=""
+if [ -z "$LAND_SHP" ]; then
+    if [ -f "shapefiles/ne_10m_admin_0_countries.shp" ]; then
+        LAND_SHP="shapefiles/ne_10m_admin_0_countries.shp"
+    elif [ -f "ne_10m_admin_0_countries.shp" ]; then
+        LAND_SHP="ne_10m_admin_0_countries.shp"
+    fi
+fi
+if [ -n "$LAND_SHP" ]; then
+    echo " -> Land shapefile: $LAND_SHP"
+    LAND_SHP_FLAG="--land_shp $LAND_SHP"
+fi
+
+python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_FLAG $LAND_SHP_FLAG
 RAW_CSV="$OUTPUT_DIR/${BASE_NAME}_deduplicated.csv"
 if [ -f "$RAW_CSV" ]; then
-    python3 -m src.processing.standardize_timestamps --input "$RAW_CSV" $KOPPEN_FLAG
+    python3 -m src.processing.standardize_timestamps --input "$RAW_CSV" $KOPPEN_FLAG $LAND_SHP_FLAG
 fi
 
 echo ""

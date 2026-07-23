@@ -109,15 +109,16 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url):
     headers = {
         "Content-Type": "application/json"
     }
+    content = [{"type": "text", "text": prompt_text}]
+    if image_base64:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
+        
     payload = {
         "model": model_name,
         "messages": [
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt_text},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-                ]
+                "content": content
             }
         ],
         "temperature": 0.2
@@ -137,6 +138,43 @@ def query_vlm_openai_api(image_base64, prompt_text, model_name, endpoint_url):
     except Exception as e:
         print(f"Failed to query VLM API at {endpoint_url}: {e}")
         return ""
+
+
+def build_prompt_templates(representative_item, prompt_step1_template, prompt_step2_template, lulc_list_str):
+    lat = representative_item.get('Latitude', 'N/A')
+    lon = representative_item.get('Longitude', 'N/A')
+    location = f"Lat {lat}, Lon {lon}"
+    country = representative_item.get('country', 'Unknown')
+    if not country or pd.isna(country):
+        country = 'Unknown'
+    continent = representative_item.get('continent', 'Unknown')
+    if not continent or pd.isna(continent):
+        continent = 'Unknown'
+    season = representative_item.get('Season', 'Unknown')
+    if not season or pd.isna(season):
+        season = 'Unknown'
+    time_of_day = representative_item.get('Time_Of_Day', 'Unknown')
+    if not time_of_day or pd.isna(time_of_day):
+        time_of_day = 'Unknown'
+    koppen_code = representative_item.get('Koppen_Code', 'Unknown')
+    if not koppen_code or pd.isna(koppen_code):
+        koppen_code = 'Unknown'
+    koppen_desc = representative_item.get('Koppen_Desc', 'Unknown')
+    if not koppen_desc or pd.isna(koppen_desc):
+        koppen_desc = 'Unknown'
+
+    step2_prompt = prompt_step2_template.format(
+        location=location,
+        country=country,
+        continent=continent,
+        season=season,
+        time_of_day=time_of_day,
+        koppen_code=koppen_code,
+        koppen_desc=koppen_desc,
+        visual_description="{visual_description}",
+        lulc_list=lulc_list_str
+    )
+    return prompt_step1_template, step2_prompt
 
 
 def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128, img_max_dim=448, image_root_dir=None):
@@ -169,8 +207,16 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
 
         def query_task(t):
             cid = t['cid']
-            response_text = query_vlm_openai_api(images_base64[cid], t['prompt'], model_name, endpoint_url)
-            batch_responses[cid] = response_text
+            # Step 1: Vision query (needs image)
+            desc_text = query_vlm_openai_api(images_base64[cid], t['prompt_step1'], model_name, endpoint_url)
+            if not desc_text:
+                batch_responses[cid] = None
+                return
+            
+            # Step 2: Text-only query (no image)
+            step2_prompt = t['prompt_step2_template'].format(visual_description=desc_text)
+            classification_text = query_vlm_openai_api(None, step2_prompt, model_name, endpoint_url)
+            batch_responses[cid] = (desc_text, classification_text)
 
         with ThreadPoolExecutor(max_workers=16) as executor:
             executor.map(query_task, valid_chunk)
@@ -178,7 +224,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
         for t in chunk:
             cid = t['cid']
             if cid in batch_responses and batch_responses[cid]:
-                response_text = batch_responses[cid]
+                desc_text, response_text = batch_responses[cid]
                 label = "Unlabeled"
                 description = response_text
                 if "LABEL:" in response_text and "DESCRIPTION:" in response_text:
@@ -190,9 +236,9 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
 
                 label = label.replace("**", "").replace("*", "").replace("`", "").strip()
                 label = label.strip('"\'*#-\t ')
-                results[cid] = (label, description)
+                results[cid] = (label, description, desc_text)
             else:
-                results[cid] = ("Error Labeling", "Inference failed or returned empty response.")
+                results[cid] = ("Error Labeling", "Inference failed or returned empty response.", "")
 
     return results
 
@@ -301,8 +347,10 @@ def main():
 
     parent_labels = {}
     parent_descriptions = {}
+    parent_visual_descriptions = {}
     cluster_labels = {}
     cluster_descriptions = {}
+    cluster_visual_descriptions = {}
 
     if args.label_method == "mllm":
         endpoint = args.mllm_endpoint
@@ -326,18 +374,24 @@ def main():
             args.label_method = "zeroshot"
 
     if args.label_method == "mllm":
-        # Load prompt template
+        # Load step 1 and step 2 prompt templates
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        prompt_path = os.path.join(root_dir, "prompts", "shared", "prompt.txt")
-        if not os.path.exists(prompt_path):
-            prompt_path = "prompts/shared/prompt.txt"
+        prompt_step1_path = os.path.join(root_dir, "prompts", "shared", "prompt_step1.txt")
+        prompt_step2_path = os.path.join(root_dir, "prompts", "shared", "prompt_step2.txt")
+        if not os.path.exists(prompt_step1_path):
+            prompt_step1_path = "prompts/shared/prompt_step1.txt"
+        if not os.path.exists(prompt_step2_path):
+            prompt_step2_path = "prompts/shared/prompt_step2.txt"
 
-        print(f"Loading shared prompt template from {prompt_path}...")
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            prompt_template = f.read()
+        print(f"Loading Step 1 prompt template from {prompt_step1_path}...")
+        with open(prompt_step1_path, 'r', encoding='utf-8') as f:
+            prompt_step1_template = f.read()
 
-        lulc_list_str = "\n".join([f"- {k}" for k in all_categories])
-        prompt_text = prompt_template.format(lulc_list=lulc_list_str)
+        print(f"Loading Step 2 prompt template from {prompt_step2_path}...")
+        with open(prompt_step2_path, 'r', encoding='utf-8') as f:
+            prompt_step2_template = f.read()
+
+        lulc_list_str = "\n".join([f"- {k}: {v}" for k, v in zip(all_categories, all_prompts)])
 
         # Label Parent Clusters
         if has_parents and k_parents > 0:
@@ -376,16 +430,24 @@ def main():
                     elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
                         img_url = f"kartaview://{photo_str}"
 
-                parent_tasks.append({"cid": pid, "img_url": img_url, "prompt": prompt_text})
+                # Build templates
+                p1_text, p2_text = build_prompt_templates(representative_item, prompt_step1_template, prompt_step2_template, lulc_list_str)
+                parent_tasks.append({
+                    "cid": pid,
+                    "img_url": img_url,
+                    "prompt_step1": p1_text,
+                    "prompt_step2_template": p2_text
+                })
 
             parent_results = label_clusters_mllm_batched(
                 parent_tasks, args.mllm_model, endpoint,
                 chunk_size=args.chunk_size, img_max_dim=args.img_max_dim,
                 image_root_dir=args.image_root_dir
             )
-            for pid, (lbl, desc) in parent_results.items():
+            for pid, (lbl, desc, desc_vis) in parent_results.items():
                 parent_labels[pid] = lbl
                 parent_descriptions[pid] = desc
+                parent_visual_descriptions[pid] = desc_vis
 
         # Label Child Clusters
         print(f"\nPreparing {k_clusters} child cluster tasks for MLLM labeling...")
@@ -413,16 +475,24 @@ def main():
                 elif platform == 'kartaview' or 'kartaview' in img_url or 'openstreetcam' in img_url:
                     img_url = f"kartaview://{photo_str}"
 
-            tasks.append({"cid": cid, "img_url": img_url, "prompt": prompt_text})
+            # Build templates
+            p1_text, p2_text = build_prompt_templates(representative_item, prompt_step1_template, prompt_step2_template, lulc_list_str)
+            tasks.append({
+                "cid": cid,
+                "img_url": img_url,
+                "prompt_step1": p1_text,
+                "prompt_step2_template": p2_text
+            })
 
         results = label_clusters_mllm_batched(
             tasks, args.mllm_model, endpoint,
             chunk_size=args.chunk_size, img_max_dim=args.img_max_dim,
             image_root_dir=args.image_root_dir
         )
-        for cid, (lbl, desc) in results.items():
+        for cid, (lbl, desc, desc_vis) in results.items():
             cluster_labels[cid] = lbl
             cluster_descriptions[cid] = desc
+            cluster_visual_descriptions[cid] = desc_vis
 
     if args.label_method == "zeroshot":
         print("Encoding zero-shot LULC taxonomy prompts using TIPSv2...")
@@ -443,12 +513,31 @@ def main():
         cluster_labels = {cid: lbl for cid, lbl in enumerate(c_labels_list)}
 
     print("\nUpdating metadata with labels and descriptions...")
-    df['cluster_label'] = df['cluster_id'].map(cluster_labels)
-    df['cluster_description'] = df['cluster_id'].map(cluster_descriptions)
+    
+    # Initialize dictionaries if not present to avoid NameError
+    if 'cluster_visual_descriptions' not in locals():
+        cluster_visual_descriptions = {}
+    if 'parent_visual_descriptions' not in locals():
+        parent_visual_descriptions = {}
+    if 'parent_labels' not in locals():
+        parent_labels = {}
+    if 'parent_descriptions' not in locals():
+        parent_descriptions = {}
+
+    if cluster_labels:
+        df['cluster_label'] = df['cluster_id'].map(cluster_labels).combine_first(df['cluster_label'] if 'cluster_label' in df.columns else pd.Series(dtype=str))
+    if cluster_descriptions:
+        df['cluster_description'] = df['cluster_id'].map(cluster_descriptions).combine_first(df['cluster_description'] if 'cluster_description' in df.columns else pd.Series(dtype=str))
+    if cluster_visual_descriptions:
+        df['visual_description'] = df['cluster_id'].map(cluster_visual_descriptions).combine_first(df['visual_description'] if 'visual_description' in df.columns else pd.Series(dtype=str))
 
     if has_parents:
-        df['parent_cluster_label'] = df['parent_cluster_id'].map(parent_labels)
-        df['parent_cluster_description'] = df['parent_cluster_id'].map(parent_descriptions)
+        if parent_labels:
+            df['parent_cluster_label'] = df['parent_cluster_id'].map(parent_labels).combine_first(df['parent_cluster_label'] if 'parent_cluster_label' in df.columns else pd.Series(dtype=str))
+        if parent_descriptions:
+            df['parent_cluster_description'] = df['parent_cluster_id'].map(parent_descriptions).combine_first(df['parent_cluster_description'] if 'parent_cluster_description' in df.columns else pd.Series(dtype=str))
+        if parent_visual_descriptions:
+            df['parent_visual_description'] = df['parent_cluster_id'].map(parent_visual_descriptions).combine_first(df['parent_visual_description'] if 'parent_visual_description' in df.columns else pd.Series(dtype=str))
 
     print(f"Saving labeled dataset to {args.output_file}...")
     if 'Latitude' in df.columns:

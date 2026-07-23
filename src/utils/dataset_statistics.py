@@ -32,15 +32,22 @@ def geocode_location(location_name):
     return None, None
 
 
-def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None, target_res = 5):
-    """Map coordinates to countries and continents using H3 resolution 5 cells and nearest-land fallback."""
+def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None, target_res = 8):
+    """Map coordinates to countries and continents using H3 cells and nearest-land fallback."""
+    if 'country' in df.columns and 'continent' in df.columns:
+        if not df['country'].isna().any() and not (df['country'] == 'Unknown').any():
+            print("Country and continent columns already present and populated. Skipping spatial region mapping.")
+            return df
+
     if not os.path.exists(land_shp_path):
         print(f"Warning: Shapefile '{land_shp_path}' not found. Cannot map points to countries/continents.")
-        df['continent'] = 'Unknown'
-        df['country'] = 'Unknown'
+        if 'continent' not in df.columns:
+            df['continent'] = 'Unknown'
+        if 'country' not in df.columns:
+            df['country'] = 'Unknown'
         return df
 
-    print("Mapping coordinates to countries/continents using H3 spatial index & shapefile...")
+    print(f"Mapping coordinates to countries/continents using H3 resolution {target_res} cells & shapefile...")
     t0 = time.time()
 
     # Load shapefile once
@@ -59,31 +66,31 @@ def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None, targe
             avail = index_parquet.schema_arrow.names
             if 'resolution' in avail and 'query_cell' in avail:
                 idx_df = pd.read_parquet(spatial_index_path, columns=['resolution', 'query_cell'])
-                idx_res5 = idx_df[idx_df['resolution'] == target_res]['query_cell'].dropna().unique()
-                unique_target_res.update(idx_res5)
-                print(f" -> Found {len(idx_res5):,} pre-indexed H3 resolution {target_res} cells.")
+                idx_query_cells = idx_df[idx_df['resolution'] == target_res]['query_cell'].dropna().unique()
+                unique_target_res.update(idx_query_cells)
+                print(f" -> Found {len(idx_query_cells):,} pre-indexed H3 resolution {target_res} cells.")
         except Exception as e:
             print(f" -> Warning: Could not read spatial index: {e}")
 
-    # Also extract res 5 cells from input df to ensure complete coverage
-    res11_to_res5 = {}
+    # Also extract cells from input df to ensure complete coverage
+    cell_to_parent_cell = {}
     if 'H3_Cell' in df.columns:
-        unique_res11 = df['H3_Cell'].dropna().unique()
-        res11_to_res5 = {c: h3.cell_to_parent(c, target_res) if h3.get_resolution(c) >= target_res else c for c in unique_res11}
-        unique_target_res.update(res11_to_res5.values())
+        unique_cells = df['H3_Cell'].dropna().unique()
+        cell_to_parent_cell = {c: h3.cell_to_parent(c, target_res) if h3.get_resolution(c) >= target_res else c for c in unique_cells}
+        unique_target_res.update(cell_to_parent_cell.values())
     else:
         print("H3_Cell column not found. Deriving H3 cells from coordinates...")
         df_coords = df[['Latitude', 'Longitude']].dropna().drop_duplicates()
-        df_coords['h3_res5'] = [h3.latlng_to_cell(lat, lon, target_res) for lat, lon in zip(df_coords['Latitude'], df_coords['Longitude'])]
-        unique_target_res.update(df_coords['h3_res5'].unique())
+        df_coords['h3_query_cell'] = [h3.latlng_to_cell(lat, lon, target_res) for lat, lon in zip(df_coords['Latitude'], df_coords['Longitude'])]
+        unique_target_res.update(df_coords['h3_query_cell'].unique())
 
-    unique_res5_list = list(unique_target_res)
-    print(f" -> Mapping {len(unique_res5_list):,} unique H3 resolution {target_res} cells against country boundaries...")
+    unique_query_cells = list(unique_target_res)
+    print(f" -> Mapping {len(unique_query_cells):,} unique H3 resolution {target_res} cells against country boundaries...")
 
     # Build GeoDataFrame of cell centroids
-    centroids = [h3.cell_to_latlng(cell) for cell in unique_res5_list]
+    centroids = [h3.cell_to_latlng(cell) for cell in unique_query_cells]
     gdf_centroids = gpd.GeoDataFrame(
-        {'h3_cell': unique_res5_list},
+        {'h3_cell': unique_query_cells},
         geometry=gpd.points_from_xy([c[1] for c in centroids], [c[0] for c in centroids]),
         crs='EPSG:4326'
     )
@@ -108,20 +115,20 @@ def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None, targe
     else:
         final_gdf = joined
 
-    res5_to_continent = final_gdf.set_index('h3_cell')['CONTINENT'].to_dict()
-    res5_to_country = final_gdf.set_index('h3_cell')['NAME'].to_dict()
+    query_cell_to_continent = final_gdf.set_index('h3_cell')['CONTINENT'].to_dict()
+    query_cell_to_country = final_gdf.set_index('h3_cell')['NAME'].to_dict()
 
     # Assign mapped regions back to main dataframe
     if 'H3_Cell' in df.columns:
-        res11_to_continent = {c11: res5_to_continent.get(c5, 'Ocean / Unknown') for c11, c5 in res11_to_res5.items()}
-        res11_to_country = {c11: res5_to_country.get(c5, 'Ocean / Unknown') for c11, c5 in res11_to_res5.items()}
+        cell_to_continent = {c11: query_cell_to_continent.get(c_parent, 'Ocean / Unknown') for c11, c_parent in cell_to_parent_cell.items()}
+        cell_to_country = {c11: query_cell_to_country.get(c_parent, 'Ocean / Unknown') for c11, c_parent in cell_to_parent_cell.items()}
 
-        df['continent'] = df['H3_Cell'].map(res11_to_continent).fillna('Ocean / Unknown')
-        df['country'] = df['H3_Cell'].map(res11_to_country).fillna('Ocean / Unknown')
+        df['continent'] = df['H3_Cell'].map(cell_to_continent).fillna('Ocean / Unknown')
+        df['country'] = df['H3_Cell'].map(cell_to_country).fillna('Ocean / Unknown')
     else:
         # Fallback coordinate mapping
-        df_coords['continent'] = df_coords['h3_res5'].map(res5_to_continent).fillna('Ocean / Unknown')
-        df_coords['country'] = df_coords['h3_res5'].map(res5_to_country).fillna('Ocean / Unknown')
+        df_coords['continent'] = df_coords['h3_query_cell'].map(query_cell_to_continent).fillna('Ocean / Unknown')
+        df_coords['country'] = df_coords['h3_query_cell'].map(query_cell_to_country).fillna('Ocean / Unknown')
         coord_map = df_coords.set_index(['Latitude', 'Longitude'])[['continent', 'country']].to_dict('index')
 
         tuples = list(zip(df['Latitude'], df['Longitude']))

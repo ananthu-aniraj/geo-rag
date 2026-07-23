@@ -15,6 +15,8 @@ def main():
                         help="Path to save the standardized file (omitted to overwrite in-place).")
     parser.add_argument("--koppen_tif", type=str, default=None,
                         help="Path to the Köppen-Geiger GeoTIFF file (checks params.yaml if omitted).")
+    parser.add_argument("--land_shp", type=str, default=None,
+                        help="Path to the country shapefile for spatial region mapping.")
     args = parser.parse_args()
 
     # Load koppen_tif path from params.yaml if not explicitly passed
@@ -242,6 +244,34 @@ def main():
 
     df['Time_Of_Day'] = time_of_days
     print(" -> Time of day classified. Column 'Time_Of_Day' added.")
+
+    # 4b. Map coordinates to regions (country and continent)
+    land_shp = args.land_shp
+    if not land_shp:
+        params_path = "params.yaml"
+        if os.path.exists(params_path):
+            try:
+                with open(params_path, 'r') as f:
+                    params = yaml.safe_load(f)
+                    land_shp = params.get('pipeline', {}).get('land_shp', None)
+            except Exception:
+                pass
+    if not land_shp:
+        land_shp = "shapefiles/ne_10m_admin_0_countries.shp" if os.path.exists("shapefiles/ne_10m_admin_0_countries.shp") else "ne_10m_admin_0_countries.shp"
+
+    if os.path.exists(land_shp):
+        try:
+            print("Mapping coordinates to countries/continents...")
+            from src.utils.dataset_statistics import map_coordinates_to_regions
+            df = map_coordinates_to_regions(df, land_shp)
+        except Exception as e:
+            print(f"[WARNING] Region mapping failed: {e}")
+            df['continent'] = 'Unknown'
+            df['country'] = 'Unknown'
+    else:
+        print(f"[WARNING] Shapefile '{land_shp}' not found. Cannot map points to countries/continents.")
+        df['continent'] = 'Unknown'
+        df['country'] = 'Unknown'
 
     # 5. Save output
     print(f"Saving standardized dataset to: {out_path}")
