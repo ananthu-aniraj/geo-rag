@@ -64,12 +64,17 @@ To optimize global random search and avoid querying coordinates that already con
   * `--filter_macro`: Filters out macro close-up flora/fauna images (typically for iNaturalist data) using a zero-shot *"A macro/close-up photo of flowers, leaves, bark, or insects"* classifier.
   * `--filter_sky`: Filters out empty sky views (typically for iNaturalist data) using a zero-shot *"A view of empty sky, clouds, or flying objects"* classifier.
 
-### Step 1b: Timestamp Standardization
+### Step 1b: Timestamp Standardization & Climate Zoning
 * **Script**: `src/processing/standardize_timestamps.py`
 * **Operation**: Normalizes inconsistent date/time strings and Unix epochs into ISO 8601 strings (`YYYY-MM-DDTHH:MM:SSZ`).
+* **Köppen-Geiger Climate Mapping**: If a Köppen-Geiger climate classification TIF map is provided (using the `--koppen_tif` argument), coordinates are queried to assign each image a climate code (e.g., `BWh`, `Aw`, `Csa`).
 * **Categorizations Added**:
   * **Time of Day**: *Dawn* (05-08), *Morning* (08-12), *Afternoon* (12-17), *Dusk* (17-20), *Night* (20-05).
-  * **Seasons**: Latitude-aware seasons (Spring/Summer/Autumn/Winter for temperate/polar regions; Wet/Dry seasons for tropical regions).
+  * **Seasons (Climate-Aware Zoning)**:
+    * **Desert Climates (BWh, BWk)**: Fixed to *"Dry Season"* year-round.
+    * **Tropical Wet/Dry Savanna & Monsoon (Aw, Am)**: Wet season is defined as June–September in the Northern Hemisphere and November–April in the Southern Hemisphere.
+    * **Mediterranean (Csa, Csb)**: Dry summer / wet winter. Wet season is Dec–Feb in the Northern Hemisphere and June–August in the Southern Hemisphere.
+    * **Temperate & Polar Fallbacks**: Classified into standard astronomical seasons (*Spring*, *Summer*, *Autumn*, *Winter*) based on standard hemispheric month spans.
 
 ### Step 1c: Coordinate Anomaly Cleanup (GPS Glitch Removal)
 * **Script**: `src/processing/cleanup_coordinate_anomalies.py`
