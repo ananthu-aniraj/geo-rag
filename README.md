@@ -62,7 +62,7 @@ To download the latest version of the dataset locally (requires SSH access to th
 * **iNaturalist Scraping**: [`run_inaturalist_scrapers.sh`](run_inaturalist_scrapers.sh)
 
 > [!NOTE]  
-> Both scraping scripts use shapefiles located in [`shapefiles/`](shapefiles/) to define target areas of interest.
+> Flickr and Mapillary scraping scripts use shapefiles located in [`shapefiles/`](shapefiles/) to define target areas of interest.
 
 ### Generating Uncovered Land Area Shapefiles
 To generate an uncovered land areas shapefile:
