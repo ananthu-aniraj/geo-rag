@@ -58,6 +58,7 @@ To optimize global random search and avoid querying coordinates that already con
 ### Step 1: Spatial Deduplication & Filtering
 * **Script**: `src/processing/process_scraped_data.py`
 * **Operation**: Groups coordinates into H3 Resolution 11 parent cells [Brodsky, 2018]. Performs spatial-temporal deduplication using TIPSv2 image embeddings [Cao, 2026] to ensure uniform geographic coverage.
+* **Million-Row Streaming Optimization**: To support datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and selectively loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` C++ streaming engine that filters and appends chunk-by-chunk. Finally, CSV metadata is exported using a streaming row-group writer to avoid buffering embeddings in memory.
 * **Zero-Shot Noise Filters**:
   * **Flickr Indoor/Outdoor Filter**: By default, the script filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts *"An indoor scene"* and *"An outdoor landscape or street view"*. If an image matches the indoor class, it is discarded. This filter applies **only to Flickr images** (since street-view platforms like Mapillary/KartaView are intrinsically outdoor, and iNaturalist observations are filtered by macro characteristics). Can be bypassed with the `--no_filter` flag.
   * `--filter_macro`: Filters out macro close-up flora/fauna images (typically for iNaturalist data) using a zero-shot *"A macro/close-up photo of flowers, leaves, bark, or insects"* classifier.
@@ -70,9 +71,10 @@ To optimize global random search and avoid querying coordinates that already con
   * **Time of Day**: *Dawn* (05-08), *Morning* (08-12), *Afternoon* (12-17), *Dusk* (17-20), *Night* (20-05).
   * **Seasons**: Latitude-aware seasons (Spring/Summer/Autumn/Winter for temperate/polar regions; Wet/Dry seasons for tropical regions).
 
-### Step 1d: Coordinate Anomaly Cleanup (GPS Glitch Removal)
+### Step 1c: Coordinate Anomaly Cleanup (GPS Glitch Removal)
 * **Script**: `src/processing/cleanup_coordinate_anomalies.py`
 * **Operation**: Scans the deduplicated database to safely purge locked-latitude coordinate lines caused by faulty contributor GPS units at source. Writes the clean data to independent output files (`geo_space_cleaned.parquet` / `geo_space_cleaned.csv`), leaving the raw deduplicated database untouched.
+* **Type Resilience**: Both Parquet loading and CSV chunk writing perform defensive `pd.to_numeric` conversions on the coordinate columns before executing high-precision rounding operations, preventing float-string mixed schema exceptions.
 * **Safety Criteria**: A rounded latitude parallel *L* (rounded to 5 decimal places, representing ~1.1 meters precision) is flagged and purged only if:
 
 $$
@@ -84,6 +86,7 @@ $$
 ### Step 2: Global FAISS GPU Clustering
 * **Script**: `src/indexing/cluster_images_global.py`
 * **Operation**: Performs decoupled, memory-efficient 100% FAISS GPU two-level clustering on image embeddings:
+  * **Type Resilience**: Coordinate columns are defensively cast to numeric float64 right after loading to preserve schema alignment during final Parquet export.
   1. **Fine-Grained Child Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)`) on raw image embeddings (e.g. *N* = 3.37M vectors) to partition the data into *k* fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
   2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k_parents, niter=20, spherical=True, gpu=True)`) on normalized child centroids to group them into *k_parents* broader parent clusters (where *k_parents* = max(2, *k* / 80)). This groups similar child clusters into high-level visual/semantic classes.
   3. **Immediate Persistence & RAM Release**: Saves cluster assignments and centroids directly to `geo_space_clustered.parquet` and immediately releases heavy embedding matrices from RAM to avoid CPU memory bottlenecks.
@@ -91,6 +94,7 @@ $$
 ### Step 2b: Multi-Modal LLM Cluster Auto-Labeling
 * **Script**: `src/indexing/label_clusters_mllm.py`
 * **Operation**: Reads the clustered Parquet database (`geo_space_clustered.parquet`) and performs automated semantic labeling:
+  * **Automated SGLang Server Lifecycle**: The master script `run_full_pipeline.sh` automatically manages the SGLang container (`sglang-server`) using Docker with NVIDIA runtime. It performs pre-launch cleanup to avoid port binding conflicts, executes health checks using `/health` and monitors for crashes, and prompts a shutdown warning at completion to release GPU resources.
   * **MLLM / Zero-Shot Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang or OpenAI API) to automatically generate descriptive semantic labels and structured LULC descriptions.
   * **Decoupled Execution**: Can be run independently, re-run with different MLLM models, or executed on a separate GPU/CPU instance without having to re-cluster image embeddings.
 
