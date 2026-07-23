@@ -255,7 +255,48 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
     return results
 
 
-def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path):
+def stream_update_parquet(input_path, output_path, df_new, active_cells):
+    """
+    Reads input_path in row groups, filters out rows belonging to active_cells,
+    and writes the remaining inactive rows along with df_new to output_path.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import pyarrow.compute as pc
+
+    pf = pq.ParquetFile(input_path)
+    schema = pf.schema_arrow
+
+    tmp_output = f"{output_path}.tmp_stream"
+    try:
+        active_arr = pa.array(list(active_cells))
+        with pq.ParquetWriter(tmp_output, schema) as writer:
+            # 1. Stream copy inactive rows from original parquet
+            for rg in range(pf.num_row_groups):
+                table = pf.read_row_group(rg)
+                h3_col = table["H3_Cell"]
+                mask = pc.invert(pc.is_in(h3_col, value_set=active_arr))
+                filtered_table = table.filter(mask)
+                if len(filtered_table) > 0:
+                    writer.write_table(filtered_table)
+                    
+            # 2. Write the new/updated active rows
+            if df_new is not None and not df_new.empty:
+                new_table = pa.Table.from_pandas(df_new, schema=schema, preserve_index=False)
+                writer.write_table(new_table)
+                
+        if os.path.exists(tmp_output):
+            os.replace(tmp_output, output_path)
+    except Exception as e:
+        if os.path.exists(tmp_output):
+            try:
+                os.remove(tmp_output)
+            except Exception:
+                pass
+        raise e
+
+
+def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=None, active_cells=None):
     """Saves the intermediate state to checkpoint files atomically."""
     tmp_path = f"{checkpoint_path}.tmp"
     tmp_meta_path = f"{checkpoint_meta_path}.tmp"
@@ -265,9 +306,14 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
             df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding', 'Captured_At'])
         else:
             df = pd.DataFrame(final_data)
+            
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
-        df.to_parquet(tmp_path, index=False)
+        
+        if resume_from and os.path.exists(resume_from) and active_cells:
+            stream_update_parquet(resume_from, tmp_path, df, active_cells)
+        else:
+            df.to_parquet(tmp_path, index=False)
         
         # Save processed cells to tmp meta
         with open(tmp_meta_path, 'wb') as f:
@@ -397,9 +443,10 @@ def main():
 
     print(f"Found {len(csv_files)} total CSV files to process.")
 
-    # 2. Aggregating Metadata & Handling Resume
+    # 2. Check for resume files
     df_existing = None
     seen_keys = set()
+    active_cells = set()
 
     if args.resume_from and os.path.exists(args.resume_from):
         print(f"Resuming from existing data: {args.resume_from}")
@@ -409,32 +456,24 @@ def main():
             df_existing = pd.DataFrame(existing_data)
             del existing_data  # Free list from RAM
             existing_embeddings = np.vstack(df_existing['embedding'].values).astype(np.float32)
+            
+            seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
+            
+            # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
+            if not df_existing.empty and 'Image_URL' in df_existing.columns:
+                platforms = df_existing['Platform'].to_numpy()
+                photo_ids = df_existing['Photo_ID'].to_numpy()
+                image_urls = df_existing['Image_URL'].to_numpy()
+                df_existing['Image_URL'] = [
+                    f"mapillary://{pid}" if str(plat).lower() == 'mapillary'
+                    else (f"kartaview://{pid}" if str(plat).lower() == 'kartaview' else url)
+                    for plat, pid, url in zip(platforms, photo_ids, image_urls)
+                ]
         else:
-            # Load metadata columns only (uses ~200MB RAM)
-            df_existing = pd.read_parquet(args.resume_from, columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL'])
-            
-            # Load embeddings directly into memory as flat float32 array using PyArrow
-            print("Loading existing embeddings matrix using PyArrow...")
-            t0 = time.time()
-            import pyarrow.parquet as pq
-            table = pq.read_table(args.resume_from, columns=["embedding"])
-            
-            num_rows = len(table)
-            chunked_arr = table['embedding']
-            dim = len(chunked_arr.chunk(0)[0].as_py())
-            
-            existing_embeddings = np.empty((num_rows, dim), dtype=np.float32)
-            current_row = 0
-            for chunk in chunked_arr.chunks:
-                chunk_len = len(chunk)
-                flat_chunk = chunk.flatten().to_numpy()
-                existing_embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
-                current_row += chunk_len
-                
-            del table
-            print(f" -> Loaded existing embeddings in {time.time() - t0:.2f}s.")
-        
-        seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
+            # Load minimal metadata columns only (uses ~50MB RAM even for millions of rows)
+            print("Loading existing dataset metadata using PyArrow...")
+            df_existing = pd.read_parquet(args.resume_from, columns=['Photo_ID', 'Platform', 'H3_Cell'])
+            seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
         
         # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
         if not df_existing.empty and 'Image_URL' in df_existing.columns:
@@ -507,7 +546,54 @@ def main():
     new_cells = set(df_all['H3_Cell'].unique()) if not df_all.empty else set()
     existing_cells = set(df_existing['H3_Cell'].unique()) if df_existing is not None else set()
     all_cells = new_cells | existing_cells
-    print(f"Total H3 cells to verify/process: {len(all_cells)}")
+    active_cells = new_cells
+    
+    # Load embeddings only for active cells (saves massive RAM for millions of rows)
+    df_existing_active = None
+    existing_embeddings = None
+    if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl') and active_cells:
+        print("Loading active cell embeddings only using PyArrow Dataset...")
+        t0 = time.time()
+        import pyarrow.dataset as ds
+        import pyarrow as pa
+        dataset = ds.dataset(args.resume_from, format="parquet")
+        active_cells_list = list(active_cells)
+        
+        filter_expr = ds.field("H3_Cell").isin(active_cells_list)
+        table_active = dataset.to_table(
+            filter=filter_expr,
+            columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL', 'embedding']
+        )
+        df_existing_active = table_active.to_pandas()
+        
+        if len(df_existing_active) > 0:
+            chunked_arr = table_active['embedding']
+            dim = len(chunked_arr.chunk(0)[0].as_py())
+            existing_embeddings = np.empty((len(df_existing_active), dim), dtype=np.float32)
+            current_row = 0
+            for chunk in chunked_arr.chunks:
+                chunk_len = len(chunk)
+                flat_chunk = chunk.flatten().to_numpy()
+                existing_embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+                current_row += chunk_len
+                
+            # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
+            if 'Image_URL' in df_existing_active.columns:
+                platforms = df_existing_active['Platform'].to_numpy()
+                photo_ids = df_existing_active['Photo_ID'].to_numpy()
+                image_urls = df_existing_active['Image_URL'].to_numpy()
+                df_existing_active['Image_URL'] = [
+                    f"mapillary://{pid}" if str(plat).lower() == 'mapillary'
+                    else (f"kartaview://{pid}" if str(plat).lower() == 'kartaview' else url)
+                    for plat, pid, url in zip(platforms, photo_ids, image_urls)
+                ]
+        else:
+            existing_embeddings = None
+        print(f" -> Loaded {len(df_existing_active):,} active existing embeddings in {time.time() - t0:.2f}s.")
+    elif df_existing is not None and not df_existing.empty:
+        df_existing_active = df_existing[df_existing['H3_Cell'].isin(active_cells)].copy()
+        
+    print(f"Total H3 cells: {len(all_cells)} ({len(active_cells)} active with new data, {len(all_cells) - len(active_cells)} inactive/skipped)")
 
     # 3. Load TIPSv2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -543,7 +629,9 @@ def main():
         print("Resuming from checkpoint. (To start fresh, delete these checkpoint files or run with --checkpoint_interval 0)")
         try:
             df_ckpt = pd.read_parquet(checkpoint_path)
-            final_data = df_ckpt.to_dict('records')
+            # Filter df_ckpt to only include active cells for final_data
+            df_ckpt_active = df_ckpt[df_ckpt['H3_Cell'].isin(active_cells)]
+            final_data = df_ckpt_active.to_dict('records')
             with open(checkpoint_meta_path, 'rb') as f:
                 processed_cells = pickle.load(f)
             print(f"Loaded {len(final_data)} images from checkpoint. {len(processed_cells)} cells already processed.")
@@ -552,7 +640,7 @@ def main():
             final_data = []
             processed_cells = set()
 
-    cells_to_process = list(all_cells)
+    cells_to_process = list(active_cells)
     if args.limit_cells > 0:
         cells_to_process = cells_to_process[:args.limit_cells]
         print(f"Limiting to {args.limit_cells} cells for testing.")
@@ -584,26 +672,29 @@ def main():
         
     existing_items_dict = defaultdict(list)
     if df_existing is not None and not df_existing.empty:
-        pids = df_existing['Photo_ID'].to_numpy()
-        plats = df_existing['Platform'].to_numpy()
-        lats = df_existing['Latitude'].to_numpy()
-        lons = df_existing['Longitude'].to_numpy()
-        urls = df_existing['Image_URL'].to_numpy()
-        caps = df_existing['Captured_At'].to_numpy()
-        cells = df_existing['H3_Cell'].to_numpy()
-        embs = existing_embeddings if 'existing_embeddings' in locals() else [None] * len(df_existing)
+        df_existing_active = df_existing[df_existing['H3_Cell'].isin(active_cells)]
+        if not df_existing_active.empty:
+            pids = df_existing_active['Photo_ID'].to_numpy()
+            plats = df_existing_active['Platform'].to_numpy()
+            lats = df_existing_active['Latitude'].to_numpy()
+            lons = df_existing_active['Longitude'].to_numpy()
+            urls = df_existing_active['Image_URL'].to_numpy()
+            caps = df_existing_active['Captured_At'].to_numpy()
+            cells = df_existing_active['H3_Cell'].to_numpy()
+            active_indices = df_existing_active.index.values
+            embs = existing_embeddings[active_indices] if 'existing_embeddings' in locals() else [None] * len(df_existing_active)
 
-        for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
-            existing_items_dict[cell].append({
-                'Photo_ID': pid,
-                'Platform': plat,
-                'Latitude': lat,
-                'Longitude': lon,
-                'Image_URL': url,
-                'Captured_At': cap,
-                'H3_Cell': cell,
-                'embedding': emb
-            })
+            for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
+                existing_items_dict[cell].append({
+                    'Photo_ID': pid,
+                    'Platform': plat,
+                    'Latitude': lat,
+                    'Longitude': lon,
+                    'Image_URL': url,
+                    'Captured_At': cap,
+                    'H3_Cell': cell,
+                    'embedding': emb
+                })
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):
@@ -633,13 +724,13 @@ def main():
             if args.checkpoint_interval > 0:
                 current_time = time.time()
                 if current_time - last_checkpoint_time > args.checkpoint_interval:
-                    save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path)
+                    save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=args.resume_from, active_cells=active_cells)
                     last_checkpoint_time = current_time
 
     # Save a final checkpoint upon loop completion so that raw data is never lost if saving fails
     if args.checkpoint_interval > 0:
         print("\nSaving final completed checkpoint...")
-        save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path)
+        save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=args.resume_from, active_cells=active_cells)
 
     # 5. Save Results
     if not final_data:
@@ -655,12 +746,38 @@ def main():
     csv_path = os.path.join(args.save_path, f"{args.output_name}.csv")
     parquet_path = os.path.join(args.save_path, f"{args.output_name}.parquet")
 
-    # Save CSV without embeddings (for human readability)
-    cols_to_drop = [c for c in ['embedding', 'patch_embedding'] if c in out_df.columns]
-    out_df.drop(columns=cols_to_drop).to_csv(csv_path, index=False)
+    # If resume_from exists, we write the final parquet/CSV by streaming
+    if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl'):
+        print("Writing final Parquet database using streaming update...")
+        # 1. Parquet stream update
+        stream_update_parquet(args.resume_from, parquet_path, out_df, active_cells)
+        
+        # 2. CSV stream update (without embeddings)
+        print("Writing final CSV metadata using streaming update...")
+        t_csv = time.time()
+        import pyarrow.parquet as pq
+        pf_out = pq.ParquetFile(parquet_path)
+        csv_cols = [c for c in pf_out.schema_arrow.names if c not in ['embedding', 'patch_embedding']]
+        
+        first = True
+        for rg in range(pf_out.num_row_groups):
+            tbl_rg = pf_out.read_row_group(rg, columns=csv_cols)
+            df_rg = tbl_rg.to_pandas()
+            df_rg.to_csv(
+                csv_path,
+                mode="a" if not first else "w",
+                index=False,
+                header=first
+            )
+            first = False
+        print(f" -> Final CSV written in {time.time() - t_csv:.2f}s.")
+    else:
+        # Save CSV without embeddings (for human readability)
+        cols_to_drop = [c for c in ['embedding', 'patch_embedding'] if c in out_df.columns]
+        out_df.drop(columns=cols_to_drop).to_csv(csv_path, index=False)
 
-    # Save Full Data to Parquet (High-performance binary storage)
-    out_df.to_parquet(parquet_path, index=False)
+        # Save Full Data to Parquet (High-performance binary storage)
+        out_df.to_parquet(parquet_path, index=False)
 
     # Clean up checkpoint files on successful completion
     if os.path.exists(checkpoint_path):
