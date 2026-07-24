@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import rasterio
+from tqdm import tqdm
+
 
 # Mappings linking numeric values in the maps to the Köppen-Geiger classes
 KOPPEN_LEGEND = {
@@ -62,7 +64,7 @@ def extract_koppen_geiger(df, tif_path):
     valid_coords = []
     valid_indices = []
 
-    for idx, (lon, lat) in enumerate(zip(lons, lats)):
+    for idx, (lon, lat) in tqdm(enumerate(zip(lons, lats)), total=len(df), desc="Validating coordinates for Köppen-Geiger extraction"):
         if not np.isnan(lon) and not np.isnan(lat) and -180 <= lon <= 180 and -90 <= lat <= 90:
             valid_coords.append((lon, lat))
             valid_indices.append(idx)
@@ -74,12 +76,20 @@ def extract_koppen_geiger(df, tif_path):
     if valid_coords:
         try:
             with rasterio.open(tif_path) as src:
-                sampled_values = list(src.sample(valid_coords))
-                for orig_idx, val in zip(valid_indices, sampled_values):
-                    val_int = int(val[0])
-                    if val_int in KOPPEN_LEGEND:
-                        codes[orig_idx] = KOPPEN_LEGEND[val_int]["code"]
-                        descriptions[orig_idx] = KOPPEN_LEGEND[val_int]["desc"]
+                # Read the entire band into memory (extremely fast categorical map read)
+                band_data = src.read(1)
+                
+                # Perform vectorized coordinate to pixel row/col lookup
+                valid_lons = [c[0] for c in valid_coords]
+                valid_lats = [c[1] for c in valid_coords]
+                rows, cols = rasterio.transform.rowcol(src.transform, valid_lons, valid_lats)
+                
+                for orig_idx, row, col in tqdm(zip(valid_indices, rows, cols), total=len(valid_indices), desc="Extracting Köppen-Geiger codes"):
+                    if 0 <= row < band_data.shape[0] and 0 <= col < band_data.shape[1]:
+                        val_int = int(band_data[row, col])
+                        if val_int in KOPPEN_LEGEND:
+                            codes[orig_idx] = KOPPEN_LEGEND[val_int]["code"]
+                            descriptions[orig_idx] = KOPPEN_LEGEND[val_int]["desc"]
         except Exception as e:
             print(f"[ERROR] Failed to read Köppen-Geiger GeoTIFF: {e}")
 

@@ -249,18 +249,6 @@ def main():
 
     # 4b. Map coordinates to regions (country and continent)
     land_shp = args.land_shp
-    if not land_shp:
-        params_path = "params.yaml"
-        if os.path.exists(params_path):
-            try:
-                with open(params_path, 'r') as f:
-                    params = yaml.safe_load(f)
-                    land_shp = params.get('pipeline', {}).get('land_shp', None)
-            except Exception:
-                pass
-    if not land_shp:
-        land_shp = "shapefiles/ne_10m_admin_0_countries.shp" if os.path.exists("shapefiles/ne_10m_admin_0_countries.shp") else "ne_10m_admin_0_countries.shp"
-
     if os.path.exists(land_shp):
         try:
             print("Mapping coordinates to countries/continents...")

@@ -106,7 +106,17 @@ def map_coordinates_to_regions(df, land_shp_path, spatial_index_path=None, targe
     # Step 2: Nearest-Land Snapping for Coastal Water Cells (max 0.8 degrees / ~88 km)
     if len(unmatched) > 0:
         unmatched_clean = unmatched[['h3_cell', 'geometry']].copy()
-        nearest = gpd.sjoin_nearest(unmatched_clean, countries_subset, how='left', max_distance=0.8)
+        
+        # Project both to EPSG:3857 (Web Mercator, units in meters) to calculate distances accurately and avoid warnings
+        unmatched_projected = unmatched_clean.to_crs('EPSG:3857')
+        countries_projected = countries_subset.to_crs('EPSG:3857')
+        
+        # 0.8 degrees is approx 88,800 meters
+        nearest = gpd.sjoin_nearest(unmatched_projected, countries_projected, how='left', max_distance=88800)
+        
+        # Project back to EPSG:4326 (degrees) before concat to match matched CRS
+        nearest = nearest.to_crs('EPSG:4326')
+        
         nearest['CONTINENT'] = nearest['CONTINENT'].fillna('Ocean / Unknown')
         nearest['NAME'] = nearest['NAME'].fillna('Ocean / Unknown')
         nearest.loc[nearest['CONTINENT'] == 'Seven seas (open ocean)', 'CONTINENT'] = 'Ocean / Unknown'
