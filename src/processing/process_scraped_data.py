@@ -261,8 +261,8 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
     and writes the remaining inactive rows along with df_new to output_path.
     """
     import pyarrow as pa
-    import pyarrow.parquet as pq
     import pyarrow.compute as pc
+    import pyarrow.parquet as pq
 
     pf = pq.ParquetFile(input_path)
     schema = pf.schema_arrow
@@ -298,7 +298,13 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
                     
             # 2. Write the new/updated active rows
             if df_new is not None and not df_new.empty:
-                new_table = pa.Table.from_pandas(df_new, schema=schema, preserve_index=False)
+                df_new_aligned = df_new.copy()
+                for name in schema.names:
+                    if name not in df_new_aligned.columns:
+                        df_new_aligned[name] = None
+                df_new_aligned = df_new_aligned[schema.names]
+                
+                new_table = pa.Table.from_pandas(df_new_aligned, schema=schema, preserve_index=False)
                 writer.write_table(new_table)
                 
         if os.path.exists(tmp_output):
