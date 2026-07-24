@@ -1,24 +1,25 @@
-import pickle
-import numpy as np
 import argparse
-import time
-import os
 import base64
+import os
+import pickle
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from sklearn.preprocessing import normalize
+from io import BytesIO
+
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-import torch
-from transformers import AutoModel
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
-from io import BytesIO
+import torch
 from PIL import Image
+from requests.adapters import HTTPAdapter
+from sklearn.preprocessing import normalize
+from transformers import AutoModel
+from urllib3.util import Retry
 
 # Shared LULC Vocabularies
-from src.utils.lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
+from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 

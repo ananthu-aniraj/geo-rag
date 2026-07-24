@@ -122,36 +122,69 @@ $$
 
 ---
 
-## 🤖 4. Multi-Modal LLM (MLLM) Auto-Labeling Prompt
+## 🤖 4. Multi-Modal LLM (MLLM) Auto-Labeling Prompt Strategy
 
-To automatically label image clusters, the pipeline uses a Multi-Modal LLM (such as Gemma-2 via SGLang) to analyze representative cluster images. The MLLM is provided with the following detailed prompt template and vocabulary.
+To automatically label image clusters, the pipeline uses a decoupled **Two-Step Prompting Strategy** inside `src/indexing/label_clusters_mllm.py`. This split architecture enhances classification accuracy, minimizes category hallucination, and avoids processing heavy image tokens twice.
 
-### 📝 MLLM Prompt Template
+---
+
+### 📷 Step 1: Multimodal Visual Description
+* **Input**: The representative cluster image + `prompts/shared/prompt_step1.txt`
+* **Output**: A detailed, objective paragraph describing the physical scene features (no LULC labels).
+
+**Prompt Template (`prompts/shared/prompt_step1.txt`):**
 ```text
 You are analyzing a single ground-level photograph from a global land-survey campaign; the sample point may be anywhere on Earth (tropical, arid, temperate, boreal, alpine, wetland, or coastal). The camera stands at a sample point and looks outward; the land cover AT THE FOREGROUND/CENTER of the frame is the DOMINANT cover that must be characterized. Background elements (distant trees, buildings, hills) are CONTEXT only and must never override the dominant foreground cover.
 
-Report only what is visually supported. When a cue is ambiguous, describe the cue precisely rather than guessing a label, and commit to the single most likely identity while noting the discriminating feature you used. Do not infer management status, permanence, ownership, subsurface geology, or history that is not visually evident (e.g. do not call grass "temporary" unless mowing/tillage/rows are visible, and do not name a bedrock formation that is not exposed).
+Carefully observe and describe the following components in a single, detailed, and cohesive paragraph:
+1. image_medium: State clearly whether this is a real-world photograph, a painting/artwork, a map, an abstract drawing/illustration, a text graphic, or a close-up indoor sign/object.
+2. dominant_cover: The single land-cover type occupying most of the foreground/center (e.g. cereal crop, grassland, bare soil, broadleaved trees, built surface, sand, snow/ice, water, wetland).
+3. cover_fraction_estimate: Share of the visible ground area that is vegetation vs bare soil/rock vs sealed/built surface vs water/ice.
+4. visible_evidence & salient_objects: Primary foreground objects, structures, architectural elements, vehicles, or natural formations visible. Describe them naturally as a human observer would.
+5. vegetation_detail: Height, leaf/frond shape, seed-head/flower form, rows or not (cereals, broadleaf/industrial crops, grassland, woody cover broadleaved vs coniferous vs palm).
+6. vegetation_condition & phenological_stage: Vigor (vigorous-green, senescent, dead/brown) and growth stage (emerging, full-canopy, harvested/stubble).
+7. canopy_structure: Canopy closure (closed, open, scattered) and height (low shrub <2m, small trees 2-5m, mature trees >5m).
+8. soil_surface_state & lithology: Exposed ground sealing (permeable, unsealed, sealed-impervious) and visibly exposed soil/rock texture and color.
+9. structure_and_pattern: Terrain slope, parcel boundaries, linear features (crop rows, tramlines, ditches, tracks), or recent disturbances.
+10. context_background: Elements visible in the distance or periphery (buildings, treelines, mountains, water bodies) that are not the sample point cover.
+11. human_evidence & activities: Visible signs of human use (buildings, machinery, fences, planted rows, paths, irrigation, or a selfie where a person is visiting a landmark or hiking).
 
-Several fields below describe properties that are also detectable from satellite or airborne sensors (vegetation greenness, growth stage, canopy height, surface sealing, soil and surface-rock colour). Fill these from visual evidence wherever the cue is present, as they will be linked to remote-sensing data.
+Do not assign a LULC category code or label. Focus purely on describing what is visually supported.
+```
 
-Carefully observe and describe the following components:
-1. dominant_cover: The single land-cover type occupying most of the foreground/center (e.g. cereal crop, grassland, bare soil, broadleaved trees, built surface, sand, snow/ice, water, wetland).
-2. cover_fraction_estimate: Share of the visible ground area that is vegetation vs bare soil/rock vs sealed/built surface vs water/ice.
-3. visible_evidence & salient_objects: Primary foreground objects, structures, architectural elements, vehicles, or natural formations visible. Describe them naturally as a human observer would.
-4. vegetation_detail: Height, leaf/frond shape, seed-head/flower form, rows or not (cereals, broadleaf/industrial crops, grassland, woody cover broadleaved vs coniferous vs palm).
-5. vegetation_condition & phenological_stage: Vigor (vigorous-green, senescent, dead/brown) and growth stage (emerging, full-canopy, harvested/stubble).
-6. canopy_structure: Canopy closure (closed, open, scattered) and height (low shrub <2m, small trees 2-5m, mature trees >5m).
-7. soil_surface_state & lithology: Exposed ground sealing (permeable, unsealed, sealed-impervious) and visibly exposed soil/rock texture and color.
-8. structure_and_pattern: Terrain slope, parcel boundaries, linear features (crop rows, tramlines, ditches, tracks), or recent disturbances.
-9. context_background: Elements visible in the distance or periphery (buildings, treelines, mountains, water bodies) that are not the sample point cover.
-10. human_evidence & activities: Visible signs of human use (buildings, machinery, fences, planted rows, paths, irrigation) and the activities they support.
+---
 
-Based ONLY on the visual evidence described above, classify this environment into EXACTLY one of the following Land Use / Land Cover (LULC) categories:
-[LULC_LIST]
+### 🗺️ Step 2: Geographical LULC Classification (Text-Only)
+* **Input**: The visual description output from Step 1 + geographic/climatic metadata + the LULC category list + `prompts/shared/prompt_step2.txt`
+* **Output**: The final structured classification label and a consolidated description paragraph.
+
+**Prompt Template (`prompts/shared/prompt_step2.txt`):**
+```text
+You are a geographical and ecological classifier. Your task is to classify the land cover/land use of a location based on a visual description of the scene and geographic/climatic metadata.
+
+[METADATA CONTEXT]
+Location coordinates/bounding box: {location}
+Region/Country: {country}
+Continent: {continent}
+Time of Day: {time_of_day}
+Season: {season}
+Köppen-Geiger Climate Code: {koppen_code} ({koppen_desc})
+
+[VISUAL DESCRIPTION]
+{visual_description}
+
+[CLASSIFICATION RULES]
+1. Use the climate code and season to resolve ambiguities (e.g. distinguishing tropical savanna from temperate grassland, or identifying agricultural crops vs natural vegetation).
+2. If the image medium is noted as a painting, artwork, illustration, drawing, sketch, map, diagram, close-up text graphic, or indoor sign, classify it as "None of the above / Noise".
+3. Selfies or tourist photos of people are fully acceptable as long as the background is visible; classify the scene based on the background cover and context.
+4. If any metadata attributes (such as Season, Time of Day, or Country/Continent) are specified as "Unknown", rely primarily on the visual description and other available metadata elements.
+
+Based on the metadata and visual description, classify this environment into EXACTLY one of the following LULC categories:
+{lulc_list}
 
 Format your output EXACTLY as follows:
 LABEL: <Insert EXACTLY one category from the list above>
-DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describing the visual evidence, human activities, land cover, and vegetation. This paragraph must integrate all of the observed components naturally and concisely. To avoid repetition, do not repeat the land cover class or vegetation type multiple times across different sentences; instead, weave them together into a single, cohesive narrative description of the scene.>
+DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describing the visual evidence, human activities, land cover, and vegetation. This paragraph must integrate all of the observed components and metadata naturally and concisely.>
 ```
 
 ### 🗂️ Land Use / Land Cover (LULC) Classification Vocabulary
