@@ -31,3 +31,6 @@ pipeline:
 
   # Köppen-Geiger climate classification GeoTIFF path
   koppen_geiger_tif: "/home/ananthu/DATA/data_ananthu/koppen_geiger_tif/1991_2020/koppen_geiger_0p00833333.tif"
+
+  # Land boundaries shapefile for region mapping (country & continent)
+  land_shp: "shapefiles/ne_10m_admin_0_countries.shp"
