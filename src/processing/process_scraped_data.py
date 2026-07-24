@@ -18,6 +18,8 @@ from tqdm import tqdm
 from transformers import AutoModel
 
 from src.utils.licensing import FLICKR_LICENSE_MAP
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 # TIPSv2 specific transform
 tips_transform = transforms.Compose([
@@ -26,6 +28,16 @@ tips_transform = transforms.Compose([
 ])
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+
+# Global connection pooled session configuration for thread-safe high-throughput downloads
+http_session = requests.Session()
+_adapter = HTTPAdapter(
+    pool_connections=128,
+    pool_maxsize=128,
+    max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+)
+http_session.mount("https://", _adapter)
+http_session.mount("http://", _adapter)
 
 
 def clean_photo_id(val):
@@ -103,26 +115,35 @@ def standardize_timestamps_vectorized(ts_raw):
 
 
 def download_image(url, iwildcam_dir=None):
-    """Downloads an image and returns a PIL Image object."""
+    """Downloads an image using the global connection pool session and returns a resized PIL Image."""
     try:
         # Check if url is a local path first
         if not (url.startswith("http://") or url.startswith("https://") or url.startswith("mapillary://") or url.startswith("kartaview://")):
             if os.path.exists(url):
-                return Image.open(url).convert("RGB")
+                img = Image.open(url).convert("RGB")
+                img_resized = img.resize((448, 448))
+                img.close()
+                return img_resized
             if iwildcam_dir:
                 alt_path = os.path.join(iwildcam_dir, os.path.basename(url))
                 if os.path.exists(alt_path):
-                    return Image.open(alt_path).convert("RGB")
+                    img = Image.open(alt_path).convert("RGB")
+                    img_resized = img.resize((448, 448))
+                    img.close()
+                    return img_resized
                 alt_path_train = os.path.join(iwildcam_dir, "train", os.path.basename(url))
                 if os.path.exists(alt_path_train):
-                    return Image.open(alt_path_train).convert("RGB")
+                    img = Image.open(alt_path_train).convert("RGB")
+                    img_resized = img.resize((448, 448))
+                    img.close()
+                    return img_resized
             return None
 
         if url.startswith("mapillary://"):
             orig_id = url.split("://")[1]
             api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
             headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-            res = requests.get(api_url, headers=headers, timeout=10)
+            res = http_session.get(api_url, headers=headers, timeout=10)
             if res.status_code == 200:
                 url = res.json().get("thumb_1024_url")
             else:
@@ -130,7 +151,7 @@ def download_image(url, iwildcam_dir=None):
         elif url.startswith("kartaview://"):
             orig_id = url.split("://")[1]
             api_url = f"https://api.openstreetcam.org/2.0/photo/{orig_id}"
-            res = requests.get(api_url, timeout=10)
+            res = http_session.get(api_url, timeout=10)
             if res.status_code == 200:
                 data = res.json().get("result", {}).get("data", {})
                 url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
@@ -140,9 +161,12 @@ def download_image(url, iwildcam_dir=None):
         if not url:
             return None
 
-        response = requests.get(url, timeout=10)
+        response = http_session.get(url, timeout=10)
         if response.status_code == 200:
-            return Image.open(BytesIO(response.content)).convert("RGB")
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+            img_resized = img.resize((448, 448))
+            img.close()
+            return img_resized
     except Exception:
         pass
     return None
@@ -758,7 +782,7 @@ def main():
                 'embedding': emb
             })
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=64) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):
             if cell in processed_cells:
                 continue
