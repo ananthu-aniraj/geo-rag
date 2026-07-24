@@ -12,6 +12,8 @@ import pyarrow.parquet as pq
 import torch
 from transformers import AutoModel
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 from io import BytesIO
 from PIL import Image
 
@@ -19,6 +21,16 @@ from PIL import Image
 from src.utils.lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+
+# Global connection pooled session configuration for thread-safe high-throughput downloads
+http_session = requests.Session()
+_adapter = HTTPAdapter(
+    pool_connections=64,
+    pool_maxsize=64,
+    max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+)
+http_session.mount("https://", _adapter)
+http_session.mount("http://", _adapter)
 
 
 def resize_image_aspect(img, target_max=448):
@@ -75,7 +87,7 @@ def load_image(url, target_max=448, image_root_dir=None):
                 orig_id = orig_id[:-2]
             api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
             headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-            res = requests.get(api_url, headers=headers, timeout=10)
+            res = http_session.get(api_url, headers=headers, timeout=10)
             if res.status_code == 200:
                 url = res.json().get("thumb_1024_url")
             else:
@@ -85,7 +97,7 @@ def load_image(url, target_max=448, image_root_dir=None):
             if orig_id.endswith('.0'):
                 orig_id = orig_id[:-2]
             api_url = f"https://api.openstreetcam.org/2.0/photo/{orig_id}"
-            res = requests.get(api_url, timeout=10)
+            res = http_session.get(api_url, timeout=10)
             if res.status_code == 200:
                 data = res.json().get("result", {}).get("data", {})
                 url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
@@ -95,7 +107,7 @@ def load_image(url, target_max=448, image_root_dir=None):
         if not url:
             return None
 
-        response = requests.get(url, timeout=10)
+        response = http_session.get(url, timeout=10)
         if response.status_code == 200:
             img = Image.open(BytesIO(response.content)).convert("RGB")
             return resize_image_aspect(img, target_max)
@@ -196,7 +208,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 images_base64[cid] = img_str
 
-        with ThreadPoolExecutor(max_workers=16) as executor:
+        with ThreadPoolExecutor(max_workers=32) as executor:
             executor.map(prepare_image, chunk)
 
         valid_chunk = [t for t in chunk if t['cid'] in images_base64]
