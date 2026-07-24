@@ -225,28 +225,65 @@ def main():
                     flickr_licenses[pid] = lic_code
 
     # --- Save back to dataset ---
-    if flickr_licenses:
-        print("\nMapping retrieved license codes back to dataset...")
-        df['License'] = df['License'].astype(str).replace('nan', None).replace('None', None)
+    modified = False
 
+    # Standardize License column type and NaNs first
+    if 'License' not in df.columns:
+        df['License'] = None
+    df['License'] = df['License'].astype(str).replace({'nan': None, 'None': None, '<NA>': None, '': None})
+
+    # Re-apply platform-wide blanket licenses for non-Flickr platforms
+    platform_lower = df['Platform'].astype(str).str.lower()
+
+    # Mapillary
+    mapillary_mask = (platform_lower == 'mapillary') & df['License'].isna()
+    if mapillary_mask.any():
+        df.loc[mapillary_mask, 'License'] = 'CC BY-SA 4.0'
+        modified = True
+        print(f" -> Backfilled {mapillary_mask.sum()} Mapillary records with 'CC BY-SA 4.0'")
+
+    # KartaView
+    kartaview_mask = (platform_lower == 'kartaview') & df['License'].isna()
+    if kartaview_mask.any():
+        df.loc[kartaview_mask, 'License'] = 'CC BY-SA 4.0'
+        modified = True
+        print(f" -> Backfilled {kartaview_mask.sum()} KartaView records with 'CC BY-SA 4.0'")
+
+    # iWildCam
+    iwildcam_mask = (platform_lower == 'iwildcam') & df['License'].isna()
+    if iwildcam_mask.any():
+        df.loc[iwildcam_mask, 'License'] = 'CDLA-Permissive-1.0'
+        modified = True
+        print(f" -> Backfilled {iwildcam_mask.sum()} iWildCam records with 'CDLA-Permissive-1.0'")
+
+    # iNaturalist
+    inat_mask = (platform_lower.str.contains('inaturalist') | (platform_lower == 'inat')) & df['License'].isna()
+    if inat_mask.any():
+        df.loc[inat_mask, 'License'] = 'CC BY-NC 4.0'
+        modified = True
+        print(f" -> Backfilled {inat_mask.sum()} iNaturalist records with 'CC BY-NC 4.0'")
+
+    if flickr_licenses:
+        print("\nMapping retrieved Flickr license codes back to dataset...")
         # Build mapping series
         flickr_map = df['Photo_ID'].astype(str).map(flickr_licenses)
-        
         # Convert numeric codes in flickr_map to standard text labels
         clean_mapped = flickr_map.astype(str).str.split('.').str[0]
         mapped_labels = clean_mapped.map(FLICKR_LICENSE_MAP)
         flickr_map = mapped_labels.fillna(flickr_map)
 
         df['License'] = df['License'].combine_first(flickr_map)
+        modified = True
 
+    if modified:
         print(f"Saving updated database to: {out_path}")
         if is_csv:
             df.to_csv(out_path, index=False)
         else:
             df.to_parquet(out_path, index=False)
-        print("Backfill complete successfully!")
+        print("Backfill completed successfully!")
     else:
-        print("\nNo licenses were successfully retrieved.")
+        print("\nNo licenses needed backfilling; database is already fully up to date.")
 
 
 if __name__ == "__main__":
