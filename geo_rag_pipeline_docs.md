@@ -64,10 +64,11 @@ To optimize global random search and avoid querying coordinates that already con
   * `--filter_macro`: Filters out macro close-up flora/fauna images (typically for iNaturalist data) using a zero-shot *"A macro/close-up photo of flowers, leaves, bark, or insects"* classifier.
   * `--filter_sky`: Filters out empty sky views (typically for iNaturalist data) using a zero-shot *"A view of empty sky, clouds, or flying objects"* classifier.
 
-### Step 1b: Timestamp Standardization & Climate Zoning
+### Step 1b: Timestamp Standardization, Climate Zoning, and Geographical Region Mapping
 * **Script**: `src/processing/standardize_timestamps.py`
 * **Operation**: Normalizes inconsistent date/time strings and Unix epochs into ISO 8601 strings (`YYYY-MM-DDTHH:MM:SSZ`).
 * **Köppen-Geiger Climate Mapping**: If a Köppen-Geiger climate classification [Beck et al., 2023] TIF map is provided (using the `--koppen_tif` argument), coordinates are queried to assign each image a climate code (e.g., `BWh`, `Aw`, `Csa`). The dataset can be downloaded from [here](https://www.gloh2o.org/koppen/). The script uses `rasterio` to read the TIF and `pyproj` to convert coordinates to the TIF's projection system.
+* **Geographical Region Mapping (Country & Continent)**: If a land boundaries shapefile (e.g. Natural Earth administrative boundaries) is provided via the `--land_shp` parameter, the script performs a spatial polygon intersection join on the coordinates. This resolves each coordinate record to its corresponding `country` and `continent` name at ingestion time. Resolving these boundaries early ensures geographic metadata is preserved and available for downstream analysis, visualizations, and MLLM auto-labeling prompts.
 * **Categorizations Added**:
   * **Time of Day**: *Dawn* (05-08), *Morning* (08-12), *Afternoon* (12-17), *Dusk* (17-20), *Night* (20-05).
   * **Seasons (Climate-Aware Zoning)**:
