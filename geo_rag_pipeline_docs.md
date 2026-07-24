@@ -100,7 +100,7 @@ $$
 ### Step 2b: Multi-Modal LLM Cluster Auto-Labeling
 * **Script**: `src/indexing/label_clusters_mllm.py`
 * **Operation**: Reads the clustered Parquet database (`geo_space_clustered.parquet`) and performs automated semantic labeling:
-  * **Automated SGLang Server Lifecycle**: The master script `run_full_pipeline.sh` automatically manages the SGLang container (`sglang-server`) using Docker with NVIDIA runtime. It performs pre-launch cleanup to avoid port binding conflicts, executes health checks using `/health` and monitors for crashes, and prompts a shutdown warning at completion to release GPU resources.
+  * **Automated SGLang Server Lifecycle**: The master script `run_full_pipeline.sh` automatically manages the SGLang container (`sglang-server`) using Docker with NVIDIA runtime. It performs pre-launch cleanup to avoid port binding conflicts, executes health checks using `/health` and monitors for crashes, and automatically shuts down at completion to release GPU resources.
   * **MLLM / Zero-Shot Labeling**: Sends representative centroid samples for both child and parent clusters to a Multi-Modal LLM (e.g., Gemma-2 via SGLang or OpenAI API) to automatically generate descriptive semantic labels and structured LULC descriptions.
   * **Decoupled Execution**: Can be run independently, re-run with different MLLM models, or executed on a separate GPU/CPU instance without having to re-cluster image embeddings.
 
