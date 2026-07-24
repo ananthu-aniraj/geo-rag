@@ -221,6 +221,10 @@ python3 -m src.indexing.relabel_failed_clusters \
   $IMAGE_ROOT_FLAG
 
 echo ""
+echo "Stopping SGLang server..."
+docker stop sglang-server && docker rm sglang-server
+
+echo ""
 echo "[Step 2d/5] Building H3 Spatial-Semantic Index..."
 python3 -m src.indexing.build_spatial_semantic_index \
   --input "$CLUSTERED_PARQUET" \
@@ -273,10 +277,6 @@ echo ""
 echo "=========================================================="
 echo "  Pipeline Complete!"
 echo "  Outputs located at: $OUTPUT_DIR"
-echo ""
-echo "  ⚠️  REMINDER: SGLang server container is still running in the background."
-echo "     To stop it and free up GPU memory, run:"
-echo "     docker stop sglang-server && docker rm sglang-server"
 echo "=========================================================="
 
 # 3. Handle DVC Standalone Tracking (Option 2)

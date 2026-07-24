@@ -1,20 +1,23 @@
-import os
-import time
-import glob
-import pandas as pd
-import torch
-import h3
-import pickle
 import argparse
-import requests
-import numpy as np
-from PIL import Image
-from tqdm import tqdm
-from io import BytesIO
+import glob
+import os
+import pickle
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+
+import h3
+import numpy as np
+import pandas as pd
+import requests
+import torch
+from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoModel
 from torchvision import transforms
+from tqdm import tqdm
+from transformers import AutoModel
+
+from src.utils.licensing import FLICKR_LICENSE_MAP
 
 # TIPSv2 specific transform
 tips_transform = transforms.Compose([
@@ -29,8 +32,7 @@ def clean_photo_id(val):
     if pd.isna(val):
         return ""
     val_str = str(val).strip()
-    if val_str.endswith('.0'):
-        val_str = val_str[:-2]
+    val_str = val_str.removesuffix('.0')
     return val_str
 
 
@@ -445,7 +447,16 @@ def load_and_preprocess_csv(f):
         if inat_mask.any():
             df.loc[inat_mask, 'License'] = 'CC BY-NC 4.0'
 
+        # Map Flickr numeric indexes to human-readable strings
+        flickr_mask = (platform_lower == 'flickr') & df['License'].notna() & (df['License'] != '')
+        if flickr_mask.any():
+            # Clean keys to handle potential floats like '4.0'
+            clean_keys = df.loc[flickr_mask, 'License'].astype(str).str.split('.').str[0]
+            mapped = clean_keys.map(FLICKR_LICENSE_MAP)
+            df.loc[flickr_mask, 'License'] = mapped.fillna(df.loc[flickr_mask, 'License'])
+
         df = df[required_cols].copy()
+        df['License'] = df['License'].astype(str).replace({'nan': None, 'None': None, '<NA>': None})
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
         return df
@@ -597,8 +608,8 @@ def main():
     if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl') and active_cells:
         print("Loading active cell embeddings only using PyArrow Dataset...")
         t0 = time.time()
-        import pyarrow.dataset as ds
         import pyarrow as pa
+        import pyarrow.dataset as ds
         dataset = ds.dataset(args.resume_from, format="parquet")
         active_cells_list = list(active_cells)
         

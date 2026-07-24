@@ -1,13 +1,19 @@
-import os
-import time
 import argparse
 import glob
-import requests
-import pandas as pd
-import numpy as np
+import os
 import pickle
-from tqdm import tqdm
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import requests
+from shapely.geometry import Point
+from shapely.geometry import box as shapely_box
+from tqdm import tqdm
+
+from src.utils.licensing import FLICKR_LICENSE_MAP
 
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
 FLICKR_DELAY = 1.1
@@ -99,7 +105,7 @@ def main():
 
     print(f"Loading dataset from {args.input}...")
     is_csv = args.input.endswith('.csv')
-    
+
     if is_csv:
         df = pd.read_csv(args.input)
     else:
@@ -113,9 +119,9 @@ def main():
     # (Licensing codes in Flickr are typically '0' to '10', so missing matches null, nan, or empty string)
     is_flickr = df['Platform'].astype(str).str.lower() == 'flickr'
     is_missing = df['License'].isna() | (df['License'] == '')
-    
+
     df_missing = df[is_flickr & is_missing].copy()
-    
+
     if len(df_missing) == 0:
         print("🎉 No missing Flickr licenses found! Dataset is fully up to date.")
         return
@@ -143,38 +149,37 @@ def main():
 
         active_bboxes = []
         box_to_photos = {}
-        
+
         if bboxes:
             try:
-                import geopandas as gpd
-                from shapely.geometry import Point, box as shapely_box
-                
+
                 print("Running spatial join to associate missing coordinates with bounding boxes...")
-                
+
                 points = [Point(lon, lat) for lat, lon in zip(df_missing['Latitude'], df_missing['Longitude'])]
                 gdf_points = gpd.GeoDataFrame(
                     {'Photo_ID': df_missing['Photo_ID'].astype(str)},
                     geometry=points,
                     crs="EPSG:4326"
                 )
-                
+
                 boxes_list = []
                 box_strs = []
                 for b_str in bboxes:
                     parts = [float(x) for x in b_str.split(',')]
                     boxes_list.append(shapely_box(parts[0], parts[1], parts[2], parts[3]))
                     box_strs.append(b_str)
-                    
+
                 gdf_boxes = gpd.GeoDataFrame(
                     {'bbox_str': box_strs},
                     geometry=boxes_list,
                     crs="EPSG:4326"
                 )
-                
+
                 joined = gpd.sjoin(gdf_boxes, gdf_points, how="inner", predicate="intersects")
                 box_to_photos = joined.groupby('bbox_str')['Photo_ID'].apply(set).to_dict()
                 active_bboxes = sorted(box_to_photos.keys(), key=lambda b: len(box_to_photos[b]), reverse=True)
-                print(f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
+                print(
+                    f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
             except Exception as se:
                 print(f"Spatial join optimization failed or geopandas not available: {se}")
                 print("Falling back to scanning all discovered bounding boxes...")
@@ -189,28 +194,29 @@ def main():
                         needed_photos = box_photos - set(flickr_licenses.keys())
                         if not needed_photos:
                             continue
-                            
+
                     res_box = fetch_flickr_bbox_licenses(bbox)
                     for pid, lic_code in res_box.items():
                         if pid in flickr_ids:
                             flickr_licenses[pid] = lic_code
-                            
+
                     if len(flickr_licenses) >= len(flickr_ids):
                         print("\nAll missing Flickr licenses successfully backfilled! Terminating early...")
                         break
-                        
+
             print(f"Retrieved {len(flickr_licenses)} Flickr licenses using bulk search.")
-            
+
     # --- Option B: Fallback Individual Queries ---
     remaining_ids = list(flickr_ids - set(flickr_licenses.keys()))
     if remaining_ids:
         if args.log_dirs:
             print(f"\nBulk search left {len(remaining_ids)} photos un-retrieved. Fetching individually...")
         else:
-            print(f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(remaining_ids)} photos.")
+            print(
+                f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(remaining_ids)} photos.")
             print(f"This will take approximately {len(remaining_ids) / 3000:.1f} hours due to Flickr's API limits.")
             print("Provide --log_dirs with your completed box text files to speed this up by 250x.")
-            
+
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {executor.submit(fetch_flickr_individual_license, pid): pid for pid in remaining_ids}
             for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch Flickr License (1-by-1)"):
@@ -222,9 +228,15 @@ def main():
     if flickr_licenses:
         print("\nMapping retrieved license codes back to dataset...")
         df['License'] = df['License'].astype(str).replace('nan', None).replace('None', None)
-        
+
         # Build mapping series
         flickr_map = df['Photo_ID'].astype(str).map(flickr_licenses)
+        
+        # Convert numeric codes in flickr_map to standard text labels
+        clean_mapped = flickr_map.astype(str).str.split('.').str[0]
+        mapped_labels = clean_mapped.map(FLICKR_LICENSE_MAP)
+        flickr_map = mapped_labels.fillna(flickr_map)
+
         df['License'] = df['License'].combine_first(flickr_map)
 
         print(f"Saving updated database to: {out_path}")
