@@ -101,6 +101,9 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
     col_h3 = df['H3_Cell'].to_numpy() if 'H3_Cell' in df.columns else np.array([""] * len(df))
     col_koppen_code = df['Koppen_Code'].to_numpy() if 'Koppen_Code' in df.columns else np.array([""] * len(df))
     col_koppen_desc = df['Koppen_Desc'].to_numpy() if 'Koppen_Desc' in df.columns else np.array([""] * len(df))
+    col_country = df['country'].to_numpy() if 'country' in df.columns else np.array(["Unknown"] * len(df))
+    col_continent = df['continent'].to_numpy() if 'continent' in df.columns else np.array(["Unknown"] * len(df))
+    col_visual_desc = df['visual_description'].to_numpy() if 'visual_description' in df.columns else np.array([""] * len(df))
     print("Successfully pre-extracted columns for fast access.")
 
     def make_sample(global_idx, sim_score, is_outlier, rank_label):
@@ -127,6 +130,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             "time_of_day": str(col_tod[global_idx]) if pd.notna(col_tod[global_idx]) else "Unknown",
             "koppen_code": str(col_koppen_code[global_idx]) if pd.notna(col_koppen_code[global_idx]) else "",
             "koppen_desc": str(col_koppen_desc[global_idx]) if pd.notna(col_koppen_desc[global_idx]) else "",
+            "country": str(col_country[global_idx]) if pd.notna(col_country[global_idx]) else "Unknown",
+            "continent": str(col_continent[global_idx]) if pd.notna(col_continent[global_idx]) else "Unknown",
             "is_outlier": is_outlier,
             "rank_label": rank_label
         }
@@ -160,9 +165,26 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             for i, local_idx in enumerate(lowest_indices):
                 samples.append(make_sample(indices[local_idx], float(sims[local_idx]), True, f"Furthest Outlier {i + 1}"))
 
-        # Centroid description
+        # Centroid description (with fallback to search first non-empty description in cluster)
         centroid_g_idx = indices[sorted_indices[0]]
-        centroid_desc = str(col_desc[centroid_g_idx]) if pd.notna(col_desc[centroid_g_idx]) else ""
+        centroid_desc = str(col_desc[centroid_g_idx]).strip() if pd.notna(col_desc[centroid_g_idx]) else ""
+        if not centroid_desc or centroid_desc.lower() == "nan":
+            centroid_desc = ""
+            for idx in indices:
+                val = str(col_desc[idx]).strip()
+                if pd.notna(col_desc[idx]) and val != "" and val.lower() != "nan":
+                    centroid_desc = val
+                    break
+
+        # Centroid visual description (Step 1 objective description)
+        centroid_vis_desc = str(col_visual_desc[centroid_g_idx]).strip() if pd.notna(col_visual_desc[centroid_g_idx]) else ""
+        if not centroid_vis_desc or centroid_vis_desc.lower() == "nan":
+            centroid_vis_desc = ""
+            for idx in indices:
+                val = str(col_visual_desc[idx]).strip()
+                if pd.notna(col_visual_desc[idx]) and val != "" and val.lower() != "nan":
+                    centroid_vis_desc = val
+                    break
 
         # Vectorized geographic center calculation
         c_lats = col_lat[indices]
@@ -198,6 +220,10 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             except Exception:
                 pass
 
+        # Collect unique countries and continents present in the cluster
+        c_countries = list(set(col_country[indices]))
+        c_continents = list(set(col_continent[indices]))
+
         dashboard_data.append({
             "id": int(c_id),
             "label": first_label,
@@ -206,11 +232,14 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             "size": len(indices),
             "count": len(indices),
             "description": centroid_desc,
+            "visual_description": centroid_vis_desc,
             "unique_h3_count": unique_h3_count,
             "center_lat": float(center_lat),
             "center_lon": float(center_lon),
             "h3_centroids": h3_centroids,
             "h3_res_tgt": [str(x) for x in cluster_h3_target_res.get(c_id, [])],
+            "countries": [c for c in c_countries if c and pd.notna(c) and c != "Unknown" and c != "Ocean / Unknown"],
+            "continents": [c for c in c_continents if c and pd.notna(c) and c != "Unknown" and c != "Ocean / Unknown"],
             "samples": samples
         })
     # Pre-resolve local image paths if image_root_dir is supplied or they already exist
@@ -376,7 +405,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_n", type=int, default=6, help="Number of samples to show per cluster.")
     parser.add_argument("--image_root_dir", type=str, nargs="+", default=None,
                         help="Optional root directories containing local images (for offline datasets).")
-    parser.add_argument("--target_h3_res", type=int, default=5, help="Target H3 resolution for spatial aggregation (default: 5).")
+    parser.add_argument("--target_h3_res", type=int, default=8, help="Target H3 resolution for spatial aggregation (default: 8).")
     args = parser.parse_args()
 
     create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir, target_h3_res=args.target_h3_res)

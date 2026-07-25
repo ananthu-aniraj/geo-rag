@@ -25,14 +25,44 @@ jobs:
         python -m compileall -q -x "venv|\.venv|\.git|scratch" .
         echo "All Python files successfully verified!"
 
-    - name: Run JavaScript template syntax check
+    - name: Run JavaScript & HTML Template syntax check
       run: |
-        echo "Running syntax validation on JavaScript template files..."
+        echo "Running syntax validation on JavaScript & HTML template files..."
+        
+        # 1. Check standalone JS files (compile check)
         for f in templates/*.js; do
           if [ -f "$f" ]; then
-            echo "Checking $f..."
-            node -e "const fs = require('fs'); const code = fs.readFileSync('$f', 'utf8').replace(/\{\{.*?\}\}/g, '1'); require('vm').runInNewContext(code);"
+            echo "Checking JS file: $f..."
+            node -e "const fs = require('fs'); const code = fs.readFileSync('$f', 'utf8').replace(/\{\{.*?\}\}/g, '1'); new (require('vm').Script)(code);"
             echo "  -> $f syntax OK"
           fi
         done
-        echo "All JavaScript templates successfully verified!"
+        
+        # 2. Check HTML files with inline JS script blocks (compile check)
+        for f in templates/*.html; do
+          if [ -f "$f" ]; then
+            echo "Checking HTML file: $f..."
+            node -e "
+              const fs = require('fs');
+              const code = fs.readFileSync('$f', 'utf8');
+              const scriptRegex = /<script>([\s\S]*?)<\/script>/g;
+              let match;
+              let idx = 0;
+              let errors = 0;
+              while ((match = scriptRegex.exec(code)) !== null) {
+                  idx++;
+                  const jsCode = match[1].replace(/\{\{.*?\}\}/g, '1');
+                  try {
+                      new (require('vm').Script)(jsCode);
+                      console.log('  -> Inline script block #' + idx + ' syntax OK');
+                  } catch (e) {
+                      console.error('  -> Inline script block #' + idx + ' compilation error:', e.message);
+                      errors++;
+                  }
+              }
+              if (errors > 0) process.exit(1);
+            "
+            echo "  -> $f syntax OK"
+          fi
+        done
+        echo "All JavaScript and HTML templates successfully verified!"

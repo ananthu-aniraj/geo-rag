@@ -236,7 +236,7 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 
 ## 🗺️ 5. Spatial Analytics & Interactive Mapping
 
-The pipeline outputs three primary Leaflet-based interactive maps to inspect data density and land usage:
+The pipeline outputs four primary Leaflet-based interactive maps and dashboards to inspect data density, cluster qualities, and land usage:
 
 ### 1. H3 Occupancy Map (`src/visualization/generate_h3_occupancy_map.py`)
 * **Purpose**: Heatmap displaying image density across the globe.
@@ -253,6 +253,14 @@ The pipeline outputs three primary Leaflet-based interactive maps to inspect dat
   * **Global views** are compiled into a lightweight **11MB** single-layer map showing all 9,888 H3 cells, with Platform, Time of Day, Season, and Köppen Climate breakdowns compiled directly inside the hover tooltips.
   * **Regional views** generate multi-layered maps with toggleable layers for visual comparisons of times, seasons, and Köppen climate zones.
 * **Visual Plots**: Generates multi-panel summary plots (.png). Dynamically switches from a standard **2x2** grid to a **3x2** layout if climate or semantic categorization columns are present, adding plots for Köppen climate distribution and top 10 semantic parent category distribution.
+
+### 4. Dynamic Cluster Dashboard (`src/visualization/visualize_cluster_samples.py`)
+* **Purpose**: Generates an interactive web dashboard (`cluster_samples.html`) showing representative images and outliers for each cluster.
+* **Key Features**:
+  * **Two-Step VLM Descriptions**: Displays both the Step 1 visual description (objective catalog of visual details, styled in a warm-yellow box with an amber border) and the Step 2 ecological classification description (styled in a clean grey box with an indigo border).
+  * **Image Sample Metadata**: Each representative sample displays its Photo ID, cosine similarity to the cluster centroid, Latitude/Longitude coordinates, collection season, time of day, Köppen-Geiger climate code, and its country/continent region metadata.
+  * **Interactive Geographic Map**: Embeds a Leaflet-based geographic spread map for each cluster card showing the cluster's geographic center, density markers for H3 cell centroids, and pins for the representative and outlier image coordinate points.
+  * **Offline-First Region Search**: Implements local, offline country and continent search filters. If you type a region that exists in the database, it filters the clusters instantly in-memory, completely bypassing external OSM Nominatim geocoding requests.
 
 ---
 

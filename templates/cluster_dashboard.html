@@ -426,9 +426,14 @@
                             <span class="tag-geo">${h3Val.toLocaleString()} H3 cells</span>
                         </div>
                     </div>
+                    ${c.visual_description ? `
+                    <div class="desc-box" style="border-left-color: #f59e0b; background-color: #fffbeb; margin-bottom: 12px;">
+                        <b>VLM Step 1 (Visual Description):</b> ${c.visual_description}
+                    </div>` : ''}
+                    
                     ${c.description ? `
-                    <div class="desc-box">
-                        <b>VLM Prototypical Description:</b> ${c.description}
+                    <div class="desc-box" style="border-left-color: #4f46e5; background-color: #f8fafc; margin-bottom: 20px;">
+                        <b>VLM Step 2 (LULC Ecological Description):</b> ${c.description}
                     </div>` : ''}
                     
                     <button class="map-toggle-btn" id="map-btn-${c.id}" onclick="toggleMap(${c.id})">
@@ -480,7 +485,7 @@
                                     <div class="image-meta">
                                         <b>ID:</b> ${s.id || ''}<br>
                                         <b>Similarity:</b> ${simVal}<br>
-                                        <b>Lat/Lon:</b> ${latVal}, ${lonVal}${s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}${s.koppen_code ? '<br><b>Climate:</b> ' + s.koppen_code + (s.koppen_desc ? ' - ' + s.koppen_desc : '') : ''}
+                                        <b>Lat/Lon:</b> ${latVal}, ${lonVal}${s.captured_at ? '<br><b>Taken:</b> ' + s.captured_at + (s.season && s.season !== 'Unknown' ? ' (' + s.season + ')' : '') + (s.time_of_day && s.time_of_day !== 'Unknown' ? ' [' + s.time_of_day + ']' : '') : ''}${s.koppen_code ? '<br><b>Climate:</b> ' + s.koppen_code + (s.koppen_desc ? ' - ' + s.koppen_desc : '') : ''}${s.country && s.country !== 'Unknown' && s.country !== 'Ocean / Unknown' ? '<br><b>Region:</b> ' + s.country + (s.continent && s.continent !== 'Unknown' ? ' (' + s.continent + ')' : '') : ''}
                                     </div>
                                 </div>
                             `;
@@ -615,6 +620,7 @@
         }
 
         let locationBbox = null;
+        let localLocationFilter = null;
 
         function getHaversineDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; // Earth's radius in km
@@ -634,6 +640,7 @@
             
             if (!query) {
                 locationBbox = null;
+                localLocationFilter = null;
                 statusLabel.innerHTML = '';
                 filterDataCombined();
                 return;
@@ -642,8 +649,32 @@
             statusLabel.innerHTML = 'Searching location...';
             statusLabel.style.color = "var(--text-muted)";
 
-            // Offline continent overrides
-            const locClean = query.toLowerCase().trim();
+            const queryLower = query.toLowerCase();
+
+            // 1. Offline-first: Check if query matches mapped countries or continents
+            const allCountries = [...new Set(data.flatMap(c => c.countries || []))];
+            const allContinents = [...new Set(data.flatMap(c => c.continents || []))];
+
+            const matchedCountry = allCountries.find(c => c.toLowerCase() === queryLower || c.toLowerCase().includes(queryLower));
+            const matchedContinent = allContinents.find(c => c.toLowerCase() === queryLower || c.toLowerCase().includes(queryLower));
+
+            if (matchedContinent) {
+                locationBbox = null;
+                localLocationFilter = { type: 'continent', value: matchedContinent.toLowerCase() };
+                statusLabel.innerHTML = `📍 Offline Match: ${matchedContinent}`;
+                statusLabel.style.color = "var(--primary)";
+                filterDataCombined();
+                return;
+            } else if (matchedCountry) {
+                locationBbox = null;
+                localLocationFilter = { type: 'country', value: matchedCountry.toLowerCase() };
+                statusLabel.innerHTML = `📍 Offline Match: ${matchedCountry}`;
+                statusLabel.style.color = "var(--primary)";
+                filterDataCombined();
+                return;
+            }
+
+            // 2. Offline continent boundary overrides (fallback for generic search queries)
             const CONTINENT_BOUNDS = {
                 "africa": [-35.0, 38.0, -26.0, 52.0],
                 "europe": [35.0, 72.0, -25.0, 45.0],
@@ -655,8 +686,9 @@
                 "antarctica": [-90.0, -60.0, -180.0, 180.0]
             };
 
-            if (CONTINENT_BOUNDS[locClean]) {
-                const bbox = CONTINENT_BOUNDS[locClean];
+            if (CONTINENT_BOUNDS[queryLower]) {
+                const bbox = CONTINENT_BOUNDS[queryLower];
+                localLocationFilter = null;
                 locationBbox = {
                     min_lat: bbox[0],
                     max_lat: bbox[1],
@@ -672,6 +704,7 @@
                 return;
             }
             
+            // 3. Online geocoding API fallback for specific cities/landmarks
             try {
                 const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
                 const response = await fetch(url, {
@@ -684,6 +717,7 @@
                 if (results && results.length > 0) {
                     const place = results[0];
                     const bbox = place.boundingbox.map(Number); // [minlat, maxlat, minlon, maxlon]
+                    localLocationFilter = null;
                     locationBbox = {
                         min_lat: bbox[0],
                         max_lat: bbox[1],
@@ -697,12 +731,14 @@
                     statusLabel.style.color = "var(--primary)";
                 } else {
                     locationBbox = null;
+                    localLocationFilter = null;
                     statusLabel.innerHTML = "❌ Location not found";
                     statusLabel.style.color = "red";
                 }
             } catch (err) {
                 console.error(err);
                 locationBbox = null;
+                localLocationFilter = null;
                 statusLabel.innerHTML = "❌ Connection error";
                 statusLabel.style.color = "red";
             }
@@ -756,7 +792,8 @@
                 temp = temp.filter(c => 
                     c.id.toString().includes(searchVal) || 
                     c.label.toLowerCase().includes(searchVal) ||
-                    (c.description && c.description.toLowerCase().includes(searchVal))
+                    (c.description && c.description.toLowerCase().includes(searchVal)) ||
+                    (c.visual_description && c.visual_description.toLowerCase().includes(searchVal))
                 );
             }
             
@@ -765,8 +802,16 @@
                 temp = temp.filter(c => c.parent_label === parentVal);
             }
             
-            // 3. Location bounding box / proximity filtering
-            if (locationBbox) {
+            // 3. Location / Region filtering
+            if (localLocationFilter) {
+                temp = temp.filter(c => {
+                    if (localLocationFilter.type === 'continent') {
+                        return (c.continents || []).some(x => x.toLowerCase() === localLocationFilter.value || x.toLowerCase().includes(localLocationFilter.value));
+                    } else {
+                        return (c.countries || []).some(x => x.toLowerCase() === localLocationFilter.value || x.toLowerCase().includes(localLocationFilter.value));
+                    }
+                });
+            } else if (locationBbox) {
                 let queryCells = [];
                 if (typeof h3 !== 'undefined') {
                     const h3Res = (typeof TARGET_H3_RES !== 'undefined') ? TARGET_H3_RES : 5;
@@ -798,7 +843,7 @@
                         s.lon <= locationBbox.max_lon
                     );
                     if (sampleInBbox) return true;
-
+ 
                     // Check if any density centroid points are inside bounding box
                     const h3InBbox = c.h3_centroids.some(pt => 
                         pt[0] >= locationBbox.min_lat &&
