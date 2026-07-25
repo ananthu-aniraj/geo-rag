@@ -254,7 +254,7 @@ python3 -m src.visualization.visualize_cluster_scatter \
 echo ""
 echo "Generating occupancy map"
 python3 -m src.visualization.generate_h3_occupancy_map \
-  --dirs "$OUTPUT_DIR" \
+  --dirs "$INPUT_CSV" \
   --output "$OCCUPANCY_MAP"
 
 echo ""
