@@ -4,6 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 
+import faiss
 import numpy as np
 import pandas as pd
 import requests
@@ -22,6 +23,7 @@ from urllib3.util import Retry
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
+use_gpu = torch.cuda.is_available()
 
 # Global connection pooled session for thread-safe downloads
 http_session = requests.Session()
@@ -97,6 +99,32 @@ def encode_image_value_attention(model_image, img):
     patch_tokens = x_val[:, 1 + num_register:, :]
     blocks_patches = patch_tokens.reshape(B, h_i // P, w_i // P, -1).contiguous()
     return blocks_patches
+
+
+def snap_mask_with_pca(seg_keep, pca_rgb, k_segments=4, use_gpu=True):
+    """Refines/snaps a segment keep-mask to high-resolution visual boundaries from the upscaled PCA map."""
+    h, w, c = pca_rgb.shape
+    pixels = pca_rgb.reshape(-1, 3).astype(np.float32) / 255.0
+    
+    # Use high-speed FAISS K-Means (GPU/CPU) if available
+    d = 3
+    kmeans = faiss.Kmeans(d, k_segments, niter=10, verbose=False, gpu=use_gpu, seed=42)
+    kmeans.train(pixels)
+    _, labels_flat = kmeans.index.search(pixels, 1)
+    labels = labels_flat.ravel().reshape(h, w)
+    discard_mask = 1.0 - seg_keep
+    snapped_keep = np.ones_like(seg_keep)
+    
+    for r in range(k_segments):
+        segment_mask = (labels == r)
+        segment_size = np.sum(segment_mask)
+        if segment_size == 0:
+            continue
+        overlap = np.sum(segment_mask & (discard_mask == 1.0)) / segment_size
+        if overlap >= 0.65:
+            snapped_keep[segment_mask] = 0.0
+            
+    return snapped_keep
 
 
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -186,6 +214,20 @@ def main():
     seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(device)
     tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
 
+    print("Loading AnyUp model for feature upsampling...")
+    try:
+        from anyup import anyup_multi_backbone
+        anyup_model = anyup_multi_backbone(use_natten=False, pretrained=True, device=device).eval()
+        print(" -> AnyUp loaded successfully.")
+    except Exception as e:
+        print(f" -> [WARNING] Failed to load AnyUp model locally: {e}. Trying torch.hub loader...")
+        try:
+            anyup_model = torch.hub.load('wimmerth/anyup', 'anyup_multi_backbone', use_natten=False, pretrained=True, device=device).eval()
+            print(" -> AnyUp loaded successfully via torch.hub.")
+        except Exception as e_hub:
+            print(f" -> [WARNING] Torch Hub AnyUp load failed: {e_hub}. Falling back to standard resizing.")
+            anyup_model = None
+
     # Setup 150 ADE20K text embeddings for TIPSv2 zero-shot mapping
     ade_labels = [seg_model.config.id2label[i] for i in range(150)]
     
@@ -201,6 +243,7 @@ def main():
     unmasked_avg_embeds = []
     seg_masked_embeds = []
     tips_ade_embeds = []
+    anyup_snapped_embeds = []
     tips_ade_keep_masks_list = [] # Save for masked PCA histogram generation
     raw_patch_tokens_list = [] # Used for Global PCA fitting
     seg_viz_samples = [] # Hold first 3 samples for segmentation mask visualization
@@ -280,24 +323,66 @@ def main():
             tips_ade_embeds.append(tips_ade_norm)
             tips_ade_keep_masks_list.append(tips_ade_keep_mask)
 
+            # Compute GPU local PCA (q=3) of patches for visual inspection and AnyUp mask snapping
+            with torch.no_grad():
+                patches_t = torch.tensor(patch_tokens, device=device)
+                patches_centered = patches_t - patches_t.mean(dim=0)
+                _, _, V_local = torch.pca_lowrank(patches_centered, q=3, center=False)
+                proj_local = torch.matmul(patches_centered, V_local) # [1024, 3]
+                p_min = proj_local.min(dim=0, keepdim=True).values
+                p_max = proj_local.max(dim=0, keepdim=True).values
+                p_norm = (proj_local - p_min) / (p_max - p_min + 1e-9)
+                
+                # Upscale using AnyUp (Option B) if available
+                pca_3d = p_norm.reshape(1, 32, 32, 3).permute(0, 3, 1, 2)
+                if anyup_model is not None:
+                    try:
+                        # img_tensors is shape [B, 3, 448, 448] (range [0,1])
+                        hr_img_t = img_tensors[batch_i:batch_i+1]
+                        # Normalize to ImageNet mean & std for AnyUp vision blocks
+                        mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+                        std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+                        hr_img_norm = (hr_img_t - mean) / std
+                        
+                        hr_pca_t = anyup_model(hr_img_norm, pca_3d).squeeze(0).permute(1, 2, 0) # [448, 448, 3]
+                        h_min = hr_pca_t.min()
+                        h_max = hr_pca_t.max()
+                        hr_pca_t = (hr_pca_t - h_min) / (h_max - h_min + 1e-9)
+                        pca_rgb = (hr_pca_t.cpu().numpy() * 255).astype(np.uint8)
+                        
+                        # Generate snapped mask
+                        snapped_keep = snap_mask_with_pca(keep_mask, pca_rgb, k_segments=4)
+                    except Exception as e:
+                        pca_rgb = (p_norm.cpu().numpy() * 255).astype(np.uint8).reshape(32, 32, 3)
+                        snapped_keep = keep_mask
+                else:
+                    pca_rgb = (p_norm.cpu().numpy() * 255).astype(np.uint8).reshape(32, 32, 3)
+                    snapped_keep = keep_mask
+
+            # Downscale snapped_keep (448x448) to 32x32 to mask the 32x32 patch tokens
+            if pca_rgb.shape[:2] == (448, 448):
+                try:
+                    snapped_pil = Image.fromarray((snapped_keep * 255).astype(np.uint8)).resize((32, 32), resample=Image.BILINEAR)
+                    snapped_32x32 = (np.array(snapped_pil) > 127).astype(float)
+                except Exception:
+                    snapped_32x32 = keep_mask.reshape(32, 32)
+            else:
+                snapped_32x32 = keep_mask.reshape(32, 32)
+
+            snapped_keep_flat = snapped_32x32.reshape(-1, 1)
+            total_snapped_weight = np.sum(snapped_keep_flat)
+            snapped_avg = np.sum(patch_tokens * snapped_keep_flat, axis=0) / total_snapped_weight if total_snapped_weight > 0 else simple_avg
+            snapped_norm = snapped_avg / (np.linalg.norm(snapped_avg) + 1e-9)
+            anyup_snapped_embeds.append(snapped_norm)
+
             # Store first 3 processed images for segmentation mask and local PCA visualization
             if len(seg_viz_samples) < 3:
-                # Compute GPU local PCA (q=3) of patches for visual inspection
-                with torch.no_grad():
-                    patches_t = torch.tensor(patch_tokens, device=device)
-                    patches_centered = patches_t - patches_t.mean(dim=0)
-                    _, _, V_local = torch.pca_lowrank(patches_centered, q=3, center=False)
-                    proj_local = torch.matmul(patches_centered, V_local) # [1024, 3]
-                    p_min = proj_local.min(dim=0, keepdim=True).values
-                    p_max = proj_local.max(dim=0, keepdim=True).values
-                    p_norm = (proj_local - p_min) / (p_max - p_min + 1e-9)
-                    pca_rgb = (p_norm.cpu().numpy() * 255).astype(np.uint8).reshape(32, 32, 3)
-
                 seg_viz_samples.append({
                     "img": images[batch_keys[batch_i]],
                     "seg_keep": keep_mask,
                     "tips_ade_keep": tips_ade_keep_mask.reshape(32, 32),
-                    "pca_rgb": pca_rgb
+                    "pca_rgb": pca_rgb,
+                    "snapped_keep": snapped_keep
                 })
 
     # Convert to NumPy matrices for rapid distance computations
@@ -305,6 +390,7 @@ def main():
     UNMASKED_MAT = np.vstack(unmasked_avg_embeds)
     SEG_MASK_MAT = np.vstack(seg_masked_embeds)
     TIPS_ADE_MAT = np.vstack(tips_ade_embeds)
+    ANYUP_SNAPPED_MAT = np.vstack(anyup_snapped_embeds)
 
     # 3. Fit Global PCA dynamically to extract aligned layout signatures on the GPU
     print("\nFitting Global PCA model on patch token sample using GPU...")
@@ -369,6 +455,7 @@ def main():
         "Unmasked Patch Average": UNMASKED_MAT,
         "Segformer-Masked Average": SEG_MASK_MAT,
         "TIPSv2 ADE20K-Masked Average": TIPS_ADE_MAT,
+        "AnyUp-PCA Snapped Mask Average": ANYUP_SNAPPED_MAT,
         "CLS + TIPSv2 ADE20K-Masked (Concat)": CLS_TIPS_ADE_CONCAT,
         "CLS + Unmasked Average (Concat)": CLS_UNMASKED_CONCAT,
         "Hybrid Land Use Signature": HYBRID_LAND_USE
@@ -620,7 +707,7 @@ def main():
 
     # Plot 3: Segmentation Mask Diagnostics
     if len(seg_viz_samples) > 0:
-        fig3, axes3 = plt.subplots(len(seg_viz_samples), 4, figsize=(16, 4 * len(seg_viz_samples)))
+        fig3, axes3 = plt.subplots(len(seg_viz_samples), 5, figsize=(20, 4 * len(seg_viz_samples)))
         if len(seg_viz_samples) == 1:
             axes3 = np.expand_dims(axes3, axis=0) # ensure 2D array shape
             
@@ -649,11 +736,23 @@ def main():
             axes3[idx_s, 2].axis("off")
             
             # Column 3: TIPSv2 Unsupervised Local PCA Component Map
-            # Upsample
-            pca_upsampled = Image.fromarray(sample["pca_rgb"]).resize((448, 448), resample=Image.NEAREST)
-            axes3[idx_s, 3].imshow(pca_upsampled)
-            axes3[idx_s, 3].set_title("TIPSv2 Local PCA Projection\n(PC1/PC2/PC3 mapped to R/G/B)", fontsize=9)
+            pca_rgb_np = sample["pca_rgb"]
+            if pca_rgb_np.shape[:2] == (448, 448):
+                axes3[idx_s, 3].imshow(pca_rgb_np)
+                axes3[idx_s, 3].set_title("TIPSv2 + AnyUp Local PCA\n(PC1/PC2/PC3 mapped to R/G/B)", fontsize=9)
+            else:
+                pca_upsampled = Image.fromarray(pca_rgb_np).resize((448, 448), resample=Image.NEAREST)
+                axes3[idx_s, 3].imshow(pca_upsampled)
+                axes3[idx_s, 3].set_title("TIPSv2 Local PCA Projection\n(PC1/PC2/PC3 mapped to R/G/B)", fontsize=9)
             axes3[idx_s, 3].axis("off")
+            
+            # Column 4: AnyUp-PCA Snapped Mask (Refined keep-mask)
+            snapped_keep_rgb = np.zeros((448, 448, 3), dtype=np.uint8)
+            snapped_keep_rgb[sample["snapped_keep"] == 1.0] = [34, 139, 34]    # Keep: Forest Green
+            snapped_keep_rgb[sample["snapped_keep"] == 0.0] = [178, 34, 34]   # Discard: Firebrick Red
+            axes3[idx_s, 4].imshow(snapped_keep_rgb)
+            axes3[idx_s, 4].set_title("AnyUp-PCA Snapped Mask\n(Green=Keep, Red=Discard)", fontsize=9)
+            axes3[idx_s, 4].axis("off")
             
         plt.tight_layout()
         seg_plot_path = os.path.join(output_dir, "benchmark_segmentation_masks.png")

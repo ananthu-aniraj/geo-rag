@@ -220,20 +220,30 @@ def save_dataset(data, final_results, parent_results, out_path):
 
     for item in data:
         cid = item.get('cluster_id')
-        if cid is not None and int(cid) in cluster_labels:
-            item['cluster_label'] = cluster_labels[int(cid)]
-            item['cluster_description'] = cluster_descriptions[int(cid)]
-            if int(cid) in cluster_visual_descriptions:
-                item['visual_description'] = cluster_visual_descriptions[int(cid)]
+        try:
+            cid_int = int(cid) if (cid is not None and cid == cid) else None
+        except (ValueError, TypeError):
+            cid_int = None
+            
+        if cid_int is not None and cid_int in cluster_labels:
+            item['cluster_label'] = cluster_labels[cid_int]
+            item['cluster_description'] = cluster_descriptions[cid_int]
+            if cid_int in cluster_visual_descriptions:
+                item['visual_description'] = cluster_visual_descriptions[cid_int]
             row_update_count += 1
             
         pid = item.get('parent_cluster_id')
-        if pid is not None and int(pid) in parent_labels:
-            item['parent_cluster_label'] = parent_labels[int(pid)]
-            if pid in parent_descriptions:
-                item['parent_cluster_description'] = parent_descriptions[int(pid)]
-            if int(pid) in parent_visual_descriptions:
-                item['parent_visual_description'] = parent_visual_descriptions[int(pid)]
+        try:
+            pid_int = int(pid) if (pid is not None and pid == pid) else None
+        except (ValueError, TypeError):
+            pid_int = None
+            
+        if pid_int is not None and pid_int in parent_labels:
+            item['parent_cluster_label'] = parent_labels[pid_int]
+            if pid_int in parent_descriptions:
+                item['parent_cluster_description'] = parent_descriptions[pid_int]
+            if int(pid_int) in parent_visual_descriptions:
+                item['parent_visual_description'] = parent_visual_descriptions[pid_int]
             row_update_count += 1
 
     if out_path.endswith('.pkl'):
@@ -409,9 +419,13 @@ def main():
     lulc_list_str = "\n".join([f"- {k}: {v}" for k, v in zip(all_categories, all_prompts)])
 
     # Load step 1 and step 2 prompt templates
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    prompt_step1_path = os.path.join(script_dir, "prompts", "shared", "prompt_step1.txt")
-    prompt_step2_path = os.path.join(script_dir, "prompts", "shared", "prompt_step2.txt")
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    prompt_step1_path = os.path.join(root_dir, "prompts", "shared", "prompt_step1.txt")
+    prompt_step2_path = os.path.join(root_dir, "prompts", "shared", "prompt_step2.txt")
+    if not os.path.exists(prompt_step1_path):
+        prompt_step1_path = "prompts/shared/prompt_step1.txt"
+    if not os.path.exists(prompt_step2_path):
+        prompt_step2_path = "prompts/shared/prompt_step2.txt"
 
     print(f"Loading Step 1 prompt template from {prompt_step1_path}")
     with open(prompt_step1_path, 'r', encoding='utf-8') as f:
