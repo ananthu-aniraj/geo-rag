@@ -1,6 +1,6 @@
 outs:
-- md5: 88f2a63571beea11575ff24130b399f0.dir
-  size: 75087180655
-  nfiles: 21
+- md5: f7b56e19deeeff017cc13e27f1848bfb.dir
+  size: 59493480433
+  nfiles: 17
   hash: md5
   path: full_pipeline_output
