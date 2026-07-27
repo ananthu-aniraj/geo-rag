@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--centroids_parquet", type=str, required=True,
                         help="Path to pre-existing clustered Parquet database.")
     parser.add_argument("--k_clusters", type=int, default=40000, help="Number of clusters.")
-    parser.add_argument("--sample_size", type=int, default=10000, help="Number of new embeddings to sample.")
+    parser.add_argument("--sample_size", type=int, default=100000, help="Number of new embeddings to sample.")
     parser.add_argument("--gpu", action="store_true", default=True, help="Use GPU for FAISS search.")
     parser.add_argument("--no_gpu", action="store_false", dest="gpu")
     parser.add_argument("--outlier_threshold", type=float, default=0.70,
