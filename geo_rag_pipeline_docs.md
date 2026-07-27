@@ -97,6 +97,12 @@ $$
 
 *(A longitude span of > 1.0° is ~111 km, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
 
+### Step 1d: Automatically Finding Optimal k (Spatial Validation)
+* **Script**: `src/utils/validate_cluster_count.py`
+* **Operation**: If `auto_find_k: true` is configured in `params.yaml`, the pipeline runs a spatial block validation search before clustering:
+  * **Dynamic Parameter Update**: The script evaluates reconstruction losses across a search range (defined by `k_min`, `k_max`, and `k_step` in `params.yaml`), identifies the optimal cluster count $k$, and writes the value back to the `k_clusters` parameter in `params.yaml` to dynamically size the downstream clustering execution.
+  * **Mathematical Methodology**: To prevent spatial data leakage, the script implements geographical block hold-outs and selects $k$ using the Elbow method. For the full mathematical details on Tobler's First Law, reconstruction loss, and splitting, see [Section 7: Determining the Optimal Cluster Count (*k*)](#-7-determining-the-optimal-cluster-count-k).
+
 ### Step 2: Global FAISS GPU Clustering & Automated Mode Selection
 * **Script**: `src/indexing/cluster_images_global.py`
 * **Automated Decision Heuristic**:
