@@ -55,6 +55,22 @@ def main():
     if has_tod:
         read_cols.append('Time_Of_Day')
         
+    has_koppen = 'Koppen_Code' in available_cols
+    if has_koppen:
+        read_cols.append('Koppen_Code')
+        
+    has_koppen_desc = 'Koppen_Desc' in available_cols
+    if has_koppen_desc:
+        read_cols.append('Koppen_Desc')
+        
+    has_country = 'country' in available_cols
+    if has_country:
+        read_cols.append('country')
+        
+    has_continent = 'continent' in available_cols
+    if has_continent:
+        read_cols.append('continent')
+        
     has_parent_id = 'parent_cluster_id' in available_cols
     has_parent_label = 'parent_cluster_label' in available_cols
     if has_parent_id:
@@ -65,7 +81,7 @@ def main():
     table = pq.read_table(args.input, columns=read_cols)
     df = table.to_pandas()
     print(f"Loaded {len(df)} rows in {time.time() - start:.2f} seconds.")
-
+ 
     # Reconstruct H3_Cell if missing
     if 'H3_Cell' not in df.columns:
         print("Reconstructing H3 cells at resolution 11 from coordinates...")
@@ -73,7 +89,7 @@ def main():
             h3.latlng_to_cell(float(lat), float(lon), 11) if pd.notna(lat) and pd.notna(lon) else None
             for lat, lon in zip(df['Latitude'], df['Longitude'])
         ]
-
+ 
     # Drop rows with null H3 cells or cluster ids
     df = df.dropna(subset=['H3_Cell', 'cluster_id'])
     
@@ -87,25 +103,45 @@ def main():
         df['parent_cluster_id'] = df['cluster_id'] // 80
     if 'parent_cluster_label' not in df.columns:
         df['parent_cluster_label'] = df['parent_cluster_id'].apply(lambda x: f"Parent Cluster {x}")
-
+ 
     if 'Season' not in df.columns:
         df['Season'] = 'Unknown'
     else:
         df['Season'] = df['Season'].fillna('Unknown')
-
+ 
     if 'Time_Of_Day' not in df.columns:
         df['Time_Of_Day'] = 'Unknown'
     else:
         df['Time_Of_Day'] = df['Time_Of_Day'].fillna('Unknown')
 
+    if 'Koppen_Code' not in df.columns:
+        df['Koppen_Code'] = 'Unknown'
+    else:
+        df['Koppen_Code'] = df['Koppen_Code'].fillna('Unknown')
+
+    if 'Koppen_Desc' not in df.columns:
+        df['Koppen_Desc'] = 'Unknown'
+    else:
+        df['Koppen_Desc'] = df['Koppen_Desc'].fillna('Unknown')
+
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    else:
+        df['country'] = df['country'].fillna('Unknown')
+
+    if 'continent' not in df.columns:
+        df['continent'] = 'Unknown'
+    else:
+        df['continent'] = df['continent'].fillna('Unknown')
+ 
     # Build aggregated tables for resolutions 1 through 11
     resolutions = list(range(1, 12))
     aggregated_dfs = []
-
+ 
     for res in resolutions:
         print(f"Aggregating at H3 Resolution {res}...")
         res_start = time.time()
-
+ 
         # If resolution is 11, use raw cell directly
         if res == 11:
             df_res = df.copy()
@@ -113,30 +149,46 @@ def main():
         else:
             df_res = df.copy()
             df_res['query_cell'] = df_res['H3_Cell'].apply(lambda x: h3.cell_to_parent(x, res))
-
-        # Group by query cell, season, time of day, and cluster/parent metadata
+ 
+        # Group by query cell, season, time of day, climate, region, and cluster/parent metadata
         group_cols = ['query_cell', 'Season']
         if has_tod:
             group_cols.append('Time_Of_Day')
+        if has_koppen:
+            group_cols.append('Koppen_Code')
+        if has_koppen_desc:
+            group_cols.append('Koppen_Desc')
+        if has_country:
+            group_cols.append('country')
+        if has_continent:
+            group_cols.append('continent')
         group_cols.extend(['cluster_id', 'cluster_label', 'cluster_description'])
         if has_parent_id:
             group_cols.append('parent_cluster_id')
         if has_parent_label:
             group_cols.append('parent_cluster_label')
-
+ 
         grouped = df_res.groupby(group_cols, observed=True).size().reset_index(name='image_count')
-
+ 
         grouped['resolution'] = res
         aggregated_dfs.append(grouped)
         print(f"  -> Generated {len(grouped)} records in {time.time() - res_start:.2f} seconds.")
-
+ 
     print("Combining all resolutions...")
     final_df = pd.concat(aggregated_dfs, ignore_index=True)
-
-    # Reorder columns, dynamically preserving parent and time of day info
+ 
+    # Reorder columns, dynamically preserving parent, time, climate, and region info
     final_cols = ['resolution', 'query_cell', 'Season']
     if has_tod:
         final_cols.append('Time_Of_Day')
+    if has_koppen:
+        final_cols.append('Koppen_Code')
+    if has_koppen_desc:
+        final_cols.append('Koppen_Desc')
+    if has_country:
+        final_cols.append('country')
+    if has_continent:
+        final_cols.append('continent')
     final_cols.extend(['cluster_id', 'cluster_label', 'cluster_description'])
     if has_parent_id:
         final_cols.append('parent_cluster_id')
@@ -144,14 +196,14 @@ def main():
         final_cols.append('parent_cluster_label')
     final_cols.append('image_count')
     final_df = final_df[final_cols]
-
+ 
     print(f"Saving aggregated index of {len(final_df)} rows to {args.output}...")
-
+ 
     # Ensure output parent directory exists
     output_dir = os.path.dirname(args.output)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-
+ 
     final_df.to_parquet(args.output, index=False)
     print(f"Index built successfully in {time.time() - start:.2f} seconds.")
 
