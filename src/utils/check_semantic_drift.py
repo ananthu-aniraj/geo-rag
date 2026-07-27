@@ -1,15 +1,12 @@
 import argparse
-import sys
 import os
+
+import faiss
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 from sklearn.preprocessing import normalize
 
-try:
-    import faiss
-except ImportError:
-    faiss = None
 
 def main():
     parser = argparse.ArgumentParser(description="Check for semantic drift between new images and existing centroids.")
