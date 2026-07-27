@@ -1,6 +1,6 @@
 # params.yaml
 pipeline:
-  k_clusters: 40000
+  k_clusters: 50000
   auto_find_k: true  # Mathematically estimate and update k before clustering
   k_min: 30000       # Minimum cluster count for validation search range
   k_max: 80000       # Maximum cluster count for validation search range
