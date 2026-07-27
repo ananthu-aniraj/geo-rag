@@ -165,13 +165,24 @@ else
     echo "Auto-find k is disabled. Using current k_clusters value: $K_CLUSTERS"
 fi
 
-# Heuristic determination of clustering mode
+# Heuristic determination of clustering mode (dynamic semantic drift check)
 CLUSTERING_MODE="fit"
 
 if [ -f "$CLUSTERED_PARQUET" ]; then
     echo "Pre-existing clustered database found at $CLUSTERED_PARQUET."
-    echo "Enabling ASSIGN mode: mapping new data to existing centroids without re-fitting K-Means."
-    CLUSTERING_MODE="assign"
+    echo "Checking for semantic drift in the new dataset..."
+    DETECTOR_MODE=$(python3 -m src.utils.check_semantic_drift \
+      --input "$INPUT_PARQUET" \
+      --centroids_parquet "$CLUSTERED_PARQUET" \
+      --k_clusters "$K_CLUSTERS")
+      
+    if [ "$DETECTOR_MODE" = "assign" ]; then
+        echo "Semantic representation is stable. Enabling ASSIGN mode (reusing existing centroids)."
+        CLUSTERING_MODE="assign"
+    else
+        echo "Significant semantic drift or layout shift detected. Enabling FIT mode to re-cluster."
+        CLUSTERING_MODE="fit"
+    fi
 else
     echo "No pre-existing clustered database found for k=$K_CLUSTERS. Enabling FIT mode."
     CLUSTERING_MODE="fit"

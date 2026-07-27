@@ -103,12 +103,13 @@ $$
   * **Dynamic Parameter Update**: The script evaluates reconstruction losses across a search range (defined by `k_min`, `k_max`, and `k_step` in `params.yaml`), identifies the optimal cluster count $k$, and writes the value back to the `k_clusters` parameter in `params.yaml` to dynamically size the downstream clustering execution.
   * **Mathematical Methodology**: To prevent spatial data leakage, the script implements geographical block hold-outs and selects $k$ using the Elbow method. For the full mathematical details on Tobler's First Law, reconstruction loss, and splitting, see [Section 7: Determining the Optimal Cluster Count (*k*)](#-7-determining-the-optimal-cluster-count-k).
 
-### Step 2: Global FAISS GPU Clustering & Automated Mode Selection
-* **Script**: `src/indexing/cluster_images_global.py`
+### Step 2: Global FAISS GPU Clustering & Dynamic Mode Selection
+* **Scripts**: `src/indexing/cluster_images_global.py` & `src/utils/check_semantic_drift.py`
 * **Automated Decision Heuristic**:
-  The pipeline automatically determines the optimal clustering mode at runtime based on the presence of existing clustered databases and the optimal cluster count $k$ (which can be dynamically updated by the block validation search):
-  1. **`fit` Mode (Re-cluster and Label)**: Triggered if no pre-existing clustered parquet file exists for the current target $k$ (e.g., during the initial run, or when the validation script finds that the optimal $k$ has shifted due to new data). It runs full FAISS Spherical K-Means clustering and schedules MLLM auto-labeling.
-  2. **`assign` Mode (Map to Existing Centroids)**: Automatically triggered if a clustered parquet database file *already exists* for the current $k$. 
+  The pipeline dynamically determines whether to perform full re-clustering and MLLM re-labeling (`fit` mode) or simply map new images to existing centroids (`assign` mode) using a scale-proof semantic drift detector:
+  1. **Dynamic Drift Analysis (`check_semantic_drift.py`)**: If a clustered parquet database file already exists on disk for the current $k$, the pipeline samples 10,000 embeddings from the new dataset. It queries them against the old centroids using FAISS and measures their cosine similarities.
+  2. **`fit` Mode (Re-cluster and Label)**: Triggered if no pre-existing clustered parquet database file exists, if the target $k$ has changed, or if **significant semantic drift is detected** (meaning more than 3% of the new images are classified as outliers, having a cosine similarity of $< 0.70$ with all existing centroids). It runs full FAISS Spherical K-Means and triggers VLM auto-labeling.
+  3. **`assign` Mode (Map to Existing Centroids)**: Triggered if the pre-existing database file exists and the semantic distribution is stable (outliers $\le 3\%$).
      * **Zero VLM Cost:** Rather than re-clustering all data and re-running expensive MLLMs, it dynamically calculates the centroid coordinates from the existing Parquet database in memory, maps the new images to their nearest centroids using FAISS nearest-neighbor search, and maps existing VLM labels and descriptions to the new images. This executes in seconds.
 * **Operation details**:
   * **Type Resilience**: Coordinate columns are defensively cast to numeric float64 right after loading to preserve schema alignment during final Parquet export.
