@@ -109,8 +109,10 @@ cd geo-rag
 pip install -e .
 ```
 
-### 3. Install Deep Learning & FAISS
+### 3. Install PyTorch & FAISS
 Install PyTorch and FAISS based on your hardware configuration:
+
+Please refer to the [official PyTorch installation guide](https://pytorch.org/get-started/locally/) for the latest instructions.
 
 * **For CUDA-enabled GPU (Highly Recommended for fast clustering):**
   ```bash
@@ -122,3 +124,40 @@ Install PyTorch and FAISS based on your hardware configuration:
   pip install torch torchvision
   pip install faiss-cpu
   ```
+
+### 4. Docker & NVIDIA Container Toolkit (For VLM Auto-Labeling)
+The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is controlled by `run_full_pipeline.sh`, which automatically launches an **SGLang** server inside a Docker container. To allow the Docker container to access the host GPU (required for VLM inference):
+
+1. **Install Docker Engine:** Follow the official guide to install [Docker Engine for your OS](https://docs.docker.com/engine/install/).
+2. **Install NVIDIA Container Toolkit:** This allows Docker containers to interface with host GPUs using `--gpus all`:
+   ```bash
+   # Configure the production repository
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+     && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+       sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+       sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+   # Install the toolkit
+   sudo apt-get update
+   sudo apt-get install -y nvidia-container-toolkit
+
+   # Configure Docker to use the NVIDIA runtime
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+3. **Running Docker without sudo (Non-root User Setup):**
+   By default, the Docker daemon binds to a Unix socket owned by `root`. To allow `run_full_pipeline.sh` to launch VLM containers without prefixing commands with `sudo` (which prevents permission denied socket errors):
+   ```bash
+   # Create the docker group (often already exists)
+   sudo groupadd docker
+
+   # Add your current user to the docker group
+   sudo usermod -aG docker $USER
+
+   # Activate the group changes in the current shell session
+   newgrp docker
+   ```
+4. **Verify GPU Container Support (without sudo):**
+   ```bash
+   docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+   ```
