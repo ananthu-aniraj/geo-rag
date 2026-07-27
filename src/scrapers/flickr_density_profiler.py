@@ -102,7 +102,7 @@ def fetch_flickr_photos(bbox_coords, page=1, geo_context=2, delay=2.0):
         f"&bbox={bbox_str}"
         f"&has_geo=1"
         f"&geo_context={geo_context}"
-        f"&extras=url_m,geo,date_taken"
+        f"&extras=url_m,geo,date_taken,license"
         f"&per_page=250"
         f"&page={page}"
         f"&format=json"
