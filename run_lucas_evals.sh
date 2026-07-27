@@ -60,16 +60,13 @@ for MODEL in "${MODELS[@]}"; do
         echo "▶️  [START] Evaluating Model: $MODEL | Version: $VERSION"
         echo "-----------------------------------------------------"
 
-        # Run the python script with the arguments
-        python3 -m "$PYTHON_SCRIPT" \
+        # Run the python script and check status directly
+        if python3 -m "$PYTHON_SCRIPT" \
             --model "$MODEL" \
             --img_dir "$IMG_DIR" \
             --csv "$CSV_FILE" \
             --max_images "$MAX_IMAGES" \
-            --prompt_version "$VERSION"
-
-        # Check if the python command executed successfully
-        if [ $? -eq 0 ]; then
+            --prompt_version "$VERSION"; then
             echo "✅ [SUCCESS] Completed $MODEL with $VERSION"
         else
             echo "❌ [ERROR] An error occurred while evaluating $MODEL with $VERSION"

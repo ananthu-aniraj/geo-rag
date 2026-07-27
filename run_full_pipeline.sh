@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2086
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -166,17 +167,14 @@ fi
 
 # Heuristic determination of clustering mode
 CLUSTERING_MODE="fit"
-RUN_VLM="true"
 
 if [ -f "$CLUSTERED_PARQUET" ]; then
     echo "Pre-existing clustered database found at $CLUSTERED_PARQUET."
     echo "Enabling ASSIGN mode: mapping new data to existing centroids without re-fitting K-Means."
     CLUSTERING_MODE="assign"
-    RUN_VLM="false"
 else
     echo "No pre-existing clustered database found for k=$K_CLUSTERS. Enabling FIT mode."
     CLUSTERING_MODE="fit"
-    RUN_VLM="true"
 fi
 
 echo ""

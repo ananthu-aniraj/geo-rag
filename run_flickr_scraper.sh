@@ -24,7 +24,6 @@ while read -r i
 do
     # Define the output file name (matching the Python script's logic)
     # Note: Python script uses flickr_data_chunk_${i}.csv
-    CHUNK_FILE="$BASE_DIR/flickr_data_chunk_${i}.csv"
     LOG_FILE="$BASE_DIR/flickr_completed_boxes_chunk_${i}.txt"
 
     # Optimization: Skip chunk if the log file exists (indicating it was at least started/processed)
@@ -39,10 +38,7 @@ do
     echo "========================================"
 
     # Run the Python script
-    python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"
-
-    # Safety Check: If the Python script crashes completely, stop the Bash loop
-    if [ $? -ne 0 ]; then
+    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"; then
         echo "CRITICAL ERROR: Script failed on chunk $i. Halting execution."
         exit 1
     fi
