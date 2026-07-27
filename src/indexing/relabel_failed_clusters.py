@@ -305,7 +305,7 @@ def main():
                         help="Target maximum dimension to resize images before VLM processing.")
     parser.add_argument("--max_retries", type=int, default=3,
                         help="Number of times to retry downloading an image.")
-    parser.add_argument("--fallback_depth", type=int, default=5,
+    parser.add_argument("--fallback_depth", type=int, default=20,
                         help="Number of top closest images in a cluster to check if the closest one fails to download.")
     parser.add_argument("--timeout", type=int, default=15,
                         help="Timeout in seconds for image download HTTP requests.")
@@ -552,13 +552,13 @@ def main():
 
                 # Step 1: Vision
                 desc_text = query_vlm_openai_api(task['img_str'], p1_text, args.mllm_model, endpoint,
-                                                 timeout=args.timeout + 15)
+                                                 timeout=120)
 
                 if desc_text:
                     # Step 2: Text
                     step2_prompt_formatted = p2_text.format(visual_description=desc_text)
                     response_text = query_vlm_openai_api(None, step2_prompt_formatted, args.mllm_model, endpoint,
-                                                         timeout=args.timeout + 15)
+                                                         timeout=120)
                 else:
                     response_text = ""
 
@@ -612,13 +612,13 @@ def main():
 
                 # Step 1: Vision
                 desc_text = query_vlm_openai_api(task['img_str'], p1_text, args.mllm_model, endpoint,
-                                                 timeout=args.timeout + 15)
+                                                 timeout=120)
 
                 if desc_text:
                     # Step 2: Text
                     step2_prompt_formatted = p2_text.format(visual_description=desc_text)
                     response_text = query_vlm_openai_api(None, step2_prompt_formatted, args.mllm_model, endpoint,
-                                                         timeout=args.timeout + 15)
+                                                         timeout=120)
                 else:
                     response_text = ""
 
