@@ -15,7 +15,6 @@ def main():
     parser.add_argument("--centroids_parquet", type=str, required=True,
                         help="Path to pre-existing clustered Parquet database.")
     parser.add_argument("--k_clusters", type=int, default=40000, help="Number of clusters.")
-    parser.add_argument("--sample_size", type=int, default=100000, help="Number of new embeddings to sample.")
     parser.add_argument("--gpu", action="store_true", default=True, help="Use GPU for FAISS search.")
     parser.add_argument("--no_gpu", action="store_false", dest="gpu")
     parser.add_argument("--outlier_threshold", type=float, default=0.70,
@@ -70,15 +69,12 @@ def main():
                 new_embeddings.append(new_embs_rg)
                 rows_read += len(new_embs_rg)
 
-            if rows_read >= args.sample_size:
-                break
-
         # If no new images were added at all, we can safely run assign mode (0 drift)
         if len(new_embeddings) == 0:
             print("assign")
             return
 
-        new_embs = np.vstack(new_embeddings)[:args.sample_size]
+        new_embs = np.vstack(new_embeddings)
         new_embs = normalize(new_embs).astype(np.float32)
         dim = new_embs.shape[1]
     except Exception:
