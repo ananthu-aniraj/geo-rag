@@ -458,6 +458,8 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
             if len(valid_koppen) > 0:
                 counts = valid_koppen['Koppen_Code'].value_counts()
                 sns.barplot(x=counts.index, y=counts.values, ax=ax5, palette="tab10", hue=counts.index, legend=False)
+                ax5.tick_params(axis='x', rotation=45)
+                plt.setp(ax5.get_xticklabels(), rotation=45, ha='right')
                 ax5.set_title("Distribution by Köppen Climate Code", fontsize=14, fontweight='bold')
                 ax5.set_ylabel("Image Count")
                 max_val = counts.values.max() if len(counts) > 0 else 1

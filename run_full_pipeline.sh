@@ -326,7 +326,7 @@ python3 -m src.visualization.generate_h3_semantic_map \
 echo ""
 echo "Generating dataset statistics report, plots, and optimized H3 map..."
 python3 -m src.utils.dataset_statistics \
-  --input "$INPUT_PARQUET" \
+  --input "$CLUSTERED_PARQUET" \
   --spatial_index "$H3_SEMANTIC_INDEX" \
   --output_plot "$STATS_PLOT" \
   --output_text "$STATS_TEXT" \
