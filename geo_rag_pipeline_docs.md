@@ -236,7 +236,7 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 
 ## 🗺️ 5. Spatial Analytics & Interactive Mapping
 
-The pipeline outputs four primary Leaflet-based interactive maps and dashboards to inspect data density, cluster qualities, and land usage:
+The pipeline outputs five primary interactive maps, dashboards, and projections to inspect data density, cluster qualities, and land usage:
 
 ### 1. H3 Occupancy Map (`src/visualization/generate_h3_occupancy_map.py`)
 * **Purpose**: Heatmap displaying image density across the globe.
@@ -261,6 +261,17 @@ The pipeline outputs four primary Leaflet-based interactive maps and dashboards 
   * **Image Sample Metadata**: Each representative sample displays its Photo ID, cosine similarity to the cluster centroid, Latitude/Longitude coordinates, collection season, time of day, Köppen-Geiger climate code, and its country/continent region metadata.
   * **Interactive Geographic Map**: Embeds a Leaflet-based geographic spread map for each cluster card showing the cluster's geographic center, density markers for H3 cell centroids, and pins for the representative and outlier image coordinate points.
   * **Offline-First Region Search**: Implements local, offline country and continent search filters. If you type a region that exists in the database, it filters the clusters instantly in-memory, completely bypassing external OSM Nominatim geocoding requests.
+
+### 5. Centroid Semantic UMAP Projection (`src/visualization/visualize_cluster_scatter.py`)
+* **Purpose**: Computes a 2D UMAP projection on the average embeddings (centroids) of all 50,000 fine-grained visual clusters to visualize the global semantic manifold of the dataset.
+* **Dual Output**:
+  * **Static Plot (`cluster_scatter.png`)**: High-resolution image showing the semantic distribution of centroids colored by their parent land-use category.
+  * **Interactive WebGL Dashboard (`cluster_scatter.html`)**: A lightweight Plotly WebGL-accelerated interactive scatter plot.
+* **Interactive Elements**:
+  * **WebGL Rendering**: Employs GPU-accelerated WebGL (`Scattergl`) to run smoothly (60 FPS) when panning, zooming, or box-selecting across tens of thousands of clusters in any browser.
+  * **Density Sizing**: Node marker size scales dynamically based on the number of images assigned to that cluster (larger dots = higher density clusters).
+  * **Hover Metadata**: Hovering over any cluster centroid displays its unique `Cluster ID`, `Cluster Label`, `Parent Category`, exact image count, and its VLM visual description.
+  * **Filter Toggles**: Double-clicking or clicking parent categories in the legend instantly filters and highlights specific semantic families (e.g. isolating all forestry subclasses).
 
 ---
 
