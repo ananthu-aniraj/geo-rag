@@ -275,7 +275,6 @@ else
       --in "$CLUSTERED_PARQUET" \
       --mllm_model "$MLLM_MODEL" \
       --mllm_backend "$MLLM_BACKEND" \
-      --fallback_depth 10 \
       $IMAGE_ROOT_FLAG
 
     echo ""
