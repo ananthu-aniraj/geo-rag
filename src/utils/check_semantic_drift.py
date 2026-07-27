@@ -11,13 +11,16 @@ from sklearn.preprocessing import normalize
 def main():
     parser = argparse.ArgumentParser(description="Check for semantic drift between new images and existing centroids.")
     parser.add_argument("--input", type=str, required=True, help="Path to new/combined dataset Parquet file.")
-    parser.add_argument("--centroids_parquet", type=str, required=True, help="Path to pre-existing clustered Parquet database.")
+    parser.add_argument("--centroids_parquet", type=str, required=True,
+                        help="Path to pre-existing clustered Parquet database.")
     parser.add_argument("--k_clusters", type=int, default=40000, help="Number of clusters.")
     parser.add_argument("--sample_size", type=int, default=10000, help="Number of new embeddings to sample.")
     parser.add_argument("--gpu", action="store_true", default=True, help="Use GPU for FAISS search.")
     parser.add_argument("--no_gpu", action="store_false", dest="gpu")
-    parser.add_argument("--outlier_threshold", type=float, default=0.70, help="Cosine similarity below which a vector is an outlier.")
-    parser.add_argument("--drift_ratio_threshold", type=float, default=0.03, help="Outlier ratio threshold (e.g. 0.03 for 3%).")
+    parser.add_argument("--outlier_threshold", type=float, default=0.70,
+                        help="Cosine similarity below which a vector is an outlier.")
+    parser.add_argument("--drift_ratio_threshold", type=float, default=0.03,
+                        help="Outlier ratio threshold (e.g. 0.03 for 3%).")
     args = parser.parse_args()
 
     # Fallback to fit if the pre-existing file doesn't exist
@@ -64,10 +67,10 @@ def main():
                 continue
             embs_old = np.vstack(df_rg_old['embedding'].values).astype(np.float32)
             c_ids_old = df_rg_old['cluster_id'].values
-            
+
             valid_mask = (c_ids_old >= 0) & (~pd.isna(c_ids_old)) & (c_ids_old < args.k_clusters)
             c_ids_valid = c_ids_old[valid_mask].astype(np.int32)
-            
+
             np.add.at(raw_centroids, c_ids_valid, embs_old[valid_mask])
             counts += np.bincount(c_ids_valid, minlength=args.k_clusters)
 
@@ -108,6 +111,7 @@ def main():
             print("assign")
     except Exception:
         print("fit")
+
 
 if __name__ == "__main__":
     main()
