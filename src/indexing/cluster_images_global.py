@@ -125,10 +125,10 @@ def main():
         start_assign = time.time()
         pf_old = pq.ParquetFile(args.centroids_parquet)
         
-        # Accumulate centroids dynamically from the old clustered database
-        cluster_sums = {}
-        cluster_counts = {}
-        child_to_parent_map = {}
+        # Accumulate centroids dynamically from the old clustered database using vectorized math
+        raw_centroids = np.zeros((args.k, dim), dtype=np.float32)
+        counts = np.zeros(args.k, dtype=np.int64)
+        child_to_parent = np.zeros(args.k, dtype=np.int32)
         
         print("Computing centroids from pre-existing database...")
         for rg in range(pf_old.num_row_groups):
@@ -141,30 +141,25 @@ def main():
             c_ids_old = df_rg_old['cluster_id'].values
             p_ids_old = df_rg_old['parent_cluster_id'].values
             
-            for unique_id in np.unique(c_ids_old):
-                if unique_id is None or pd.isna(unique_id):
-                    continue
-                unique_id = int(unique_id)
-                mask = (c_ids_old == unique_id)
-                sum_emb = embs_old[mask].sum(axis=0)
-                count = int(mask.sum())
-                
-                if unique_id not in cluster_sums:
-                    cluster_sums[unique_id] = sum_emb
-                    cluster_counts[unique_id] = count
-                    idx = np.where(mask)[0][0]
-                    child_to_parent_map[unique_id] = int(p_ids_old[idx]) if not pd.isna(p_ids_old[idx]) else int(unique_id // 80)
-                else:
-                    cluster_sums[unique_id] += sum_emb
-                    cluster_counts[unique_id] += count
-
-        unique_ids = sorted(list(cluster_sums.keys()))
-        child_centroids = np.empty((len(unique_ids), dim), dtype=np.float32)
-        child_to_parent = np.empty(len(unique_ids), dtype=np.int32)
-        for i, c_id in enumerate(unique_ids):
-            child_centroids[i] = cluster_sums[c_id] / cluster_counts[c_id]
-            child_to_parent[i] = child_to_parent_map[c_id]
+            valid_mask = (c_ids_old >= 0) & (~pd.isna(c_ids_old)) & (c_ids_old < args.k)
+            c_ids_valid = c_ids_old[valid_mask].astype(np.int32)
             
+            # Vectorized addition and bincount accumulation
+            np.add.at(raw_centroids, c_ids_valid, embs_old[valid_mask])
+            counts += np.bincount(c_ids_valid, minlength=args.k)
+            
+            # Map child to parent vectorially
+            child_to_parent[c_ids_valid] = np.where(pd.isna(p_ids_old[valid_mask]), c_ids_valid // 80, p_ids_old[valid_mask]).astype(np.int32)
+
+        # Normalize centroids by their counts
+        valid_counts = counts > 0
+        raw_centroids[valid_counts] /= counts[valid_counts, None]
+        
+        # Keep only active cluster IDs
+        unique_ids = np.where(valid_counts)[0]
+        child_centroids = raw_centroids[unique_ids]
+        child_to_parent = child_to_parent[unique_ids]
+        
         print(f" -> Successfully loaded {len(unique_ids)} centroids from database.")
         
         print(f"\nAssigning {len(embeddings_norm):,} embeddings to pre-existing child centroids...")
@@ -204,7 +199,8 @@ def main():
         
         # Fallback values
         if 'parent_cluster_id' not in df.columns:
-            df['parent_cluster_id'] = np.array([child_to_parent_map.get(cid, cid // 80) for cid in df['cluster_id']])
+            parent_map_dict = {unique_ids[i]: child_to_parent[i] for i in range(len(unique_ids))}
+            df['parent_cluster_id'] = np.array([parent_map_dict.get(cid, cid // 80) for cid in df['cluster_id']])
             
         print(f" -> Mapping completed in {time.time() - start_assign:.2f}s.")
         
