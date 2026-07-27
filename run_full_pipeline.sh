@@ -172,6 +172,26 @@ python3 -m src.indexing.cluster_images_global \
   --out "$CLUSTERED_PARQUET" \
   --gpu
 
+# Detect if AppArmor is active on the host system to avoid breaking non-AppArmor systems (macOS, Windows, RedHat)
+APPARMOR_FLAG=""
+if [ -f /sys/module/apparmor/parameters/enabled ] && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ]; then
+    APPARMOR_FLAG="--security-opt apparmor=unconfined"
+fi
+
+# Register trap handler to guarantee Docker container cleanup on script exit/cancel/error
+SGLANG_STARTED=false
+cleanup() {
+    if [ "$SGLANG_STARTED" = "true" ]; then
+        echo ""
+        echo "========================================="
+        echo "Trap triggered: Cleaning up SGLang server..."
+        docker rm -f sglang-server >/dev/null 2>&1 || true
+        echo "Cleanup complete."
+        echo "========================================="
+    fi
+}
+trap cleanup EXIT INT TERM ERR
+
 # Ensure no stale sglang-server container is running from a previous run
 docker rm -f sglang-server >/dev/null 2>&1 || true
 
@@ -179,6 +199,7 @@ echo "Launching SGLang server container..."
 docker run -d \
   --name sglang-server \
   --runtime nvidia \
+  $APPARMOR_FLAG \
   -e NVIDIA_VISIBLE_DEVICES=0 \
   --shm-size 32g \
   -p 30000:30000 \
@@ -187,6 +208,8 @@ docker run -d \
   --ipc=host \
   lmsysorg/sglang:latest-runtime \
   bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph"
+
+SGLANG_STARTED=true
 
 echo "Waiting for SGLang server to initialize..."
 until curl -s http://localhost:30000/health > /dev/null; do
@@ -222,7 +245,8 @@ python3 -m src.indexing.relabel_failed_clusters \
 
 echo ""
 echo "Stopping SGLang server..."
-docker stop sglang-server && docker rm sglang-server
+docker rm -f sglang-server >/dev/null 2>&1 || true
+SGLANG_STARTED=false
 
 echo ""
 echo "[Step 2d/5] Building H3 Spatial-Semantic Index..."

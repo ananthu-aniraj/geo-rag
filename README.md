@@ -161,3 +161,25 @@ The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is 
    ```bash
    docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
    ```
+
+---
+
+## ⚠️ Troubleshooting: Ubuntu AppArmor & Container Termination hangs
+
+On modern Ubuntu releases (specifically Ubuntu 24.04 LTS), a conflict between AppArmor and the `containerd` runtime can prevent Docker containers from stopping or being deleted.
+
+### Symptom
+Running `./run_full_pipeline.sh` hangs when stopping the server, or manual commands like `docker stop sglang-server` / `docker rm -f sglang-server` fail with:
+> `Error response from daemon: cannot stop container: sglang-server: permission denied`
+
+### Solution (Implemented in Pipeline)
+To ensure the pipeline is portable and does not fail on non-Ubuntu systems (like macOS, Windows WSL2, or Red Hat):
+1. **Dynamic AppArmor Detection:** `run_full_pipeline.sh` checks if AppArmor is enabled on the host system at runtime by reading `/sys/module/apparmor/parameters/enabled`.
+2. **Conditional Unconfinement:** If AppArmor is active, the script automatically launches the container with `--security-opt apparmor=unconfined`. This prevents AppArmor from blocking the containerd namespace teardown when the script exits, enabling clean removal.
+3. **Fallback:** On non-Ubuntu systems, this flag is omitted to prevent "security option not supported" compatibility failures.
+
+If you continue to experience containerd lockups on your host machine, you can clean your systemd parser cache and restart the daemon:
+```bash
+sudo systemctl parser-cache --clean
+sudo systemctl restart docker
+```
