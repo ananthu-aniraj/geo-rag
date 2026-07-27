@@ -15,6 +15,7 @@ pyyaml
 scikit-learn
 dvc
 dvc-ssh
+plotly
 
 # --- Deep Learning & GPU Operations ---
 # Install these manually matching your CUDA GPU drivers:

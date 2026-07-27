@@ -29,7 +29,8 @@ dependencies = [
     "pyyaml",
     "scikit-learn",
     "dvc",
-    "dvc-ssh"
+    "dvc-ssh",
+    "plotly"
 ]
 
 [tool.setuptools]
