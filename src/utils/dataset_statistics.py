@@ -1,17 +1,18 @@
+import argparse
 import os
 import sys
 import time
-import argparse
-import requests
-import pandas as pd
+
+import branca.colormap as cm
+import folium
 import geopandas as gpd
 import h3
 import matplotlib.pyplot as plt
-import seaborn as sns
-import pyarrow.parquet as pq
-import folium
-import branca.colormap as cm
 import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
+import requests
+import seaborn as sns
 
 
 def geocode_location(location_name):

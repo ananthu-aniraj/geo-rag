@@ -1,11 +1,11 @@
+import csv
+import datetime
 import os
 import time
-import csv
-import requests
-import datetime
-import pandas as pd
-from tqdm import tqdm
 from pathlib import Path
+
+import pandas as pd
+import requests
 
 ACCESS_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DELAY_BETWEEN_CALLS = 1.8  # Be polite to Mapillary servers

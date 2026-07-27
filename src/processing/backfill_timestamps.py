@@ -1,12 +1,13 @@
-import os
-import time
 import argparse
 import datetime
 import glob
-import requests
-import pandas as pd
-from tqdm import tqdm
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pandas as pd
+import requests
+from tqdm import tqdm
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
@@ -173,9 +174,9 @@ def main():
     global_timestamps_cache = {}
 
     for file_idx, current_file in enumerate(files_to_process, 1):
-        print(f"\n==================================================")
+        print("\n==================================================")
         print(f"[{file_idx}/{len(files_to_process)}] Processing file: {current_file}")
-        print(f"==================================================")
+        print("==================================================")
 
         # Determine save path for this specific file
         if args.save_path:
@@ -301,7 +302,7 @@ def main():
                     box_to_photos = {}
                 
                 if active_bboxes:
-                    print(f"Running optimized bulk search scan on active boxes...")
+                    print("Running optimized bulk search scan on active boxes...")
                     for bbox in tqdm(active_bboxes, desc="Bulk Scan Flickr BBoxes"):
                         if box_to_photos and bbox in box_to_photos:
                             box_photos = box_to_photos[bbox]

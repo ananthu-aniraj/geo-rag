@@ -1,13 +1,13 @@
-import os
-import glob
-import pandas as pd
-import h3
-import folium
 import argparse
-import numpy as np
-from tqdm import tqdm
+import glob
+import os
+
 import branca.colormap as cm
-import json
+import folium
+import h3
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 
 def main():

@@ -1,14 +1,15 @@
-import requests
-import math
-import csv
-import os
-import time
-import random
-from tqdm import tqdm
-import geopandas as gpd
 import argparse
+import csv
+import math
+import os
+import random
+import time
 from pathlib import Path
+
+import geopandas as gpd
+import requests
 from shapely.geometry import box
+from tqdm import tqdm
 
 # --- 1. Configuration ---
 ACCESS_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'  # <-- REPLACE WITH YOUR MAPILLARY TOKEN

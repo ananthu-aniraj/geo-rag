@@ -1,18 +1,22 @@
-import os
 import argparse
 import math
-import pandas as pd
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import requests
-from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
-from transformers import AutoModel, SegformerImageProcessor, SegformerForSemanticSegmentation
-from torchvision import transforms
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+
+import numpy as np
+import pandas as pd
+import requests
+import torch
+import torch.nn.functional as F
+from PIL import Image, ImageDraw
+from torchvision import transforms
 from tqdm import tqdm
+from transformers import (
+    AutoModel,
+    SegformerForSemanticSegmentation,
+    SegformerImageProcessor,
+)
 
 # Configuration Defaults
 DEFAULT_CSV_PATH = "./full_pipeline_output/geo_space_deduplicated.csv"
@@ -397,7 +401,7 @@ def main():
 
     # Perform retrieval matching
     query_row = sampled_df.iloc[query_row_idx]
-    print(f"\n--- QUERY IMAGE DETAILS ---")
+    print("\n--- QUERY IMAGE DETAILS ---")
     print(f"Index: {query_row_idx}")
     print(f"Platform: {query_row['Platform']}")
     print(f"Lat/Lon: {query_row['Latitude']:.4f}, {query_row['Longitude']:.4f}")

@@ -1,12 +1,13 @@
-import os
-import glob
-import pandas as pd
-import h3
-import geopandas as gpd
-from shapely.geometry import Polygon
 import argparse
-from tqdm import tqdm
+import glob
+import os
 from collections import Counter
+
+import geopandas as gpd
+import h3
+import pandas as pd
+from shapely.geometry import Polygon
+from tqdm import tqdm
 
 
 def get_h3_polygon(cell):

@@ -66,3 +66,14 @@ jobs:
           fi
         done
         echo "All JavaScript and HTML templates successfully verified!"
+
+    - name: Run ShellCheck on shell scripts
+      run: |
+        echo "Running static analysis on shell scripts..."
+        for f in *.sh; do
+          if [ -f "$f" ]; then
+            echo "Checking shell script: $f..."
+            shellcheck -s bash "$f"
+          fi
+        done
+        echo "All shell scripts successfully verified!"

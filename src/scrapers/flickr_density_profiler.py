@@ -1,10 +1,10 @@
+import csv
 import os
 import time
-import csv
-import requests
-import pandas as pd
-from tqdm import tqdm
 from pathlib import Path
+
+import pandas as pd
+import requests
 
 API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
 DELAY_BETWEEN_CALLS = 1.1

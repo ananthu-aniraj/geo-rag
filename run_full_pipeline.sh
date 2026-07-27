@@ -164,89 +164,116 @@ else
     echo "Auto-find k is disabled. Using current k_clusters value: $K_CLUSTERS"
 fi
 
-echo ""
-echo "[Step 2/5] Global Unsupervised FAISS GPU Clustering..."
-python3 -m src.indexing.cluster_images_global \
-  --pkl "$INPUT_PARQUET" \
-  --k "$K_CLUSTERS" \
-  --out "$CLUSTERED_PARQUET" \
-  --gpu
+# Heuristic determination of clustering mode
+CLUSTERING_MODE="fit"
+RUN_VLM="true"
 
-# Detect if AppArmor is active on the host system to avoid breaking non-AppArmor systems (macOS, Windows, RedHat)
-APPARMOR_FLAG=""
-if [ -f /sys/module/apparmor/parameters/enabled ] && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ]; then
-    APPARMOR_FLAG="--security-opt apparmor=unconfined"
+if [ -f "$CLUSTERED_PARQUET" ]; then
+    echo "Pre-existing clustered database found at $CLUSTERED_PARQUET."
+    echo "Enabling ASSIGN mode: mapping new data to existing centroids without re-fitting K-Means."
+    CLUSTERING_MODE="assign"
+    RUN_VLM="false"
+else
+    echo "No pre-existing clustered database found for k=$K_CLUSTERS. Enabling FIT mode."
+    CLUSTERING_MODE="fit"
+    RUN_VLM="true"
 fi
 
-# Register trap handler to guarantee Docker container cleanup on script exit/cancel/error
-SGLANG_STARTED=false
-cleanup() {
-    if [ "$SGLANG_STARTED" = "true" ]; then
-        echo ""
-        echo "========================================="
-        echo "Trap triggered: Cleaning up SGLang server..."
-        docker rm -f sglang-server >/dev/null 2>&1 || true
-        echo "Cleanup complete."
-        echo "========================================="
+echo ""
+echo "[Step 2/5] Global Unsupervised FAISS GPU Clustering & VLM Labeling (Mode: $CLUSTERING_MODE)..."
+if [ "$CLUSTERING_MODE" = "assign" ]; then
+    # Map new embeddings to existing centroids and inherit labels
+    python3 -m src.indexing.cluster_images_global \
+      --pkl "$INPUT_PARQUET" \
+      --k "$K_CLUSTERS" \
+      --out "$CLUSTERED_PARQUET.tmp" \
+      --clustering_mode assign \
+      --centroids_parquet "$CLUSTERED_PARQUET" \
+      --gpu
+    mv "$CLUSTERED_PARQUET.tmp" "$CLUSTERED_PARQUET"
+else
+    python3 -m src.indexing.cluster_images_global \
+      --pkl "$INPUT_PARQUET" \
+      --k "$K_CLUSTERS" \
+      --out "$CLUSTERED_PARQUET" \
+      --gpu
+
+    # Detect if AppArmor is active on the host system to avoid breaking non-AppArmor systems (macOS, Windows, RedHat)
+    APPARMOR_FLAG=""
+    if [ -f /sys/module/apparmor/parameters/enabled ] && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ]; then
+        APPARMOR_FLAG="--security-opt apparmor=unconfined"
     fi
-}
-trap cleanup EXIT INT TERM ERR
 
-# Ensure no stale sglang-server container is running from a previous run
-docker rm -f sglang-server >/dev/null 2>&1 || true
+    # Register trap handler to guarantee Docker container cleanup on script exit/cancel/error
+    SGLANG_STARTED=false
+    cleanup() {
+        if [ "$SGLANG_STARTED" = "true" ]; then
+            echo ""
+            echo "========================================="
+            echo "Trap triggered: Cleaning up SGLang server..."
+            docker rm -f sglang-server >/dev/null 2>&1 || true
+            echo "Cleanup complete."
+            echo "========================================="
+        fi
+    }
+    trap cleanup EXIT INT TERM ERR
 
-echo "Launching SGLang server container..."
-docker run -d \
-  --name sglang-server \
-  --runtime nvidia \
-  $APPARMOR_FLAG \
-  -e NVIDIA_VISIBLE_DEVICES=0 \
-  --shm-size 32g \
-  -p 30000:30000 \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  --env "HF_TOKEN=HF_TOKEN_PLACEHOLDER" \
-  --ipc=host \
-  lmsysorg/sglang:latest-runtime \
-  bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph"
+    # Ensure no stale sglang-server container is running from a previous run
+    docker rm -f sglang-server >/dev/null 2>&1 || true
 
-SGLANG_STARTED=true
+    echo "Launching SGLang server container..."
+    docker run -d \
+      --name sglang-server \
+      --runtime nvidia \
+      $APPARMOR_FLAG \
+      -e NVIDIA_VISIBLE_DEVICES=0 \
+      --shm-size 32g \
+      -p 30000:30000 \
+      -v ~/.cache/huggingface:/root/.cache/huggingface \
+      --env "HF_TOKEN=HF_TOKEN_PLACEHOLDER" \
+      --ipc=host \
+      lmsysorg/sglang:latest-runtime \
+      bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph"
 
-echo "Waiting for SGLang server to initialize..."
-until curl -s http://localhost:30000/health > /dev/null; do
-    if ! docker ps -q --filter "name=sglang-server" | grep -q .; then
-        echo "[ERROR] SGLang server container exited unexpectedly."
-        echo "Showing last 20 lines of docker logs:"
-        docker logs --tail 20 sglang-server
-        exit 1
-    fi
-    sleep 2
-done
+    SGLANG_STARTED=true
 
-echo "SGLang server is live! Executing downstream tasks..."
+    echo "Waiting for SGLang server to initialize..."
+    until curl -s http://localhost:30000/health > /dev/null; do
+        if ! docker ps -q --filter "name=sglang-server" | grep -q .; then
+            echo "[ERROR] SGLang server container exited unexpectedly."
+            echo "Showing last 20 lines of docker logs:"
+            docker logs --tail 20 sglang-server
+            exit 1
+        fi
+        sleep 2
+    done
 
-echo ""
-echo "[Step 2b/5] MLLM Cluster Auto-Labeling..."
-python3 -m src.indexing.label_clusters_mllm \
-  --in "$CLUSTERED_PARQUET" \
-  --label_method "$LABEL_METHOD" \
-  --mllm_backend "$MLLM_BACKEND" \
-  --mllm_model "$MLLM_MODEL" \
-  --chunk_size "$CHUNK_SIZE" \
-  $IMAGE_ROOT_FLAG
+    echo "SGLang server is live! Executing downstream tasks..."
 
-echo ""
-echo "[Step 2c/5] Re-labeling Failed Clusters (due to download timeouts)..."
-python3 -m src.indexing.relabel_failed_clusters \
-  --in "$CLUSTERED_PARQUET" \
-  --mllm_model "$MLLM_MODEL" \
-  --mllm_backend "$MLLM_BACKEND" \
-  --fallback_depth 10 \
-  $IMAGE_ROOT_FLAG
+    echo ""
+    echo "[Step 2b/5] MLLM Cluster Auto-Labeling..."
+    python3 -m src.indexing.label_clusters_mllm \
+      --in "$CLUSTERED_PARQUET" \
+      --label_method "$LABEL_METHOD" \
+      --mllm_backend "$MLLM_BACKEND" \
+      --mllm_model "$MLLM_MODEL" \
+      --chunk_size "$CHUNK_SIZE" \
+      $IMAGE_ROOT_FLAG
 
-echo ""
-echo "Stopping SGLang server..."
-docker rm -f sglang-server >/dev/null 2>&1 || true
-SGLANG_STARTED=false
+    echo ""
+    echo "[Step 2c/5] Re-labeling Failed Clusters (due to download timeouts)..."
+    python3 -m src.indexing.relabel_failed_clusters \
+      --in "$CLUSTERED_PARQUET" \
+      --mllm_model "$MLLM_MODEL" \
+      --mllm_backend "$MLLM_BACKEND" \
+      --fallback_depth 10 \
+      $IMAGE_ROOT_FLAG
+
+    echo ""
+    echo "Stopping SGLang server..."
+    docker rm -f sglang-server >/dev/null 2>&1 || true
+    SGLANG_STARTED=false
+fi
 
 echo ""
 echo "[Step 2d/5] Building H3 Spatial-Semantic Index..."

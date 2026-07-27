@@ -1,7 +1,8 @@
-import requests
-import math
 import csv
+import math
 import time
+
+import requests
 
 # --- 1. Configuration ---
 ACCESS_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'  # <-- REPLACE WITH YOUR MAPILLARY TOKEN

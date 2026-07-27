@@ -1,9 +1,9 @@
-import requests
-import pandas as pd
 import argparse
-import time
-import os
 import re
+import time
+
+import pandas as pd
+import requests
 
 # Map preset biomes to a list of plant & animal search terms to ensure a balanced ecological representation
 BIOME_PRESETS = {

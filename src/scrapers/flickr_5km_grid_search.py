@@ -1,14 +1,15 @@
-import requests
-import math
-import csv
-import os
-import time
 import argparse
+import csv
+import math
+import os
 import random
+import time
 from pathlib import Path
-from tqdm import tqdm
+
 import geopandas as gpd
+import requests
 from shapely.geometry import box
+from tqdm import tqdm
 
 # --- 1. Configuration ---
 API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'  # <-- REPLACE THIS WITH YOUR ACTUAL FLICKR API KEY

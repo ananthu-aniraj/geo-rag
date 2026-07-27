@@ -2,7 +2,6 @@ import argparse
 import base64
 import os
 import pickle
-import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -296,7 +295,7 @@ def main():
             parquet_file = pq.ParquetFile(args.input_file)
             metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
             df = pd.read_parquet(args.input_file, columns=metadata_cols)
-        except Exception as e:
+        except Exception:
             df = pd.read_parquet(args.input_file)
 
         table = pq.read_table(args.input_file, columns=["embedding"])

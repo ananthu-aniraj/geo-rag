@@ -97,13 +97,18 @@ $$
 
 *(A longitude span of > 1.0° is ~111 km, which ensures that dense cities—which naturally occupy tiny bounding boxes—are completely preserved, while global coordinate-locked lines spanning multiple countries are cleanly discarded).*
 
-### Step 2: Global FAISS GPU Clustering
+### Step 2: Global FAISS GPU Clustering & Automated Mode Selection
 * **Script**: `src/indexing/cluster_images_global.py`
-* **Operation**: Performs decoupled, memory-efficient 100% FAISS GPU two-level clustering on image embeddings:
+* **Automated Decision Heuristic**:
+  The pipeline automatically determines the optimal clustering mode at runtime based on the presence of existing clustered databases and the optimal cluster count $k$ (which can be dynamically updated by the block validation search):
+  1. **`fit` Mode (Re-cluster and Label)**: Triggered if no pre-existing clustered parquet file exists for the current target $k$ (e.g., during the initial run, or when the validation script finds that the optimal $k$ has shifted due to new data). It runs full FAISS Spherical K-Means clustering and schedules MLLM auto-labeling.
+  2. **`assign` Mode (Map to Existing Centroids)**: Automatically triggered if a clustered parquet database file *already exists* for the current $k$. 
+     * **Zero VLM Cost:** Rather than re-clustering all data and re-running expensive MLLMs, it dynamically calculates the centroid coordinates from the existing Parquet database in memory, maps the new images to their nearest centroids using FAISS nearest-neighbor search, and maps existing VLM labels and descriptions to the new images. This executes in seconds.
+* **Operation details**:
   * **Type Resilience**: Coordinate columns are defensively cast to numeric float64 right after loading to preserve schema alignment during final Parquet export.
-  1. **Fine-Grained Child Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)`) on raw image embeddings (e.g. *N* = 3.37M vectors) to partition the data into *k* fine-grained child clusters. Each cluster captures highly specific visual/geographical concepts.
-  2. **Hierarchical Parent Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k_parents, niter=20, spherical=True, gpu=True)`) on normalized child centroids to group them into *k_parents* broader parent clusters (where *k_parents* = max(2, *k* / 80)). This groups similar child clusters into high-level visual/semantic classes.
-  3. **Immediate Persistence & RAM Release**: Saves cluster assignments and centroids directly to `geo_space_clustered.parquet` and immediately releases heavy embedding matrices from RAM to avoid CPU memory bottlenecks.
+  * **Fine-Grained Child Clustering**: Runs Spherical K-Means on GPU (`faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)`) on raw image embeddings to partition the data into *k* fine-grained child clusters.
+  * **Hierarchical Parent Clustering**: Runs Spherical K-Means on GPU on normalized child centroids to group them into *k_parents* broader parent clusters (where *k_parents* = max(2, *k* / 80)).
+  * **Immediate Persistence & RAM Release**: Saves cluster assignments and centroids directly to the clustered parquet database and immediately releases heavy embedding matrices from RAM to avoid CPU memory bottlenecks.
 
 ### Step 2b: Multi-Modal LLM Cluster Auto-Labeling
 * **Script**: `src/indexing/label_clusters_mllm.py`

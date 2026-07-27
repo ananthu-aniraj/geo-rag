@@ -1,11 +1,12 @@
+import argparse
 import os
 import sys
 import time
-import argparse
-import numpy as np
-import pandas as pd
+
 import h3
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
 try:
@@ -240,7 +241,7 @@ def main():
             except Exception as e:
                 print(f"Warning: Failed to update params.yaml: {e}")
         else:
-            print(f"Warning: params.yaml not found at current directory. Skipping auto-update.")
+            print("Warning: params.yaml not found at current directory. Skipping auto-update.")
 
     # 8. Generate & Save Plot
     print(f"Generating elbow plot and saving to '{args.output_plot}'...")

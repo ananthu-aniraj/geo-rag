@@ -1,11 +1,12 @@
-import pickle
-import folium
-from folium.plugins import MarkerCluster
-import pandas as pd
 import argparse
-import os
-import h3
 import math
+import os
+import pickle
+
+import folium
+import h3
+import pandas as pd
+from folium.plugins import MarkerCluster
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 

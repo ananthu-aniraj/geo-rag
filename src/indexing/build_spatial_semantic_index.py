@@ -1,10 +1,11 @@
-import pyarrow.parquet as pq
-import pandas as pd
-import h3
-import time
 import argparse
 import os
 import sys
+import time
+
+import h3
+import pandas as pd
+import pyarrow.parquet as pq
 
 
 def main():

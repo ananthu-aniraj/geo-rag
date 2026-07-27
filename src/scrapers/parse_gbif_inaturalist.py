@@ -1,9 +1,11 @@
-import pandas as pd
 import argparse
 import os
 import sys
 import time
 import zipfile
+
+import pandas as pd
+
 
 def parse_associated_media(media_str):
     """Extracts the first valid image URL from GBIF's associatedMedia string."""
@@ -110,7 +112,7 @@ def process_gbif_zip(zip_path, output_dir, chunk_size=100000, max_records=None):
                     break
                     
     print("\n" + "="*50)
-    print(f"Parsing Complete!")
+    print("Parsing Complete!")
     print(f"Processed: {total_processed} observations in {time.time() - start_time:.2f} seconds.")
     print(f"Output files saved to: {output_dir}")
     print("="*50)

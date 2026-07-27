@@ -1,13 +1,14 @@
-import os
 import argparse
-import requests
-import pandas as pd
+import os
+from io import BytesIO
+
 import numpy as np
+import pandas as pd
+import requests
 import torch
 from PIL import Image
-from io import BytesIO
-from transformers import AutoModel
 from torchvision import transforms
+from transformers import AutoModel
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 

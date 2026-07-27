@@ -1,16 +1,13 @@
 import argparse
 import glob
 import os
-import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 import requests
-from shapely.geometry import Point
-from shapely.geometry import box as shapely_box
+from shapely.geometry import Point, box as shapely_box
 from tqdm import tqdm
 
 from src.utils.licensing import FLICKR_LICENSE_MAP
@@ -187,7 +184,7 @@ def main():
                 box_to_photos = {}
 
             if active_bboxes:
-                print(f"Running optimized bulk license search on active boxes...")
+                print("Running optimized bulk license search on active boxes...")
                 for bbox in tqdm(active_bboxes, desc="Bulk Scan Flickr BBoxes"):
                     if box_to_photos and bbox in box_to_photos:
                         box_photos = box_to_photos[bbox]

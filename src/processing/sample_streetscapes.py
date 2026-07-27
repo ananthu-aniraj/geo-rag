@@ -1,9 +1,10 @@
-import pandas as pd
-import numpy as np
 import argparse
 import os
 import sys
 import time
+
+import numpy as np
+import pandas as pd
 
 
 def build_city_h3_groups(simplemaps_path, h3_path):

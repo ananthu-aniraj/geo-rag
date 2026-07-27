@@ -1,10 +1,10 @@
+import argparse
 import pickle
+
 import numpy as np
 import torch
-import argparse
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from tqdm import tqdm
 from transformers import AutoModel
 
 

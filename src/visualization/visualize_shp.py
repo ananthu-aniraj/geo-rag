@@ -1,7 +1,8 @@
-import geopandas as gpd
-import matplotlib.pyplot as plt
 import os
 import sys
+
+import geopandas as gpd
+import matplotlib.pyplot as plt
 
 
 def visualize_shapefile(shp_path, title=None):

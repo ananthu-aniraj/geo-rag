@@ -1,11 +1,13 @@
-import pickle
-import numpy as np
 import argparse
-import time
 import os
+import pickle
+import sys
+import time
+
+import faiss
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-import faiss
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 
@@ -58,6 +60,8 @@ def main():
     parser.add_argument("--gpu", action="store_true", default=True, help="Use FAISS GPU for clustering.")
     parser.add_argument("--no_gpu", action="store_false", dest="gpu", help="Disable FAISS GPU acceleration.")
     parser.add_argument("--out", type=str, default="clustered_data.parquet", help="Output Parquet path.")
+    parser.add_argument("--clustering_mode", type=str, choices=["fit", "assign"], default="fit", help="Clustering mode: fit (re-cluster all) or assign (map to existing centroids).")
+    parser.add_argument("--centroids_parquet", type=str, default=None, help="Path to pre-existing clustered Parquet database to load centroids and metadata from.")
     args = parser.parse_args()
 
     k_parents = args.k_parents
@@ -112,30 +116,123 @@ def main():
     print("\nNormalizing embeddings for spherical cosine similarity clustering...")
     embeddings_norm = normalize(embeddings).astype(np.float32)
 
-    # 1. Child Clustering
-    print(f"\n--- [Stage 1/2] Fine-Grained Child Clustering (k={args.k}) ---")
-    child_cluster_ids, child_centroids = cluster_data(embeddings_norm, args.k, gpu_enabled=args.gpu, minibatch_enabled=args.minibatch)
+    if args.clustering_mode == "assign":
+        if not args.centroids_parquet or not os.path.exists(args.centroids_parquet):
+            print(f"Error: Centroids Parquet database '{args.centroids_parquet}' is required and must exist in assign mode.")
+            sys.exit(1)
+            
+        print(f"Loading pre-existing clustered database from {args.centroids_parquet}...")
+        start_assign = time.time()
+        pf_old = pq.ParquetFile(args.centroids_parquet)
+        
+        # Accumulate centroids dynamically from the old clustered database
+        cluster_sums = {}
+        cluster_counts = {}
+        child_to_parent_map = {}
+        
+        print("Computing centroids from pre-existing database...")
+        for rg in range(pf_old.num_row_groups):
+            table_old = pf_old.read_row_group(rg, columns=['cluster_id', 'parent_cluster_id', 'embedding'])
+            df_rg_old = table_old.to_pandas()
+            if len(df_rg_old) == 0:
+                continue
+                
+            embs_old = np.vstack(df_rg_old['embedding'].values).astype(np.float32)
+            c_ids_old = df_rg_old['cluster_id'].values
+            p_ids_old = df_rg_old['parent_cluster_id'].values
+            
+            for unique_id in np.unique(c_ids_old):
+                if unique_id is None or pd.isna(unique_id):
+                    continue
+                unique_id = int(unique_id)
+                mask = (c_ids_old == unique_id)
+                sum_emb = embs_old[mask].sum(axis=0)
+                count = int(mask.sum())
+                
+                if unique_id not in cluster_sums:
+                    cluster_sums[unique_id] = sum_emb
+                    cluster_counts[unique_id] = count
+                    idx = np.where(mask)[0][0]
+                    child_to_parent_map[unique_id] = int(p_ids_old[idx]) if not pd.isna(p_ids_old[idx]) else int(unique_id // 80)
+                else:
+                    cluster_sums[unique_id] += sum_emb
+                    cluster_counts[unique_id] += count
 
-    # Re-compute exact mean centroids in original embedding space
-    print("\nComputing exact child cluster centroids...")
-    d = embeddings_norm.shape[1]
-    raw_centroids = np.zeros((args.k, d), dtype=np.float32)
-    valid_mask = (child_cluster_ids >= 0)
-    np.add.at(raw_centroids, child_cluster_ids[valid_mask], embeddings_norm[valid_mask])
-    counts = np.bincount(child_cluster_ids[valid_mask], minlength=args.k)
-    valid_counts = counts > 0
-    raw_centroids[valid_counts] /= counts[valid_counts, None]
+        unique_ids = sorted(list(cluster_sums.keys()))
+        child_centroids = np.empty((len(unique_ids), dim), dtype=np.float32)
+        child_to_parent = np.empty(len(unique_ids), dtype=np.int32)
+        for i, c_id in enumerate(unique_ids):
+            child_centroids[i] = cluster_sums[c_id] / cluster_counts[c_id]
+            child_to_parent[i] = child_to_parent_map[c_id]
+            
+        print(f" -> Successfully loaded {len(unique_ids)} centroids from database.")
+        
+        print(f"\nAssigning {len(embeddings_norm):,} embeddings to pre-existing child centroids...")
+        child_centroids = normalize(child_centroids).astype(np.float32)
+        
+        if args.gpu and faiss is not None:
+            try:
+                res = faiss.StandardGpuResources()
+                index = faiss.IndexFlatIP(dim)
+                index = faiss.index_cpu_to_gpu(res, 0, index)
+                print("Using FAISS GPU index for assignment.")
+            except Exception as e:
+                print(f"[WARNING] GPU FAISS error ({e}), falling back to CPU.")
+                index = faiss.IndexFlatIP(dim)
+        else:
+            index = faiss.IndexFlatIP(dim)
+            
+        index.add(child_centroids)
+        _, child_indices = index.search(embeddings_norm, 1)
+        child_indices = child_indices.ravel()
+        
+        # Convert indices back to correct cluster IDs
+        child_cluster_ids = np.array([unique_ids[idx] for idx in child_indices])
+        
+        df['cluster_id'] = child_cluster_ids.astype(int)
+        
+        # Load unique cluster metadata labels from the old database
+        print("Merging VLM labels and metadata from pre-existing database...")
+        meta_cols = ['cluster_id']
+        for col in ['cluster_label', 'parent_cluster_label', 'cluster_description', 'parent_cluster_id']:
+            if col in pf_old.schema_arrow.names:
+                meta_cols.append(col)
+                
+        # Read the unique metadata per cluster
+        old_meta_df = pd.read_parquet(args.centroids_parquet, columns=meta_cols).drop_duplicates('cluster_id')
+        df = df.merge(old_meta_df, on='cluster_id', how='left')
+        
+        # Fallback values
+        if 'parent_cluster_id' not in df.columns:
+            df['parent_cluster_id'] = np.array([child_to_parent_map.get(cid, cid // 80) for cid in df['cluster_id']])
+            
+        print(f" -> Mapping completed in {time.time() - start_assign:.2f}s.")
+        
+    else:
+        # 1. Child Clustering
+        print(f"\n--- [Stage 1/2] Fine-Grained Child Clustering (k={args.k}) ---")
+        child_cluster_ids, child_centroids = cluster_data(embeddings_norm, args.k, gpu_enabled=args.gpu, minibatch_enabled=args.minibatch)
 
-    # 2. Hierarchical Parent Clustering using FAISS
-    print(f"\n--- [Stage 2/2] Hierarchical Parent Clustering (k_parents={k_parents}) ---")
-    centroids_norm_hac = normalize(raw_centroids).astype(np.float32)
-    parent_ids, _ = cluster_data(centroids_norm_hac, k_parents, gpu_enabled=args.gpu, minibatch_enabled=args.minibatch)
+        # Re-compute exact mean centroids in original embedding space
+        print("\nComputing exact child cluster centroids...")
+        d = embeddings_norm.shape[1]
+        raw_centroids = np.zeros((args.k, d), dtype=np.float32)
+        valid_mask = (child_cluster_ids >= 0)
+        np.add.at(raw_centroids, child_cluster_ids[valid_mask], embeddings_norm[valid_mask])
+        counts = np.bincount(child_cluster_ids[valid_mask], minlength=args.k)
+        valid_counts = counts > 0
+        raw_centroids[valid_counts] /= counts[valid_counts, None]
 
-    # Assign cluster IDs to DataFrame
-    print("\nAssigning cluster IDs to metadata...")
-    df['cluster_id'] = child_cluster_ids.astype(int)
-    parent_id_map = {cid: int(parent_ids[cid]) for cid in range(args.k) if cid < len(parent_ids)}
-    df['parent_cluster_id'] = df['cluster_id'].map(parent_id_map)
+        # 2. Hierarchical Parent Clustering using FAISS
+        print(f"\n--- [Stage 2/2] Hierarchical Parent Clustering (k_parents={k_parents}) ---")
+        centroids_norm_hac = normalize(raw_centroids).astype(np.float32)
+        parent_ids, _ = cluster_data(centroids_norm_hac, k_parents, gpu_enabled=args.gpu, minibatch_enabled=args.minibatch)
+
+        # Assign cluster IDs to DataFrame
+        print("\nAssigning cluster IDs to metadata...")
+        df['cluster_id'] = child_cluster_ids.astype(int)
+        parent_id_map = {cid: int(parent_ids[cid]) for cid in range(args.k) if cid < len(parent_ids)}
+        df['parent_cluster_id'] = df['cluster_id'].map(parent_id_map)
 
     # Save output
     print(f"\nSaving clustered dataset to {args.out}...")

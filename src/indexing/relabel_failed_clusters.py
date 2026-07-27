@@ -1,21 +1,21 @@
-import os
-import sys
-import time
-import pickle
 import argparse
 import base64
-import requests
+import os
+import pickle
+import sys
+import time
+import urllib.request
 from io import BytesIO
-from PIL import Image
+
 import numpy as np
 import pandas as pd
+import requests
 import yaml
-import urllib.request
+from PIL import Image
 from sklearn.preprocessing import normalize
 
-
 # Shared LULC Vocabularies
-from src.utils.lulc_vocab import NATURAL_LULC_VOCAB, MAN_MADE_LULC_VOCAB
+from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 

@@ -1,18 +1,19 @@
-import os
-import sys
-import json
-import re
 import argparse
-import pandas as pd
+import json
+import os
+import pickle
+import random
+import re
+import sys
+
 import ollama
+import pandas as pd
+import torch
+from PIL import Image
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import random
-import pickle
-from PIL import Image
-import torch
-from transformers import AutoModel
 from torchvision import transforms
+from transformers import AutoModel
 
 tips_transform = transforms.Compose([
     transforms.Resize((448, 448)),

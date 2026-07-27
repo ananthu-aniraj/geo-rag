@@ -1,9 +1,9 @@
 import os
+
 import numpy as np
 import pandas as pd
 import rasterio
 from tqdm import tqdm
-
 
 # Mappings linking numeric values in the maps to the Köppen-Geiger classes
 KOPPEN_LEGEND = {

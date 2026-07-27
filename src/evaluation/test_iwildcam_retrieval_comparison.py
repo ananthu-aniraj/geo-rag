@@ -1,12 +1,17 @@
-import os
 import argparse
-import pandas as pd
+import os
+
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
-from transformers import AutoModel, SegformerImageProcessor, SegformerForSemanticSegmentation
 from torchvision import transforms
 from tqdm import tqdm
+from transformers import (
+    AutoModel,
+    SegformerForSemanticSegmentation,
+    SegformerImageProcessor,
+)
 
 # Configuration Defaults
 DEFAULT_CSV_PATH = "./iwildcam_subset/iwildcam_subset_metadata.csv"
@@ -231,7 +236,7 @@ def main():
     query_row = df.iloc[args.query_idx]
     query_location = query_row['location']
     
-    print(f"\n--- QUERY IMAGE DETAILS ---")
+    print("\n--- QUERY IMAGE DETAILS ---")
     print(f"Index: {args.query_idx}")
     print(f"File Name: {query_row['file_name']}")
     print(f"Camera Location: {query_location}")

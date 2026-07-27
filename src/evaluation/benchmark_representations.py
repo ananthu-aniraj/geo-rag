@@ -1,7 +1,6 @@
 import argparse
 import math
 import os
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 
@@ -12,7 +11,6 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from requests.adapters import HTTPAdapter
-from sklearn.decomposition import PCA
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import (
@@ -135,7 +133,7 @@ def main():
                 args.csv_path = path
                 break
         else:
-            print(f"Error: Database CSV not found. Please run spatial deduplication first.")
+            print("Error: Database CSV not found. Please run spatial deduplication first.")
             return
 
     df = pd.read_csv(args.csv_path, dtype=str)
@@ -150,7 +148,7 @@ def main():
     
     half_size = args.num_images // 2
     if len(flickr_df) < half_size or len(mapillary_df) < half_size:
-        print(f"Warning: Insufficient platform records for balanced sampling. Using random sampling.")
+        print("Warning: Insufficient platform records for balanced sampling. Using random sampling.")
         sampled_df = df.sample(min(args.num_images, len(df)), random_state=args.seed).reset_index(drop=True)
     else:
         sampled_df = pd.concat([
@@ -512,7 +510,7 @@ def main():
     print("="*80)
 
     # Delete the old markdown report if it exists
-    artifact_path = f"/user/aaniraj/home/.gemini/antigravity-cli/brain/842fbd6a-4490-43d7-9738-f5007612ce34/benchmark_report.md"
+    artifact_path = "/user/aaniraj/home/.gemini/antigravity-cli/brain/842fbd6a-4490-43d7-9738-f5007612ce34/benchmark_report.md"
     if os.path.exists(artifact_path):
         try:
             os.remove(artifact_path)

@@ -12,14 +12,13 @@ import pandas as pd
 import requests
 import torch
 from PIL import Image
-from sklearn.metrics.pairwise import cosine_similarity
+from requests.adapters import HTTPAdapter
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import AutoModel
+from urllib3.util import Retry
 
 from src.utils.licensing import FLICKR_LICENSE_MAP
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
 
 # TIPSv2 specific transform
 tips_transform = transforms.Compose([
@@ -632,7 +631,6 @@ def main():
     if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl') and active_cells:
         print("Loading active cell embeddings only using PyArrow Dataset...")
         t0 = time.time()
-        import pyarrow as pa
         import pyarrow.dataset as ds
         dataset = ds.dataset(args.resume_from, format="parquet")
         active_cells_list = list(active_cells)
@@ -877,7 +875,7 @@ def main():
         except Exception:
             pass
 
-    print(f"\nProcessing Complete!")
+    print("\nProcessing Complete!")
     print(f"Unique images kept: {len(final_data)}")
     print(f"CSV saved to: {csv_path}")
     print(f"Parquet saved to: {parquet_path}")

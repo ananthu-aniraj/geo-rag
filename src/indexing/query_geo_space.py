@@ -1,8 +1,9 @@
 import argparse
-import pandas as pd
-import h3
 import os
 import sys
+
+import h3
+import pandas as pd
 
 
 def format_cell_output(df_cell, target_cell, res, total_images):

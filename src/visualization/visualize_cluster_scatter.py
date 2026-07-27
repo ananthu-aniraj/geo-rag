@@ -1,17 +1,15 @@
-import pickle
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import normalize
 import argparse
-import umap
-import os
 import sys
 import time
 
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import seaborn as sns
+import umap
+from sklearn.preprocessing import normalize
 
 
 def create_scatter_plot(pkl_path, output_png):
@@ -120,7 +118,7 @@ def create_scatter_plot(pkl_path, output_png):
 
     # --- SAVE INTERACTIVE HTML PLOT (PLOTLY) ---
     output_html = output_png.replace('.png', '.html')
-    print(f"Generating interactive WebGL scatter plot...")
+    print("Generating interactive WebGL scatter plot...")
     
     # Scale marker sizes: min size 5, max size 30
     max_count = df_plot['image_count'].max()
@@ -191,7 +189,7 @@ def create_scatter_plot(pkl_path, output_png):
     fig.write_html(output_html)
 
     # --- SAVE STATIC PLOT (MATPLOTLIB) ---
-    print(f"Generating static scatter plot image...")
+    print("Generating static scatter plot image...")
     plt.figure(figsize=(14, 9))
     sns.set_style("whitegrid")
 

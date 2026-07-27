@@ -24,3 +24,6 @@ plotly
 # transformers
 # faiss-gpu   # Use if NVIDIA CUDA GPU is available (strongly recommended)
 # faiss-cpu   # Use if CPU-only
+
+# --- Development Tools (Optional) ---
+ruff
