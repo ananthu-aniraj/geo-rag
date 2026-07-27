@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geo-rag"
+version = "0.1.0"
+description = "A global spatial-semantic mapping, clustering, and data engineering pipeline for geotagged ground-level imagery"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "geopandas",
+    "rasterio",
+    "h3>=3.7.0,<4.0.0",
+    "matplotlib",
+    "seaborn",
+    "pyarrow",
+    "folium",
+    "branca",
+    "requests",
+    "tqdm",
+    "pyyaml",
+    "scikit-learn",
+    "dvc",
+    "dvc-ssh"
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+packages = ["src", "src.scrapers", "src.processing", "src.indexing", "src.visualization", "src.evaluation", "src.utils"]

@@ -1,0 +1,25 @@
+# --- Core Spatial & Data Engineering Dependencies ---
+numpy
+pandas
+geopandas
+rasterio
+h3>=3.7.0,<4.0.0
+matplotlib
+seaborn
+pyarrow
+folium
+branca
+requests
+tqdm
+pyyaml
+scikit-learn
+dvc
+dvc-ssh
+
+# --- Deep Learning & GPU Operations ---
+# Install these manually matching your CUDA GPU drivers:
+# torch
+# torchvision
+# transformers
+# faiss-gpu   # Use if NVIDIA CUDA GPU is available (strongly recommended)
+# faiss-cpu   # Use if CPU-only

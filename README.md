@@ -78,3 +78,47 @@ To postprocess scraped images, cluster them semantically, auto-label clusters, b
 ```bash
 ./run_full_pipeline.sh
 ```
+
+---
+
+## 🛠️ Installation & Environment Setup
+
+This project requires Python 3.10+ and conda/mamba or virtualenv.
+
+### 1. Create a Virtual Environment
+We recommend using Conda to manage geographic dependencies (like `gdal` and `proj` required by `rasterio` and `geopandas`):
+
+```bash
+# Create and activate environment
+conda create -n geo_env python=3.12 -y
+conda activate geo_env
+
+# Install gdal/geos/proj dependencies (conda makes this seamless)
+conda install -c conda-forge gdal proj -y
+```
+
+### 2. Install Package and Dependencies
+Install the package in **editable mode** along with all core dependencies:
+
+```bash
+# Clone the repository
+git clone https://github.com/ananthu-aniraj/geo-rag.git
+cd geo-rag
+
+# Install core packages and register local package
+pip install -e .
+```
+
+### 3. Install Deep Learning & FAISS
+Install PyTorch and FAISS based on your hardware configuration:
+
+* **For CUDA-enabled GPU (Highly Recommended for fast clustering):**
+  ```bash
+  conda install -c pytorch -c nvidia pytorch torchvision -y
+  pip install faiss-gpu
+  ```
+* **For CPU-only:**
+  ```bash
+  pip install torch torchvision
+  pip install faiss-cpu
+  ```
