@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import faiss
 import numpy as np
@@ -9,7 +10,7 @@ from sklearn.preprocessing import normalize
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check for semantic drift between new images and existing centroids.")
+    parser = argparse.ArgumentParser(description="Check for semantic drift of new images against existing centroids.")
     parser.add_argument("--input", type=str, required=True, help="Path to new/combined dataset Parquet file.")
     parser.add_argument("--centroids_parquet", type=str, required=True,
                         help="Path to pre-existing clustered Parquet database.")
@@ -28,35 +29,64 @@ def main():
         print("fit")
         return
 
-    # 1. Load a sample of the new embeddings
+    # 1. Load the unique identifiers (Photo_ID + Platform) of the old database
+    try:
+        pf_old = pq.ParquetFile(args.centroids_parquet)
+        old_ids = []
+        for rg in range(pf_old.num_row_groups):
+            table_ids = pf_old.read_row_group(rg, columns=["Photo_ID", "Platform"])
+            df_ids = table_ids.to_pandas()
+            # Combine Photo_ID and Platform to create a unique key
+            keys = df_ids["Platform"].astype(str) + "_" + df_ids["Photo_ID"].astype(str)
+            old_ids.extend(keys.values)
+        old_keys_set = set(old_ids)
+        del old_ids
+    except Exception:
+        # Fallback to fit if schema doesn't match
+        print("fit")
+        return
+
+    # 2. Sample the EMBEDDINGS of ONLY the newly added images
     try:
         pf_new = pq.ParquetFile(args.input)
         new_embeddings = []
         rows_read = 0
+
+        # Read the new combined database row-group by row-group
         for rg in range(pf_new.num_row_groups):
-            table = pf_new.read_row_group(rg, columns=["embedding"])
-            embs = np.vstack(table['embedding'].to_numpy()).astype(np.float32)
-            new_embeddings.append(embs)
-            rows_read += len(embs)
+            table = pf_new.read_row_group(rg, columns=["Photo_ID", "Platform", "embedding"])
+            df_rg = table.to_pandas()
+            if len(df_rg) == 0:
+                continue
+
+            # Create keys for this row group
+            rg_keys = df_rg["Platform"].astype(str) + "_" + df_rg["Photo_ID"].astype(str)
+
+            # Mask to filter out images that were already in the old run
+            is_new_mask = ~rg_keys.isin(old_keys_set)
+
+            if is_new_mask.any():
+                new_embs_rg = np.vstack(df_rg.loc[is_new_mask, "embedding"].values).astype(np.float32)
+                new_embeddings.append(new_embs_rg)
+                rows_read += len(new_embs_rg)
+
             if rows_read >= args.sample_size:
                 break
+
+        # If no new images were added at all, we can safely run assign mode (0 drift)
         if len(new_embeddings) == 0:
-            print("fit")
+            print("assign")
             return
+
         new_embs = np.vstack(new_embeddings)[:args.sample_size]
         new_embs = normalize(new_embs).astype(np.float32)
+        dim = new_embs.shape[1]
     except Exception:
         print("fit")
         return
 
-    # 2. Load the old centroids from args.centroids_parquet
+    # 3. Load the old centroids dynamically using vectorized addition
     try:
-        pf_old = pq.ParquetFile(args.centroids_parquet)
-        first_rg = pf_old.read_row_group(0, columns=["embedding"])
-        first_embs = np.vstack(first_rg['embedding'].to_numpy())
-        dim = first_embs.shape[1]
-
-        # Accumulate centroids dynamically using vectorized addition
         raw_centroids = np.zeros((args.k_clusters, dim), dtype=np.float32)
         counts = np.zeros(args.k_clusters, dtype=np.int64)
 
@@ -83,7 +113,7 @@ def main():
         print("fit")
         return
 
-    # 3. Perform FAISS search
+    # 4. Perform FAISS search on the new image embeddings
     try:
         gpu_enabled = args.gpu and (faiss is not None)
         if gpu_enabled:
@@ -101,7 +131,7 @@ def main():
         similarities, _ = index.search(new_embs, 1)
         similarities = similarities.ravel()
 
-        # 4. Calculate outlier ratio
+        # 5. Calculate outlier ratio
         outliers = similarities < args.outlier_threshold
         outlier_ratio = np.mean(outliers)
 
