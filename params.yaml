@@ -20,7 +20,7 @@ pipeline:
   mllm_model: "google/gemma-4-E4B-it"
   chunk_size: 64
   # Input directories passed as a space-separated string
-  input_dirs: "/home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5 /home/ananthu/DATA/data_ananthu/mapillary_scrape_rand_5"
+  input_dirs: "/home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5 /home/ananthu/DATA/data_ananthu/mapillary_scrape_rand_5 /home/ananthu/DATA/data_ananthu/google_landmarks_v2"
   
   # Zero-shot filters for iNaturalist data (true/false)
   filter_macro: true

@@ -553,10 +553,17 @@ def main():
                 df_sampled['Captured_At'] = df_sampled['Photo_ID'].map(lambda x: id_to_ts.get(x, ''))
                 print(f" -> Successfully resolved upload timestamps for {len(id_to_ts):,} images.")
 
-        df_sampled.to_csv(args.output_csv, index=False)
         print(f"\nSampling Complete!")
         print(f" -> Sampled {len(df_sampled):,} Google Landmarks images in under-represented zones.")
-        print(f" -> Cover {df_sampled['h3_cell'].nunique():,} unique under-represented H3 cells.")
+        if 'h3_cell' in df_sampled.columns:
+            print(f" -> Cover {df_sampled['h3_cell'].nunique():,} unique under-represented H3 cells.")
+
+        # Drop columns not needed in final metadata CSV (Image_Location, h3_cell)
+        cols_to_drop = [c for c in ['Image_Location', 'h3_cell'] if c in df_sampled.columns]
+        if cols_to_drop:
+            df_sampled = df_sampled.drop(columns=cols_to_drop)
+
+        df_sampled.to_csv(args.output_csv, index=False)
         print(f" -> Output saved to: {os.path.abspath(args.output_csv)}")
     else:
         print("No matching Google Landmarks records found in under-represented zones.")
