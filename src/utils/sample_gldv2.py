@@ -55,6 +55,7 @@ def fetch_wikimedia_timestamps(image_titles):
     url = "https://commons.wikimedia.org/w/api.php"
     headers = {
         "User-Agent": "Geo-RAG-Landmark-Sampler/1.0 (aaniraj@home)",
+        "Content-Type": "application/x-www-form-urlencoded"
     }
 
     batch_size = 50
@@ -69,24 +70,73 @@ def fetch_wikimedia_timestamps(image_titles):
             "titles": titles_str,
             "format": "json"
         }
-        try:
-            res = requests.get(url, params=params, headers=headers, timeout=15)
-            if res.status_code == 200:
-                data = res.json()
-                pages = data.get("query", {}).get("pages", {})
-                for page_id, page_info in pages.items():
-                    title = page_info.get("title")
-                    imageinfo = page_info.get("imageinfo", [])
-                    if title and imageinfo:
-                        ts = imageinfo[0].get("timestamp")
-                        # Normalize response title underscores to spaces
-                        normalized_resp_title = title.replace("_", " ").strip()
-                        orig_title = title_to_orig.get(normalized_resp_title)
-                        if orig_title and ts:
-                            timestamps[orig_title] = ts
-            time.sleep(0.1)  # Polite delay
-        except Exception:
-            pass
+        
+        max_retries = 5
+        success = False
+        for attempt in range(max_retries):
+            try:
+                res = requests.post(url, data=params, headers=headers, timeout=15)
+                if res.status_code == 200:
+                    data = res.json()
+                    pages = data.get("query", {}).get("pages", {})
+                    for page_id, page_info in pages.items():
+                        title = page_info.get("title")
+                        imageinfo = page_info.get("imageinfo", [])
+                        if title and imageinfo:
+                            ts = imageinfo[0].get("timestamp")
+                            # Normalize response title underscores to spaces
+                            normalized_resp_title = title.replace("_", " ").strip()
+                            orig_title = title_to_orig.get(normalized_resp_title)
+                            if orig_title and ts:
+                                timestamps[orig_title] = ts
+                    success = True
+                    break
+                elif res.status_code == 429:
+                    retry_after = res.headers.get("Retry-After")
+                    sleep_time = int(retry_after) if retry_after and retry_after.isdigit() else (5 * (attempt + 1))
+                    print(f"\n[Rate Limit] MediaWiki API returned 429. Sleeping for {sleep_time}s before retry (Attempt {attempt+1}/{max_retries})...")
+                    time.sleep(sleep_time)
+                else:
+                    break
+            except Exception:
+                sleep_time = 2 * (attempt + 1)
+                time.sleep(sleep_time)
+
+        # Fallback: if the batch query failed, query each title in the batch individually
+        if not success:
+            for t_single in batch:
+                single_params = {
+                    "action": "query",
+                    "prop": "imageinfo",
+                    "iiprop": "timestamp",
+                    "titles": t_single,
+                    "format": "json"
+                }
+                for single_attempt in range(3):
+                    try:
+                        res_single = requests.post(url, data=single_params, headers=headers, timeout=10)
+                        if res_single.status_code == 200:
+                            data_single = res_single.json()
+                            pages_single = data_single.get("query", {}).get("pages", {})
+                            for page_id, page_info in pages_single.items():
+                                title = page_info.get("title")
+                                imageinfo = page_info.get("imageinfo", [])
+                                if title and imageinfo:
+                                    ts = imageinfo[0].get("timestamp")
+                                    normalized_resp_title = title.replace("_", " ").strip()
+                                    orig_title = title_to_orig.get(normalized_resp_title)
+                                    if orig_title and ts:
+                                        timestamps[orig_title] = ts
+                            break
+                        elif res_single.status_code == 429:
+                            time.sleep(5 * (single_attempt + 1))
+                        else:
+                            break
+                    except Exception:
+                        time.sleep(1)
+                time.sleep(0.05)
+                
+        time.sleep(0.15)  # Polite delay between successful requests
 
     return timestamps
 
