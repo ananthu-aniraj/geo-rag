@@ -26,7 +26,7 @@ OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))[
 
 # Input dirs
 INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
-IWILDCAM_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('iwildcam_dir', ''))" 2>/dev/null || echo "")
+OFFLINE_DATASET_DIRS=$(python3 -c "import yaml; p=yaml.safe_load(open('params.yaml'))['pipeline']; print(p.get('offline_dataset_dirs') or p.get('iwildcam_dir', ''))" 2>/dev/null || echo "")
 KOPPEN_GEIGER_TIF=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('koppen_geiger_tif', ''))" 2>/dev/null || echo "")
 LAND_SHP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('land_shp', ''))" 2>/dev/null || echo "")
 
@@ -79,12 +79,12 @@ if [ "$FILTER_SKY" = "true" ]; then
     FILTER_FLAGS="$FILTER_FLAGS --filter_sky"
 fi
 
-IWILDCAM_FLAG=""
+OFFLINE_FLAG=""
 IMAGE_ROOT_FLAG=""
-if [ -n "$IWILDCAM_DIR" ]; then
-    echo " -> iWildCam Directory: $IWILDCAM_DIR"
-    IWILDCAM_FLAG="--iwildcam_dir $IWILDCAM_DIR"
-    IMAGE_ROOT_FLAG="--image_root_dir $IWILDCAM_DIR"
+if [ -n "$OFFLINE_DATASET_DIRS" ]; then
+    echo " -> Offline Dataset Directories: $OFFLINE_DATASET_DIRS"
+    OFFLINE_FLAG="--offline_dataset_dirs $OFFLINE_DATASET_DIRS"
+    IMAGE_ROOT_FLAG="--image_root_dir $OFFLINE_DATASET_DIRS"
 fi
 
 python3 -m src.processing.process_scraped_data \
@@ -97,7 +97,7 @@ python3 -m src.processing.process_scraped_data \
   --cell_chunk_size "$CELL_CHUNK_SIZE" \
   $RESUME_FLAG \
   $FILTER_FLAGS \
-  $IWILDCAM_FLAG
+  $OFFLINE_FLAG
 
 echo ""
 echo "[Step 1b/5] Standardizing Dataset Timestamps & Mapping Regions..."

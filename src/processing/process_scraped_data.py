@@ -113,7 +113,7 @@ def standardize_timestamps_vectorized(ts_raw):
     return standardized
 
 
-def download_image(url, iwildcam_dir=None):
+def download_image(url, offline_dirs=None):
     """Downloads an image using the global connection pool session and returns a resized PIL Image."""
     try:
         # Check if url is a local path first
@@ -123,19 +123,22 @@ def download_image(url, iwildcam_dir=None):
                 img_resized = img.resize((448, 448))
                 img.close()
                 return img_resized
-            if iwildcam_dir:
-                alt_path = os.path.join(iwildcam_dir, os.path.basename(url))
-                if os.path.exists(alt_path):
-                    img = Image.open(alt_path).convert("RGB")
-                    img_resized = img.resize((448, 448))
-                    img.close()
-                    return img_resized
-                alt_path_train = os.path.join(iwildcam_dir, "train", os.path.basename(url))
-                if os.path.exists(alt_path_train):
-                    img = Image.open(alt_path_train).convert("RGB")
-                    img_resized = img.resize((448, 448))
-                    img.close()
-                    return img_resized
+            if offline_dirs:
+                for d in offline_dirs:
+                    if not d:
+                        continue
+                    alt_path = os.path.join(d, os.path.basename(url))
+                    if os.path.exists(alt_path):
+                        img = Image.open(alt_path).convert("RGB")
+                        img_resized = img.resize((448, 448))
+                        img.close()
+                        return img_resized
+                    alt_path_train = os.path.join(d, "train", os.path.basename(url))
+                    if os.path.exists(alt_path_train):
+                        img = Image.open(alt_path_train).convert("RGB")
+                        img_resized = img.resize((448, 448))
+                        img.close()
+                        return img_resized
             return None
 
         if url.startswith("mapillary://"):
@@ -188,13 +191,13 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1, iwildcam_dir=None):
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1, offline_dirs=None):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
 
     from functools import partial
-    download_fn = partial(download_image, iwildcam_dir=iwildcam_dir)
+    download_fn = partial(download_image, offline_dirs=offline_dirs)
 
     # Process new images in chunks to limit peak memory usage
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
@@ -376,7 +379,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
         print(f"\nError saving checkpoint: {e}")
 
 
-def load_and_preprocess_csv(f):
+def load_and_preprocess_csv(f, offline_dirs=None):
     """Loads a single CSV file, normalizes column names, and converts Mapillary/KartaView URLs."""
     try:
         df = pd.read_csv(f, dtype=str)
@@ -408,17 +411,11 @@ def load_and_preprocess_csv(f):
                 'ID': 'Photo_ID', 
                 'captured_at': 'Captured_At', 
                 'Captured_At': 'Captured_At',
+                'Image_Location': 'Image_URL',
+                'Image_URL': 'Image_URL'
             }
             df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
             df['Platform'] = platform
-            
-            # Resolve image locations to absolute paths relative to the CSV's directory
-            csv_dir = os.path.dirname(os.path.abspath(f))
-            image_col = 'Image_Location' if 'Image_Location' in df.columns else 'Image_URL'
-            df['Image_URL'] = [
-                os.path.join(csv_dir, "train", os.path.basename(str(loc)))
-                for loc in df[image_col]
-            ]
         else:
             if 'inaturalist' in f.lower():
                 platform = 'iNaturalist'
@@ -446,6 +443,53 @@ def load_and_preprocess_csv(f):
             df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
             if 'Platform' not in df.columns:
                 df['Platform'] = platform
+
+        # Resolve any local image paths (Image_Location or Image_URL) to absolute paths relative to the CSV's directory
+        image_col = 'Image_URL' if 'Image_URL' in df.columns else ('Image_Location' if 'Image_Location' in df.columns else None)
+        if image_col:
+            csv_dir = os.path.dirname(os.path.abspath(f))
+            def resolve_offline_path(loc, pid):
+                if not isinstance(loc, str):
+                    return loc
+
+                # First, check if we have the file locally downloaded in the offline directories
+                if offline_dirs and pd.notna(pid):
+                    pid_str = str(pid).strip()
+                    if pid_str.endswith('.0'):
+                        pid_str = pid_str[:-2]
+
+                    for d in offline_dirs:
+                        if not d:
+                            continue
+                        # Nested layout: d/a/b/c/id.jpg
+                        if len(pid_str) >= 3:
+                            p_nested = os.path.abspath(os.path.join(d, pid_str[0], pid_str[1], pid_str[2], f"{pid_str}.jpg"))
+                            if os.path.exists(p_nested):
+                                return p_nested
+                        # Flat layout: d/id.jpg
+                        p_flat = os.path.abspath(os.path.join(d, f"{pid_str}.jpg"))
+                        if os.path.exists(p_flat):
+                            return p_flat
+                        # Flat "train" layout: d/train/id.jpg
+                        p_train = os.path.abspath(os.path.join(d, "train", f"{pid_str}.jpg"))
+                        if os.path.exists(p_train):
+                            return p_train
+
+                # Check if it's already an absolute path or a standard remote URL
+                if loc.startswith("http://") or loc.startswith("https://") or loc.startswith("mapillary://") or loc.startswith("kartaview://") or os.path.isabs(loc):
+                    return loc
+                # Try direct join
+                p = os.path.abspath(os.path.join(csv_dir, loc))
+                if os.path.exists(p):
+                    return p
+                # Try with "train" subdir (backward compatibility for flat iWildCam)
+                p_train_sub = os.path.abspath(os.path.join(csv_dir, "train", os.path.basename(loc)))
+                if os.path.exists(p_train_sub):
+                    return p_train_sub
+                # Fallback to direct join
+                return p
+
+            df['Image_URL'] = [resolve_offline_path(loc, pid) for loc, pid in zip(df[image_col], df['Photo_ID'])]
 
         required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License']
         for col in required_cols:
@@ -505,7 +549,8 @@ def main():
     parser.add_argument("--checkpoint_interval", type=int, default=1800, help="Interval in seconds to save checkpoints (0 to disable).")
     parser.add_argument("--cell_chunk_size", type=int, default=128, help="Number of images within a cell to download/process in a chunk.")
     parser.add_argument("--tips_batch_size", type=int, default=32, help="Batch size for TIPSv2 embedding inference.")
-    parser.add_argument("--iwildcam_dir", type=str, default=None, help="Base directory containing iWildCam CSV index and images folder.")
+    parser.add_argument("--offline_dataset_dirs", type=str, nargs="*", default=None,
+                        help="Base directories containing offline dataset CSV indexes and images folders.")
     args = parser.parse_args()
 
     # 1. Gather all CSVs
@@ -513,10 +558,11 @@ def main():
     for d in args.dirs:
         csv_files.extend(glob.glob(os.path.join(d, "*.csv")))
 
-    if args.iwildcam_dir:
-        iwildcam_csvs = glob.glob(os.path.join(args.iwildcam_dir, "*.csv"))
-        print(f"Found {len(iwildcam_csvs)} iWildCam CSV files in {args.iwildcam_dir}.")
-        csv_files.extend(iwildcam_csvs)
+    if args.offline_dataset_dirs:
+        for d in args.offline_dataset_dirs:
+            offline_csvs = glob.glob(os.path.join(d, "*.csv"))
+            print(f"Found {len(offline_csvs)} CSV files in offline directory '{d}'.")
+            csv_files.extend(offline_csvs)
 
     print(f"Found {len(csv_files)} total CSV files to process.")
 
@@ -571,7 +617,7 @@ def main():
     if csv_files:
         print(f"Reading {len(csv_files)} CSV files in parallel...")
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(load_and_preprocess_csv, f) for f in csv_files]
+            futures = [executor.submit(load_and_preprocess_csv, f, offline_dirs=args.offline_dataset_dirs) for f in csv_files]
             for fut in tqdm(as_completed(futures), total=len(csv_files), desc="Reading CSVs"):
                 res = fut.result()
                 if res is not None:
@@ -800,7 +846,7 @@ def main():
                                    tips_batch_size=args.tips_batch_size,
                                    macro_idx=macro_idx,
                                    sky_idx=sky_idx,
-                                   iwildcam_dir=args.iwildcam_dir)
+                                   offline_dirs=args.offline_dataset_dirs)
             final_data.extend(deduped)
             processed_cells.add(cell)
             
