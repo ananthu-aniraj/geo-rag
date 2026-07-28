@@ -48,7 +48,9 @@ def fetch_wikimedia_timestamps(image_titles):
     for t in titles_list:
         ft = t if t.startswith("File:") else f"File:{t}"
         full_titles.append(ft)
-        title_to_orig[ft] = t
+        # Normalize underscores to spaces to match MediaWiki API title normalization
+        normalized_title = ft.replace("_", " ").strip()
+        title_to_orig[normalized_title] = t
 
     url = "https://commons.wikimedia.org/w/api.php"
     headers = {
@@ -77,7 +79,9 @@ def fetch_wikimedia_timestamps(image_titles):
                     imageinfo = page_info.get("imageinfo", [])
                     if title and imageinfo:
                         ts = imageinfo[0].get("timestamp")
-                        orig_title = title_to_orig.get(title)
+                        # Normalize response title underscores to spaces
+                        normalized_resp_title = title.replace("_", " ").strip()
+                        orig_title = title_to_orig.get(normalized_resp_title)
                         if orig_title and ts:
                             timestamps[orig_title] = ts
             time.sleep(0.1)  # Polite delay
