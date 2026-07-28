@@ -107,13 +107,14 @@ def query_wikidata_batch(categories):
     url = "https://query.wikidata.org/sparql"
     headers = {
         "User-Agent": "Geo-RAG-Landmark-Sampler/1.0 (aaniraj@home)",
+        "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json"
     }
     
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = requests.get(url, params={'query': query, 'format': 'json'}, headers=headers, timeout=30)
+            response = requests.post(url, data={'query': query, 'format': 'json'}, headers=headers, timeout=45)
             if response.status_code == 200:
                 data = response.json()
                 results = {}
@@ -234,7 +235,7 @@ def main():
     
     if uncached_cats:
         print(f"Querying Wikidata SPARQL endpoint for {len(uncached_cats):,} uncached categories in batches...")
-        batch_size = 1500
+        batch_size = 1000
         for idx in tqdm(range(0, len(uncached_cats), batch_size), desc="Wikidata Geocoding"):
             batch = uncached_cats[idx:idx + batch_size]
             results = query_wikidata_batch(batch)
