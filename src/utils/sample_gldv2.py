@@ -169,6 +169,63 @@ def main():
                         help="H3 resolution for spatial density calculation.")
     args = parser.parse_args()
 
+    # 0. Check for auto-resume if output CSV already exists (e.g. to resume/retry timestamp fetching)
+    if args.output_csv and os.path.exists(args.output_csv):
+        print(f"Found existing output CSV at '{args.output_csv}'. Checking if auto-resume for timestamp fetching is needed...")
+        try:
+            df_existing = pd.read_csv(args.output_csv, dtype=str)
+            if 'Captured_At' in df_existing.columns:
+                missing_ts = df_existing['Captured_At'].isna() | (df_existing['Captured_At'] == '')
+            else:
+                df_existing['Captured_At'] = ''
+                missing_ts = pd.Series(True, index=df_existing.index)
+
+            if missing_ts.any() and args.fetch_timestamps:
+                print(f" -> Found {missing_ts.sum():,} records with missing timestamps. Resuming timestamp fetch...")
+                id_to_title = {}
+                missing_df = df_existing[missing_ts & df_existing['Image_URL'].notna() & (df_existing['Image_URL'] != '')]
+
+                if not missing_df.empty:
+                    for _, row_attr in missing_df.iterrows():
+                        img_id = str(row_attr['Photo_ID'])
+                        wiki_url = str(row_attr['Image_URL'])
+                        quoted_fn = os.path.basename(wiki_url)
+                        fn = urllib.parse.unquote(quoted_fn)
+                        id_to_title[img_id] = f"File:{fn}"
+
+                    # Query MediaWiki API for missing titles
+                    titles_to_fetch = set(id_to_title.values())
+                    title_to_ts = fetch_wikimedia_timestamps(titles_to_fetch)
+
+                    id_to_ts = {}
+                    for img_id, title_val in id_to_title.items():
+                        if title_val in title_to_ts:
+                            id_to_ts[img_id] = title_to_ts[title_val]
+
+                    if id_to_ts:
+                        # Map resolved timestamps in place
+                        df_existing['Captured_At'] = [
+                            id_to_ts.get(pid, current_val)
+                            for pid, current_val in zip(df_existing['Photo_ID'], df_existing['Captured_At'])
+                        ]
+                        print(f" -> Successfully resolved upload timestamps for {len(id_to_ts):,} images.")
+                        df_existing.to_csv(args.output_csv, index=False)
+                        print(f" -> Updated output saved to: {os.path.abspath(args.output_csv)}")
+                        print("Timestamp fetch resume complete!")
+                        return
+                    else:
+                        print("No timestamps could be resolved. Output remains unchanged.")
+                        return
+                else:
+                    print("No rows with direct download URLs to fetch timestamps for.")
+                    return
+            else:
+                print("All records already have valid timestamps or '--fetch_timestamps' was not requested. No resume needed.")
+                print("If you wish to force a full re-sampling run, please delete the existing CSV file first.")
+                return
+        except Exception as e:
+            print(f"Warning: Failed to load pre-existing output CSV for resume check: {e}. Re-running full sampling...")
+
     # 1. Load existing dataset coordinates and construct H3 cell frequencies
     print(f"Loading existing dataset from '{args.dataset_parquet}'...")
     if not os.path.exists(args.dataset_parquet):
