@@ -10,6 +10,8 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 
 👉 **[Data Engineering Documentation](geo_rag_pipeline_docs.md)**
 
+👉 **[Evaluation & Benchmarking Documentation](evaluation_docs.md)**
+
 ---
 
 ## 📂 Project Structure

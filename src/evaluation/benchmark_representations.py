@@ -147,6 +147,7 @@ def main():
     parser.add_argument("--num_queries", type=int, default=50, help="Number of query evaluations to run.")
     parser.add_argument("--batch_size", type=int, default=16, help="GPU batch size for feature extraction.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument("--output_dir", type=str, default="./benchmark_results", help="Directory to save benchmark results.")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -365,9 +366,9 @@ def main():
                     snapped_pil = Image.fromarray((snapped_keep * 255).astype(np.uint8)).resize((32, 32), resample=Image.BILINEAR)
                     snapped_32x32 = (np.array(snapped_pil) > 127).astype(float)
                 except Exception:
-                    snapped_32x32 = keep_mask.reshape(32, 32)
+                    snapped_32x32 = patch_weights
             else:
-                snapped_32x32 = keep_mask.reshape(32, 32)
+                snapped_32x32 = patch_weights
 
             snapped_keep_flat = snapped_32x32.reshape(-1, 1)
             total_snapped_weight = np.sum(snapped_keep_flat)
@@ -606,7 +607,7 @@ def main():
             pass
 
     # --- Generate Visualization Plots ---
-    output_dir = os.path.dirname(args.csv_path)
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     
     import matplotlib.pyplot as plt
