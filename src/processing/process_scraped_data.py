@@ -247,8 +247,8 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
                 sims = all_io_sims[i]
                 best_class = np.argmax(sims)
                 
-                # 1. Flickr-only Indoor Filter (always Class 0)
-                if metadata['Platform'] == 'Flickr' and best_class == 0:
+                # 1. Flickr & GoogleLandmarks Indoor Filter (always Class 0)
+                if metadata['Platform'] in ['Flickr', 'GoogleLandmarks'] and best_class == 0:
                     continue
                     
                 # 2. iNaturalist-only Macro/Close-up Filter

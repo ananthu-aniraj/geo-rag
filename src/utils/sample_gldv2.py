@@ -146,6 +146,8 @@ def main():
                         help="Optional path to train_attribution.csv to resolve precise image licenses.")
     parser.add_argument("--fetch_timestamps", action="store_true",
                         help="Fetch exact upload timestamps from MediaWiki API for the sampled subset.")
+    parser.add_argument("--clean_csv", type=str, default=None,
+                        help="Optional path to train_clean.csv to filter out noisy/unclean image IDs.")
     parser.add_argument("--cache_path", type=str, default="category_coords_cache.json",
                         help="Path to coordinates JSON cache.")
     parser.add_argument("--output_csv", type=str, default="google_landmarks_sampled.csv",
@@ -271,7 +273,20 @@ def main():
                     'category_url': row['category']
                 }
 
-    print(f"Mapped {len(landmark_coords):,} landmarks to valid geographic coordinates.")
+    # 3.5 Load clean image IDs list if provided
+    clean_ids = set()
+    if args.clean_csv:
+        if os.path.exists(args.clean_csv):
+            print(f"Loading clean image IDs from '{args.clean_csv}'...")
+            try:
+                df_clean = pd.read_csv(args.clean_csv)
+                for imgs_str in df_clean['images'].dropna():
+                    clean_ids.update(imgs_str.split())
+                print(f"Loaded {len(clean_ids):,} clean image IDs.")
+            except Exception as e:
+                print(f"Warning: Failed to load clean CSV: {e}")
+        else:
+            print(f"Warning: Clean CSV '{args.clean_csv}' not found. No clean filter will be applied.")
 
     # 4. Load images-to-landmark index and perform sampling
     print(f"Loading image-to-landmark indexing from '{args.landmarks_csv}'...")
@@ -312,7 +327,11 @@ def main():
         for _, row in valid_chunk.iterrows():
             if args.max_images > 0 and total_sampled >= args.max_images:
                 break
-                
+
+            img_id = str(row['id'])
+            if clean_ids and img_id not in clean_ids:
+                continue
+
             cell = row['h3_cell']
             # Get existing image counts in this cell
             existing_count = cell_counts.get(cell, 0)
@@ -331,7 +350,6 @@ def main():
                         if len(matches) > 0 and pd.notna(matches[0]):
                             cat_name = str(matches[0])
 
-                    img_id = str(row['id'])
                     # Construct relative path in GLDv2 nested format: ./images/a/b/c/abcdef.jpg
                     rel_img_path = f"./images/{img_id[0]}/{img_id[1]}/{img_id[2]}/{img_id}.jpg"
 
