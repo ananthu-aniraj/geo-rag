@@ -54,7 +54,7 @@ def fetch_wikimedia_timestamps(image_titles):
 
     url = "https://commons.wikimedia.org/w/api.php"
     headers = {
-        "User-Agent": "Geo-RAG-Landmark-Sampler/1.0 (aaniraj@home)",
+        "User-Agent": "Geo-RAG-Landmark-Sampler/1.0 (aaniraj@home; contact: aaniraj@home.com)",
         "Content-Type": "application/x-www-form-urlencoded"
     }
 
@@ -136,7 +136,7 @@ def fetch_wikimedia_timestamps(image_titles):
                         time.sleep(1)
                 time.sleep(0.05)
                 
-        time.sleep(0.15)  # Polite delay between successful requests
+        time.sleep(1.0)  # Polite delay to respect Wikimedia API limits (approx 60 requests/min max)
 
     return timestamps
 
