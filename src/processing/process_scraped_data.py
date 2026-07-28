@@ -51,40 +51,40 @@ def standardize_timestamps_vectorized(ts_raw):
     """Standardizes a Pandas Series of timestamps (numeric or string) to ISO 8601 (YYYY-MM-DDTHH:MM:SSZ)."""
     # Initialize output Series with None as default
     standardized = pd.Series([None] * len(ts_raw), index=ts_raw.index, dtype=object)
-    
+
     # Identify Unix epoch numeric timestamps vs. string representations
     numeric_ts = pd.to_numeric(ts_raw, errors='coerce')
     is_numeric = numeric_ts.notna() & (numeric_ts > 1e8)
-    
+
     # Parse Unix numeric timestamps
     if is_numeric.any():
         is_ms_mask = is_numeric & (numeric_ts > 5e10)
         is_s_mask = is_numeric & ~is_ms_mask
-        
+
         if is_ms_mask.any():
             parsed_ms = pd.to_datetime(numeric_ts[is_ms_mask], unit='ms', utc=True, errors='coerce')
             try:
                 valid_ms = (parsed_ms.dt.year >= 1) & (parsed_ms.dt.year <= 9999)
             except Exception:
                 valid_ms = pd.Series(True, index=parsed_ms.index)
-            
+
             formatted_ms = pd.Series([None] * len(parsed_ms), index=parsed_ms.index, dtype=object)
             if valid_ms.any():
                 formatted_ms[valid_ms] = parsed_ms[valid_ms].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
             standardized.loc[is_ms_mask] = formatted_ms
-            
+
         if is_s_mask.any():
             parsed_s = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
             try:
                 valid_s = (parsed_s.dt.year >= 1) & (parsed_s.dt.year <= 9999)
             except Exception:
                 valid_s = pd.Series(True, index=parsed_s.index)
-                
+
             formatted_s = pd.Series([None] * len(parsed_s), index=parsed_s.index, dtype=object)
             if valid_s.any():
                 formatted_s[valid_s] = parsed_s[valid_s].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
             standardized.loc[is_s_mask] = formatted_s
-            
+
     # Parse string representations
     is_string = ts_raw.notna() & ~is_numeric
     if is_string.any():
@@ -92,13 +92,13 @@ def standardize_timestamps_vectorized(ts_raw):
         has_colon_date = str_vals.str.match(r'^\d{4}:\d{2}:\d{2}')
         if has_colon_date.any():
             str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(':', '-', n=2)
-            
+
         parsed_str = pd.to_datetime(str_vals, errors='coerce', utc=True, format='mixed')
         try:
             valid_str = (parsed_str.dt.year >= 1) & (parsed_str.dt.year <= 9999)
         except Exception:
             valid_str = pd.Series(True, index=parsed_str.index)
-            
+
         formatted_str = pd.Series([None] * len(parsed_str), index=parsed_str.index, dtype=object)
         if valid_str.any():
             formatted_str[valid_str] = parsed_str[valid_str].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -109,7 +109,7 @@ def standardize_timestamps_vectorized(ts_raw):
     is_parsed = standardized.notna()
     invalid_mask = ~is_parsed & ts_raw.notna() & (ts_raw != '')
     standardized[invalid_mask] = ts_series[invalid_mask]
-    
+
     return standardized
 
 
@@ -117,7 +117,8 @@ def download_image(url, offline_dirs=None):
     """Downloads an image using the global connection pool session and returns a resized PIL Image."""
     try:
         # Check if url is a local path first
-        if not (url.startswith("http://") or url.startswith("https://") or url.startswith("mapillary://") or url.startswith("kartaview://")):
+        if not (url.startswith("http://") or url.startswith("https://") or url.startswith(
+                "mapillary://") or url.startswith("kartaview://")):
             if os.path.exists(url):
                 img = Image.open(url).convert("RGB")
                 img_resized = img.resize((448, 448))
@@ -182,7 +183,7 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     all_features = []
     with torch.no_grad():
         for i in range(0, len(images), batch_size):
-            batch = images[i : i + batch_size]
+            batch = images[i: i + batch_size]
             # Batch transform and stack
             batch_tensors = torch.stack([tips_transform(img) for img in batch]).to(device)
             features = model.encode_image(batch_tensors).cls_token
@@ -191,7 +192,9 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     return np.concatenate(all_features, axis=0)
 
 
-def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None, existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1, offline_dirs=None):
+def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None,
+                 existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1,
+                 offline_dirs=None):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
@@ -201,31 +204,31 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
 
     # Process new images in chunks to limit peak memory usage
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
-        chunk_metadata = metadata_list[chunk_start : chunk_start + cell_chunk_size]
+        chunk_metadata = metadata_list[chunk_start: chunk_start + cell_chunk_size]
         urls = [m['Image_URL'] for m in chunk_metadata]
-        
+
         # Download images in parallel for this chunk
         imgs = list(executor.map(download_fn, urls))
-        
+
         valid_indices = [i for i, img in enumerate(imgs) if img is not None]
         if not valid_indices:
             continue
-            
+
         valid_imgs = [imgs[i] for i in valid_indices]
-        
+
         # Compute embeddings for this chunk using configured tips_batch_size
         all_embeddings = get_tips_embeddings(valid_imgs, model, device, batch_size=tips_batch_size)
-        
+
         # Explicitly close PIL images immediately to free RAM
         for img in valid_imgs:
             try:
                 img.close()
             except Exception:
                 pass
-                
+
         if all_embeddings is None:
             continue
-            
+
         # Matrix multiply for indoor/outdoor zero-shot classification
         if text_features is not None:
             emb_norms = np.linalg.norm(all_embeddings, axis=1, keepdims=True)
@@ -237,7 +240,7 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
             norm_text = text_features / text_norms
 
             all_io_sims = np.dot(norm_embeddings, norm_text.T)
-            
+
         for i, idx in enumerate(valid_indices):
             metadata = chunk_metadata[idx]
             embedding = all_embeddings[i]
@@ -246,16 +249,16 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
             if text_features is not None:
                 sims = all_io_sims[i]
                 best_class = np.argmax(sims)
-                
+
                 # 1. Flickr & GoogleLandmarks Indoor Filter (always Class 0)
                 if metadata['Platform'] in ['Flickr', 'GoogleLandmarks'] and best_class == 0:
                     continue
-                    
+
                 # 2. iNaturalist-only Macro/Close-up Filter
                 if macro_idx != -1 and best_class == macro_idx:
                     if str(metadata['Platform']).lower() == 'inaturalist':
                         continue
-                        
+
                 # 3. iNaturalist-only Sky/Flying Filter
                 if sky_idx != -1 and best_class == sky_idx:
                     if str(metadata['Platform']).lower() == 'inaturalist':
@@ -279,7 +282,7 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
                 item = metadata.copy()
                 item['embedding'] = embedding
                 results.append(item)
-                
+
     return results
 
 
@@ -299,7 +302,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
     # but not in the existing parquet database
     has_license_in_new = "License" in df_new.columns if df_new is not None else False
     has_license_in_existing = "License" in schema.names
-    
+
     if has_license_in_new and not has_license_in_existing:
         new_fields = list(schema)
         new_fields.append(pa.field("License", pa.string()))
@@ -312,7 +315,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
             # 1. Stream copy inactive rows from original parquet
             for rg in range(pf.num_row_groups):
                 table = pf.read_row_group(rg)
-                
+
                 # Append a null column for License if we upgraded the schema
                 if has_license_in_new and "License" not in table.column_names:
                     null_col = pa.array([None] * len(table), type=pa.string())
@@ -323,7 +326,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
                 filtered_table = table.filter(mask)
                 if len(filtered_table) > 0:
                     writer.write_table(filtered_table)
-                    
+
             # 2. Write the new/updated active rows
             if df_new is not None and not df_new.empty:
                 df_new_aligned = df_new.copy()
@@ -331,10 +334,10 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
                     if name not in df_new_aligned.columns:
                         df_new_aligned[name] = None
                 df_new_aligned = df_new_aligned[schema.names]
-                
+
                 new_table = pa.Table.from_pandas(df_new_aligned, schema=schema, preserve_index=False)
                 writer.write_table(new_table)
-                
+
         if os.path.exists(tmp_output):
             os.replace(tmp_output, output_path)
     except Exception as e:
@@ -346,29 +349,32 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
         raise e
 
 
-def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=None, active_cells=None):
+def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=None,
+                    active_cells=None):
     """Saves the intermediate state to checkpoint files atomically."""
     tmp_path = f"{checkpoint_path}.tmp"
     tmp_meta_path = f"{checkpoint_meta_path}.tmp"
     try:
         # Convert final_data to DataFrame and save to tmp parquet
         if not final_data:
-            df = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding', 'Captured_At', 'License'])
+            df = pd.DataFrame(
+                columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'H3_Cell', 'embedding',
+                         'Captured_At', 'License'])
         else:
             df = pd.DataFrame(final_data)
-            
+
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
-        
+
         if resume_from and os.path.exists(resume_from) and active_cells:
             stream_update_parquet(resume_from, tmp_path, df, active_cells)
         else:
             df.to_parquet(tmp_path, index=False)
-        
+
         # Save processed cells to tmp meta
         with open(tmp_meta_path, 'wb') as f:
             pickle.dump(processed_cells, f)
-            
+
         # Atomic rename
         if os.path.exists(tmp_path):
             os.replace(tmp_path, checkpoint_path)
@@ -387,7 +393,8 @@ def load_and_preprocess_csv(f, offline_dirs=None):
             return None
 
         # Check if this is the iWildCam CSV
-        is_iwildcam = 'iwildcam' in f.lower() or ('Platform' in df.columns and df['Platform'].astype(str).str.lower().eq('iwildcam').any())
+        is_iwildcam = 'iwildcam' in f.lower() or (
+                    'Platform' in df.columns and df['Platform'].astype(str).str.lower().eq('iwildcam').any())
 
         if 'uuid' in df.columns and 'source' in df.columns and 'orig_id' in df.columns:
             df['Platform'] = df['source']
@@ -395,7 +402,7 @@ def load_and_preprocess_csv(f, offline_dirs=None):
             df['Longitude'] = df['lon']
             df['Photo_ID'] = df['orig_id']
             df['Captured_At'] = df['datetime_local'] if 'datetime_local' in df.columns else None
-            
+
             urls = df['url'] if 'url' in df.columns else [None] * len(df)
             df['Image_URL'] = [
                 f"mapillary://{oid}" if str(src).lower() == 'mapillary'
@@ -405,11 +412,11 @@ def load_and_preprocess_csv(f, offline_dirs=None):
         elif is_iwildcam:
             platform = 'iWildCam'
             col_map = {
-                'latitude': 'Latitude', 
-                'longitude': 'Longitude', 
-                'photo_id': 'Photo_ID', 
-                'ID': 'Photo_ID', 
-                'captured_at': 'Captured_At', 
+                'latitude': 'Latitude',
+                'longitude': 'Longitude',
+                'photo_id': 'Photo_ID',
+                'ID': 'Photo_ID',
+                'captured_at': 'Captured_At',
                 'Captured_At': 'Captured_At',
                 'Image_Location': 'Image_URL',
                 'Image_URL': 'Image_URL'
@@ -425,15 +432,15 @@ def load_and_preprocess_csv(f, offline_dirs=None):
                 platform = 'iWildCam'
             else:
                 platform = 'Mapillary'
-            
+
             col_map = {
-                'latitude': 'Latitude', 
-                'longitude': 'Longitude', 
-                'image_url': 'Image_URL', 
+                'latitude': 'Latitude',
+                'longitude': 'Longitude',
+                'image_url': 'Image_URL',
                 'Image_Location': 'Image_URL',
-                'photo_id': 'Photo_ID', 
-                'ID': 'Photo_ID', 
-                'captured_at': 'Captured_At', 
+                'photo_id': 'Photo_ID',
+                'ID': 'Photo_ID',
+                'captured_at': 'Captured_At',
                 'Captured_At': 'Captured_At',
                 'Date_Observed': 'Captured_At',
                 'observed_on_string': 'Captured_At',
@@ -444,52 +451,40 @@ def load_and_preprocess_csv(f, offline_dirs=None):
             if 'Platform' not in df.columns:
                 df['Platform'] = platform
 
+        # Determine if the file is from an offline directory
+        is_offline = False
+        if offline_dirs:
+            abs_f = os.path.abspath(f)
+            for od in offline_dirs:
+                if abs_f.startswith(os.path.abspath(od)):
+                    is_offline = True
+                    break
+
         # Resolve any local image paths (Image_Location or Image_URL) to absolute paths relative to the CSV's directory
-        image_col = 'Image_URL' if 'Image_URL' in df.columns else ('Image_Location' if 'Image_Location' in df.columns else None)
+        image_col = 'Image_URL' if 'Image_URL' in df.columns else (
+            'Image_Location' if 'Image_Location' in df.columns else None)
         if image_col:
             csv_dir = os.path.dirname(os.path.abspath(f))
-            def resolve_offline_path(loc, pid):
+
+            def resolve_offline_path(loc):
                 if not isinstance(loc, str):
                     return loc
-
-                # First, check if we have the file locally downloaded in the offline directories
-                if offline_dirs and pd.notna(pid):
-                    pid_str = str(pid).strip()
-                    if pid_str.endswith('.0'):
-                        pid_str = pid_str[:-2]
-
-                    for d in offline_dirs:
-                        if not d:
-                            continue
-                        # Nested layout: d/a/b/c/id.jpg
-                        if len(pid_str) >= 3:
-                            p_nested = os.path.abspath(os.path.join(d, pid_str[0], pid_str[1], pid_str[2], f"{pid_str}.jpg"))
-                            if os.path.exists(p_nested):
-                                return p_nested
-                        # Flat layout: d/id.jpg
-                        p_flat = os.path.abspath(os.path.join(d, f"{pid_str}.jpg"))
-                        if os.path.exists(p_flat):
-                            return p_flat
-                        # Flat "train" layout: d/train/id.jpg
-                        p_train = os.path.abspath(os.path.join(d, "train", f"{pid_str}.jpg"))
-                        if os.path.exists(p_train):
-                            return p_train
-
-                # Check if it's already an absolute path or a standard remote URL
-                if loc.startswith("http://") or loc.startswith("https://") or loc.startswith("mapillary://") or loc.startswith("kartaview://") or os.path.isabs(loc):
-                    return loc
-                # Try direct join
-                p = os.path.abspath(os.path.join(csv_dir, loc))
-                if os.path.exists(p):
+                if is_offline:
+                    if os.path.isabs(loc):
+                        return loc
+                    # Try direct join
+                    p = os.path.abspath(os.path.join(csv_dir, loc))
+                    if os.path.exists(p):
+                        return p
+                    # Try with "train" subdir (backward compatibility for flat iWildCam)
+                    p_train = os.path.abspath(os.path.join(csv_dir, "train", os.path.basename(loc)))
+                    if os.path.exists(p_train):
+                        return p_train
                     return p
-                # Try with "train" subdir (backward compatibility for flat iWildCam)
-                p_train_sub = os.path.abspath(os.path.join(csv_dir, "train", os.path.basename(loc)))
-                if os.path.exists(p_train_sub):
-                    return p_train_sub
-                # Fallback to direct join
-                return p
+                else:
+                    return loc
 
-            df['Image_URL'] = [resolve_offline_path(loc, pid) for loc, pid in zip(df[image_col], df['Photo_ID'])]
+            df['Image_URL'] = [resolve_offline_path(loc) for loc in df[image_col]]
 
         required_cols = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License']
         for col in required_cols:
@@ -501,7 +496,7 @@ def load_and_preprocess_csv(f, offline_dirs=None):
         mapillary_mask = (platform_lower == 'mapillary') & (df['License'].isna() | (df['License'] == ''))
         if mapillary_mask.any():
             df.loc[mapillary_mask, 'License'] = 'CC BY-SA 4.0'
-            
+
         kartaview_mask = (platform_lower == 'kartaview') & (df['License'].isna() | (df['License'] == ''))
         if kartaview_mask.any():
             df.loc[kartaview_mask, 'License'] = 'CC BY-SA 4.0'
@@ -510,7 +505,8 @@ def load_and_preprocess_csv(f, offline_dirs=None):
         if iwildcam_mask.any():
             df.loc[iwildcam_mask, 'License'] = 'CDLA-Permissive-1.0'
 
-        inat_mask = (platform_lower.str.contains('inaturalist') | (platform_lower == 'inat')) & (df['License'].isna() | (df['License'] == ''))
+        inat_mask = (platform_lower.str.contains('inaturalist') | (platform_lower == 'inat')) & (
+                    df['License'].isna() | (df['License'] == ''))
         if inat_mask.any():
             df.loc[inat_mask, 'License'] = 'CC BY-NC 4.0'
 
@@ -545,9 +541,12 @@ def main():
     parser.add_argument("--filter_sky", action="store_true",
                         help="Filter out photos of the sky, clouds, and flying objects (birds/insects in flight) for iNaturalist.")
     parser.add_argument("--limit_cells", type=int, default=0, help="Limit number of cells to process (for testing).")
-    parser.add_argument("--resume_from", type=str, default=None, help="Path to a previously generated .pkl or parquet file to resume from.")
-    parser.add_argument("--checkpoint_interval", type=int, default=1800, help="Interval in seconds to save checkpoints (0 to disable).")
-    parser.add_argument("--cell_chunk_size", type=int, default=128, help="Number of images within a cell to download/process in a chunk.")
+    parser.add_argument("--resume_from", type=str, default=None,
+                        help="Path to a previously generated .pkl or parquet file to resume from.")
+    parser.add_argument("--checkpoint_interval", type=int, default=1800,
+                        help="Interval in seconds to save checkpoints (0 to disable).")
+    parser.add_argument("--cell_chunk_size", type=int, default=128,
+                        help="Number of images within a cell to download/process in a chunk.")
     parser.add_argument("--tips_batch_size", type=int, default=32, help="Batch size for TIPSv2 embedding inference.")
     parser.add_argument("--offline_dataset_dirs", type=str, nargs="*", default=None,
                         help="Base directories containing offline dataset CSV indexes and images folders.")
@@ -579,9 +578,9 @@ def main():
             df_existing = pd.DataFrame(existing_data)
             del existing_data  # Free list from RAM
             existing_embeddings = np.vstack(df_existing['embedding'].values).astype(np.float32)
-            
+
             seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
-            
+
             # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
             if not df_existing.empty and 'Image_URL' in df_existing.columns:
                 platforms = df_existing['Platform'].to_numpy()
@@ -597,7 +596,7 @@ def main():
             print("Loading existing dataset metadata using PyArrow...")
             df_existing = pd.read_parquet(args.resume_from, columns=['Photo_ID', 'Platform', 'H3_Cell'])
             seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
-        
+
         # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
         if not df_existing.empty and 'Image_URL' in df_existing.columns:
             platforms = df_existing['Platform'].to_numpy()
@@ -617,7 +616,8 @@ def main():
     if csv_files:
         print(f"Reading {len(csv_files)} CSV files in parallel...")
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(load_and_preprocess_csv, f, offline_dirs=args.offline_dataset_dirs) for f in csv_files]
+            futures = [executor.submit(load_and_preprocess_csv, f, offline_dirs=args.offline_dataset_dirs) for f in
+                       csv_files]
             for fut in tqdm(as_completed(futures), total=len(csv_files), desc="Reading CSVs"):
                 res = fut.result()
                 if res is not None:
@@ -626,7 +626,8 @@ def main():
     if all_dfs:
         df_all = pd.concat(all_dfs, ignore_index=True)
     else:
-        df_all = pd.DataFrame(columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License'])
+        df_all = pd.DataFrame(
+            columns=['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License'])
     all_dfs = []  # Free memory
 
     # Vectorized H3 cell computation and filtering
@@ -647,7 +648,7 @@ def main():
 
         df_all = df_all.dropna(subset=['H3_Cell', 'Photo_ID'])
         df_all['Photo_ID'] = df_all['Photo_ID'].apply(clean_photo_id)
-        
+
         # Convert any raw Mapillary/KartaView URLs to virtual URIs to prevent CDN expiration (vectorized)
         platforms = df_all['Platform'].to_numpy()
         photo_ids = df_all['Photo_ID'].to_numpy()
@@ -657,7 +658,7 @@ def main():
             else (f"kartaview://{pid}" if str(plat).lower() == 'kartaview' else url)
             for plat, pid, url in zip(platforms, photo_ids, image_urls)
         ]
-        
+
         df_all = df_all.drop_duplicates(subset=['Platform', 'Photo_ID'])
         if seen_keys:
             df_all['temp_key'] = list(zip(df_all['Platform'], df_all['Photo_ID']))
@@ -665,12 +666,12 @@ def main():
             df_all = df_all.drop(columns=['temp_key'])
 
     print(f"Total NEW raw images: {len(df_all)}")
-    
+
     new_cells = set(df_all['H3_Cell'].unique()) if not df_all.empty else set()
     existing_cells = set(df_existing['H3_Cell'].unique()) if df_existing is not None else set()
     all_cells = new_cells | existing_cells
     active_cells = new_cells
-    
+
     # Load embeddings only for active cells (saves massive RAM for millions of rows)
     df_existing_active = None
     existing_embeddings = None
@@ -680,9 +681,10 @@ def main():
         import pyarrow.dataset as ds
         dataset = ds.dataset(args.resume_from, format="parquet")
         active_cells_list = list(active_cells)
-        
+
         filter_expr = ds.field("H3_Cell").isin(active_cells_list)
-        cols_to_load = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL', 'embedding']
+        cols_to_load = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL',
+                        'embedding']
         if 'License' in dataset.schema.names:
             cols_to_load.append('License')
         table_active = dataset.to_table(
@@ -690,7 +692,7 @@ def main():
             columns=cols_to_load
         )
         df_existing_active = table_active.to_pandas()
-        
+
         if len(df_existing_active) > 0:
             chunked_arr = table_active['embedding']
             dim = len(chunked_arr.chunk(0)[0].as_py())
@@ -701,7 +703,7 @@ def main():
                 flat_chunk = chunk.flatten().to_numpy()
                 existing_embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
                 current_row += chunk_len
-                
+
             # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
             if 'Image_URL' in df_existing_active.columns:
                 platforms = df_existing_active['Platform'].to_numpy()
@@ -717,8 +719,9 @@ def main():
         print(f" -> Loaded {len(df_existing_active):,} active existing embeddings in {time.time() - t0:.2f}s.")
     elif df_existing is not None and not df_existing.empty:
         df_existing_active = df_existing[df_existing['H3_Cell'].isin(active_cells)].copy()
-        
-    print(f"Total H3 cells: {len(all_cells)} ({len(active_cells)} active with new data, {len(all_cells) - len(active_cells)} inactive/skipped)")
+
+    print(
+        f"Total H3 cells: {len(all_cells)} ({len(active_cells)} active with new data, {len(all_cells) - len(active_cells)} inactive/skipped)")
 
     # 3. Load TIPSv2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -735,23 +738,26 @@ def main():
         with torch.no_grad():
             prompts = ["An indoor scene", "An outdoor landscape or street view"]
             if args.filter_macro:
-                prompts.append("A close-up macro photo of a single leaf, plant petal, flower, insect, mushroom, or tree bark")
+                prompts.append(
+                    "A close-up macro photo of a single leaf, plant petal, flower, insect, mushroom, or tree bark")
                 macro_idx = len(prompts) - 1
             if args.filter_sky:
-                prompts.append("A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible")
+                prompts.append(
+                    "A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible")
                 sky_idx = len(prompts) - 1
             text_features = model.encode_text(prompts).cpu().numpy()
 
     # 4. Process and Deduplicate
     checkpoint_path = os.path.join(args.save_path, f"{args.output_name}_checkpoint.parquet")
     checkpoint_meta_path = os.path.join(args.save_path, f"{args.output_name}_checkpoint_meta.pkl")
-    
+
     final_data = []
     processed_cells = set()
-    
+
     if args.checkpoint_interval > 0 and os.path.exists(checkpoint_path) and os.path.exists(checkpoint_meta_path):
         print(f"Found checkpoint files: {checkpoint_path}")
-        print("Resuming from checkpoint. (To start fresh, delete these checkpoint files or run with --checkpoint_interval 0)")
+        print(
+            "Resuming from checkpoint. (To start fresh, delete these checkpoint files or run with --checkpoint_interval 0)")
         try:
             df_ckpt = pd.read_parquet(checkpoint_path)
             # Filter df_ckpt to only include active cells for final_data
@@ -771,7 +777,7 @@ def main():
         print(f"Limiting to {args.limit_cells} cells for testing.")
 
     last_checkpoint_time = time.time()
-    
+
     print("Grouping metadata by H3 cell...")
     from collections import defaultdict
     new_metadata_dict = defaultdict(list)
@@ -794,7 +800,7 @@ def main():
                 'Captured_At': cap,
                 'H3_Cell': cell
             })
-        
+
     existing_items_dict = defaultdict(list)
     if df_existing_active is not None and not df_existing_active.empty:
         pids = df_existing_active['Photo_ID'].to_numpy()
@@ -804,7 +810,7 @@ def main():
         urls = df_existing_active['Image_URL'].to_numpy()
         caps = df_existing_active['Captured_At'].to_numpy()
         cells = df_existing_active['H3_Cell'].to_numpy()
-        
+
         if 'existing_embeddings' in locals() and existing_embeddings is not None:
             if args.resume_from.endswith('.pkl'):
                 active_indices = df_existing_active.index.values
@@ -830,37 +836,39 @@ def main():
         for cell in tqdm(cells_to_process, desc="Processing cells"):
             if cell in processed_cells:
                 continue
-                
+
             new_metadata = new_metadata_dict.get(cell, [])
             existing_items = existing_items_dict.get(cell, [])
-            
+
             # If there's no new data for this cell, just keep the existing data
             if not new_metadata:
                 final_data.extend(existing_items)
                 processed_cells.add(cell)
                 continue
-                
-            deduped = process_cell(cell, new_metadata, model, device, args.sim_threshold, executor, 
-                                   text_features, existing_items, 
-                                   cell_chunk_size=args.cell_chunk_size, 
+
+            deduped = process_cell(cell, new_metadata, model, device, args.sim_threshold, executor,
+                                   text_features, existing_items,
+                                   cell_chunk_size=args.cell_chunk_size,
                                    tips_batch_size=args.tips_batch_size,
                                    macro_idx=macro_idx,
                                    sky_idx=sky_idx,
                                    offline_dirs=args.offline_dataset_dirs)
             final_data.extend(deduped)
             processed_cells.add(cell)
-            
+
             # Periodic checkpoint saving
             if args.checkpoint_interval > 0:
                 current_time = time.time()
                 if current_time - last_checkpoint_time > args.checkpoint_interval:
-                    save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=args.resume_from, active_cells=active_cells)
+                    save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path,
+                                    resume_from=args.resume_from, active_cells=active_cells)
                     last_checkpoint_time = current_time
 
     # Save a final checkpoint upon loop completion so that raw data is never lost if saving fails
     if args.checkpoint_interval > 0:
         print("\nSaving final completed checkpoint...")
-        save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=args.resume_from, active_cells=active_cells)
+        save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path,
+                        resume_from=args.resume_from, active_cells=active_cells)
 
     # 5. Save Results
     if not final_data:
@@ -881,14 +889,14 @@ def main():
         print("Writing final Parquet database using streaming update...")
         # 1. Parquet stream update
         stream_update_parquet(args.resume_from, parquet_path, out_df, active_cells)
-        
+
         # 2. CSV stream update (without embeddings)
         print("Writing final CSV metadata using streaming update...")
         t_csv = time.time()
         import pyarrow.parquet as pq
         pf_out = pq.ParquetFile(parquet_path)
         csv_cols = [c for c in pf_out.schema_arrow.names if c not in ['embedding', 'patch_embedding']]
-        
+
         first = True
         for rg in range(pf_out.num_row_groups):
             tbl_rg = pf_out.read_row_group(rg, columns=csv_cols)
