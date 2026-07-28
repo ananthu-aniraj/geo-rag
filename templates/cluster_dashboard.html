@@ -283,7 +283,7 @@
         <div style="flex: 1.5; min-width: 200px; display: flex; flex-direction: column; gap: 6px;">
             <label for="locationInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Location Proximity Search</label>
             <div style="display: flex; gap: 6px;">
-                <input type="text" id="locationInput" placeholder="e.g. Paris, Japan, Kenya..." style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px;">
+                <input type="text" id="locationInput" onkeypress="if(event.key === 'Enter') searchLocation()" placeholder="e.g. Paris, Japan, Kenya..." style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 14px;">
                 <button onclick="searchLocation()" style="height: 44px; padding: 0 16px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Search</button>
             </div>
             <span id="locationStatus" style="font-size: 0.75rem; color: var(--text-muted); height: 14px;"></span>
@@ -707,9 +707,7 @@
             // 3. Online geocoding API fallback for specific cities/landmarks
             try {
                 const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
-                const response = await fetch(url, {
-                    headers: { 'User-Agent': 'GeoRAG-Cluster-Visualizer/1.0' }
-                });
+                const response = await fetch(url);
                 
                 if (!response.ok) throw new Error("OSM Nominatim API request failed.");
                 const results = await response.json();
