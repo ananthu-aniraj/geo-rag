@@ -9,11 +9,12 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from src.utils.io import load_dataframe, save_dataframe
 import requests
 import yaml
 from PIL import Image
 from sklearn.preprocessing import normalize
+
+from src.utils.io import load_dataframe, save_dataframe
 
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB

@@ -1,4 +1,3 @@
-import numpy as np
 
 def compute_ap(retrieved_labels, query_label, k=10):
     """Computes Average Precision at K for a query label and retrieved labels."""

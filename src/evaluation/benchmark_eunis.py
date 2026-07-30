@@ -1,9 +1,7 @@
 import argparse
-import csv
 import math
 import os
 import random
-import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed

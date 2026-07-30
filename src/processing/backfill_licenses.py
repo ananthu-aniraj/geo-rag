@@ -5,12 +5,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import geopandas as gpd
-import pandas as pd
 import requests
 from shapely.geometry import Point, box as shapely_box
 from tqdm import tqdm
-from src.utils.io import load_dataframe, save_dataframe
 
+from src.utils.io import load_dataframe, save_dataframe
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'

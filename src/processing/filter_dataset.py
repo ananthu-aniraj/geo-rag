@@ -1,8 +1,8 @@
 import argparse
 import os
 
-import pandas as pd
 import requests
+
 from src.utils.io import load_dataframe, save_dataframe
 
 

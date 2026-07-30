@@ -5,9 +5,9 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import pandas as pd
 import requests
 from tqdm import tqdm
+
 from src.utils.io import load_dataframe, save_dataframe
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'

@@ -6,7 +6,6 @@ import branca.colormap as cm
 import folium
 import h3
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 
 from src.utils.io import load_dataframe

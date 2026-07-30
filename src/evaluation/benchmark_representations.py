@@ -353,7 +353,7 @@ def main():
                         
                         # Generate snapped mask
                         snapped_keep = snap_mask_with_pca(keep_mask, pca_rgb, k_segments=4)
-                    except Exception as e:
+                    except Exception:
                         pca_rgb = (p_norm.cpu().numpy() * 255).astype(np.uint8).reshape(32, 32, 3)
                         snapped_keep = keep_mask
                 else:

@@ -162,8 +162,14 @@ class SwiGLUFFN(nn.Module):
 XFORMERS_ENABLED = os.environ.get("XFORMERS_DISABLED") is None
 try:
     if XFORMERS_ENABLED:
-        from xformers.ops import SwiGLU, memory_efficient_attention, unbind, fmha, scaled_index_add, \
-            index_select_cat  # pylint: disable=g-multiple-import, g-import-not-at-top
+        from xformers.ops import (
+            SwiGLU,
+            fmha,
+            index_select_cat,  # pylint: disable=g-multiple-import, g-import-not-at-top
+            memory_efficient_attention,
+            scaled_index_add,
+            unbind,
+        )
 
         XFORMERS_AVAILABLE = True
         warnings.warn("xFormers is available (SwiGLU)")

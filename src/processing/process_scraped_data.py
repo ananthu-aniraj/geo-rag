@@ -17,8 +17,8 @@ from torchvision import transforms
 from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
-from src.utils.io import load_dataframe, save_dataframe, get_parquet_writer
 
+from src.utils.io import get_parquet_writer, load_dataframe, save_dataframe
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
 # TIPSv2 specific transform

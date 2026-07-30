@@ -1,6 +1,5 @@
 import argparse
 import os
-import sys
 
 import faiss
 import numpy as np

@@ -1,6 +1,5 @@
 import argparse
 import csv
-import datetime
 import math
 import os
 import random
@@ -37,7 +36,7 @@ def make_request_with_backoff(url, params=None, headers=None, max_retries=5, ini
                 time.sleep(delay)
                 delay *= 2.0
             elif response.status_code == 403:
-                print(f"\n[HTTP 403] Forbidden: Access blocked. Your IP or User-Agent might be blocked by the server.")
+                print("\n[HTTP 403] Forbidden: Access blocked. Your IP or User-Agent might be blocked by the server.")
                 return None
             else:
                 print(f"\n[HTTP {response.status_code}] Warning. Retrying in {delay:.1f}s...")
@@ -387,7 +386,7 @@ def main():
         print(f"Loading Uncovered Land Areas map: {args.uncovered_shp}...")
         try:
             uncovered_gdf = gpd.read_file(args.uncovered_shp, engine='pyogrio')
-        except Exception as e:
+        except Exception:
             try:
                 uncovered_gdf = gpd.read_file(args.uncovered_shp)
             except Exception as e2:

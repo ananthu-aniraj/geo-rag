@@ -47,12 +47,7 @@ Before raw data enters the main pipeline, a set of specialized scrapers are used
 * **`run_inaturalist_presets.sh`**: Ingests species observations using predefined biome presets (e.g. `desert`, `tundra`, `wetland`, `boreal`, `rainforest`, `polar`).
 
 #### 4. OpenStreetMap Boundary Scrapers
-* **`src/scrapers/osm_polygon_scraper.py`**: Scrapes geotagged files inside defined boundaries exclusively from **Wikimedia Commons** (extracting licenses and timestamps using `extmetadata`) and **KartaView** (extracting timestamps, track parameters, and licenses, defaulting to CC BY-SA 4.0). Key features include:
-  * **Global Search Mode (`--global_search`)**: Scrapes across the entire globe `box(-180, -90, 180, 90)` and filters coordinates using the uncovered shapefile mask.
-  * **300x Grid Loop Optimization**: In global search mode, grid partitioning is highly optimized to run in **less than 1.5 seconds** (using on-the-fly chunk index filtering and bypassing expensive Shapely geometry instantiation/intersection checks on the 32 million potential global cells).
-  * **Boundary Caching Layer**: Resolves Nominatim rate blocks by caching resolved boundary shapefiles once to `boundary.geojson` inside the target directory. Subsequent chunks load this local file and perform 0 API hits.
-  * **Quadrant-Splitting Bounding Box Fallback**: KartaView REST API endpoints throw HTTP 400 Bad Request errors if coordinate queries span more than 0.0400 degrees on either axis. The scraper dynamically detects if a grid cell exceeds this threshold and recursively splits it into quadrants to query, merging the results smoothly.
-  * **Boundary Types & Chunking**: Supports virtual grid chunking (`--chunk`/`--total_chunks`), Nominatim place queries, OSM Relation ID geocoding, local country border shapefile indices, or custom GeoJSON boundaries. Shuffles grid boxes assigned to each chunk for geographic randomization, and filters out already-mapped cells using `--uncovered_shp`.
+* **`src/scrapers/osm_polygon_scraper.py`**: Scrapes geotagged files inside defined boundaries exclusively from **Wikimedia Commons** (extracting licenses and timestamps using `extmetadata`) and **KartaView** (extracting timestamps, track parameters, and licenses, defaulting to CC BY-SA 4.0). 
 * **`run_osm_scraper.sh`**: Orchestrates sequential batch scraping of the boundary grid chunks over randomized indices with crash-halting checks and state preservation logs. Offers configurable options to toggle between global or location-specific query boundaries.
 
 #### 5. Uncovered Area Detection (Spatial Filtering)

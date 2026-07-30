@@ -8,7 +8,6 @@ import time
 import urllib.parse
 
 import h3
-import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import requests
@@ -553,7 +552,7 @@ def main():
                 df_sampled['Captured_At'] = df_sampled['Photo_ID'].map(lambda x: id_to_ts.get(x, ''))
                 print(f" -> Successfully resolved upload timestamps for {len(id_to_ts):,} images.")
 
-        print(f"\nSampling Complete!")
+        print("\nSampling Complete!")
         print(f" -> Sampled {len(df_sampled):,} Google Landmarks images in under-represented zones.")
         if 'h3_cell' in df_sampled.columns:
             print(f" -> Cover {df_sampled['h3_cell'].nunique():,} unique under-represented H3 cells.")

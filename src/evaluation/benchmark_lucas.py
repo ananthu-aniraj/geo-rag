@@ -1,6 +1,4 @@
 import argparse
-import hashlib
-import json
 import math
 import os
 import random
@@ -13,7 +11,6 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from sentence_transformers import SentenceTransformer
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import (

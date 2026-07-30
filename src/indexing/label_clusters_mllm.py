@@ -18,7 +18,7 @@ from sklearn.preprocessing import normalize
 from transformers import AutoModel
 from urllib3.util import Retry
 
-from src.utils.io import get_parquet_writer, load_dataframe, save_dataframe
+from src.utils.io import get_parquet_writer, load_dataframe
 
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB

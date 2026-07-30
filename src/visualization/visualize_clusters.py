@@ -5,7 +5,6 @@ import pickle
 
 import folium
 import h3
-import pandas as pd
 from folium.plugins import MarkerCluster
 
 from src.utils.io import load_dataframe

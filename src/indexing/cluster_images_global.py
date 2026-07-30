@@ -8,9 +8,10 @@ import faiss
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from src.utils.io import load_dataframe, save_dataframe
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
+
+from src.utils.io import load_dataframe, save_dataframe
 
 
 def cluster_data(input_embeddings, k, gpu_enabled=True, minibatch_enabled=False):
