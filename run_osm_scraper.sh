@@ -6,14 +6,27 @@
 TOTAL_CHUNKS=200
 SCRIPT_NAME="src.scrapers.osm_polygon_scraper"
 
-# Scraper Target Selection (Uncomment/edit as needed)
-# 1. By Query
-OSM_TARGET_ARGS=(--osm_query "South America")
-# 2. By Relation ID
-# OSM_TARGET_ARGS=(--osm_relation 74263) # e.g. Paris
+# Scraping Mode Selection: "global" or "location"
+MODE="global"
+
+# 1. Target settings for "location" mode
+OSM_QUERY="Montpellier, France"
+# OSM_RELATION=74263 # e.g. Paris (uncomment to use relation instead of query)
+
+# 2. Setup target arguments based on MODE selection
+OSM_TARGET_ARGS=()
+if [ "$MODE" = "global" ]; then
+    OSM_TARGET_ARGS=(--global_search)
+else
+    if [ -n "$OSM_RELATION" ]; then
+        OSM_TARGET_ARGS=(--osm_relation "$OSM_RELATION")
+    else
+        OSM_TARGET_ARGS=(--osm_query "$OSM_QUERY")
+    fi
+fi
 
 PLATFORMS="all" # Choices: wikimedia, kartaview, all
-BASE_DIR="/home/ananthu/DATA/data_ananthu/osm_scrape_south_america"
+BASE_DIR="/home/ananthu/DATA/data_ananthu/osm_scrape_rand"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
 # Ensure base directory exists

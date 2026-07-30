@@ -310,6 +310,7 @@ def main():
     parser.add_argument("--osm_relation", type=int, help="OSM Relation ID (e.g. 74263 for Paris).")
     parser.add_argument("--osm_query", type=str, help="Free-text search query (e.g. 'Central Park, New York').")
     parser.add_argument("--geojson", type=str, help="Path to local GeoJSON/Shapefile containing target boundary.")
+    parser.add_argument("--global_search", action="store_true", help="Enable global grid search mode spanning the entire Earth.")
     
     # Grid sampling & Chunking properties (matches flickr_5km_grid_search)
     parser.add_argument("--chunk", type=int, default=0, help="Which chunk of the grid to process.")
@@ -335,7 +336,10 @@ def main():
     polygon = None
     local_geojson_path = os.path.join(args.base_dir, "boundary.geojson")
     
-    if os.path.exists(local_geojson_path):
+    if args.global_search:
+        print("Enabling Global Search mode. Bounding box: (-180, -90, 180, 90)")
+        polygon = box(-180, -90, 180, 90)
+    elif os.path.exists(local_geojson_path):
         print(f"Loading cached boundary from local file: {local_geojson_path}...")
         try:
             gdf = gpd.read_file(local_geojson_path)
@@ -357,7 +361,7 @@ def main():
             gdf = gpd.read_file(args.geojson)
             polygon = unary_union(gdf.geometry)
         else:
-            print("Error: You must provide one of: --osm_relation, --osm_query, or --geojson.")
+            print("Error: You must provide one of: --osm_relation, --osm_query, --geojson, or --global_search.")
             sys.exit(1)
 
         if polygon is not None and not polygon.is_empty:
