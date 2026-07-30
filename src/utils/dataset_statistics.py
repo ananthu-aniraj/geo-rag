@@ -407,7 +407,7 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
         max_val = counts.values.max() if len(counts) > 0 else 1
         for i, v in enumerate(counts.values):
             ax2.text(i, v + (max_val * 0.01), f"{v:,}", ha='center', fontweight='bold', fontsize=9)
-        ax2.set_ylim(0, max_val * 1.1)
+        ax2.set_ylim(0, max_val * 1.18)
     else:
         ax2.text(0.5, 0.5, "Platform column not available", ha='center', va='center')
         ax2.set_title("Platform Breakdown (Unavailable)", fontsize=14, fontweight='bold')
@@ -426,7 +426,7 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
         max_val = counts.values.max() if len(counts) > 0 else 1
         for i, v in enumerate(counts.values):
             ax3.text(i, v + (max_val * 0.01), f"{v:,}", ha='center', fontweight='bold', fontsize=9)
-        ax3.set_ylim(0, max_val * 1.1)
+        ax3.set_ylim(0, max_val * 1.18)
     else:
         ax3.text(0.5, 0.5, "Time of Day not available", ha='center', va='center')
         ax3.set_title("Time of Day Distribution (Unavailable)", fontsize=14, fontweight='bold')
@@ -445,7 +445,7 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
         max_val = counts.values.max() if len(counts) > 0 else 1
         for i, v in enumerate(counts.values):
             ax4.text(i, v + (max_val * 0.01), f"{v:,}", ha='center', fontweight='bold', fontsize=9)
-        ax4.set_ylim(0, max_val * 1.1)
+        ax4.set_ylim(0, max_val * 1.18)
     else:
         ax4.text(0.5, 0.5, "Season not available", ha='center', va='center')
         ax4.set_title("Season Distribution (Unavailable)", fontsize=14, fontweight='bold')
@@ -457,15 +457,15 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
             valid_koppen = df_filtered[df_filtered['Koppen_Code'].notna() & (df_filtered['Koppen_Code'] != '')]
             if len(valid_koppen) > 0:
                 counts = valid_koppen['Koppen_Code'].value_counts()
-                sns.barplot(x=counts.index, y=counts.values, ax=ax5, palette="tab10", hue=counts.index, legend=False)
-                ax5.tick_params(axis='x', rotation=45)
-                plt.setp(ax5.get_xticklabels(), rotation=45, ha='right')
+                # If there are too many climate codes, plot top 12 to maintain readability
+                plotted_counts = counts.head(12) if len(counts) > 12 else counts
+                sns.barplot(x=plotted_counts.values, y=plotted_counts.index, ax=ax5, palette="tab10", hue=plotted_counts.index, legend=False)
                 ax5.set_title("Distribution by Köppen Climate Code", fontsize=14, fontweight='bold')
-                ax5.set_ylabel("Image Count")
-                max_val = counts.values.max() if len(counts) > 0 else 1
-                for i, v in enumerate(counts.values):
-                    ax5.text(i, v + (max_val * 0.01), f"{v:,}", ha='center', fontweight='bold', fontsize=9)
-                ax5.set_ylim(0, max_val * 1.1)
+                ax5.set_xlabel("Image Count")
+                max_val = plotted_counts.values.max() if len(plotted_counts) > 0 else 1
+                for i, v in enumerate(plotted_counts.values):
+                    ax5.text(v + (max_val * 0.01), i, f" {v:,}", va='center', fontweight='bold', fontsize=9)
+                ax5.set_xlim(0, max_val * 1.18)
             else:
                 ax5.text(0.5, 0.5, "No valid Koppen codes found", ha='center', va='center')
                 ax5.set_title("Koppen Climate Distribution", fontsize=14, fontweight='bold')
