@@ -163,8 +163,7 @@ This script performs geobotanical representation benchmarking on arbitrary geolo
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_eunis \
-  --csv path/to/scraped_data.csv \
-  --img_dir path/to/local/downloaded_images/ \
+  --csv_path path/to/scraped_data.csv \
   --tips_model_path path/to/checkpoint.npz \
   --tips_model_variant B \
   --num_queries 100 \
@@ -192,8 +191,7 @@ This script performs macro-scale biogeographical representation benchmarking on 
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_environmental_zones \
-  --csv path/to/scraped_data.csv \
-  --img_dir path/to/local/downloaded_images/ \
+  --csv_path path/to/scraped_data.csv \
   --tips_model_path path/to/checkpoint.npz \
   --tips_model_variant B \
   --num_queries 100 \

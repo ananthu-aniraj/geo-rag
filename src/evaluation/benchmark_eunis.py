@@ -6,24 +6,64 @@ import random
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+import requests
 import torch
 import torch.nn.functional as F
 from PIL import Image
 from pyproj import Transformer
-from sentence_transformers import SentenceTransformer
+from requests.adapters import HTTPAdapter
+from shapely.geometry import Point
 from torchvision import transforms
 from tqdm import tqdm
+from urllib3.util import Retry
 from transformers import (
     AutoModel,
     SegformerForSemanticSegmentation,
     SegformerImageProcessor,
 )
 
+MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
+
+# Global connection pooled session for thread-safe downloads
+http_session = requests.Session()
+_adapter = HTTPAdapter(
+    pool_connections=64,
+    pool_maxsize=64,
+    max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+)
+http_session.mount("https://", _adapter)
+http_session.mount("http://", _adapter)
+
+
+def download_image(url, photo_id=None, image_size=448):
+    """Downloads an image using the global connection pool and returns a resized PIL Image."""
+    try:
+        if url.startswith("mapillary://") or (photo_id and "fbcdn.net" in url):
+            orig_id = str(photo_id) if photo_id else url.split("://")[1]
+            api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
+            headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
+            res = http_session.get(api_url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                url = res.json().get("thumb_1024_url")
+        if not url:
+            return None
+        res = http_session.get(url, timeout=10)
+        if res.status_code == 200:
+            img = Image.open(BytesIO(res.content)).convert("RGB")
+            img_resized = img.resize((image_size, image_size))
+            img.close()
+            return img_resized
+    except Exception:
+        pass
+    return None
 
 # Standard EUNIS Ecosystem Class/MAES Mapping
 # This maps typical raster code values (1-12) or level-1 alphabet characters
@@ -161,8 +201,10 @@ def compute_ap(retrieved_labels, query_label, k=10):
 
 def main():
     parser = argparse.ArgumentParser(description="EUNIS Ecosystem Map Representation Semantic Retrieval Benchmark.")
-    parser.add_argument("--csv", type=str, required=True, help="Path to CSV containing geolocated images.")
-    parser.add_argument("--img_dir", type=str, required=True, help="Path to directory containing local images.")
+    parser.add_argument("--csv_path", type=str, default="./full_pipeline_output/geo_space_deduplicated.csv", help="Path to CSV containing geolocated images.")
+    parser.add_argument("--csv", type=str, default=None, help="Path to CSV containing geolocated images (alias for --csv_path).")
+    parser.add_argument("--countries_shp", type=str, default="shapefiles/ne_10m_admin_0_countries.shp",
+                        help="Path to Natural Earth countries shapefile to filter for Europe.")
     parser.add_argument("--raster", type=str, default="/user/aaniraj/home/Documents/Projects/data/eea_r_3035_100_m_ecosystem-types-terrestrial-r_p_2012_v03_r01/eea_r_3035_100_m_etm-terrestrial-r_2012_v3-1_r00.tif",
                         help="Path to EUNIS Ecosystem map GeoTIFF.")
     
@@ -178,6 +220,8 @@ def main():
     parser.add_argument("--output_report", type=str, default="./benchmark_results/eunis_report.txt", help="Path to write the report summary.")
     parser.add_argument("--output_csv", type=str, default="./benchmark_results/eunis_results.csv", help="Path to write detailed query CSV results.")
     args = parser.parse_args()
+
+    csv_path = args.csv if args.csv is not None else args.csv_path
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -199,19 +243,13 @@ def main():
     dbf_path = args.raster.replace(".tif", ".tif.vat.dbf")
     dynamic_mapping = load_eunis_mapping_from_dbf(dbf_path)
 
-    # 2. Load CSV and sample EUNIS ecosystem class for each coordinates pair
-    if not os.path.exists(args.csv):
-        print(f"Error: CSV file '{args.csv}' not found.")
+    # 2. Load CSV
+    if not os.path.exists(csv_path):
+        print(f"Error: CSV file '{csv_path}' not found.")
         sys.exit(1)
         
-    print(f"Loading image CSV metadata: {args.csv}...")
-    df = pd.read_csv(args.csv)
-    
-    # Coordinate transformer from WGS84 (EPSG:4326) to Raster CRS (often EPSG:3035)
-    print(f"Raster CRS: {raster_dataset.crs}. Setting up coordinate transformer...")
-    transformer = Transformer.from_crs("epsg:4326", raster_dataset.crs, always_axis_order=True)
-
-    matched_images = []
+    print(f"Loading image CSV metadata: {csv_path}...")
+    df = pd.read_csv(csv_path)
     
     # Identify key columns in CSV
     lat_col = next((col for col in df.columns if col.lower() in ["latitude", "lat"]), None)
@@ -223,34 +261,43 @@ def main():
         print("Error: Could not locate Latitude/Longitude columns in the CSV.")
         sys.exit(1)
 
+    df[lat_col] = pd.to_numeric(df[lat_col], errors='coerce')
+    df[lon_col] = pd.to_numeric(df[lon_col], errors='coerce')
+    df = df.dropna(subset=[lat_col, lon_col]).reset_index(drop=True)
+
+    # Perform European filtering using shapefile if available
+    if args.countries_shp and os.path.exists(args.countries_shp):
+        print(f"Filtering European coordinates using shapefile: {args.countries_shp}...")
+        try:
+            countries_gdf = gpd.read_file(args.countries_shp)
+            europe_gdf = countries_gdf[countries_gdf['CONTINENT'] == 'Europe']
+            
+            # Convert df to GeoDataFrame
+            geometry = [Point(xy) for xy in zip(df[lon_col], df[lat_col])]
+            geo_df = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
+            
+            if europe_gdf.crs != geo_df.crs:
+                europe_gdf = europe_gdf.to_crs(geo_df.crs)
+                
+            joined = gpd.sjoin(geo_df, europe_gdf, how="inner", predicate="intersects")
+            df = pd.DataFrame(joined.drop(columns="geometry")).reset_index(drop=True)
+            print(f"Keep {len(df)} records inside Europe.")
+        except Exception as e:
+            print(f"Warning: Failed to filter Europe using shapefile: {e}. Falling back to raster bounds check.")
+    else:
+        print(f"Countries shapefile not found at '{args.countries_shp}'. Falling back to raster bounds check.")
+
+    if len(df) == 0:
+        print("Error: No coordinates left inside Europe.")
+        return
+
+    # Coordinate transformer from WGS84 (EPSG:4326) to Raster CRS (often EPSG:3035)
+    print(f"Raster CRS: {raster_dataset.crs}. Setting up coordinate transformer...")
+    transformer = Transformer.from_crs("epsg:4326", raster_dataset.crs, always_axis_order=True)
+
+    matched_images = []
     print("Mapping coordinates to EUNIS Ecosystem classes...")
     for idx, row in tqdm(df.iterrows(), total=len(df), desc="Spatial Query"):
-        # Resolve image path
-        filename = ""
-        if id_col:
-            photo_id = str(row[id_col])
-            # Check for possible filenames in img_dir
-            for ext in ['.jpg', '.jpeg', '.png']:
-                potential_name = photo_id + ext
-                if os.path.exists(os.path.join(args.img_dir, potential_name)):
-                    filename = potential_name
-                    break
-        
-        if not filename and url_col:
-            # Fallback to URL basename
-            url_val = str(row[url_col])
-            filename = os.path.basename(url_val.split('?')[0])
-            
-        if not filename:
-            # Fallback to CSV filename columns if they exist
-            name_col = next((c for c in df.columns if c.lower() in ["filename", "name"]), None)
-            if name_col:
-                filename = str(row[name_col])
-                
-        img_path = os.path.join(args.img_dir, filename)
-        if not os.path.exists(img_path):
-            continue
-
         try:
             lat = float(row[lat_col])
             lon = float(row[lon_col])
@@ -270,22 +317,22 @@ def main():
                 continue
                 
             matched_images.append({
-                "path": img_path,
-                "filename": filename,
+                "url": str(row[url_col]) if url_col else "",
+                "photo_id": str(row[id_col]) if id_col else None,
                 "lat": lat,
                 "lon": lon,
                 "eunis_class": eunis_class
             })
-        except Exception as e:
+        except Exception:
             continue
 
     raster_dataset.close()
 
     if not matched_images:
-        print("Error: No images mapped successfully to EUNIS ecosystem categories inside the image directory.")
+        print("Error: No images mapped successfully to EUNIS ecosystem categories.")
         return
 
-    print(f"Successfully mapped {len(matched_images):,} local images to EUNIS categories.")
+    print(f"Successfully mapped {len(matched_images):,} records to EUNIS categories.")
 
     # Group matched images by EUNIS category
     images_by_class = {}
@@ -317,6 +364,33 @@ def main():
         args.num_database = len(selected_images) - args.num_queries
         
     selected_images = selected_images[:args.num_queries + args.num_database]
+
+    # Download images in parallel
+    print(f"Downloading {len(selected_images)} images for benchmarking in parallel...")
+    images_dict = {}
+    image_size = 224 if args.tips_low_res else 448
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        futures = {
+            executor.submit(download_image, item['url'], item.get('photo_id'), image_size): idx
+            for idx, item in enumerate(selected_images)
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
+            idx = futures[future]
+            img = future.result()
+            if img:
+                images_dict[idx] = img
+
+    print(f"Successfully downloaded {len(images_dict)} images.")
+    if len(images_dict) < 10:
+        print("Error: Too few images successfully downloaded to run benchmark.")
+        return
+
+    # Keep only downloaded items
+    active_indices = sorted(list(images_dict.keys()))
+    selected_images = [selected_images[idx] for idx in active_indices]
+    for idx, img in enumerate([images_dict[k] for k in active_indices]):
+        selected_images[idx]['img'] = img
+
     queries_meta = selected_images[:args.num_queries]
     database_meta = selected_images[args.num_queries:]
 
@@ -396,11 +470,12 @@ def main():
             
             for item in batch_meta:
                 try:
-                    img = Image.open(item['path']).convert("RGB")
-                    img_resized = img.resize((image_size, image_size))
-                    batch_imgs.append(img_resized)
+                    img = item['img']
+                    if img.size != (image_size, image_size):
+                        img = img.resize((image_size, image_size))
+                    batch_imgs.append(img)
                 except Exception as e:
-                    print(f"Warning: Failed to load image '{item['path']}': {e}")
+                    print(f"Warning: Failed to load image '{item.get('url', '')}': {e}")
             
             if not batch_imgs:
                 continue
