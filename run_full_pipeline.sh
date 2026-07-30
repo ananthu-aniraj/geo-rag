@@ -242,7 +242,7 @@ else
       --env "HF_TOKEN=HF_TOKEN_PLACEHOLDER" \
       --ipc=host \
       lmsysorg/sglang:latest-runtime \
-      bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph"
+      bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph --mem-fraction-static 0.7"
 
     SGLANG_STARTED=true
 
