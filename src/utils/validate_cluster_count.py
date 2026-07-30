@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from src.utils.io import load_dataframe
+
 try:
     import faiss
     FAISS_AVAILABLE = True
@@ -106,7 +108,7 @@ def main():
 
     print(f"Loading H3 cells from '{args.input}'...")
     t0 = time.time()
-    df = pd.read_parquet(args.input, columns=["H3_Cell"])
+    df = load_dataframe(args.input, columns=["H3_Cell"])
     print(f" -> Loaded {len(df):,} H3 cell records in {time.time() - t0:.2f}s.")
 
     # 2. Downscale H3 cells to coarse block resolution (Res 4)

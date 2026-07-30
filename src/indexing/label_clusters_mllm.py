@@ -2,6 +2,7 @@ import argparse
 import base64
 import os
 import pickle
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -9,7 +10,6 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from src.utils.io import load_dataframe, save_dataframe
 import requests
 import torch
 from PIL import Image
@@ -17,6 +17,8 @@ from requests.adapters import HTTPAdapter
 from sklearn.preprocessing import normalize
 from transformers import AutoModel
 from urllib3.util import Retry
+
+from src.utils.io import get_parquet_writer, load_dataframe, save_dataframe
 
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
@@ -286,7 +288,8 @@ def main():
 
     # Load dataset
     print(f"Loading clustered dataset from {args.input_file}...")
-    if args.input_file.endswith('.pkl'):
+    is_pkl = args.input_file.endswith('.pkl')
+    if is_pkl:
         with open(args.input_file, 'rb') as f:
             data = pickle.load(f)
         df = pd.DataFrame(data)
@@ -299,6 +302,8 @@ def main():
         except Exception:
             df = load_dataframe(args.input_file)
 
+        print("Loading raw embedding matrix temporarily to compute centroids and representative images...")
+        t0 = time.time()
         table = pq.read_table(args.input_file, columns=["embedding"])
         num_rows = len(table)
         chunked_arr = table['embedding']
@@ -310,7 +315,8 @@ def main():
             flat_chunk = chunk.flatten().to_numpy()
             embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
             current_row += chunk_len
-
+        del table
+        print(f" -> Temporarily loaded raw embedding matrix in {time.time() - t0:.2f}s.")
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
     if 'Longitude' in df.columns:
@@ -352,6 +358,51 @@ def main():
         parent_ids = {}
         k_parents = 0
         parent_centroids = np.array([])
+
+    # Precompute representative image indices to free embeddings memory
+    print("Finding closest representative images for each cluster...")
+    parent_rep_indices = {}
+    child_rep_indices = {}
+    
+    if has_parents and k_parents > 0:
+        centroids_norm_hac = normalize(raw_centroids)
+        for pid in range(k_parents):
+            cids_in_parent = [cid for cid, p in parent_ids.items() if p == pid]
+            if not cids_in_parent:
+                continue
+            p_centroid = parent_centroids[pid]
+            p_centroid_norm = p_centroid / (np.linalg.norm(p_centroid) + 1e-9)
+            child_embs = centroids_norm_hac[cids_in_parent]
+            sims = np.dot(child_embs, p_centroid_norm)
+            closest_child_cid = cids_in_parent[np.argmax(sims)]
+            
+            indices = np.where(child_ids == closest_child_cid)[0]
+            if len(indices) == 0:
+                continue
+            child_centroid = raw_centroids[closest_child_cid]
+            child_centroid_norm = child_centroid / (np.linalg.norm(child_centroid) + 1e-9)
+            cluster_embs = embeddings_norm[indices]
+            img_sims = np.dot(cluster_embs, child_centroid_norm)
+            closest_img_idx = indices[np.argmax(img_sims)]
+            parent_rep_indices[pid] = closest_img_idx
+
+    for cid in range(k_clusters):
+        indices = np.where(child_ids == cid)[0]
+        if len(indices) == 0:
+            continue
+        centroid = raw_centroids[cid]
+        centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
+        cluster_embs = embeddings_norm[indices]
+        sims = np.dot(cluster_embs, centroid_norm)
+        closest_idx = indices[np.argmax(sims)]
+        child_rep_indices[cid] = closest_idx
+
+    # Release heavy embedding matrices immediately
+    del embeddings
+    del embeddings_norm
+    import gc
+    gc.collect()
+    print(" -> Released embedding matrices from memory to conserve RAM during VLM labeling.")
 
     noise_category = "None of the above / Noise"
     noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
@@ -409,26 +460,11 @@ def main():
         # Label Parent Clusters
         if has_parents and k_parents > 0:
             print(f"\nPreparing {k_parents} parent cluster tasks for MLLM labeling...")
-            centroids_norm_hac = normalize(raw_centroids)
             parent_tasks = []
             for pid in range(k_parents):
-                cids_in_parent = [cid for cid, p in parent_ids.items() if p == pid]
-                if not cids_in_parent:
+                closest_img_idx = parent_rep_indices.get(pid)
+                if closest_img_idx is None:
                     continue
-                p_centroid = parent_centroids[pid]
-                p_centroid_norm = p_centroid / (np.linalg.norm(p_centroid) + 1e-9)
-                child_embs = centroids_norm_hac[cids_in_parent]
-                sims = np.dot(child_embs, p_centroid_norm)
-                closest_child_cid = cids_in_parent[np.argmax(sims)]
-
-                indices = np.where(child_ids == closest_child_cid)[0]
-                if len(indices) == 0:
-                    continue
-                child_centroid = raw_centroids[closest_child_cid]
-                child_centroid_norm = child_centroid / (np.linalg.norm(child_centroid) + 1e-9)
-                cluster_embs = embeddings_norm[indices]
-                img_sims = np.dot(cluster_embs, child_centroid_norm)
-                closest_img_idx = indices[np.argmax(img_sims)]
                 representative_item = df.iloc[closest_img_idx]
                 img_url = representative_item['Image_URL']
 
@@ -466,14 +502,9 @@ def main():
         print(f"\nPreparing {k_clusters} child cluster tasks for MLLM labeling...")
         tasks = []
         for cid in range(k_clusters):
-            indices = np.where(child_ids == cid)[0]
-            if len(indices) == 0:
+            closest_idx = child_rep_indices.get(cid)
+            if closest_idx is None:
                 continue
-            centroid = raw_centroids[cid]
-            centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
-            cluster_embs = embeddings_norm[indices]
-            sims = np.dot(cluster_embs, centroid_norm)
-            closest_idx = indices[np.argmax(sims)]
             representative_item = df.iloc[closest_idx]
             img_url = representative_item['Image_URL']
 
@@ -558,15 +589,62 @@ def main():
     if 'Longitude' in df.columns:
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
 
-    if args.output_file.endswith('.pkl'):
+    if is_pkl:
         data = df.to_dict('records')
-        for i, item in enumerate(data):
-            item['embedding'] = embeddings[i]
         with open(args.output_file, 'wb') as f:
             pickle.dump(data, f)
     else:
-        df['embedding'] = list(embeddings)
-        save_dataframe(df, args.output_file)
+        print(f"Streaming and merging labels to output parquet: {args.output_file}...")
+        
+        import pyarrow as pa
+        
+        pf_in = pq.ParquetFile(args.input_file)
+        schema_in = pf_in.schema_arrow
+        
+        meta_updates = {
+            'cluster_label': cluster_labels,
+            'cluster_description': cluster_descriptions,
+            'visual_description': cluster_visual_descriptions
+        }
+        if has_parents:
+            meta_updates.update({
+                'parent_cluster_label': parent_labels,
+                'parent_cluster_description': parent_descriptions,
+                'parent_visual_description': parent_visual_descriptions
+            })
+            
+        new_fields = list(schema_in)
+        for col_name in meta_updates.keys():
+            if col_name not in schema_in.names:
+                new_fields.append(pa.field(col_name, pa.string()))
+        schema_out = pa.schema(new_fields)
+        
+        temp_out = args.output_file + ".tmp_label"
+        try:
+            with get_parquet_writer(temp_out, schema_out) as writer:
+                for rg in range(pf_in.num_row_groups):
+                    table = pf_in.read_row_group(rg)
+                    df_rg = table.to_pandas()
+                    
+                    for col_name, mapping_dict in meta_updates.items():
+                        if mapping_dict:
+                            df_rg[col_name] = df_rg['cluster_id'].map(mapping_dict).combine_first(
+                                df_rg[col_name] if col_name in df_rg.columns else pd.Series(dtype=str)
+                            )
+                        else:
+                            if col_name not in df_rg.columns:
+                                df_rg[col_name] = None
+                                
+                    df_rg_aligned = df_rg[schema_out.names]
+                    tbl_out = pa.Table.from_pandas(df_rg_aligned, schema=schema_out, preserve_index=False)
+                    writer.write_table(tbl_out)
+                    
+            if os.path.exists(temp_out):
+                os.replace(temp_out, args.output_file)
+        except Exception as e:
+            if os.path.exists(temp_out):
+                os.remove(temp_out)
+            raise e
 
     print(f"✅ Labeling Complete! Output saved to {args.output_file}.")
 

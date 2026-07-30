@@ -8,6 +8,8 @@ import h3
 import pandas as pd
 from folium.plugins import MarkerCluster
 
+from src.utils.io import load_dataframe
+
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
@@ -39,9 +41,9 @@ def create_map(pkl_path, output_html, max_markers=1000):
                 'Koppen_Code', 'Koppen_Desc', 'Season'
             ]
             load_cols = [c for c in target_cols if c in available_cols]
-            df = pd.read_parquet(pkl_path, columns=load_cols)
+            df = load_dataframe(pkl_path, columns=load_cols)
         except Exception:
-            df = pd.read_parquet(pkl_path)
+            df = load_dataframe(pkl_path)
         data = df.to_dict('records')
 
     # Load marker popup template

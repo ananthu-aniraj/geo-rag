@@ -17,6 +17,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
+from src.utils.io import load_dataframe, save_dataframe, get_parquet_writer
 
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
@@ -311,7 +312,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
     tmp_output = f"{output_path}.tmp_stream"
     try:
         active_arr = pa.array(list(active_cells))
-        with pq.ParquetWriter(tmp_output, schema, compression='zstd') as writer:
+        with get_parquet_writer(tmp_output, schema) as writer:
             # 1. Stream copy inactive rows from original parquet
             for rg in range(pf.num_row_groups):
                 table = pf.read_row_group(rg)
@@ -369,7 +370,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
         if resume_from and os.path.exists(resume_from) and active_cells:
             stream_update_parquet(resume_from, tmp_path, df, active_cells)
         else:
-            df.to_parquet(tmp_path, index=False, compression='zstd')
+            save_dataframe(df, tmp_path)
 
         # Save processed cells to tmp meta
         with open(tmp_meta_path, 'wb') as f:
@@ -594,7 +595,7 @@ def main():
         else:
             # Load minimal metadata columns only (uses ~50MB RAM even for millions of rows)
             print("Loading existing dataset metadata using PyArrow...")
-            df_existing = pd.read_parquet(args.resume_from, columns=['Photo_ID', 'Platform', 'H3_Cell'])
+            df_existing = load_dataframe(args.resume_from, columns=['Photo_ID', 'Platform', 'H3_Cell'])
             seen_keys = set(zip(df_existing['Platform'], df_existing['Photo_ID'].apply(clean_photo_id)))
 
         # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
@@ -759,7 +760,7 @@ def main():
         print(
             "Resuming from checkpoint. (To start fresh, delete these checkpoint files or run with --checkpoint_interval 0)")
         try:
-            df_ckpt = pd.read_parquet(checkpoint_path)
+            df_ckpt = load_dataframe(checkpoint_path)
             # Filter df_ckpt to only include active cells for final_data
             df_ckpt_active = df_ckpt[df_ckpt['H3_Cell'].isin(active_cells)]
             final_data = df_ckpt_active.to_dict('records')
@@ -915,7 +916,7 @@ def main():
         out_df.drop(columns=cols_to_drop).to_csv(csv_path, index=False)
 
         # Save Full Data to Parquet (High-performance binary storage)
-        out_df.to_parquet(parquet_path, index=False, compression='zstd')
+        save_dataframe(out_df, parquet_path)
 
     # Clean up checkpoint files on successful completion
     if os.path.exists(checkpoint_path):

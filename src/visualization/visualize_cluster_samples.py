@@ -13,6 +13,8 @@ import pyarrow.parquet as pq
 import requests
 from tqdm import tqdm
 
+from src.utils.io import load_dataframe
+
 try:
     import h3
 except ImportError:
@@ -34,7 +36,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         # Load metadata only (uses ~200MB RAM)
         parquet_file = pq.ParquetFile(pkl_path)
         metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
-        df = pd.read_parquet(pkl_path, columns=metadata_cols)
+        df = load_dataframe(pkl_path, columns=metadata_cols)
 
         # Load embeddings via PyArrow
         print("Loading raw embedding matrix using PyArrow...")
@@ -72,7 +74,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         index_path = index_candidates[0]
         print(f"Loading pre-built H3 index from {index_path}...")
         try:
-            index_df = pd.read_parquet(index_path, columns=['resolution', 'cluster_id', 'query_cell'])
+            index_df = load_dataframe(index_path, columns=['resolution', 'cluster_id', 'query_cell'])
             target_h3_res_df = index_df[index_df['resolution'] == target_h3_res].dropna(subset=['query_cell'])
             target_h3_res_df = target_h3_res_df[['cluster_id', 'query_cell']].drop_duplicates()
             cluster_h3_target_res = target_h3_res_df.groupby('cluster_id')['query_cell'].agg(list).to_dict()

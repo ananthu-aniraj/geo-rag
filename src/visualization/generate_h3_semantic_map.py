@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from src.utils.io import load_dataframe
+
 
 def main():
     parser = argparse.ArgumentParser(description="Generate an interactive H3 spatial-semantic world map.")
@@ -28,7 +30,7 @@ def main():
         return
 
     print(f"Loading spatial-semantic index from {args.index}...")
-    df = pd.read_parquet(args.index)
+    df = load_dataframe(args.index)
 
     # Filter for the target resolution
     df_res = df[df['resolution'] == args.res]
