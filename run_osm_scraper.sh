@@ -17,6 +17,7 @@ OSM_QUERY="Montpellier, France"
 OSM_TARGET_ARGS=()
 if [ "$MODE" = "global" ]; then
     OSM_TARGET_ARGS=(--global_search)
+    TOTAL_CHUNKS=10000
 else
     if [ -n "$OSM_RELATION" ]; then
         OSM_TARGET_ARGS=(--osm_relation "$OSM_RELATION")
