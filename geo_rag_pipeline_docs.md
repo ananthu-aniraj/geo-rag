@@ -46,7 +46,11 @@ Before raw data enters the main pipeline, a set of specialized scrapers are used
 * **`run_inaturalist_scrapers.sh`**: A batch script that loops over specific countries/regions (e.g., Angola, Alaska, Algeria), downloading balanced species distributions and optionally excluding flying fauna.
 * **`run_inaturalist_presets.sh`**: Ingests species observations using predefined biome presets (e.g. `desert`, `tundra`, `wetland`, `boreal`, `rainforest`, `polar`).
 
-#### 4. Uncovered Area Detection (Spatial Filtering)
+#### 4. OpenStreetMap Boundary Scrapers
+* **`src/scrapers/osm_polygon_scraper.py`**: Scrapes geotagged files inside defined boundaries from **Wikimedia Commons** (with license short names using `extmetadata`) and **KartaView** (defaulting to CC BY-SA 4.0). Supports 5km x 5km virtual grid chunking (`--chunk`/`--total_chunks`), Nominatim place lookup, OSM Relation ID queries, local country border shapefile indexing, or local GeoJSON boundaries. Shuffles grid boxes assigned to each chunk for geographic randomization, and optionally filters out already-mapped cells using `--uncovered_shp`. Point-in-polygon checks are executed using Shapely to filter out bounding-box overlap.
+* **`run_osm_scraper.sh`**: Orchestrates sequential batch scraping of the boundary grid chunks over randomized indices with crash-halting checks and state preservation logs.
+
+#### 5. Uncovered Area Detection (Spatial Filtering)
 To optimize global random search and avoid querying coordinates that already contain dense image coverage, the pipeline uses a spatial difference mask:
 * **`src/utils/create_uncovered_land_areas_shp.py`**: Reads existing image CSV datasets, aggregates coordinate points into H3 cells at a user-defined resolution (default: resolution 5), and flags cells as "covered" if they exceed an image count threshold (default: 0). It then converts the covered H3 cells to polygon geometry and subtracts them from a standard global land mass shapefile (e.g., Natural Earth admin borders).
 * **Usage in Search**: The resulting output shapefile (`shapefiles/uncovered_land_areas_test.shp`) represents land areas that are still poorly mapped. The global grid searchers (like `src/scrapers/flickr_5km_grid_search.py`) load this shapefile at startup and perform a fast spatial R-tree index check. They skip querying any grid box that does not intersect an uncovered land polygon, which reduces API requests and concentrates scraping efforts on data-poor zones.
