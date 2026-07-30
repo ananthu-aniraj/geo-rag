@@ -265,8 +265,13 @@ def main():
     df[lon_col] = pd.to_numeric(df[lon_col], errors='coerce')
     df = df.dropna(subset=[lat_col, lon_col]).reset_index(drop=True)
 
-    # Perform European filtering using shapefile if available
-    if args.countries_shp and os.path.exists(args.countries_shp):
+    # Perform European filtering
+    continent_col = next((col for col in df.columns if col.lower() == "continent"), None)
+    if continent_col:
+        print("Filtering European coordinates using the CSV 'Continent' column...")
+        df = df[df[continent_col].astype(str).str.lower() == "europe"].reset_index(drop=True)
+        print(f"Keep {len(df)} records inside Europe.")
+    elif args.countries_shp and os.path.exists(args.countries_shp):
         print(f"Filtering European coordinates using shapefile: {args.countries_shp}...")
         try:
             countries_gdf = gpd.read_file(args.countries_shp)
@@ -285,7 +290,7 @@ def main():
         except Exception as e:
             print(f"Warning: Failed to filter Europe using shapefile: {e}. Falling back to raster bounds check.")
     else:
-        print(f"Countries shapefile not found at '{args.countries_shp}'. Falling back to raster bounds check.")
+        print("Neither 'Continent' column in CSV nor countries shapefile found. Falling back to raster bounds check.")
 
     if len(df) == 0:
         print("Error: No coordinates left inside Europe.")
