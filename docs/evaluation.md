@@ -1,9 +1,13 @@
 # Geo-RAG Evaluation & Benchmarking Methodology
 
 This document outlines the evaluation and benchmarking suites in the Geo-RAG pipeline. These scripts are designed to measure:
-1. **MLLM/VLM Captioning Quality** (Zero-Shot scene classification & text-image alignment).
-2. **Geographical Land Use/Cover Classification (LUCAS 2018)**.
-3. **Cross-Modal Retrieval Performance** (Image-to-Text and Text-to-Image alignment).
+1. **MLLM/VLM Captioning Quality & Scene Classification (`caption_test.py`)** - Zero-shot scene classification and text-image alignment on Places365.
+2. **LUCAS 2018 Classification Accuracy (`evaluate_lucas.py`)** - Zero-shot VLM land cover, land use, and habitat prediction accuracy.
+3. **Cross-Modal Retrieval Performance (`evaluate_retrieval.py`)** - Text-to-image and image-to-text retrieval using VLM captions.
+4. **LUCAS Semantic Retrieval Benchmarking (`benchmark_lucas.py`)** - Retrieval precision, MRR, and mAP for land cover/use representation alignments.
+5. **Places365 Hierarchy Retrieval Benchmarking (`benchmark_places.py`)** - Retrieval precision across exact place, sub-category, and macro-category levels.
+6. **EUNIS Ecosystem Map Retrieval Benchmarking (`benchmark_eunis.py`)** - Image representation retrieval alignment with European terrestrial ecosystem classifications.
+7. **Environmental Zones of Europe Retrieval Benchmarking (`benchmark_environmental_zones.py`)** - Image representation retrieval alignment with macro-scale European biogeographical climate zones.
 
 ---
 

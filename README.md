@@ -8,9 +8,9 @@ A global spatial-semantic mapping, clustering, and data engineering pipeline for
 
 For in-depth architectural details, data ingestion specs, MLLM auto-labeling prompts, Land Use/Land Cover (LULC) taxonomies, and mathematical derivations for spatial block cluster validation, please refer to the main technical document:
 
-👉 **[Data Engineering Documentation](geo_rag_pipeline_docs.md)**
+👉 **[Data Engineering Documentation](docs/pipeline.md)**
 
-👉 **[Evaluation & Benchmarking Documentation](evaluation_docs.md)**
+👉 **[Evaluation & Benchmarking Documentation](docs/evaluation.md)**
 
 ---
 
@@ -25,6 +25,9 @@ geo-rag/
 │   ├── visualization/            # Map generators & HTML dashboard builders
 │   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
 │   └── utils/                    # LULC taxonomies, statistics, & cluster validation
+├── docs/                         # Technical Documentation
+│   ├── pipeline.md               # Data engineering details & architecture
+│   └── evaluation.md             # Benchmark evaluations & retrieval suites
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
 ├── templates/                    # Standalone HTML/JS frontend templates
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
