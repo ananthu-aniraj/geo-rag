@@ -22,12 +22,14 @@ from requests.adapters import HTTPAdapter
 from shapely.geometry import Point
 from torchvision import transforms
 from tqdm import tqdm
-from urllib3.util import Retry
 from transformers import (
     AutoModel,
     SegformerForSemanticSegmentation,
     SegformerImageProcessor,
 )
+from urllib3.util import Retry
+
+from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
@@ -148,7 +150,7 @@ def encode_image_value_attention(model_image, img):
     return blocks_patches
 
 
-from src.evaluation.metrics import compute_ap, compute_rr, compute_precision_at_k
+
 
 
 def main():

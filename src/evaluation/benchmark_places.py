@@ -22,7 +22,10 @@ from transformers import (
     SegformerImageProcessor,
 )
 
+from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
+
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
+
 
 def load_places365_labels(filepath):
     """Loads the valid Places365 categories from the Excel file and returns a mapping to macro and sub-categories."""
@@ -119,16 +122,15 @@ def encode_image_value_attention(model_image, img):
     return blocks_patches
 
 
-from src.evaluation.metrics import compute_ap, compute_rr, compute_precision_at_k
-
-
 def main():
     parser = argparse.ArgumentParser(description="Places365 Representation Semantic Retrieval Benchmarking Suite.")
-    parser.add_argument("--labels", type=str, default="/user/aaniraj/home/Documents/Projects/data/places365/versions/1/Scene_hierarchy.xlsx",
+    parser.add_argument("--labels", type=str,
+                        default="/user/aaniraj/home/Documents/Projects/data/places365/versions/1/Scene_hierarchy.xlsx",
                         help="Path to the Scene_hierarchy.xlsx file.")
     parser.add_argument("--img_dir", type=str, required=True, help="Path to the directory containing Places365 images.")
     parser.add_argument("--num_queries", type=int, default=100, help="Number of query evaluations to run.")
-    parser.add_argument("--num_database", type=int, default=500, help="Number of database images to search against (0 for all remaining).")
+    parser.add_argument("--num_database", type=int, default=500,
+                        help="Number of database images to search against (0 for all remaining).")
     parser.add_argument("--batch_size", type=int, default=16, help="GPU batch size for feature extraction.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--tips_model_path", type=str, default=None,
@@ -137,15 +139,18 @@ def main():
                         help="Variant of the official TIPSv2 model.")
     parser.add_argument("--tips_low_res", action="store_true", help="Set image resolution to 224px instead of 448px.")
     parser.add_argument("--compare_clip", action="store_true", help="Include standard CLIP model in the comparison.")
-    parser.add_argument("--compare_hf_tips", action="store_true", help="Include Hugging Face google/tipsv2-b14 model in the comparison.")
-    parser.add_argument("--output_report", type=str, default="./benchmark_results/places_report.txt", help="Path to write the report summary.")
-    parser.add_argument("--output_csv", type=str, default="./benchmark_results/places_results.csv", help="Path to write detailed query CSV results.")
+    parser.add_argument("--compare_hf_tips", action="store_true",
+                        help="Include Hugging Face google/tipsv2-b14 model in the comparison.")
+    parser.add_argument("--output_report", type=str, default="./benchmark_results/places_report.txt",
+                        help="Path to write the report summary.")
+    parser.add_argument("--output_csv", type=str, default="./benchmark_results/places_results.csv",
+                        help="Path to write detailed query CSV results.")
     args = parser.parse_args()
 
     # Format output paths dynamically by appending seed and num_queries
     report_base, report_ext = os.path.splitext(args.output_report)
     args.output_report = f"{report_base}_s{args.seed}_q{args.num_queries}{report_ext}"
-    
+
     csv_base, csv_ext = os.path.splitext(args.output_csv)
     args.output_csv = f"{csv_base}_s{args.seed}_q{args.num_queries}{csv_ext}"
 
@@ -165,10 +170,10 @@ def main():
                 image_path = os.path.join(root, filename)
                 class_folder_name = os.path.basename(root)
                 ground_truth_label = class_folder_name
-                
+
                 # Normalize class name to match excel keys
                 clean_class = ground_truth_label.replace("/", "-")
-                
+
                 macro = "unknown"
                 sub_category = "unknown"
                 if clean_class in labels_mapping:
@@ -205,17 +210,18 @@ def main():
                 selected_images.append(images_by_class[cls][i])
 
     # Determine subset counts
-    total_needed = args.num_queries + (args.num_database if args.num_database > 0 else (len(selected_images) - args.num_queries))
+    total_needed = args.num_queries + (
+        args.num_database if args.num_database > 0 else (len(selected_images) - args.num_queries))
     if len(selected_images) < total_needed:
         print(f"Warning: Only {len(selected_images)} matched images available. Adjusting query/database split.")
         total_needed = len(selected_images)
-        
+
     selected_images = selected_images[:total_needed]
-    
+
     # Split into Queries and Database
     queries_meta = selected_images[:args.num_queries]
     database_meta = selected_images[args.num_queries:]
-    
+
     print(f"Split data into: {len(queries_meta)} Queries and {len(database_meta)} Database images.")
     if len(queries_meta) == 0 or len(database_meta) == 0:
         print("Error: Empty query or database split. Adjust your parameters.")
@@ -224,13 +230,13 @@ def main():
     # 2. Initialize Models
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Initializing models on {device}...")
-    
+
     # Load CLIP baseline if requested
     if args.compare_clip:
         print("Loading standard CLIP model...")
         from sentence_transformers import SentenceTransformer
         clip_model = SentenceTransformer("clip-ViT-B-32")
-    
+
     # Load Hugging Face TIPSv2 model as baseline if requested (and if we are loading official checkpoint)
     hf_tipsv2 = None
     if args.compare_hf_tips and args.tips_model_path:
@@ -251,11 +257,11 @@ def main():
         }[args.tips_model_variant]
 
         ffn_layer = 'swiglu' if args.tips_model_variant == 'g' else 'mlp'
-        
+
         checkpoint = dict(np.load(args.tips_model_path, allow_pickle=False))
         for key in checkpoint:
             checkpoint[key] = torch.tensor(checkpoint[key])
-            
+
         image_size = 224 if args.tips_low_res else 448
         model = model_def(
             img_size=image_size,
@@ -272,10 +278,11 @@ def main():
         print("Loading Hugging Face google/tipsv2-b14 model...")
         tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
         image_size = 448
-    
+
     print("Loading SegFormer model...")
     seg_processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
-    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(device)
+    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(
+        device)
 
     # 3. Setup representations dynamically
     representations = {}
@@ -283,7 +290,7 @@ def main():
         representations["CLIP CLS"] = {"query": [], "db": []}
     if hf_tipsv2 is not None:
         representations["TIPSv2 HF CLS"] = {"query": [], "db": []}
-        
+
     if args.tips_model_path:
         representations.update({
             "TIPSv2 1st CLS": {"query": [], "db": []},
@@ -305,9 +312,9 @@ def main():
     def extract_features_batch(metadata_list, split_key):
         print(f"Extracting features for {len(metadata_list)} images ({split_key} split)...")
         for i in tqdm(range(0, len(metadata_list), args.batch_size), desc=f"Extraction ({split_key})"):
-            batch_meta = metadata_list[i : i + args.batch_size]
+            batch_meta = metadata_list[i: i + args.batch_size]
             batch_imgs = []
-            
+
             for item in batch_meta:
                 try:
                     img = Image.open(item['path']).convert("RGB")
@@ -315,7 +322,7 @@ def main():
                     batch_imgs.append(img_resized)
                 except Exception as e:
                     print(f"Warning: Failed to load image '{item['path']}': {e}")
-            
+
             if not batch_imgs:
                 continue
 
@@ -323,7 +330,8 @@ def main():
             inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
             with torch.no_grad():
                 outputs = seg_model(**inputs)
-            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear", align_corners=False)
+            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
+                                                     align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
 
             # B. CLIP feature extraction (optional)
@@ -349,15 +357,15 @@ def main():
                 if args.tips_model_path:
                     # Official model forward returns: first_cls_token, second_cls_token, patch_tokens
                     first_cls_token, second_cls_token, patch_tokens = tipsv2(img_tensors)
-                    
+
                     first_cls = first_cls_token.cpu().numpy()
                     if first_cls.ndim == 3:
                         first_cls = first_cls.squeeze(1)
-                        
+
                     second_cls = second_cls_token.cpu().numpy()
                     if second_cls.ndim == 3:
                         second_cls = second_cls.squeeze(1)
-                        
+
                     representations["TIPSv2 1st CLS"][split_key].extend(first_cls)
                     representations["TIPSv2 2nd CLS"][split_key].extend(second_cls)
                 else:
@@ -374,7 +382,7 @@ def main():
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):
-                patch_tokens = patch_tokens_vals[idx] # (num_patches, D)
+                patch_tokens = patch_tokens_vals[idx]  # (num_patches, D)
                 pred_mask = pred_masks[idx]
 
                 # TIPSv2 Average Patch
@@ -385,13 +393,13 @@ def main():
                 keep_mask = np.ones_like(pred_mask, dtype=float)
                 for c in DISCARD_CLASSES:
                     keep_mask[pred_mask == c] = 0.0
-                
+
                 # Downsample keep mask to grid_size x grid_size patch resolution
                 patch_weights = np.zeros((grid_size, grid_size))
                 for r in range(grid_size):
                     for c in range(grid_size):
-                        patch_weights[r, c] = np.mean(keep_mask[r*14:(r+1)*14, c*14:(c+1)*14])
-                patch_weights_flat = patch_weights.flatten()[:, np.newaxis] # (num_patches, 1)
+                        patch_weights[r, c] = np.mean(keep_mask[r * 14:(r + 1) * 14, c * 14:(c + 1) * 14])
+                patch_weights_flat = patch_weights.flatten()[:, np.newaxis]  # (num_patches, 1)
 
                 masked_patch_sum = np.sum(patch_tokens * patch_weights_flat, axis=0)
                 masked_patch_weight_sum = np.sum(patch_weights_flat)
@@ -399,7 +407,7 @@ def main():
                     masked_avg_embed = (masked_patch_sum / (masked_patch_weight_sum + 1e-9))
                 else:
                     masked_avg_embed = avg_patch
-                
+
                 representations["TIPSv2 Seg-Masked"][split_key].append(masked_avg_embed)
 
     extract_features_batch(queries_meta, "query")
@@ -408,10 +416,10 @@ def main():
     # 4. Retrieval & Similarity Benchmarking
     label_types = ["place_label", "sub_label", "macro_label"]
     label_names = {"place_label": "Exact Place", "sub_label": "Sub-Category", "macro_label": "Macro Category"}
-    
+
     results = {}
     detailed_rows = []
-    
+
     for rep_name, splits in representations.items():
         q_vectors = np.array(splits["query"])
         db_vectors = np.array(splits["db"])
@@ -440,7 +448,7 @@ def main():
         for q_idx in range(len(queries_meta)):
             q_vec = q_vectors_norm[q_idx]
             q_item = queries_meta[q_idx]
-            
+
             # Compute similarities
             similarities = np.dot(db_vectors_norm, q_vec)
             sorted_db_indices = np.argsort(similarities)[::-1]
@@ -449,14 +457,14 @@ def main():
                 q_label = q_item[l_type]
                 if pd.isna(q_label) or q_label == '' or q_label == 'unknown':
                     continue
-                
+
                 retrieved_items = [database_meta[idx] for idx in sorted_db_indices[:10]]
                 retrieved_labels = [item[l_type] for item in retrieved_items]
-                
+
                 # P@1
                 p1 = compute_precision_at_k(retrieved_labels, q_label, k=1)
                 results[rep_name][l_type]["p@1"] += p1
-                
+
                 # P@5
                 p5 = compute_precision_at_k(retrieved_labels, q_label, k=5)
                 results[rep_name][l_type]["p@5"] += p5
@@ -489,7 +497,8 @@ def main():
 
         # Normalize metrics by valid query count
         for l_type in label_types:
-            valid_queries = sum(1 for q in queries_meta if pd.notna(q[l_type]) and q[l_type] != '' and q[l_type] != 'unknown')
+            valid_queries = sum(
+                1 for q in queries_meta if pd.notna(q[l_type]) and q[l_type] != '' and q[l_type] != 'unknown')
             if valid_queries > 0:
                 results[rep_name][l_type]["p@1"] = (results[rep_name][l_type]["p@1"] / valid_queries) * 100.0
                 results[rep_name][l_type]["p@5"] = (results[rep_name][l_type]["p@5"] / valid_queries) * 100.0
@@ -506,19 +515,19 @@ def main():
     report_lines.append(f"- Database count: {len(database_meta)} images")
     report_lines.append("")
 
-    print("\n" + "="*95)
+    print("\n" + "=" * 95)
     print("                    PLACES365 SEMANTIC RETRIEVAL BENCHMARK REPORT")
-    print("="*95)
+    print("=" * 95)
 
     for l_type in label_types:
         print(f"\n{label_names[l_type]} Evaluation:")
-        
+
         row_format = "{:<24} | {:<12} | {:<12} | {:<12} | {:<12} | {:<12}"
         header = row_format.format("Representation", "P@1 (%)", "P@5 (%)", "P@10 (%)", "mAP@10 (%)", "MRR@10 (%)")
         print("-" * 90)
         print(header)
         print("-" * 90)
-        
+
         report_lines.append(f"--- {label_names[l_type]} Evaluation ---")
         report_lines.append(header)
         report_lines.append("-" * 90)
@@ -535,11 +544,11 @@ def main():
             )
             print(row_str)
             report_lines.append(row_str)
-            
+
         print("-" * 90)
         report_lines.append("")
 
-    print("="*95)
+    print("=" * 95)
 
     # Save TXT report summary
     os.makedirs(os.path.dirname(args.output_report), exist_ok=True)
