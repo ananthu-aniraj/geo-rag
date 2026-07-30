@@ -148,18 +148,7 @@ def encode_image_value_attention(model_image, img):
     return blocks_patches
 
 
-def compute_ap(retrieved_labels, query_label, k=10):
-    """Computes Average Precision at K for a query label and retrieved labels."""
-    ap = 0.0
-    correct_count = 0
-    for i in range(min(len(retrieved_labels), k)):
-        if retrieved_labels[i] == query_label:
-            correct_count += 1
-            precision_at_i = correct_count / (i + 1)
-            ap += precision_at_i
-    if correct_count > 0:
-        ap /= correct_count
-    return ap
+from src.evaluation.metrics import compute_ap, compute_rr, compute_precision_at_k
 
 
 def main():
@@ -553,27 +542,23 @@ def main():
             retrieved_labels = [item["env_zone"] for item in retrieved_items]
             
             # P@1
-            if retrieved_labels[0] == q_label:
-                results[rep_name]["p@1"] += 1.0
+            p1 = compute_precision_at_k(retrieved_labels, q_label, k=1)
+            results[rep_name]["p@1"] += p1
             
             # P@5
-            matches_5 = sum(1.0 for l in retrieved_labels[:5] if l == q_label)
-            results[rep_name]["p@5"] += matches_5 / 5.0
+            p5 = compute_precision_at_k(retrieved_labels, q_label, k=5)
+            results[rep_name]["p@5"] += p5
 
             # P@10
-            matches_10 = sum(1.0 for l in retrieved_labels[:10] if l == q_label)
-            results[rep_name]["p@10"] += matches_10 / 10.0
+            p10 = compute_precision_at_k(retrieved_labels, q_label, k=10)
+            results[rep_name]["p@10"] += p10
 
             # mAP@10
             ap = compute_ap(retrieved_labels, q_label, k=10)
             results[rep_name]["map@10"] += ap
 
             # MRR@10
-            rr = 0.0
-            for rank_idx, label in enumerate(retrieved_labels):
-                if label == q_label:
-                    rr = 1.0 / (rank_idx + 1)
-                    break
+            rr = compute_rr(retrieved_labels, q_label, k=10)
             results[rep_name]["mrr@10"] += rr
 
             detailed_rows.append({
@@ -582,9 +567,9 @@ def main():
                 "Ground_Truth": q_label,
                 "Top_1_Retrieved": retrieved_items[0]["filename"],
                 "Top_1_Label": retrieved_labels[0],
-                "P@1": 1.0 if retrieved_labels[0] == q_label else 0.0,
-                "P@5": matches_5 / 5.0,
-                "P@10": matches_10 / 10.0,
+                "P@1": p1,
+                "P@5": p5,
+                "P@10": p10,
                 "AP@10": ap,
                 "RR@10": rr
             })
