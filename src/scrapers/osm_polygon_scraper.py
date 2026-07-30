@@ -36,6 +36,9 @@ def make_request_with_backoff(url, params=None, headers=None, max_retries=5, ini
                 print(f"\n[HTTP 429] Rate limit hit. Retrying in {delay:.1f}s...")
                 time.sleep(delay)
                 delay *= 2.0
+            elif response.status_code == 403:
+                print(f"\n[HTTP 403] Forbidden: Access blocked. Your IP or User-Agent might be blocked by the server.")
+                return None
             else:
                 print(f"\n[HTTP {response.status_code}] Warning. Retrying in {delay:.1f}s...")
                 time.sleep(delay)
@@ -302,22 +305,41 @@ def main():
     OUTPUT_FILE = os.path.join(args.base_dir, f"osm_data_chunk_{args.chunk}.csv")
     LOG_FILE = os.path.join(args.base_dir, f"osm_completed_boxes_chunk_{args.chunk}.txt")
 
-    # Load polygon boundary
+    # Load polygon boundary (checking local base_dir cache first)
     polygon = None
-    if args.osm_relation:
-        polygon = fetch_boundary_by_relation(args.osm_relation)
-    elif args.osm_query:
-        polygon = fetch_boundary_by_query(args.osm_query, args.countries_shp)
-    elif args.geojson:
-        if not os.path.exists(args.geojson):
-            print(f"Error: GeoJSON file '{args.geojson}' not found.")
+    local_geojson_path = os.path.join(args.base_dir, "boundary.geojson")
+    
+    if os.path.exists(local_geojson_path):
+        print(f"Loading cached boundary from local file: {local_geojson_path}...")
+        try:
+            gdf = gpd.read_file(local_geojson_path)
+            polygon = unary_union(gdf.geometry)
+        except Exception as e:
+            print(f"Warning: Failed to load cached boundary from {local_geojson_path}: {e}. Re-fetching...")
+            polygon = None
+
+    if polygon is None or polygon.is_empty:
+        if args.osm_relation:
+            polygon = fetch_boundary_by_relation(args.osm_relation)
+        elif args.osm_query:
+            polygon = fetch_boundary_by_query(args.osm_query, args.countries_shp)
+        elif args.geojson:
+            if not os.path.exists(args.geojson):
+                print(f"Error: GeoJSON file '{args.geojson}' not found.")
+                sys.exit(1)
+            print(f"Loading boundary from local file: {args.geojson}...")
+            gdf = gpd.read_file(args.geojson)
+            polygon = unary_union(gdf.geometry)
+        else:
+            print("Error: You must provide one of: --osm_relation, --osm_query, or --geojson.")
             sys.exit(1)
-        print(f"Loading boundary from local file: {args.geojson}...")
-        gdf = gpd.read_file(args.geojson)
-        polygon = unary_union(gdf.geometry)
-    else:
-        print("Error: You must provide one of: --osm_relation, --osm_query, or --geojson.")
-        sys.exit(1)
+
+        if polygon is not None and not polygon.is_empty:
+            try:
+                print(f"Caching resolved boundary polygon to: {local_geojson_path}...")
+                gpd.GeoDataFrame(geometry=[polygon], crs="EPSG:4326").to_file(local_geojson_path, driver="GeoJSON")
+            except Exception as e:
+                print(f"Warning: Failed to cache boundary polygon: {e}")
 
     if polygon is None or polygon.is_empty:
         print("Error: Failed to obtain a valid boundary geometry.")
