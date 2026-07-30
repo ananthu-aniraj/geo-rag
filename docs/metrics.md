@@ -10,11 +10,11 @@ The following table summarizes the overlapping metrics used throughout the diffe
 
 | Metric | Type | Mathematical Definition | Used In | Purpose |
 |---|---|---|---|---|
-| **Precision@K (P@1 / @5 / @10)** | Retrieval | $\frac{1}{K} \sum_{i=1}^{K} \mathbb{I}(\text{label}_i == \text{label}_{\text{query}})$ | `benchmark_lucas.py`, `benchmark_places.py`, `benchmark_eunis.py`, `benchmark_environmental_zones.py` | Measures what fraction of top-*K* retrieved database items belong to the query class. |
+| **Precision@K (P@1 / @5 / @10)** | Retrieval | $\frac{1}{K} \sum_{i=1}^{K} \mathbb{I}(l\_i == l\_{\text{query}})$ | `benchmark_lucas.py`, `benchmark_places.py`, `benchmark_eunis.py`, `benchmark_environmental_zones.py` | Measures what fraction of top-*K* retrieved database items belong to the query class. |
 | **mAP@10** | Retrieval | $\frac{1}{N} \sum_{q=1}^{N} \text{AP@10}(q)$ | `benchmark_lucas.py`, `benchmark_places.py`, `benchmark_eunis.py`, `benchmark_environmental_zones.py` | Measures rank-aware retrieval precision, heavily rewarding relevant matches appearing at earlier ranks. |
-| **MRR@10** | Retrieval | $\frac{1}{N} \sum_{q=1}^{N} \frac{1}{\text{rank}_q}$ | `benchmark_lucas.py`, `benchmark_places.py`, `benchmark_eunis.py`, `benchmark_environmental_zones.py` | Evaluates the reciprocal rank of the first relevant class match in the retrieved list. |
-| **Semantic Embedding Cosine Similarity** | Text/VLM | $\frac{\vec{u} \cdot \vec{v}}{\|\vec{u}\|_2 \|\vec{v}\|_2}$ | `caption_test.py` | Evaluates the semantic alignment between VLM generated strings (predictions) and Ground Truth class labels. |
-| **Visual Caption Alignment (CLIP/TIPS)** | Cross-Modal | $\frac{\vec{E}_{\text{text}} \cdot \vec{E}_{\text{image}}}{\|\vec{E}_{\text{text}}\|_2 \|\vec{E}_{\text{image}}\|_2}$ | `caption_test.py`, `evaluate_retrieval.py` | Measures how well generated text captions align with raw image visual embeddings. |
+| **MRR@10** | Retrieval | $\frac{1}{N} \sum_{q=1}^{N} \frac{1}{\text{rank}\_q}$ | `benchmark_lucas.py`, `benchmark_places.py`, `benchmark_eunis.py`, `benchmark_environmental_zones.py` | Evaluates the reciprocal rank of the first relevant class match in the retrieved list. |
+| **Semantic Embedding Cosine Similarity** | Text/VLM | $\frac{\vec{u} \cdot \vec{v}}{&#124;&#124;\vec{u}&#124;&#124;\_2 &#124;&#124;\vec{v}&#124;&#124;\_2}$ | `caption_test.py` | Evaluates the semantic alignment between VLM generated strings (predictions) and Ground Truth class labels. |
+| **Visual Caption Alignment (CLIP/TIPS)** | Cross-Modal | $\frac{\vec{E}\_{\text{text}} \cdot \vec{E}\_{\text{image}}}{&#124;&#124;\vec{E}\_{\text{text}}&#124;&#124;\_2 &#124;&#124;\vec{E}\_{\text{image}}&#124;&#124;\_2}$ | `caption_test.py`, `evaluate_retrieval.py` | Measures how well generated text captions align with raw image visual embeddings. |
 | **Macro Classification Accuracy** | Categorical | $\frac{\text{Correct Matches}}{\text{Total Samples}}$ | `caption_test.py`, `evaluate_lucas.py` | Standard classification accuracy on categories (e.g. Indoor vs. Outdoor). |
 
 ---
