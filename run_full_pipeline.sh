@@ -188,6 +188,9 @@ else
     CLUSTERING_MODE="fit"
 fi
 
+# Ensure no stale sglang-server container is running from a previous run before starting GPU clustering
+docker rm -f sglang-server >/dev/null 2>&1 || true
+
 echo ""
 echo "[Step 2/5] Global Unsupervised FAISS GPU Clustering & VLM Labeling (Mode: $CLUSTERING_MODE)..."
 if [ "$CLUSTERING_MODE" = "assign" ]; then
@@ -226,9 +229,6 @@ else
         fi
     }
     trap cleanup EXIT INT TERM ERR
-
-    # Ensure no stale sglang-server container is running from a previous run
-    docker rm -f sglang-server >/dev/null 2>&1 || true
 
     echo "Launching SGLang server container..."
     docker run -d \
