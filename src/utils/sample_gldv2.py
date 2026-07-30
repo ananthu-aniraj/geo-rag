@@ -468,7 +468,7 @@ def main():
                     # Sample this record matching iWildCam metadata schema exactly
                     sampled_records.append({
                         'Photo_ID': img_id,
-                        'Platform': 'GoogleLandmarks',
+                        'Platform': 'Wikimedia',
                         'Latitude': row['latitude'],
                         'Longitude': row['longitude'],
                         'Image_URL': str(row['url']) if 'url' in valid_chunk.columns else '',
