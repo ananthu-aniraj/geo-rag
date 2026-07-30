@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import requests
 from tqdm import tqdm
+from src.utils.io import load_dataframe, save_dataframe
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
@@ -194,10 +195,7 @@ def main():
             current_save_path = current_file
 
         # Load Dataset
-        if current_file.endswith('.parquet'):
-            df = pd.read_parquet(current_file)
-        else:
-            df = pd.read_csv(current_file, dtype={'Platform': str, 'Photo_ID': str})
+        df = load_dataframe(current_file, dtype={'Platform': str, 'Photo_ID': str})
 
         if 'Captured_At' not in df.columns:
             df['Captured_At'] = None
@@ -232,10 +230,7 @@ def main():
             print(f"Remaining missing timestamps after cache lookup: {len(df_missing)}.")
             if len(df_missing) == 0:
                 print("All missing timestamps resolved via cache. Saving file...")
-                if current_save_path.endswith('.parquet'):
-                    df.to_parquet(current_save_path, index=False)
-                else:
-                    df.to_csv(current_save_path, index=False)
+                save_dataframe(df, current_save_path)
                 continue
 
         # --- 1. Flickr (Bulk Box Search or Fallback Individual Queries) ---
@@ -378,36 +373,36 @@ def main():
         output_base, _ = os.path.splitext(current_save_path)
         
         if current_save_path.endswith('.parquet'):
-            df.to_parquet(current_save_path, index=False)
+            save_dataframe(df, current_save_path)
             
             # Auto-discover and enrich corresponding CSV file
             csv_pair = output_base + ".csv"
             if os.path.exists(csv_pair):
                 print(f"Auto-discovered corresponding CSV file: {csv_pair}. Enriching it...")
                 try:
-                    df_csv = pd.read_csv(csv_pair, dtype={'Platform': str, 'Photo_ID': str})
+                    df_csv = load_dataframe(csv_pair, dtype={'Platform': str, 'Photo_ID': str})
                     df_csv['Photo_ID'] = df_csv['Photo_ID'].astype(str)
                     if 'Captured_At' not in df_csv.columns:
                         df_csv['Captured_At'] = None
                     df_csv['Captured_At'] = df_csv.apply(merge_timestamp, axis=1)
-                    df_csv.to_csv(csv_pair, index=False)
+                    save_dataframe(df_csv, csv_pair)
                     print("CSV file enriched successfully!")
                 except Exception as e:
                     print(f"Error enriching corresponding CSV file: {e}")
         else:
-            df.to_csv(current_save_path, index=False)
+            save_dataframe(df, current_save_path)
             
             # Auto-discover and enrich corresponding Parquet file
             parquet_pair = output_base + ".parquet"
             if os.path.exists(parquet_pair):
                 print(f"Auto-discovered corresponding Parquet file: {parquet_pair}. Enriching it...")
                 try:
-                    df_pq = pd.read_parquet(parquet_pair)
+                    df_pq = load_dataframe(parquet_pair)
                     df_pq['Photo_ID'] = df_pq['Photo_ID'].astype(str)
                     if 'Captured_At' not in df_pq.columns:
                         df_pq['Captured_At'] = None
                     df_pq['Captured_At'] = df_pq.apply(merge_timestamp, axis=1)
-                    df_pq.to_parquet(parquet_pair, index=False)
+                    save_dataframe(df_pq, parquet_pair)
                     print("Parquet file enriched successfully!")
                 except Exception as e:
                     print(f"Error enriching corresponding Parquet file: {e}")

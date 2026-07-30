@@ -4,6 +4,7 @@ import pickle
 
 import pandas as pd
 import yaml
+from src.utils.io import load_dataframe, save_dataframe
 
 from src.utils.koppen_geiger import extract_koppen_geiger
 
@@ -42,10 +43,8 @@ def main():
         with open(args.input, 'rb') as f:
             data = pickle.load(f)
         df = pd.DataFrame(data)
-    elif is_csv:
-        df = pd.read_csv(args.input, dtype=str)
     else:
-        df = pd.read_parquet(args.input)
+        df = load_dataframe(args.input)
 
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
@@ -269,10 +268,8 @@ def main():
         records = df.to_dict('records')
         with open(out_path, 'wb') as f:
             pickle.dump(records, f)
-    elif out_path.endswith('.csv'):
-        df.to_csv(out_path, index=False)
     else:
-        df.to_parquet(out_path, index=False)
+        save_dataframe(df, out_path)
 
     print("Standardization success!")
 

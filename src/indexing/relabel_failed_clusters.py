@@ -9,6 +9,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
+from src.utils.io import load_dataframe, save_dataframe
 import requests
 import yaml
 from PIL import Image
@@ -255,7 +256,7 @@ def save_dataset(data, final_results, parent_results, out_path):
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         if 'Longitude' in df.columns:
             df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
-        df.to_parquet(out_path)
+        save_dataframe(df, out_path)
 
     print(
         f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} child clusters and {len(updated_parents)} parent clusters to {out_path}.")
@@ -323,7 +324,7 @@ def main():
         with open(args.file, 'rb') as f:
             data = pickle.load(f)
     else:
-        df = pd.read_parquet(args.file)
+        df = load_dataframe(args.file)
         if 'Latitude' in df.columns:
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         if 'Longitude' in df.columns:

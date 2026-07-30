@@ -8,6 +8,7 @@ import faiss
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+from src.utils.io import load_dataframe, save_dataframe
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 
@@ -79,10 +80,10 @@ def main():
         try:
             parquet_file = pq.ParquetFile(args.pkl)
             metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
-            df = pd.read_parquet(args.pkl, columns=metadata_cols)
+            df = load_dataframe(args.pkl, columns=metadata_cols)
         except Exception as e:
             print(f"Schema inspection fallback: {e}")
-            df = pd.read_parquet(args.pkl)
+            df = load_dataframe(args.pkl)
 
         print("Loading raw embedding matrix using PyArrow...")
         t0 = time.time()
@@ -194,7 +195,7 @@ def main():
                 meta_cols.append(col)
                 
         # Read the unique metadata per cluster
-        old_meta_df = pd.read_parquet(args.centroids_parquet, columns=meta_cols).drop_duplicates('cluster_id')
+        old_meta_df = load_dataframe(args.centroids_parquet, columns=meta_cols).drop_duplicates('cluster_id')
         df = df.merge(old_meta_df, on='cluster_id', how='left')
         
         # Fallback values
@@ -240,7 +241,7 @@ def main():
             pickle.dump(data, f)
     else:
         df['embedding'] = list(embeddings)
-        df.to_parquet(args.out, index=False)
+        save_dataframe(df, args.out)
 
     print(f"\n✅ Global FAISS Clustering Complete! Saved {len(df):,} clustered rows to {args.out}.")
 

@@ -311,7 +311,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
     tmp_output = f"{output_path}.tmp_stream"
     try:
         active_arr = pa.array(list(active_cells))
-        with pq.ParquetWriter(tmp_output, schema) as writer:
+        with pq.ParquetWriter(tmp_output, schema, compression='zstd') as writer:
             # 1. Stream copy inactive rows from original parquet
             for rg in range(pf.num_row_groups):
                 table = pf.read_row_group(rg)
@@ -369,7 +369,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
         if resume_from and os.path.exists(resume_from) and active_cells:
             stream_update_parquet(resume_from, tmp_path, df, active_cells)
         else:
-            df.to_parquet(tmp_path, index=False)
+            df.to_parquet(tmp_path, index=False, compression='zstd')
 
         # Save processed cells to tmp meta
         with open(tmp_meta_path, 'wb') as f:
@@ -915,7 +915,7 @@ def main():
         out_df.drop(columns=cols_to_drop).to_csv(csv_path, index=False)
 
         # Save Full Data to Parquet (High-performance binary storage)
-        out_df.to_parquet(parquet_path, index=False)
+        out_df.to_parquet(parquet_path, index=False, compression='zstd')
 
     # Clean up checkpoint files on successful completion
     if os.path.exists(checkpoint_path):

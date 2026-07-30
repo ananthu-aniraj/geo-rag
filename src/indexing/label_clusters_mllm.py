@@ -9,6 +9,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+from src.utils.io import load_dataframe, save_dataframe
 import requests
 import torch
 from PIL import Image
@@ -294,9 +295,9 @@ def main():
         try:
             parquet_file = pq.ParquetFile(args.input_file)
             metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
-            df = pd.read_parquet(args.input_file, columns=metadata_cols)
+            df = load_dataframe(args.input_file, columns=metadata_cols)
         except Exception:
-            df = pd.read_parquet(args.input_file)
+            df = load_dataframe(args.input_file)
 
         table = pq.read_table(args.input_file, columns=["embedding"])
         num_rows = len(table)
@@ -565,7 +566,7 @@ def main():
             pickle.dump(data, f)
     else:
         df['embedding'] = list(embeddings)
-        df.to_parquet(args.output_file, index=False)
+        save_dataframe(df, args.output_file)
 
     print(f"✅ Labeling Complete! Output saved to {args.output_file}.")
 

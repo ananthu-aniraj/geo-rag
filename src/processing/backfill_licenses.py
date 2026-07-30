@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 from shapely.geometry import Point, box as shapely_box
 from tqdm import tqdm
+from src.utils.io import load_dataframe, save_dataframe
 
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
@@ -101,12 +102,7 @@ def main():
     out_path = args.output if args.output else args.input
 
     print(f"Loading dataset from {args.input}...")
-    is_csv = args.input.endswith('.csv')
-
-    if is_csv:
-        df = pd.read_csv(args.input)
-    else:
-        df = pd.read_parquet(args.input)
+    df = load_dataframe(args.input)
 
     # Ensure License column exists
     if 'License' not in df.columns:
@@ -274,10 +270,7 @@ def main():
 
     if modified:
         print(f"Saving updated database to: {out_path}")
-        if is_csv:
-            df.to_csv(out_path, index=False)
-        else:
-            df.to_parquet(out_path, index=False)
+        save_dataframe(df, out_path)
         print("Backfill completed successfully!")
     else:
         print("\nNo licenses needed backfilling; database is already fully up to date.")

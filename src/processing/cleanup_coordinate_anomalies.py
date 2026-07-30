@@ -92,7 +92,8 @@ def main():
     t_stream = time.time()
     removed_count = 0
 
-    with pq.ParquetWriter(temp_parquet_path, schema) as writer:
+    from src.utils.io import get_parquet_writer
+    with get_parquet_writer(temp_parquet_path, schema) as writer:
         for rg in range(num_row_groups):
             tbl_rg = pf.read_row_group(rg)
             rg_lat = tbl_rg["Latitude"].to_numpy()

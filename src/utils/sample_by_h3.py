@@ -7,6 +7,7 @@ import h3
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from src.utils.io import load_dataframe, save_dataframe
 
 
 def main():
@@ -29,7 +30,7 @@ def main():
         sys.exit(1)
 
     print(f"Loading geolocated metadata from: {args.csv_path}...")
-    df = pd.read_csv(args.csv_path)
+    df = load_dataframe(args.csv_path)
     original_count = len(df)
     print(f"Total rows in original dataset: {original_count:,}")
 
@@ -99,7 +100,7 @@ def main():
         args.output_path = f"{base}_sampled_h3_res{args.resolution}_max{args.max_per_cell}{ext}"
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_path)), exist_ok=True)
-    sampled_df.to_csv(args.output_path, index=False)
+    save_dataframe(sampled_df, args.output_path)
     print(f"\nSampled dataset saved successfully to: {os.path.abspath(args.output_path)}")
 
 

@@ -3,6 +3,7 @@ import os
 
 import pandas as pd
 import requests
+from src.utils.io import load_dataframe, save_dataframe
 
 
 def geocode_location(location_name):
@@ -66,10 +67,7 @@ def main():
 
     # Load dataset
     print(f"Loading dataset from {args.input}...")
-    if args.input.endswith('.csv'):
-        df = pd.read_csv(args.input)
-    else:
-        df = pd.read_parquet(args.input)
+    df = load_dataframe(args.input)
     initial_len = len(df)
     print(f"Loaded {initial_len} records.")
 
@@ -136,10 +134,7 @@ def main():
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
-    if args.output.endswith('.csv'):
-        df.to_csv(args.output, index=False)
-    else:
-        df.to_parquet(args.output, index=False)
+    save_dataframe(df, args.output)
     print("Filtering complete!")
 
 

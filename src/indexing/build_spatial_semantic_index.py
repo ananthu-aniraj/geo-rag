@@ -6,6 +6,7 @@ import time
 import h3
 import pandas as pd
 import pyarrow.parquet as pq
+from src.utils.io import save_dataframe
 
 
 def main():
@@ -205,7 +206,7 @@ def main():
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
  
-    final_df.to_parquet(args.output, index=False)
+    save_dataframe(final_df, args.output)
     print(f"Index built successfully in {time.time() - start:.2f} seconds.")
 
 
