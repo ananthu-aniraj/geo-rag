@@ -217,6 +217,32 @@ def fetch_wikimedia_batch(grid_box, polygon, max_images, delay, continue_params=
 def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
     """Fetches a single batch of images from KartaView in a grid box."""
     min_lon, min_lat, max_lon, max_lat = grid_box
+    
+    # KartaView API limits bounding box size to 0.04 degrees per side.
+    # If the box exceeds this limit, we split it into smaller sub-boxes recursively.
+    lon_span = max_lon - min_lon
+    lat_span = max_lat - min_lat
+    
+    if lon_span > 0.04 or lat_span > 0.04:
+        mid_lon = (min_lon + max_lon) / 2.0
+        mid_lat = (min_lat + max_lat) / 2.0
+        
+        sub_boxes = [
+            (min_lon, min_lat, mid_lon, mid_lat),  # Bottom-left
+            (mid_lon, min_lat, max_lon, mid_lat),  # Bottom-right
+            (min_lon, mid_lat, mid_lon, max_lat),  # Top-left
+            (mid_lon, mid_lat, max_lon, max_lat)   # Top-right
+        ]
+        
+        combined_results = []
+        for s_box in sub_boxes:
+            res = fetch_kartaview_batch(s_box, polygon, max_images, delay, page)
+            if res['stat'] == 'ok':
+                combined_results.extend(res['data'])
+            if len(combined_results) >= max_images:
+                break
+        return {'stat': 'ok', 'data': combined_results[:max_images]}
+
     url = "https://api.openstreetcam.org/2.0/photo/"
     
     params = {
