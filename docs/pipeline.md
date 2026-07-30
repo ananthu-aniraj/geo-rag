@@ -21,6 +21,7 @@ The pipeline processes diverse geotagged image sources, unifies their schemas, a
 | **Flickr** | Geotagged outdoor/scenic photographs | Latitude / Longitude coordinates | Naive local datetimes (date-taken) |
 | **Mapillary** | Sequential street-level imagery | Resolution 11 H3 cells & coordinates | Naive local datetimes (`datetime_local`) or UTC epoch |
 | **KartaView** | Crowdsourced street-level imagery | Coordinates & H3 cells (Global Streetscapes) | Standardized local datetimes (`datetime_local`) |
+| **Wikimedia Commons** | Educational/illustrative media (landscapes, landmarks, flora/fauna) | Latitude / Longitude coordinates | Naive or standardized timestamps (`extmetadata`) |
 | **iWildCam** | Camera trap wildlife observations | Station coordinates | Naive local timestamps |
 | **iNaturalist** | Species observations | Coordinates (filtered for sky/macro) | Standardized observation datetimes |
 
