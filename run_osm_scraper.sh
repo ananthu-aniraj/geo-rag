@@ -8,12 +8,12 @@ SCRIPT_NAME="src.scrapers.osm_polygon_scraper"
 
 # Scraper Target Selection (Uncomment/edit as needed)
 # 1. By Query
-OSM_TARGET_ARGS=(--osm_query "Montpellier, France")
+OSM_TARGET_ARGS=(--osm_query "South America")
 # 2. By Relation ID
 # OSM_TARGET_ARGS=(--osm_relation 74263) # e.g. Paris
 
 PLATFORMS="all" # Choices: wikimedia, kartaview, all
-BASE_DIR="/home/ananthu/DATA/data_ananthu/osm_scrape_montpellier"
+BASE_DIR="/home/ananthu/DATA/data_ananthu/osm_scrape_south_america"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
 # Ensure base directory exists
