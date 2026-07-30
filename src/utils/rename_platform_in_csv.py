@@ -36,10 +36,6 @@ def rename_in_csv(file_path, old_name, new_name):
 
 
 def rename_in_parquet(file_path, old_name, new_name):
-    if pq is None or pa is None:
-        print("Error: pyarrow is required to edit Parquet files. Please install it first.")
-        sys.exit(1)
-
     print(f"Processing Parquet file: {file_path}...")
     temp_path = file_path + ".tmp"
 
