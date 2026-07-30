@@ -57,19 +57,17 @@ To download the latest version of the dataset locally (requires SSH access to th
 
 ---
 
-## 📡 Scraping Scripts
+## 📡 Ingestion & Scraping Scripts
 
-* **Flickr Scraping**: [`run_flickr_scraper.sh`](run_flickr_scraper.sh)
-* **Mapillary Scraping**: [`run_mapillary_scraper.sh`](run_mapillary_scraper.sh)
-* **iNaturalist Scraping**: [`run_inaturalist_scrapers.sh`](run_inaturalist_scrapers.sh)
+For detailed documentation, scripts, API queries, Nominatim geocoding, boundary filtering, and spatial difference masks, please refer to:
 
-> [!NOTE]  
-> Flickr and Mapillary scraping scripts use shapefiles located in [`shapefiles/`](shapefiles/) to define target areas of interest.
+👉 **[Ingestion & Scraping Utilities Documentation](geo_rag_pipeline_docs.md#-21-ingestion--scraping-utilities)**
 
-### Generating Uncovered Land Area Shapefiles
-To generate an uncovered land areas shapefile:
-1. Run [`src/utils/create_uncovered_land_areas_shp.py`](src/utils/create_uncovered_land_areas_shp.py), providing the input directory of the latest dataset version.
-2. (Optional) Visualize the generated shapefile using [`src/visualization/visualize_shp.py`](src/visualization/visualize_shp.py) to inspect the target scraping areas.
+The project root contains automated shell orchestrators for batch search loops:
+* **Flickr Global/Local Search**: [`run_flickr_scraper.sh`](run_flickr_scraper.sh)
+* **Mapillary Street View Search**: [`run_mapillary_scraper.sh`](run_mapillary_scraper.sh)
+* **iNaturalist Species Observations**: [`run_inaturalist_scrapers.sh`](run_inaturalist_scrapers.sh)
+* **OpenStreetMap Boundaries Search**: [`run_osm_scraper.sh`](run_osm_scraper.sh)
 
 ---
 
