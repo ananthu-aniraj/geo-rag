@@ -8,9 +8,9 @@ SCRIPT_NAME="src.scrapers.osm_polygon_scraper"
 
 # Scraper Target Selection (Uncomment/edit as needed)
 # 1. By Query
-OSM_TARGET_ARGS="--osm_query 'Montpellier, France'"
+OSM_TARGET_ARGS=(--osm_query "Montpellier, France")
 # 2. By Relation ID
-# OSM_TARGET_ARGS="--osm_relation 74263" # e.g. Paris
+# OSM_TARGET_ARGS=(--osm_relation 74263) # e.g. Paris
 
 PLATFORMS="all" # Choices: wikimedia, kartaview, all
 BASE_DIR="/home/ananthu/DATA/data_ananthu/osm_scrape_montpellier"
@@ -46,7 +46,7 @@ do
 
     # Run the Python script
     if ! python3 -m "$SCRIPT_NAME" \
-        $OSM_TARGET_ARGS \
+        "${OSM_TARGET_ARGS[@]}" \
         --chunk "$i" \
         --total_chunks "$TOTAL_CHUNKS" \
         --platforms "$PLATFORMS" \
