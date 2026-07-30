@@ -399,33 +399,33 @@ def main():
     lat_step = STEP_KM / 111.32
     current_lat = min_lat
 
-    virtual_grid = []
+    my_boxes = []
+    is_global = args.global_search
+    idx = 0
+
     while current_lat < max_lat:
         cos_lat = math.cos(math.radians(max(-89.9, min(89.9, current_lat))))
         lon_step = STEP_KM / (111.32 * cos_lat)
         
         current_lon = min_lon
         while current_lon < max_lon:
-            grid_box = box(current_lon, current_lat, current_lon + lon_step, current_lat + lat_step)
-            # Only process if grid box intersects polygon boundary to optimize speed
-            if grid_box.intersects(polygon):
-                virtual_grid.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+            if is_global:
+                if idx % args.total_chunks == args.chunk:
+                    my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+                idx += 1
+            else:
+                grid_box = box(current_lon, current_lat, current_lon + lon_step, current_lat + lat_step)
+                if grid_box.intersects(polygon):
+                    if idx % args.total_chunks == args.chunk:
+                        my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+                    idx += 1
             current_lon += lon_step
         current_lat += lat_step
-
-    # Sort boxes deterministically
-    virtual_grid.sort()
-    
-    # 3. Pick boxes assigned to this chunk
-    my_boxes = []
-    for idx, g_box in enumerate(virtual_grid):
-        if idx % args.total_chunks == args.chunk:
-            my_boxes.append(g_box)
 
     # Shuffle the specific boxes assigned to THIS chunk to avoid sequential processing
     random.Random(42 + args.chunk).shuffle(my_boxes)
 
-    print(f"Total virtual boxes intersecting polygon: {len(virtual_grid)}")
+    print(f"Total virtual boxes intersecting polygon: {idx}")
     print(f"Boxes assigned to Chunk {args.chunk}: {len(my_boxes)}")
     print(f"Already completed: {len(completed_boxes)}")
 
