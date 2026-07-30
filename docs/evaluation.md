@@ -128,7 +128,7 @@ This script benchmarks the semantic retrieval performance of different represent
  
 ### 🔍 Methodology
 1. **Places Ingestion & Hierarchy Mapping:** Reads the test directory structure, matching each image to its folder name (exact place), mapping it to macro-category (indoor vs. outdoor) and sub-category.
-2. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading official checkpoints (via `--tips_model_path`) comparing `TIPSv2 1st CLS` and `TIPSv2 2nd CLS` representations, falling back to Hugging Face `google/tipsv2-b14` if none is specified.
+2. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading official checkpoints (via `--tips_model_path`) comparing `TIPSv2 1st CLS` and `TIPSv2 2nd CLS` representations. You can optionally include CLIP (`--compare_clip`) and Hugging Face's `google/tipsv2-b14` model (`--compare_hf_tips`) in the comparison.
 3. **Retrieval Evaluations:** Cosine similarity retrieves the Top-10 nearest neighbors from the database pool. Accuracy metrics (P@1, P@5, P@10, mAP@10, and MRR@10) are reported across three hierarchical levels: **Exact Place Category**, **Sub-Category**, and **Macro Category**.
  
 ### 💻 Usage
@@ -138,6 +138,8 @@ python3 -m src.evaluation.benchmark_places \
   --img_dir path/to/places365_images/ \
   --tips_model_path path/to/checkpoint.npz \
   --tips_model_variant B \
+  --compare_clip \
+  --compare_hf_tips \
   --num_queries 100 \
   --num_database 500 \
   --output_report benchmark_results/places_report.txt \
@@ -145,8 +147,9 @@ python3 -m src.evaluation.benchmark_places \
 ```
  
 ### 📦 Outputs
-- `benchmark_results/places_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
-- `benchmark_results/places_results.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
+Output filenames are formatted dynamically by appending the seed and query count (`_s[seed]_q[queries]`) to prevent overwriting results across experiments:
+- `benchmark_results/places_report_s42_q100.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
+- `benchmark_results/places_results_s42_q100.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding metrics.
  
 ---
  

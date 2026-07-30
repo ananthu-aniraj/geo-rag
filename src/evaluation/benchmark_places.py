@@ -147,9 +147,18 @@ def main():
     parser.add_argument("--tips_model_variant", type=str, default="B", choices=["S", "B", "L", "So400m", "g"],
                         help="Variant of the official TIPSv2 model.")
     parser.add_argument("--tips_low_res", action="store_true", help="Set image resolution to 224px instead of 448px.")
+    parser.add_argument("--compare_clip", action="store_true", help="Include standard CLIP model in the comparison.")
+    parser.add_argument("--compare_hf_tips", action="store_true", help="Include Hugging Face google/tipsv2-b14 model in the comparison.")
     parser.add_argument("--output_report", type=str, default="./benchmark_results/places_report.txt", help="Path to write the report summary.")
     parser.add_argument("--output_csv", type=str, default="./benchmark_results/places_results.csv", help="Path to write detailed query CSV results.")
     args = parser.parse_args()
+
+    # Format output paths dynamically by appending seed and num_queries
+    report_base, report_ext = os.path.splitext(args.output_report)
+    args.output_report = f"{report_base}_s{args.seed}_q{args.num_queries}{report_ext}"
+    
+    csv_base, csv_ext = os.path.splitext(args.output_csv)
+    args.output_csv = f"{csv_base}_s{args.seed}_q{args.num_queries}{csv_ext}"
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -227,6 +236,18 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Initializing models on {device}...")
     
+    # Load CLIP baseline if requested
+    if args.compare_clip:
+        print("Loading standard CLIP model...")
+        from sentence_transformers import SentenceTransformer
+        clip_model = SentenceTransformer("clip-ViT-B-32")
+    
+    # Load Hugging Face TIPSv2 model as baseline if requested (and if we are loading official checkpoint)
+    hf_tipsv2 = None
+    if args.compare_hf_tips and args.tips_model_path:
+        print("Loading Hugging Face google/tipsv2-b14 model as baseline...")
+        hf_tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
+
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
@@ -268,19 +289,25 @@ def main():
     seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(device)
 
     # 3. Setup representations dynamically
+    representations = {}
+    if args.compare_clip:
+        representations["CLIP CLS"] = {"query": [], "db": []}
+    if hf_tipsv2 is not None:
+        representations["TIPSv2 HF CLS"] = {"query": [], "db": []}
+        
     if args.tips_model_path:
-        representations = {
+        representations.update({
             "TIPSv2 1st CLS": {"query": [], "db": []},
             "TIPSv2 2nd CLS": {"query": [], "db": []},
             "TIPSv2 Average Patch": {"query": [], "db": []},
             "TIPSv2 Seg-Masked": {"query": [], "db": []}
-        }
+        })
     else:
-        representations = {
+        representations.update({
             "TIPSv2 CLS": {"query": [], "db": []},
             "TIPSv2 Average Patch": {"query": [], "db": []},
             "TIPSv2 Seg-Masked": {"query": [], "db": []}
-        }
+        })
 
     transform = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor()])
     grid_size = 16 if (args.tips_model_path and args.tips_low_res) else 32
@@ -310,7 +337,24 @@ def main():
             logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear", align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
 
-            # B. TIPSv2 feature extraction
+            # B. CLIP feature extraction (optional)
+            if args.compare_clip:
+                with torch.no_grad():
+                    clip_cls = clip_model.encode(batch_imgs, convert_to_numpy=True)
+                representations["CLIP CLS"][split_key].extend(clip_cls)
+
+            # C. Hugging Face TIPSv2 feature extraction (optional)
+            if hf_tipsv2 is not None:
+                hf_imgs = [img.resize((448, 448)) for img in batch_imgs] if image_size != 448 else batch_imgs
+                img_tensors_hf = torch.stack([transform(img) for img in hf_imgs]).to(device)
+                with torch.no_grad():
+                    out_hf = hf_tipsv2.encode_image(img_tensors_hf)
+                    cls_hf = out_hf.cls_token.cpu().numpy()
+                    if cls_hf.ndim == 3:
+                        cls_hf = cls_hf.squeeze(1)
+                representations["TIPSv2 HF CLS"][split_key].extend(cls_hf)
+
+            # D. TIPSv2 feature extraction
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 if args.tips_model_path:
