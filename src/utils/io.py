@@ -1,14 +1,8 @@
 import os
-import sys
-import pickle
-import pandas as pd
 
-try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-except ImportError:
-    pa = None
-    pq = None
+import pandas as pd
+import pyarrow.parquet as pq
+
 
 def load_dataframe(file_path, **kwargs):
     """
@@ -60,9 +54,6 @@ def get_parquet_writer(file_path, schema, **kwargs):
     """
     Returns a PyArrow ParquetWriter configured with Zstandard compression.
     """
-    if pq is None:
-        raise ImportError("pyarrow is required to write Parquet tables via stream.")
-    
     # Ensure parent directory exists
     output_dir = os.path.dirname(file_path)
     if output_dir:
