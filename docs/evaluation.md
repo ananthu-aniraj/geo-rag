@@ -9,6 +9,9 @@ This document outlines the evaluation and benchmarking suites in the Geo-RAG pip
 6. **EUNIS Ecosystem Map Retrieval Benchmarking (`benchmark_eunis.py`)** - Image representation retrieval alignment with European terrestrial ecosystem classifications.
 7. **Environmental Zones of Europe Retrieval Benchmarking (`benchmark_environmental_zones.py`)** - Image representation retrieval alignment with macro-scale European biogeographical climate zones.
 
+> [!NOTE]
+> For a detailed conceptual and mathematical explanation of all the evaluation, classification, and retrieval metrics used across these suites, please refer to the **[Evaluation Metrics Guide](metrics.md)**.
+
 ---
 
 ## 📊 1. VLM Captioning & Places365 Classification (`caption_test.py`)

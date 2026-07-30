@@ -27,7 +27,8 @@ geo-rag/
 │   └── utils/                    # LULC taxonomies, statistics, & cluster validation
 ├── docs/                         # Technical Documentation
 │   ├── pipeline.md               # Data engineering details & architecture
-│   └── evaluation.md             # Benchmark evaluations & retrieval suites
+│   ├── evaluation.md             # Benchmark evaluations & retrieval suites
+│   └── metrics.md                # Evaluation & retrieval metrics definitions
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
 ├── templates/                    # Standalone HTML/JS frontend templates
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
