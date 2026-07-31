@@ -15,7 +15,6 @@ import requests
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from pyproj import Transformer
 from requests.adapters import HTTPAdapter
 from shapely.geometry import Point
 from torchvision import transforms
@@ -28,6 +27,14 @@ from transformers import (
 from urllib3.util import Retry
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
+from src.models import tips_image_encoder as image_encoder
+
+# Environmental Zones 2025 (version 2.0 / Metzger 2025) Value Mapping
+from src.utils.spatial_overlays import (
+    get_crs_transformer,
+    get_environmental_zone_label as get_zone_label,
+    lookup_raster_pixel,
+)
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
@@ -65,25 +72,6 @@ def download_image(url, photo_id=None, image_size=448):
         pass
     return None
 
-# Environmental Zones 2025 (version 2.0 / Metzger 2025) Value Mapping
-from src.utils.class_mappings_eunis_env_zones import ENV_ZONES_MAPPING
-
-
-def get_zone_label(val):
-    """Maps a raw pixel value (integer or string) to its corresponding Environmental Zone name."""
-    if val is None:
-        return "Unknown"
-    # Try mapping direct integer
-    if val in ENV_ZONES_MAPPING:
-        return ENV_ZONES_MAPPING[val]
-    # Try parsing int from string
-    try:
-        val_int = int(float(str(val).strip()))
-        if val_int in ENV_ZONES_MAPPING:
-            return ENV_ZONES_MAPPING[val_int]
-    except ValueError:
-        pass
-    return "Unknown"
 
 
 def encode_image_value_attention(model_image, img):
@@ -226,7 +214,7 @@ def main():
 
     # Coordinate transformer from WGS84 (EPSG:4326) to Raster CRS (EPSG:3035)
     print(f"Raster CRS: {raster_dataset.crs}. Setting up coordinate transformer...")
-    transformer = Transformer.from_crs("epsg:4326", raster_dataset.crs, always_axis_order=True)
+    transformer, has_axis_order = get_crs_transformer(raster_dataset.crs)
 
     matched_images = []
     print("Mapping coordinates to Environmental Zones...")
@@ -235,14 +223,11 @@ def main():
             lat = float(row[lat_col])
             lon = float(row[lon_col])
             
-            # Project lon, lat to raster coordinate system
-            x, y = transformer.transform(lon, lat)
-            
-            # Sample pixel value
-            pixel_val = list(raster_dataset.sample([(x, y)]))[0][0]
+            # Sample pixel value using unified lookup
+            pixel_val = lookup_raster_pixel(lat, lon, raster_dataset, transformer, has_axis_order)
             
             # Skip nodata / empty values
-            if pixel_val == raster_dataset.nodata or pixel_val <= 0:
+            if pixel_val is None or pixel_val == raster_dataset.nodata or pixel_val <= 0:
                 continue
                 
             zone_class = get_zone_label(pixel_val)
@@ -339,8 +324,6 @@ def main():
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
-        from src.models import tips_image_encoder as image_encoder
-
         model_def = {
             'S': image_encoder.vit_small,
             'B': image_encoder.vit_base,

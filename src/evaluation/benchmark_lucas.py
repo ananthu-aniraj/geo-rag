@@ -6,8 +6,10 @@ import re
 import sys
 import time
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
+import rasterio
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -20,6 +22,14 @@ from transformers import (
 )
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
+from src.models import tips_image_encoder as image_encoder
+from src.utils import lucas_class_mapping
+from src.utils.spatial_overlays import (
+    get_crs_transformer,
+    get_environmental_zone_label,
+    get_eunis_label,
+    lookup_raster_pixel,
+)
 
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
 
@@ -59,23 +69,19 @@ def map_lucas_coordinates_to_rasters(metadata_dict, eunis_raster_path=None, env_
     Overlays LUCAS point coordinates onto EUNIS and Environmental Zones GeoTIFF rasters
     and appends the resolved class names to each metadata record.
     """
-    import rasterio
-    from pyproj import Transformer
-    from src.utils.class_mappings_eunis_env_zones import EUNIS_ECOSYSTEM_MAPPING, ENV_ZONES_MAPPING
     
     # 1. Handle EUNIS Raster mapping
     if eunis_raster_path and os.path.exists(eunis_raster_path):
         print(f"Mapping LUCAS coordinates to EUNIS Ecosystem classes from: {eunis_raster_path}...")
         try:
             with rasterio.open(eunis_raster_path) as r_ds:
-                transformer = Transformer.from_crs("epsg:4326", r_ds.crs, always_axis_order=True)
+                transformer, has_axis_order = get_crs_transformer(r_ds.crs)
                 
                 # Check for dynamic DBF mapping
                 dbf_path = os.path.splitext(eunis_raster_path)[0] + ".vat.dbf"
                 dynamic_mapping = {}
                 if os.path.exists(dbf_path):
                     try:
-                        import geopandas as gpd
                         gdf = gpd.read_file(dbf_path)
                         val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
                         label_col = next((c for c in gdf.columns if c.lower() in ["maes_l2", "maes_level2", "class_name"]), None)
@@ -88,24 +94,14 @@ def map_lucas_coordinates_to_rasters(metadata_dict, eunis_raster_path=None, env_
                     except Exception as ex:
                         print(f"Warning: Failed to load DBF attribute mapping: {ex}")
                 
-                eunis_map = dynamic_mapping if dynamic_mapping else EUNIS_ECOSYSTEM_MAPPING
-                
                 for clean_id, item in metadata_dict.items():
                     lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
-                    if lat == 0.0 and lon == 0.0:
+                    pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
+                    if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
                         item['eunis_raster_class'] = ''
-                        continue
-                    try:
-                        x, y = transformer.transform(lon, lat)
-                        pixel_val = list(r_ds.sample([(x, y)]))[0][0]
-                        if pixel_val == r_ds.nodata or pixel_val <= 0:
-                            item['eunis_raster_class'] = ''
-                        else:
-                            # Map EUNIS class
-                            label = eunis_map.get(pixel_val, eunis_map.get(str(pixel_val), "Unknown"))
-                            item['eunis_raster_class'] = label if label != "Unknown" else ''
-                    except Exception:
-                        item['eunis_raster_class'] = ''
+                    else:
+                        label = get_eunis_label(pixel_val, dynamic_mapping)
+                        item['eunis_raster_class'] = label if label != "Unknown" else ''
         except Exception as e:
             print(f"Error mapping coordinates to EUNIS: {e}")
             for item in metadata_dict.values():
@@ -119,23 +115,16 @@ def map_lucas_coordinates_to_rasters(metadata_dict, eunis_raster_path=None, env_
         print(f"Mapping LUCAS coordinates to Environmental Zones from: {env_zones_raster_path}...")
         try:
             with rasterio.open(env_zones_raster_path) as r_ds:
-                transformer = Transformer.from_crs("epsg:4326", r_ds.crs, always_axis_order=True)
+                transformer, has_axis_order = get_crs_transformer(r_ds.crs)
                 
                 for clean_id, item in metadata_dict.items():
                     lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
-                    if lat == 0.0 and lon == 0.0:
+                    pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
+                    if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
                         item['env_zone_class'] = ''
-                        continue
-                    try:
-                        x, y = transformer.transform(lon, lat)
-                        pixel_val = list(r_ds.sample([(x, y)]))[0][0]
-                        if pixel_val == r_ds.nodata or pixel_val <= 0:
-                            item['env_zone_class'] = ''
-                        else:
-                            label = ENV_ZONES_MAPPING.get(pixel_val, '')
-                            item['env_zone_class'] = label
-                    except Exception:
-                        item['env_zone_class'] = ''
+                    else:
+                        label = get_environmental_zone_label(pixel_val)
+                        item['env_zone_class'] = label if label != "Unknown" else ''
         except Exception as e:
             print(f"Error mapping coordinates to Environmental Zones: {e}")
             for item in metadata_dict.values():
@@ -149,7 +138,6 @@ def get_class_lists(df):
     """Retrieves class lists from lucas_class_mapping if available, falling back to unique values in the metadata CSV."""
     lc_list, lu_list, eunis_list = [], [], []
     try:
-        from src.utils import lucas_class_mapping
         lc_list = list(lucas_class_mapping.lc1_class_mapping.values())
         lu_list = list(lucas_class_mapping.lu1_class_mapping.values())
         eunis_list = list(lucas_class_mapping.eunis_mapping.values())
@@ -324,8 +312,6 @@ def main():
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
-        from src.models import tips_image_encoder as image_encoder
-
         model_def = {
             'S': image_encoder.vit_small,
             'B': image_encoder.vit_base,

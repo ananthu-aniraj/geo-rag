@@ -15,7 +15,6 @@ import requests
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from pyproj import Transformer
 from requests.adapters import HTTPAdapter
 from shapely.geometry import Point
 from torchvision import transforms
@@ -28,6 +27,7 @@ from transformers import (
 from urllib3.util import Retry
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
+from src.utils.spatial_overlays import get_crs_transformer, lookup_raster_pixel
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
@@ -66,10 +66,6 @@ def download_image(url, photo_id=None, image_size=448):
     return None
 
 
-# Standard EUNIS Ecosystem Class/MAES Mapping
-from src.utils.class_mappings_eunis_env_zones import EUNIS_ECOSYSTEM_MAPPING
-
-
 def load_eunis_mapping_from_dbf(dbf_path):
     """Loads EUNIS value mapping dynamically from the associated DBF file if it exists."""
     mapping = {}
@@ -77,7 +73,6 @@ def load_eunis_mapping_from_dbf(dbf_path):
         try:
             print(f"Loading EUNIS classification mapping from local DBF: {dbf_path}...")
             # Geopandas can read DBF files directly via read_file
-            import geopandas as gpd
             gdf = gpd.read_file(dbf_path)
             val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
             label_col = next((c for c in gdf.columns if c.lower() in ["maes_l2", "maes_level2", "class_name"]), None)
@@ -95,28 +90,7 @@ def load_eunis_mapping_from_dbf(dbf_path):
     return mapping
 
 
-def get_eunis_label(val, dynamic_mapping=None):
-    """Maps a raw pixel value (integer or code) to its human-readable EUNIS category name."""
-    if val is None:
-        return "Unknown"
-
-    mapping = dynamic_mapping if dynamic_mapping else EUNIS_ECOSYSTEM_MAPPING
-
-    # Try mapping direct integer
-    if val in mapping:
-        return mapping[val]
-    # Try mapping string format of value
-    val_str = str(val).strip().upper()
-    if val_str in mapping:
-        return mapping[val_str]
-    # Try parsing int from string
-    try:
-        val_int = int(float(val_str))
-        if val_int in mapping:
-            return mapping[val_int]
-    except ValueError:
-        pass
-    return "Unknown"
+from src.utils.spatial_overlays import get_eunis_label
 
 
 def encode_image_value_attention(model_image, img):
@@ -265,7 +239,7 @@ def main():
 
     # Coordinate transformer from WGS84 (EPSG:4326) to Raster CRS (often EPSG:3035)
     print(f"Raster CRS: {raster_dataset.crs}. Setting up coordinate transformer...")
-    transformer = Transformer.from_crs("epsg:4326", raster_dataset.crs, always_axis_order=True)
+    transformer, has_axis_order = get_crs_transformer(raster_dataset.crs)
 
     matched_images = []
     print("Mapping coordinates to EUNIS Ecosystem classes...")
@@ -274,14 +248,11 @@ def main():
             lat = float(row[lat_col])
             lon = float(row[lon_col])
 
-            # Project lon, lat to raster coordinate system
-            x, y = transformer.transform(lon, lat)
-
-            # Sample pixel value
-            pixel_val = list(raster_dataset.sample([(x, y)]))[0][0]
+            # Sample pixel value using unified lookup
+            pixel_val = lookup_raster_pixel(lat, lon, raster_dataset, transformer, has_axis_order)
 
             # Skip nodata / empty values
-            if pixel_val == raster_dataset.nodata or pixel_val <= 0:
+            if pixel_val is None or pixel_val == raster_dataset.nodata or pixel_val <= 0:
                 continue
 
             eunis_class = get_eunis_label(pixel_val, dynamic_mapping)
