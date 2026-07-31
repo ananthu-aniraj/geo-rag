@@ -491,15 +491,16 @@ def main():
             "mrr@10": 0.0
         }
 
+        # Compute all similarities in a single batched operation: (Q, D_dim) x (D_dim, DB) -> (Q, DB)
+        sim_matrix = np.dot(q_vectors_norm, db_vectors_norm.T)
+        # Retrieve top 10 database indices for all queries at once
+        top_indices = np.argsort(-sim_matrix, axis=1)[:, :10]
+
         # Query loop
         for q_idx in range(len(queries_meta)):
-            q_vec = q_vectors_norm[q_idx]
             q_item = queries_meta[q_idx]
             q_label = q_item["env_zone"]
-            
-            # Compute similarities
-            similarities = np.dot(db_vectors_norm, q_vec)
-            sorted_db_indices = np.argsort(similarities)[::-1]
+            sorted_db_indices = top_indices[q_idx]
 
             retrieved_items = [database_meta[idx] for idx in sorted_db_indices[:10]]
             retrieved_labels = [item["env_zone"] for item in retrieved_items]
