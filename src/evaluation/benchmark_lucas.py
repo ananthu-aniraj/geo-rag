@@ -71,39 +71,44 @@ def map_lucas_coordinates_to_rasters(metadata_dict, eunis_raster_path=None, env_
     """
     
     # 1. Handle EUNIS Raster mapping
-    if eunis_raster_path and os.path.exists(eunis_raster_path):
-        print(f"Mapping LUCAS coordinates to EUNIS Ecosystem classes from: {eunis_raster_path}...")
-        try:
-            with rasterio.open(eunis_raster_path) as r_ds:
-                transformer, has_axis_order = get_crs_transformer(r_ds.crs)
-                
-                # Check for dynamic DBF mapping
-                dbf_path = os.path.splitext(eunis_raster_path)[0] + ".vat.dbf"
-                dynamic_mapping = {}
-                if os.path.exists(dbf_path):
-                    try:
-                        gdf = gpd.read_file(dbf_path)
-                        val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
-                        label_col = next((c for c in gdf.columns if c.lower() in ["maes_l2", "maes_level2", "class_name"]), None)
-                        if val_col and label_col:
-                            for _, row in gdf.iterrows():
-                                val = int(float(str(row[val_col])))
-                                label = str(row[label_col]).strip()
-                                if label and label.lower() != 'none':
-                                    dynamic_mapping[val] = label
-                    except Exception as ex:
-                        print(f"Warning: Failed to load DBF attribute mapping: {ex}")
-                
-                for clean_id, item in metadata_dict.items():
-                    lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
-                    pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
-                    if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
-                        item['eunis_raster_class'] = ''
-                    else:
-                        label = get_eunis_label(pixel_val, dynamic_mapping)
-                        item['eunis_raster_class'] = label if label != "Unknown" else ''
-        except Exception as e:
-            print(f"Error mapping coordinates to EUNIS: {e}")
+    if eunis_raster_path:
+        if os.path.exists(eunis_raster_path):
+            print(f"Mapping LUCAS coordinates to EUNIS Ecosystem classes from: {eunis_raster_path}...")
+            try:
+                with rasterio.open(eunis_raster_path) as r_ds:
+                    transformer, has_axis_order = get_crs_transformer(r_ds.crs)
+                    
+                    # Check for dynamic DBF mapping
+                    dbf_path = os.path.splitext(eunis_raster_path)[0] + ".vat.dbf"
+                    dynamic_mapping = {}
+                    if os.path.exists(dbf_path):
+                        try:
+                            gdf = gpd.read_file(dbf_path)
+                            val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
+                            label_col = next((c for c in gdf.columns if c.lower() in ["maes_l2", "maes_level2", "class_name"]), None)
+                            if val_col and label_col:
+                                for _, row in gdf.iterrows():
+                                    val = int(float(str(row[val_col])))
+                                    label = str(row[label_col]).strip()
+                                    if label and label.lower() != 'none':
+                                        dynamic_mapping[val] = label
+                        except Exception as ex:
+                            print(f"Warning: Failed to load DBF attribute mapping: {ex}")
+                    
+                    for clean_id, item in metadata_dict.items():
+                        lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
+                        pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
+                        if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
+                            item['eunis_raster_class'] = ''
+                        else:
+                            label = get_eunis_label(pixel_val, dynamic_mapping)
+                            item['eunis_raster_class'] = label if label != "Unknown" else ''
+            except Exception as e:
+                print(f"Error mapping coordinates to EUNIS: {e}")
+                for item in metadata_dict.values():
+                    item['eunis_raster_class'] = ''
+        else:
+            print(f"Warning: EUNIS raster path '{eunis_raster_path}' does not exist. Skipping EUNIS raster evaluation.")
             for item in metadata_dict.values():
                 item['eunis_raster_class'] = ''
     else:
@@ -111,22 +116,27 @@ def map_lucas_coordinates_to_rasters(metadata_dict, eunis_raster_path=None, env_
             item['eunis_raster_class'] = ''
 
     # 2. Handle Environmental Zones mapping
-    if env_zones_raster_path and os.path.exists(env_zones_raster_path):
-        print(f"Mapping LUCAS coordinates to Environmental Zones from: {env_zones_raster_path}...")
-        try:
-            with rasterio.open(env_zones_raster_path) as r_ds:
-                transformer, has_axis_order = get_crs_transformer(r_ds.crs)
-                
-                for clean_id, item in metadata_dict.items():
-                    lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
-                    pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
-                    if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
-                        item['env_zone_class'] = ''
-                    else:
-                        label = get_environmental_zone_label(pixel_val)
-                        item['env_zone_class'] = label if label != "Unknown" else ''
-        except Exception as e:
-            print(f"Error mapping coordinates to Environmental Zones: {e}")
+    if env_zones_raster_path:
+        if os.path.exists(env_zones_raster_path):
+            print(f"Mapping LUCAS coordinates to Environmental Zones from: {env_zones_raster_path}...")
+            try:
+                with rasterio.open(env_zones_raster_path) as r_ds:
+                    transformer, has_axis_order = get_crs_transformer(r_ds.crs)
+                    
+                    for clean_id, item in metadata_dict.items():
+                        lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
+                        pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
+                        if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
+                            item['env_zone_class'] = ''
+                        else:
+                            label = get_environmental_zone_label(pixel_val)
+                            item['env_zone_class'] = label if label != "Unknown" else ''
+            except Exception as e:
+                print(f"Error mapping coordinates to Environmental Zones: {e}")
+                for item in metadata_dict.values():
+                    item['env_zone_class'] = ''
+        else:
+            print(f"Warning: Environmental Zones raster path '{env_zones_raster_path}' does not exist. Skipping Environmental Zones evaluation.")
             for item in metadata_dict.values():
                 item['env_zone_class'] = ''
     else:
