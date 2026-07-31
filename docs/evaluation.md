@@ -99,18 +99,26 @@ python3 -m src.evaluation.evaluate_retrieval \
 
 ## 📈 4. LUCAS Semantic Retrieval Benchmarking (`benchmark_lucas.py`)
  
-This script benchmarks the semantic retrieval capability of different image representations (TIPSv2 CLS, average patch, and SegFormer-masked embeddings) on the **LUCAS 2018** dataset. It measures how well nearest-neighbor retrieval aligns with land use and land cover classes.
+This script benchmarks the semantic retrieval capability of different image representations (TIPSv2 CLS, average patch, and SegFormer-masked embeddings) on the **LUCAS 2018** dataset. It measures how well nearest-neighbor retrieval aligns with ground-truth land cover, land use, and habitat classes, as well as projected spatial-ecological zones.
  
 ### 🔍 Methodology
 1. **LUCAS Metadata Ingestion & Sampling:** Loads the validation CSV coordinates, matches local images using point ID grouping, and shuffles them to build a query set and database pool.
-2. **Batch Feature Extraction:** Computes embeddings in batches on the GPU. If loading a custom checkpoint (via `--tips_model_path`), it evaluates both `TIPSv2 1st CLS` (visual/semantic) and `TIPSv2 2nd CLS` (geographic) tokens against average patch and Seg-Masked embeddings. Otherwise, it defaults to Hugging Face `google/tipsv2-b14`.
-3. **Retrieval Metric Computation:** Queries the database using cosine similarity to retrieve the Top-10 nearest neighbors. It reports classification alignment metrics (P@1, P@5, P@10, mAP@10, and MRR@10) across three levels: **Land Cover** (`lc_label`), **Land Use** (`lu_label`), and **EUNIS Class** (`eunis_class`).
+2. **Spatial Raster Overlay:** Extracts the GPS coordinates (`lat`, `lon`) for each LUCAS point. If EUNIS and Metzger Environmental Zones GeoTIFF rasters are provided, it projects the coordinates to EPSG:3035 to query and append projected EUNIS ecosystem categories and biogeographical climate zones.
+3. **Batch Feature Extraction:** Computes embeddings in batches on the GPU. If loading a custom checkpoint (via `--tips_model_path`), it evaluates both `TIPSv2 1st CLS` (visual/semantic) and `TIPSv2 2nd CLS` (geographic) tokens against average patch and Seg-Masked embeddings. Otherwise, it defaults to Hugging Face `google/tipsv2-b14`.
+4. **Retrieval Metric Computation:** Queries the database using cosine similarity to retrieve the Top-10 nearest neighbors. It reports alignment metrics (P@1, P@5, P@10, mAP@10, and MRR@10) across five hierarchical/ecological levels:
+   * **Land Cover** (`lc_label`)
+   * **Land Use** (`lu_label`)
+   * **EUNIS Class** (`eunis_class` from CSV metadata)
+   * **EUNIS Ecosystem** (`eunis_raster_class` from raster overlay, optional)
+   * **Environmental Zone** (`env_zone_class` from raster overlay, optional)
  
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_lucas \
   --csv path/to/Sen4Map_Metadata_test.csv \
   --img_dir path/to/lucas_images/ \
+  --eunis_raster path/to/eunis_ecosystem.tif \
+  --env_zones_raster path/to/environmental_zones.tif \
   --tips_model_path path/to/checkpoint.npz \
   --tips_model_variant B \
   --num_queries 100 \
