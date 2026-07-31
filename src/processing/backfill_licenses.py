@@ -267,6 +267,13 @@ def main():
         df['License'] = df['License'].combine_first(flickr_map)
         modified = True
 
+    # Set any remaining empty or null licenses to the default: 'All Rights Reserved'
+    null_or_empty_mask = df['License'].isna() | (df['License'].astype(str).str.strip() == "") | (df['License'].astype(str) == "nan")
+    if null_or_empty_mask.any():
+        print(f"Setting {null_or_empty_mask.sum():,} remaining empty licenses to default 'All Rights Reserved'...")
+        df.loc[null_or_empty_mask, 'License'] = 'All Rights Reserved'
+        modified = True
+
     if modified:
         print(f"Saving updated database to: {out_path}")
         save_dataframe(df, out_path)
