@@ -200,6 +200,12 @@ def fetch_wikimedia_batch(grid_box, polygon, max_images, delay, continue_params=
                 if "view_of_" in title.lower() or "view_of_" in img_url.lower():
                     continue
 
+                # Ensure only standard image extensions are allowed (.jpg, .jpeg, .png, .webp)
+                title_lower = title.lower()
+                VALID_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
+                if not title_lower.endswith(VALID_EXTENSIONS):
+                    continue
+
                 pt = Point(lon, lat)
                 if polygon.contains(pt):
                     results.append({

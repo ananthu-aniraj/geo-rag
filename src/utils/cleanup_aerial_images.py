@@ -44,19 +44,31 @@ def main():
         if not url_col:
             continue
 
-        # Check for rows containing "view_of_" in their URL
-        # We explicitly cast to string to avoid attribute errors on non-string values
-        mask = df[url_col].astype(str).str.lower().str.contains("view_of_", na=False)
-        removed_count = mask.sum()
+        # Process URL string check
+        urls = df[url_col].astype(str).str.lower()
+        clean_urls = urls.str.split('?').str[0]
+
+        # 1. Check for "view_of_" in URL
+        view_of_mask = urls.str.contains("view_of_", na=False)
+
+        # 2. Ensure only standard image extensions are allowed (.jpg, .jpeg, .png, .webp)
+        valid_ext_mask = clean_urls.str.endswith(('.jpg', '.jpeg', '.png', '.webp'), na=False)
+
+        # 3. Reject non-image original formats (even if converted to .jpg thumbnails by MediaWiki)
+        bad_orig_mask = clean_urls.str.contains(r'\.(tif|tiff|svg|pdf|djvu|gif|ogg|ogv|webm|mp3|mp4|wav|zip|gz|tar)\b', case=False, regex=True)
+
+        # Combined filter mask for removal
+        remove_mask = view_of_mask | (~valid_ext_mask) | bad_orig_mask
+        removed_count = remove_mask.sum()
 
         if removed_count > 0:
-            df_cleaned = df[~mask].copy()
+            df_cleaned = df[~remove_mask].copy()
             try:
                 save_dataframe(df_cleaned, file_path)
                 total_removed += removed_count
                 cleaned_files += 1
                 # Use tqdm.write to print without messing up progress bar
-                tqdm.write(f" -> Removed {removed_count:,} aerial images from {os.path.basename(file_path)}")
+                tqdm.write(f" -> Removed {removed_count:,} non-image/aerial records from {os.path.basename(file_path)}")
             except Exception as e:
                 tqdm.write(f"Error saving {os.path.basename(file_path)}: {e}")
 
@@ -64,7 +76,7 @@ def main():
     print("Cleanup Summary:")
     print(f"- Total files scanned: {len(files)}")
     print(f"- Files updated: {cleaned_files}")
-    print(f"- Total 'View_of_' images removed: {total_removed:,}")
+    print(f"- Total non-image/aerial records removed: {total_removed:,}")
     print("================================================================================")
 
 
