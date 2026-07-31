@@ -195,6 +195,11 @@ def fetch_wikimedia_batch(grid_box, polygon, max_images, delay, continue_params=
             license_val = extmetadata.get("LicenseShortName", {}).get("value", "unknown")
             
             if lat is not None and lon is not None and img_url:
+                # Skip aerial/scenic images with "View_of_" in the name/URL
+                title = page.get("title", "")
+                if "view_of_" in title.lower() or "view_of_" in img_url.lower():
+                    continue
+
                 pt = Point(lon, lat)
                 if polygon.contains(pt):
                     results.append({
