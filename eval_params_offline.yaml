@@ -1,0 +1,17 @@
+# Offline Evaluation Configuration Parameters (LUCAS & Places365)
+
+lucas:
+  csv: "/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"
+  img_dir: "/home/ananthu/DATA/data_ananthu/LUCAS2018/images"
+  num_queries: 1000
+  num_database: 10000
+  batch_size: 32
+  seed: 42
+
+places:
+  labels: "/home/ananthu/DATA/data_ananthu/places365/versions/1/Scene_hierarchy.xlsx"
+  img_dir: "/home/ananthu/DATA/data_ananthu/places365/versions/1/val"
+  num_queries: 1000
+  num_database: 10000
+  batch_size: 32
+  seed: 42

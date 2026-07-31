@@ -65,6 +65,7 @@ def download_image(url, photo_id=None, image_size=448):
         pass
     return None
 
+
 # Standard EUNIS Ecosystem Class/MAES Mapping
 # This maps typical raster code values (1-12) or level-1 alphabet characters
 EUNIS_ECOSYSTEM_MAPPING = {
@@ -79,7 +80,7 @@ EUNIS_ECOSYSTEM_MAPPING = {
     8: "Rivers and lakes (Inland water)",
     9: "Marine / Sea",
     10: "Coastal / Dunes",
-    
+
     # EUNIS Level 1 Alphabet codes
     "A": "Marine habitats",
     "B": "Coastal habitats",
@@ -105,7 +106,7 @@ def load_eunis_mapping_from_dbf(dbf_path):
             gdf = gpd.read_file(dbf_path)
             val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
             label_col = next((c for c in gdf.columns if c.lower() in ["maes_l2", "maes_level2", "class_name"]), None)
-            
+
             if val_col and label_col:
                 for _, row in gdf.iterrows():
                     val = int(float(str(row[val_col])))
@@ -115,7 +116,7 @@ def load_eunis_mapping_from_dbf(dbf_path):
                 print(f"Loaded {len(mapping)} dynamic class mappings from DBF.")
         except Exception as e:
             print(f"Warning: Failed to load DBF attribute mapping: {e}")
-            
+
     return mapping
 
 
@@ -123,9 +124,9 @@ def get_eunis_label(val, dynamic_mapping=None):
     """Maps a raw pixel value (integer or code) to its human-readable EUNIS category name."""
     if val is None:
         return "Unknown"
-        
+
     mapping = dynamic_mapping if dynamic_mapping else EUNIS_ECOSYSTEM_MAPPING
-    
+
     # Try mapping direct integer
     if val in mapping:
         return mapping[val]
@@ -185,18 +186,18 @@ def encode_image_value_attention(model_image, img):
     return blocks_patches
 
 
-
-
-
 def main():
     parser = argparse.ArgumentParser(description="EUNIS Ecosystem Map Representation Semantic Retrieval Benchmark.")
-    parser.add_argument("--csv_path", type=str, default="./full_pipeline_output/geo_space_deduplicated.csv", help="Path to CSV containing geolocated images.")
-    parser.add_argument("--csv", type=str, default=None, help="Path to CSV containing geolocated images (alias for --csv_path).")
+    parser.add_argument("--csv_path", type=str, default="./full_pipeline_output/geo_space_deduplicated.csv",
+                        help="Path to CSV containing geolocated images.")
+    parser.add_argument("--csv", type=str, default=None,
+                        help="Path to CSV containing geolocated images (alias for --csv_path).")
     parser.add_argument("--countries_shp", type=str, default="shapefiles/ne_10m_admin_0_countries.shp",
                         help="Path to Natural Earth countries shapefile to filter for Europe.")
-    parser.add_argument("--raster", type=str, default="/user/aaniraj/home/Documents/Projects/data/eea_r_3035_100_m_ecosystem-types-terrestrial-r_p_2012_v03_r01/eea_r_3035_100_m_etm-terrestrial-r_2012_v3-1_r00.tif",
+    parser.add_argument("--raster", type=str,
+                        default="/user/aaniraj/home/Documents/Projects/data/eea_r_3035_100_m_ecosystem-types-terrestrial-r_p_2012_v03_r01/eea_r_3035_100_m_etm-terrestrial-r_2012_v3-1_r00.tif",
                         help="Path to EUNIS Ecosystem map GeoTIFF.")
-    
+
     parser.add_argument("--num_queries", type=int, default=100, help="Number of query evaluations to run.")
     parser.add_argument("--num_database", type=int, default=500, help="Number of database images to search against.")
     parser.add_argument("--batch_size", type=int, default=16, help="GPU batch size for feature extraction.")
@@ -206,8 +207,10 @@ def main():
     parser.add_argument("--tips_model_variant", type=str, default="B", choices=["S", "B", "L", "So400m", "g"],
                         help="Variant of the official TIPSv2 model.")
     parser.add_argument("--tips_low_res", action="store_true", help="Set image resolution to 224px instead of 448px.")
-    parser.add_argument("--output_report", type=str, default="./benchmark_results/eunis_report.txt", help="Path to write the report summary.")
-    parser.add_argument("--output_csv", type=str, default="./benchmark_results/eunis_results.csv", help="Path to write detailed query CSV results.")
+    parser.add_argument("--output_report", type=str, default="./benchmark_results/eunis_report.txt",
+                        help="Path to write the report summary.")
+    parser.add_argument("--output_csv", type=str, default="./benchmark_results/eunis_results.csv",
+                        help="Path to write detailed query CSV results.")
     args = parser.parse_args()
 
     csv_path = args.csv if args.csv is not None else args.csv_path
@@ -220,7 +223,7 @@ def main():
     if not os.path.exists(args.raster):
         print(f"Error: EUNIS Ecosystem raster map '{args.raster}' not found.")
         sys.exit(1)
-        
+
     print(f"Opening EUNIS Ecosystem raster: {args.raster}...")
     try:
         raster_dataset = rasterio.open(args.raster)
@@ -236,16 +239,16 @@ def main():
     if not os.path.exists(csv_path):
         print(f"Error: CSV file '{csv_path}' not found.")
         sys.exit(1)
-        
+
     print(f"Loading image CSV metadata: {csv_path}...")
     df = pd.read_csv(csv_path)
-    
+
     # Identify key columns in CSV
     lat_col = next((col for col in df.columns if col.lower() in ["latitude", "lat"]), None)
     lon_col = next((col for col in df.columns if col.lower() in ["longitude", "lon", "lng"]), None)
     url_col = next((col for col in df.columns if col.lower() in ["image_url", "url"]), None)
     id_col = next((col for col in df.columns if col.lower() in ["photo_id", "id"]), None)
-    
+
     if not lat_col or not lon_col:
         print("Error: Could not locate Latitude/Longitude columns in the CSV.")
         sys.exit(1)
@@ -265,14 +268,14 @@ def main():
         try:
             countries_gdf = gpd.read_file(args.countries_shp)
             europe_gdf = countries_gdf[countries_gdf['CONTINENT'] == 'Europe']
-            
+
             # Convert df to GeoDataFrame
             geometry = [Point(xy) for xy in zip(df[lon_col], df[lat_col])]
             geo_df = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
-            
+
             if europe_gdf.crs != geo_df.crs:
                 europe_gdf = europe_gdf.to_crs(geo_df.crs)
-                
+
             joined = gpd.sjoin(geo_df, europe_gdf, how="inner", predicate="intersects")
             df = pd.DataFrame(joined.drop(columns="geometry")).reset_index(drop=True)
             print(f"Keep {len(df)} records inside Europe.")
@@ -295,21 +298,21 @@ def main():
         try:
             lat = float(row[lat_col])
             lon = float(row[lon_col])
-            
+
             # Project lon, lat to raster coordinate system
             x, y = transformer.transform(lon, lat)
-            
+
             # Sample pixel value
             pixel_val = list(raster_dataset.sample([(x, y)]))[0][0]
-            
+
             # Skip nodata / empty values
             if pixel_val == raster_dataset.nodata or pixel_val <= 0:
                 continue
-                
+
             eunis_class = get_eunis_label(pixel_val, dynamic_mapping)
             if eunis_class == "Unknown":
                 continue
-                
+
             matched_images.append({
                 "url": str(row[url_col]) if url_col else "",
                 "photo_id": str(row[id_col]) if id_col else None,
@@ -356,7 +359,7 @@ def main():
         if len(selected_images) <= args.num_queries:
             args.num_queries = max(1, len(selected_images) // 5)
         args.num_database = len(selected_images) - args.num_queries
-        
+
     selected_images = selected_images[:args.num_queries + args.num_database]
 
     # Download images in parallel
@@ -396,7 +399,7 @@ def main():
     # 3. Initialize Models
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Initializing models on {device}...")
-    
+
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
@@ -411,11 +414,11 @@ def main():
         }[args.tips_model_variant]
 
         ffn_layer = 'swiglu' if args.tips_model_variant == 'g' else 'mlp'
-        
+
         checkpoint = dict(np.load(args.tips_model_path, allow_pickle=False))
         for key in checkpoint:
             checkpoint[key] = torch.tensor(checkpoint[key])
-            
+
         image_size = 224 if args.tips_low_res else 448
         model = model_def(
             img_size=image_size,
@@ -432,10 +435,11 @@ def main():
         print("Loading Hugging Face google/tipsv2-b14 model...")
         tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
         image_size = 448
-    
+
     print("Loading SegFormer model...")
     seg_processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
-    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(device)
+    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(
+        device)
 
     # 4. Setup representations dynamically
     if args.tips_model_path:
@@ -459,9 +463,9 @@ def main():
     def extract_features_batch(metadata_list, split_key):
         print(f"Extracting features for {len(metadata_list)} images ({split_key} split)...")
         for i in tqdm(range(0, len(metadata_list), args.batch_size), desc=f"Extraction ({split_key})"):
-            batch_meta = metadata_list[i : i + args.batch_size]
+            batch_meta = metadata_list[i: i + args.batch_size]
             batch_imgs = []
-            
+
             for item in batch_meta:
                 try:
                     img = item['img']
@@ -470,7 +474,7 @@ def main():
                     batch_imgs.append(img)
                 except Exception as e:
                     print(f"Warning: Failed to load image '{item.get('url', '')}': {e}")
-            
+
             if not batch_imgs:
                 continue
 
@@ -478,7 +482,8 @@ def main():
             inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
             with torch.no_grad():
                 outputs = seg_model(**inputs)
-            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear", align_corners=False)
+            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
+                                                     align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
 
             # B. TIPSv2 feature extraction
@@ -487,15 +492,15 @@ def main():
                 if args.tips_model_path:
                     # Official model forward returns: first_cls_token, second_cls_token, patch_tokens
                     first_cls_token, second_cls_token, patch_tokens = tipsv2(img_tensors)
-                    
+
                     first_cls = first_cls_token.cpu().numpy()
                     if first_cls.ndim == 3:
                         first_cls = first_cls.squeeze(1)
-                        
+
                     second_cls = second_cls_token.cpu().numpy()
                     if second_cls.ndim == 3:
                         second_cls = second_cls.squeeze(1)
-                        
+
                     representations["TIPSv2 1st CLS"][split_key].extend(first_cls)
                     representations["TIPSv2 2nd CLS"][split_key].extend(second_cls)
                 else:
@@ -512,7 +517,7 @@ def main():
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):
-                patch_tokens = patch_tokens_vals[idx] # (num_patches, D)
+                patch_tokens = patch_tokens_vals[idx]  # (num_patches, D)
                 pred_mask = pred_masks[idx]
 
                 # TIPSv2 Average Patch
@@ -523,13 +528,13 @@ def main():
                 keep_mask = np.ones_like(pred_mask, dtype=float)
                 for c in DISCARD_CLASSES:
                     keep_mask[pred_mask == c] = 0.0
-                
+
                 # Downsample keep mask to grid_size x grid_size patch resolution
                 patch_weights = np.zeros((grid_size, grid_size))
                 for r in range(grid_size):
                     for c in range(grid_size):
-                        patch_weights[r, c] = np.mean(keep_mask[r*14:(r+1)*14, c*14:(c+1)*14])
-                patch_weights_flat = patch_weights.flatten()[:, np.newaxis] # (num_patches, 1)
+                        patch_weights[r, c] = np.mean(keep_mask[r * 14:(r + 1) * 14, c * 14:(c + 1) * 14])
+                patch_weights_flat = patch_weights.flatten()[:, np.newaxis]  # (num_patches, 1)
 
                 masked_patch_sum = np.sum(patch_tokens * patch_weights_flat, axis=0)
                 masked_patch_weight_sum = np.sum(patch_weights_flat)
@@ -537,7 +542,7 @@ def main():
                     masked_avg_embed = (masked_patch_sum / (masked_patch_weight_sum + 1e-9))
                 else:
                     masked_avg_embed = avg_patch
-                
+
                 representations["TIPSv2 Seg-Masked"][split_key].append(masked_avg_embed)
 
     extract_features_batch(queries_meta, "query")
@@ -546,7 +551,7 @@ def main():
     # 5. Retrieval & Similarity Benchmarking
     results = {}
     detailed_rows = []
-    
+
     for rep_name, splits in representations.items():
         q_vectors = np.array(splits["query"])
         db_vectors = np.array(splits["db"])
@@ -574,18 +579,18 @@ def main():
             q_vec = q_vectors_norm[q_idx]
             q_item = queries_meta[q_idx]
             q_label = q_item["eunis_class"]
-            
+
             # Compute similarities
             similarities = np.dot(db_vectors_norm, q_vec)
             sorted_db_indices = np.argsort(similarities)[::-1]
 
             retrieved_items = [database_meta[idx] for idx in sorted_db_indices[:10]]
             retrieved_labels = [item["eunis_class"] for item in retrieved_items]
-            
+
             # P@1
             p1 = compute_precision_at_k(retrieved_labels, q_label, k=1)
             results[rep_name]["p@1"] += p1
-            
+
             # P@5
             p5 = compute_precision_at_k(retrieved_labels, q_label, k=5)
             results[rep_name]["p@5"] += p5
@@ -632,15 +637,15 @@ def main():
     report_lines.append(f"- Database count: {len(database_meta)} images")
     report_lines.append("")
 
-    print("\n" + "="*95)
+    print("\n" + "=" * 95)
     print("                    EUNIS ECOSYSTEM MAP SEMANTIC RETRIEVAL REPORT")
-    print("="*95)
+    print("=" * 95)
 
     row_format = "{:<24} | {:<12} | {:<12} | {:<12} | {:<12} | {:<12}"
     header = row_format.format("Representation", "P@1 (%)", "P@5 (%)", "P@10 (%)", "mAP@10 (%)", "MRR@10 (%)")
     print(header)
     print("-" * 90)
-    
+
     report_lines.append(header)
     report_lines.append("-" * 90)
 
@@ -656,8 +661,8 @@ def main():
         )
         print(row_str)
         report_lines.append(row_str)
-        
-    print("="*95)
+
+    print("=" * 95)
 
     # Save TXT report summary
     os.makedirs(os.path.dirname(args.output_report), exist_ok=True)

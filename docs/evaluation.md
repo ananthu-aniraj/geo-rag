@@ -1,4 +1,4 @@
-# Geo-RAG Evaluation & Benchmarking Methodology
+# Evaluation & Benchmarking Methodology
 
 This document outlines the evaluation and benchmarking suites in the Geo-RAG pipeline. These scripts are designed to measure:
 1. **MLLM/VLM Captioning Quality & Scene Classification (`caption_test.py`)** - Zero-shot scene classification and text-image alignment on Places365.
@@ -206,13 +206,28 @@ python3 -m src.evaluation.benchmark_environmental_zones \
   --output_csv benchmark_results/env_zones_results.csv
 ```
 
+## 🏃 Running Evaluations using Shell Orchestrators
+
+To make evaluations easily reproducible and readable, the pipeline uses YAML files to manage configuration parameters, and provides two unified shell runners:
+
+### 1. Offline Semantic Evaluation (LUCAS & Places365)
+* **Configuration**: `eval_params_offline.yaml`
+* **Shell Script**: `./run_offline_eval_semantic.sh`
+* **Operation**: Reads parameters from the offline YAML file and runs `benchmark_lucas.py` and `benchmark_places.py` sequentially, saving results into `benchmark_results/`.
+
+### 2. Spatial/Environmental Evaluation (Environmental Zones & EUNIS)
+* **Configuration**: `eval_params_online.yaml`
+* **Shell Script**: `./run_offline_eval_spatial.sh`
+* **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
+
+---
+
 ## 📈 Combined Evaluation Flow
- 
+
 To run an end-to-end evaluation cycle:
-1. Run `caption_test.py` to caption a set of validation images and generate embeddings.
-2. Run `evaluate_retrieval.py` on the resulting pickle output to benchmark the retrieval metrics.
-3. Run `benchmark_lucas.py` with your local LUCAS images to measure land cover/use retrieval precision.
-4. Run `benchmark_places.py` with your local Places365 images to measure scene category and hierarchy retrieval precision.
-5. Run `benchmark_eunis.py` on your scraped European image coordinates and EUNIS ecosystem GeoTIFF map to evaluate geobotanical classification alignment.
-6. Run `benchmark_environmental_zones.py` on your scraped European image coordinates and Environmental Zones GeoTIFF map to measure continental biogeographical zone alignment.
-7. Inspect `vlm_evaluation_summary_*.txt` for overall MLLM prediction accuracies.
+1. Populate your dataset paths and parameters in `eval_params_offline.yaml` and `eval_params_online.yaml`.
+2. Run `./run_offline_eval_semantic.sh` to benchmark semantic representation retrieval precision on local datasets.
+3. Run `./run_offline_eval_spatial.sh` to measure geobotanical and climate alignment retrieval precision on geolocated databases.
+4. Run `caption_test.py` to caption a set of validation images and generate embeddings.
+5. Run `evaluate_retrieval.py` on the resulting pickle output to benchmark the retrieval metrics.
+6. Inspect text reports in the `benchmark_results/` directory (e.g. `lucas_report.txt`, `places_report.txt`, `eunis_report.txt`, `environmental_zones_report.txt`) for overall alignment summaries.
