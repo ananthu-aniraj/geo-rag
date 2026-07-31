@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ from src.utils.io import load_dataframe, save_dataframe
 def main():
     parser = argparse.ArgumentParser(description="Decouple existing clustered Parquet database into memory-mapped NumPy arrays and lightweight sidecars.")
     parser.add_argument("--input", type=str, required=True, help="Path to the existing clustered/cleaned Parquet database.")
-    parser.add_argument("--k_clusters", type=int, default=50000, help="Number of clusters (k) for naming the output sidecar file.")
+    parser.add_argument("--k_clusters", type=int, default=None, help="Number of clusters (k) for naming the output sidecar file. Auto-detected if not specified.")
     parser.add_argument("--delete_csv", action="store_true", help="Delete the matching duplicate CSV file if it exists.")
     args = parser.parse_args()
 
@@ -21,6 +22,16 @@ def main():
 
     db_dir = os.path.dirname(os.path.abspath(args.input))
     base_file_name = os.path.basename(args.input)
+    
+    # Auto-detect k_clusters if not provided
+    k_clusters = args.k_clusters
+    if k_clusters is None:
+        match = re.search(r'_k_(\d+)', base_file_name)
+        if match:
+            k_clusters = int(match.group(1))
+            print(f"Auto-detected k_clusters = {k_clusters} from input filename.")
+        else:
+            k_clusters = 50000  # Default fallback
     
     print(f"Reading input database: {base_file_name}...")
     t0 = pd.Timestamp.now()
@@ -38,14 +49,35 @@ def main():
     print(f" -> Loaded metadata for {len(df_meta):,} rows.")
 
     # 3. Load and decouple heavy embeddings into NumPy binary files (.npy)
-    # Define filenames based on clean naming
-    # If the input was "geo_space_clustered_k_50000.parquet" or "geo_space_cleaned.parquet"
-    if "clustered" in base_file_name:
-        meta_name = "geo_space_cleaned"
+    # Define filenames based on clean naming matching run_full_pipeline.sh
+    # E.g., if input is ${BASE_NAME}_cleaned_clustered_k_X.parquet -> base metadata is ${BASE_NAME}_cleaned
+    if "_clustered_k_" in base_file_name:
+        meta_name = base_file_name.split("_clustered_k_")[0]
     else:
         meta_name = os.path.splitext(base_file_name)[0]
 
+    # Map cleaned rows to deduplicated row indices if we are processing a cleaned file
+    skip_npy = False
+    if "cleaned" in meta_name:
+        # Check if deduplicated metadata parquet exists in same directory
+        dedup_base = meta_name.replace("cleaned", "deduplicated")
+        dedup_path = os.path.join(db_dir, f"{dedup_base}.parquet")
+        if os.path.exists(dedup_path):
+            print(f"\nFound deduplicated metadata at: {dedup_path}. Mapping cleaned row indices...")
+            df_dedup = load_dataframe(dedup_path, columns=['Platform', 'Photo_ID'])
+            df_dedup['embedding_idx'] = np.arange(len(df_dedup), dtype=np.int32)
+            df_meta = df_meta.merge(df_dedup[['Platform', 'Photo_ID', 'embedding_idx']], on=['Platform', 'Photo_ID'], how='left')
+            df_meta['embedding_idx'] = df_meta['embedding_idx'].fillna(-1).astype(np.int32)
+            print(f" -> Mapped {len(df_meta):,} rows. Skipping cleaned .npy generation to share {dedup_base}.npy.")
+            skip_npy = True
+    elif "deduplicated" in meta_name:
+        # Assign direct sequential embedding indices to deduplicated base metadata
+        df_meta['embedding_idx'] = np.arange(len(df_meta), dtype=np.int32)
+        print(f" -> Assigned sequential embedding_idx to deduplicated dataset.")
+
     for col in embedding_cols:
+        if skip_npy:
+            continue
         npy_path = os.path.join(db_dir, f"{meta_name}.npy" if col == "embedding" else f"{meta_name}_{col}.npy")
         print(f"Extracting and saving '{col}' to binary: {npy_path}...")
         
@@ -78,7 +110,7 @@ def main():
     active_cluster_cols = [c for c in cluster_cols if c in df_meta.columns]
 
     if active_cluster_cols:
-        sidecar_name = f"{meta_name}_clustered_k_{args.k_clusters}.parquet"
+        sidecar_name = f"{meta_name}_clustered_k_{k_clusters}.parquet"
         sidecar_path = os.path.join(db_dir, sidecar_name)
         print(f"\nDecoupling cluster columns into sidecar: {sidecar_name}...")
         
