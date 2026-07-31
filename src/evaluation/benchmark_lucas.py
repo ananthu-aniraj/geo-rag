@@ -375,9 +375,9 @@ def main():
 
             for item in batch_meta:
                 try:
-                    img = Image.open(item['path']).convert("RGB")
-                    img_resized = img.resize((image_size, image_size))
-                    batch_imgs.append(img_resized)
+                    with Image.open(item['path']) as img:
+                        img_resized = img.resize((image_size, image_size)).convert("RGB")
+                        batch_imgs.append(img_resized)
                 except Exception as e:
                     print(f"Warning: Failed to load image '{item['path']}': {e}")
 
@@ -450,6 +450,12 @@ def main():
                     masked_avg_embed = avg_patch
 
                 representations["TIPSv2 Seg-Masked"][split_key].append(masked_avg_embed)
+
+            # Explicitly release image and GPU memory to keep RAM/VRAM flat
+            for img in batch_imgs:
+                img.close()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     extract_features_batch(queries_meta, "query")
     extract_features_batch(database_meta, "db")
