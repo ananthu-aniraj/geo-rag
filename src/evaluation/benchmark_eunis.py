@@ -67,32 +67,7 @@ def download_image(url, photo_id=None, image_size=448):
 
 
 # Standard EUNIS Ecosystem Class/MAES Mapping
-# This maps typical raster code values (1-12) or level-1 alphabet characters
-EUNIS_ECOSYSTEM_MAPPING = {
-    # MAES Level 1 / EUNIS Level 1 Integer codes
-    1: "Urban / Artificial",
-    2: "Cropland / Agricultural",
-    3: "Grassland",
-    4: "Woodland and forest",
-    5: "Heathland and shrub",
-    6: "Sparsely vegetated land",
-    7: "Wetland / Mire / Bog",
-    8: "Rivers and lakes (Inland water)",
-    9: "Marine / Sea",
-    10: "Coastal / Dunes",
-
-    # EUNIS Level 1 Alphabet codes
-    "A": "Marine habitats",
-    "B": "Coastal habitats",
-    "C": "Inland surface waters",
-    "D": "Mires, bogs and fens",
-    "E": "Grasslands",
-    "F": "Heathland, scrub and tundra",
-    "G": "Woodland, forest and other wooded land",
-    "H": "Inland habitats with very sparse or no vegetation",
-    "I": "Cultivated agricultural, horticultural and domestic habitats",
-    "J": "Constructed, industrial and other artificial habitats"
-}
+from src.utils.class_mappings_eunis_env_zones import EUNIS_ECOSYSTEM_MAPPING
 
 
 def load_eunis_mapping_from_dbf(dbf_path):

@@ -25,7 +25,7 @@ DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, b
 
 
 def load_lucas_metadata(csv_path):
-    """Loads LUCAS metadata and maps the 8-digit point ID to its land cover, land use, and EUNIS class labels."""
+    """Loads LUCAS metadata and maps the 8-digit point ID to its land cover, land use, EUNIS class, and coordinates."""
     if not os.path.exists(csv_path):
         print(f"Error: Metadata file '{csv_path}' not found.")
         sys.exit(1)
@@ -46,10 +46,103 @@ def load_lucas_metadata(csv_path):
             'im_id': im_id,
             'lc_label': row.get('lc_label', ''),
             'lu_label': row.get('lu_label', ''),
-            'eunis_class': row.get('eunis_class', '')
+            'eunis_class': row.get('eunis_class', ''),
+            'lat': float(row.get('lat', 0.0)) if pd.notna(row.get('lat')) else 0.0,
+            'lon': float(row.get('lon', 0.0)) if pd.notna(row.get('lon')) else 0.0
         }
 
     return metadata, df
+
+
+def map_lucas_coordinates_to_rasters(metadata_dict, eunis_raster_path=None, env_zones_raster_path=None):
+    """
+    Overlays LUCAS point coordinates onto EUNIS and Environmental Zones GeoTIFF rasters
+    and appends the resolved class names to each metadata record.
+    """
+    import rasterio
+    from pyproj import Transformer
+    from src.utils.class_mappings_eunis_env_zones import EUNIS_ECOSYSTEM_MAPPING, ENV_ZONES_MAPPING
+    
+    # 1. Handle EUNIS Raster mapping
+    if eunis_raster_path and os.path.exists(eunis_raster_path):
+        print(f"Mapping LUCAS coordinates to EUNIS Ecosystem classes from: {eunis_raster_path}...")
+        try:
+            with rasterio.open(eunis_raster_path) as r_ds:
+                transformer = Transformer.from_crs("epsg:4326", r_ds.crs, always_axis_order=True)
+                
+                # Check for dynamic DBF mapping
+                dbf_path = os.path.splitext(eunis_raster_path)[0] + ".vat.dbf"
+                dynamic_mapping = {}
+                if os.path.exists(dbf_path):
+                    try:
+                        import geopandas as gpd
+                        gdf = gpd.read_file(dbf_path)
+                        val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
+                        label_col = next((c for c in gdf.columns if c.lower() in ["maes_l2", "maes_level2", "class_name"]), None)
+                        if val_col and label_col:
+                            for _, row in gdf.iterrows():
+                                val = int(float(str(row[val_col])))
+                                label = str(row[label_col]).strip()
+                                if label and label.lower() != 'none':
+                                    dynamic_mapping[val] = label
+                    except Exception as ex:
+                        print(f"Warning: Failed to load DBF attribute mapping: {ex}")
+                
+                eunis_map = dynamic_mapping if dynamic_mapping else EUNIS_ECOSYSTEM_MAPPING
+                
+                for clean_id, item in metadata_dict.items():
+                    lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
+                    if lat == 0.0 and lon == 0.0:
+                        item['eunis_raster_class'] = ''
+                        continue
+                    try:
+                        x, y = transformer.transform(lon, lat)
+                        pixel_val = list(r_ds.sample([(x, y)]))[0][0]
+                        if pixel_val == r_ds.nodata or pixel_val <= 0:
+                            item['eunis_raster_class'] = ''
+                        else:
+                            # Map EUNIS class
+                            label = eunis_map.get(pixel_val, eunis_map.get(str(pixel_val), "Unknown"))
+                            item['eunis_raster_class'] = label if label != "Unknown" else ''
+                    except Exception:
+                        item['eunis_raster_class'] = ''
+        except Exception as e:
+            print(f"Error mapping coordinates to EUNIS: {e}")
+            for item in metadata_dict.values():
+                item['eunis_raster_class'] = ''
+    else:
+        for item in metadata_dict.values():
+            item['eunis_raster_class'] = ''
+
+    # 2. Handle Environmental Zones mapping
+    if env_zones_raster_path and os.path.exists(env_zones_raster_path):
+        print(f"Mapping LUCAS coordinates to Environmental Zones from: {env_zones_raster_path}...")
+        try:
+            with rasterio.open(env_zones_raster_path) as r_ds:
+                transformer = Transformer.from_crs("epsg:4326", r_ds.crs, always_axis_order=True)
+                
+                for clean_id, item in metadata_dict.items():
+                    lat, lon = item.get('lat', 0.0), item.get('lon', 0.0)
+                    if lat == 0.0 and lon == 0.0:
+                        item['env_zone_class'] = ''
+                        continue
+                    try:
+                        x, y = transformer.transform(lon, lat)
+                        pixel_val = list(r_ds.sample([(x, y)]))[0][0]
+                        if pixel_val == r_ds.nodata or pixel_val <= 0:
+                            item['env_zone_class'] = ''
+                        else:
+                            label = ENV_ZONES_MAPPING.get(pixel_val, '')
+                            item['env_zone_class'] = label
+                    except Exception:
+                        item['env_zone_class'] = ''
+        except Exception as e:
+            print(f"Error mapping coordinates to Environmental Zones: {e}")
+            for item in metadata_dict.values():
+                item['env_zone_class'] = ''
+    else:
+        for item in metadata_dict.values():
+            item['env_zone_class'] = ''
 
 
 def get_class_lists(df):
@@ -136,6 +229,10 @@ def main():
                         help="Path to write the report summary.")
     parser.add_argument("--output_csv", type=str, default="./benchmark_results/lucas_results.csv",
                         help="Path to write detailed query CSV results.")
+    parser.add_argument("--eunis_raster", type=str, default=None,
+                        help="Path to the EUNIS Ecosystem GeoTIFF raster file for spatial overlay.")
+    parser.add_argument("--env_zones_raster", type=str, default=None,
+                        help="Path to the Metzger Environmental Zones GeoTIFF raster file for spatial overlay.")
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -145,6 +242,9 @@ def main():
     # 1. Load metadata and scan for local images
     metadata_dict, df = load_lucas_metadata(args.csv)
     lc_list, lu_list, eunis_list = get_class_lists(df)
+    
+    # Map coordinates to rasters if paths are provided
+    map_lucas_coordinates_to_rasters(metadata_dict, args.eunis_raster, args.env_zones_raster)
 
     print(f"Scanning for images in {args.img_dir}...")
     matched_images = []
@@ -166,7 +266,11 @@ def main():
                             'direction': direction,
                             'lc_label': metadata_dict[point_num]['lc_label'],
                             'lu_label': metadata_dict[point_num]['lu_label'],
-                            'eunis_class': metadata_dict[point_num]['eunis_class']
+                            'eunis_class': metadata_dict[point_num]['eunis_class'],
+                            'eunis_raster_class': metadata_dict[point_num].get('eunis_raster_class', ''),
+                            'env_zone_class': metadata_dict[point_num].get('env_zone_class', ''),
+                            'lat': metadata_dict[point_num].get('lat', 0.0),
+                            'lon': metadata_dict[point_num].get('lon', 0.0)
                         })
 
     if not matched_images:
@@ -366,7 +470,18 @@ def main():
 
     # 4. Retrieval & Similarity Benchmarking
     label_types = ["lc_label", "lu_label", "eunis_class"]
-    label_names = {"lc_label": "Land Cover", "lu_label": "Land Use", "eunis_class": "EUNIS Class"}
+    label_names = {"lc_label": "Land Cover", "lu_label": "Land Use", "eunis_class": "EUNIS Class (CSV)"}
+    
+    # Check if raster values were loaded and append them
+    has_eunis_raster = any(q.get('eunis_raster_class', '') != '' for q in queries_meta)
+    if has_eunis_raster:
+        label_types.append("eunis_raster_class")
+        label_names["eunis_raster_class"] = "EUNIS Ecosystem (Raster)"
+        
+    has_env_zones = any(q.get('env_zone_class', '') != '' for q in queries_meta)
+    if has_env_zones:
+        label_types.append("env_zone_class")
+        label_names["env_zone_class"] = "Environmental Zones (Raster)"
 
     results = {}
     detailed_rows = []

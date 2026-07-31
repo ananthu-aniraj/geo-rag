@@ -30,7 +30,8 @@ dependencies = [
     "scikit-learn",
     "dvc",
     "dvc-ssh",
-    "plotly"
+    "plotly",
+    "openpyxl"
 ]
 
 [project.optional-dependencies]

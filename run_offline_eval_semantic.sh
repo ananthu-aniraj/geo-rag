@@ -42,9 +42,15 @@ if [ ! -d "$PLACES_IMG_DIR" ]; then
     echo "Warning: Places365 validation image directory not found at '$PLACES_IMG_DIR'."
 fi
 
-echo "Configuration (Loaded from eval_params_offline.yaml):"
+# Optional raster parameters for spatial overlay in LUCAS benchmark (loaded from eval_params_online.yaml)
+ENV_RASTER=$(python3 -c "import yaml; print(yaml.safe_load(open('eval_params_online.yaml'))['environmental_zones']['raster'])")
+EUNIS_RASTER=$(python3 -c "import yaml; print(yaml.safe_load(open('eval_params_online.yaml'))['eunis']['raster'])")
+
+echo "Configuration (Loaded from eval_params_offline.yaml & eval_params_online.yaml):"
 echo "- LUCAS Metadata: $LUCAS_CSV"
 echo "- LUCAS Image Dir: $LUCAS_IMG_DIR"
+echo "- EUNIS Raster: $EUNIS_RASTER"
+echo "- Env Zones Raster: $ENV_RASTER"
 echo "- Places365 Hierarchy: $PLACES_LABELS"
 echo "- Places365 Image Dir: $PLACES_IMG_DIR"
 echo "================================================================================"
@@ -58,6 +64,8 @@ python3 -m src.evaluation.benchmark_lucas \
   --num_database "$LUCAS_DB" \
   --batch_size "$LUCAS_BATCH" \
   --seed "$LUCAS_SEED" \
+  --eunis_raster "$EUNIS_RASTER" \
+  --env_zones_raster "$ENV_RASTER" \
   --output_report "$OUTPUT_DIR/lucas_report.txt" \
   --output_csv "$OUTPUT_DIR/lucas_results.csv"
 

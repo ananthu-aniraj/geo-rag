@@ -16,6 +16,7 @@ scikit-learn
 dvc
 dvc-ssh
 plotly
+openpyxl
 
 # --- Deep Learning & GPU Operations ---
 # Install these manually matching your CUDA GPU drivers:

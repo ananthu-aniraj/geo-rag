@@ -66,27 +66,7 @@ def download_image(url, photo_id=None, image_size=448):
     return None
 
 # Environmental Zones 2025 (version 2.0 / Metzger 2025) Value Mapping
-ENV_ZONES_MAPPING = {
-    1: "Alpine North (ALN)",
-    2: "Boreal (BOR)",
-    3: "Nemoral (NEM)",
-    4: "Atlantic North (ATN)",
-    5: "Atlantic Central (ATC)",
-    6: "Lusitanian (LUS)",
-    7: "Alpine South (ALS)",
-    8: "Continental (CON)",
-    9: "Pannonian (PAN)",
-    10: "Mediterranean North (MDN)",
-    11: "Mediterranean Mountains (MDM)",
-    12: "Mediterranean South (MDS)",
-    13: "Aegean (AEG)",
-    14: "Blacksea climate region (BSC)",
-    15: "Central Anatolian (CAN)",
-    16: "Eastern Anatolian (EAN)",
-    17: "Southwest Anatolian transition region (SAN)",
-    18: "Macaronesian (MAC)",
-    19: "Arctic (ARC)"
-}
+from src.utils.class_mappings_eunis_env_zones import ENV_ZONES_MAPPING
 
 
 def get_zone_label(val):
