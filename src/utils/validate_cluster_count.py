@@ -7,9 +7,8 @@ import h3
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
-from src.utils.io import load_dataframe
+from src.utils.io import load_dataframe, load_embeddings
 
 try:
     import faiss
@@ -149,25 +148,10 @@ def main():
             print(f"Downsampling validation set to {val_limit:,} images...")
             val_df = val_df.sample(n=val_limit, random_state=42)
 
-    # 5. Extract Embeddings to Float32 Numpy Arrays (required by FAISS) using PyArrow
-    print("Loading raw embedding matrix using PyArrow...")
+    # 5. Extract Embeddings to Float32 Numpy Arrays (required by FAISS) using backward-compatible loader
+    print("Loading raw embedding matrix...")
     t0 = time.time()
-    import pyarrow.parquet as pq
-    table = pq.read_table(args.input, columns=["embedding"])
-    
-    num_rows = len(table)
-    chunked_arr = table['embedding']
-    dim = len(chunked_arr.chunk(0)[0].as_py())
-    
-    embeddings_matrix = np.empty((num_rows, dim), dtype=np.float32)
-    current_row = 0
-    for chunk in tqdm(chunked_arr.chunks, desc="Processing embedding chunks"):
-        chunk_len = len(chunk)
-        flat_chunk = chunk.flatten().to_numpy()
-        embeddings_matrix[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
-        current_row += chunk_len
-        
-    del table
+    embeddings_matrix = load_embeddings(args.input)
     print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
     print("Slicing train/val embedding matrices...")

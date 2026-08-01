@@ -2,12 +2,14 @@ import argparse
 import math
 import os
 import pickle
+import re
 
 import folium
 import h3
+import pyarrow.parquet as pq
 from folium.plugins import MarkerCluster
 
-from src.utils.io import load_dataframe
+from src.utils.io import load_dataset_with_clusters
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
@@ -28,21 +30,29 @@ def create_map(pkl_path, output_html, max_markers=1000):
         with open(pkl_path, 'rb') as f:
             data = pickle.load(f)
     else:
-        # Assume Parquet
-        import pyarrow.parquet as pq
+       # Auto-extract k_clusters from filename
+        k_clusters = 50000
+        match = re.search(r'_k_(\d+)', pkl_path)
+        if match:
+            k_clusters = int(match.group(1))
+
         try:
             parquet_file = pq.ParquetFile(pkl_path)
             available_cols = parquet_file.schema_arrow.names
+
+            # Since cluster columns could be in sidecar, we list them all as targets
             target_cols = [
-                'Latitude', 'Longitude', 'H3_Cell', 'cluster_id', 'cluster_label', 
-                'cluster_description', 'parent_cluster_id', 'parent_cluster_label', 
+                'Latitude', 'Longitude', 'H3_Cell', 'cluster_id', 'cluster_label',
+                'cluster_description', 'parent_cluster_id', 'parent_cluster_label',
                 'parent_cluster_description', 'Platform', 'Captured_At', 'Image_URL', 'Photo_ID',
                 'Koppen_Code', 'Koppen_Desc', 'Season'
             ]
-            load_cols = [c for c in target_cols if c in available_cols]
-            df = load_dataframe(pkl_path, columns=load_cols)
+
+            # Load sidecar columns if available in index or sidecar
+            load_cols = [c for c in target_cols]
+            df = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters, columns=load_cols)
         except Exception:
-            df = load_dataframe(pkl_path)
+            df = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
         data = df.to_dict('records')
 
     # Load marker popup template
@@ -65,14 +75,14 @@ def create_map(pkl_path, output_html, max_markers=1000):
 
     # Calculate center of the map (robustly handling the antimeridian)
     avg_lat = sum(item['Latitude'] for item in plot_data) / len(plot_data)
-    
+
     # Use vector averaging for longitude to handle wrap-around
     x = sum(math.cos(math.radians(item['Longitude'])) for item in plot_data) / len(plot_data)
     y = sum(math.sin(math.radians(item['Longitude'])) for item in plot_data) / len(plot_data)
     avg_lon = math.degrees(math.atan2(y, x))
 
     m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12, tiles='CartoDB Positron')
-    
+
     # Prepare H3 Cell Polygons
     unique_cells = set(item['H3_Cell'] for item in plot_data if 'H3_Cell' in item)
     features = []
@@ -82,7 +92,7 @@ def create_map(pkl_path, output_html, max_markers=1000):
             # GeoJSON expects [lng, lat] and a closed loop
             geojson_coords = [[lng, lat] for lat, lng in boundary]
             geojson_coords.append(geojson_coords[0])
-            
+
             features.append({
                 "type": "Feature",
                 "geometry": {
@@ -93,7 +103,7 @@ def create_map(pkl_path, output_html, max_markers=1000):
             })
         except Exception:
             continue
-            
+
     if features:
         folium.GeoJson(
             {"type": "FeatureCollection", "features": features},
@@ -122,10 +132,10 @@ def create_map(pkl_path, output_html, max_markers=1000):
             group_id = item.get('parent_cluster_id', item['cluster_id'])
             color = colors[group_id % len(colors)]
             label = item.get('cluster_label', 'Unlabeled')
-            
+
             parent_lbl = item.get('parent_cluster_label', '')
             parent_text = f"<b>Parent Cluster:</b> {parent_lbl} (ID: {item['parent_cluster_id']})<br>" if parent_lbl else ""
-            
+
             cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br><b>Labels:</b> {label}<br>{parent_text}"
             if 'cluster_description' in item and item['cluster_description']:
                 cluster_text += f"<b>Description:</b> <span style='font-style: italic; font-size: 0.9em; color: #555;'>{item['cluster_description']}</span><br>"
@@ -134,8 +144,11 @@ def create_map(pkl_path, output_html, max_markers=1000):
             cluster_text = ""
 
         # Create a popup with the image and metadata
-        taken_text = f"<b>Captured At:</b> {item['Captured_At']}<br>" if 'Captured_At' in item and item['Captured_At'] else ""
-        koppen_text = f"<b>Climate:</b> {item['Koppen_Code']} - {item['Koppen_Desc']}<br>" if 'Koppen_Code' in item and item['Koppen_Code'] else ""
+        taken_text = f"<b>Captured At:</b> {item['Captured_At']}<br>" if 'Captured_At' in item and item[
+            'Captured_At'] else ""
+        koppen_text = f"<b>Climate:</b> {item['Koppen_Code']} - {item['Koppen_Desc']}<br>" if 'Koppen_Code' in item and \
+                                                                                              item[
+                                                                                                  'Koppen_Code'] else ""
         season_text = f"<b>Season:</b> {item['Season']}<br>" if 'Season' in item and item['Season'] else ""
 
         html = popup_template.format(

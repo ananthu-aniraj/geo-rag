@@ -4,21 +4,17 @@ import glob
 import json
 import os
 import pickle
+import re
 import time
 from collections import Counter
 
+import h3
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
 import requests
 from tqdm import tqdm
 
-from src.utils.io import load_dataframe
-
-try:
-    import h3
-except ImportError:
-    h3 = None
+from src.utils.io import load_dataframe, load_dataset_with_clusters, load_embeddings
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
@@ -33,29 +29,18 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         del data
         embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
-        # Load metadata only (uses ~200MB RAM)
-        parquet_file = pq.ParquetFile(pkl_path)
-        metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
-        df = load_dataframe(pkl_path, columns=metadata_cols)
+        # Auto-extract k_clusters from filename
+        k_clusters = 50000
+        match = re.search(r'_k_(\d+)', pkl_path)
+        if match:
+            k_clusters = int(match.group(1))
 
-        # Load embeddings via PyArrow
-        print("Loading raw embedding matrix using PyArrow...")
+        df = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
+
+        # Load embeddings
+        print("Loading raw embedding matrix...")
         t0 = time.time()
-        table = pq.read_table(pkl_path, columns=["embedding"])
-
-        num_rows = len(table)
-        chunked_arr = table['embedding']
-        dim = len(chunked_arr.chunk(0)[0].as_py())
-
-        embeddings = np.empty((num_rows, dim), dtype=np.float32)
-        current_row = 0
-        for chunk in chunked_arr.chunks:
-            chunk_len = len(chunk)
-            flat_chunk = chunk.flatten().to_numpy()
-            embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
-            current_row += chunk_len
-
-        del table
+        embeddings = load_embeddings(pkl_path)
         print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
     if len(df) == 0 or 'cluster_id' not in df.columns:
