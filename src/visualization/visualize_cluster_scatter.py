@@ -1,4 +1,6 @@
 import argparse
+import os
+import re
 import sys
 import time
 
@@ -7,17 +9,17 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import pyarrow.parquet as pq
 import seaborn as sns
 import umap
 from sklearn.preprocessing import normalize
+
+from src.utils.io import load_dataset_with_clusters, load_embeddings
 
 
 def create_scatter_plot(pkl_path, output_png):
     print(f"Loading clustered data from {pkl_path}...")
     start_time = time.time()
-    
-    # 1. Read metadata and accumulate centroids chunk-by-chunk to prevent OOM
-    import pyarrow.parquet as pq
     try:
         pf = pq.ParquetFile(pkl_path)
         available_cols = pf.schema_arrow.names
@@ -25,60 +27,120 @@ def create_scatter_plot(pkl_path, output_png):
         print(f"Error opening parquet file: {e}")
         sys.exit(1)
 
-    required_cols = ['cluster_id', 'embedding']
-    for c in required_cols:
-        if c not in available_cols:
-            print(f"Error: Input dataset is missing required column: '{c}'")
-            sys.exit(1)
+    db_dir = os.path.dirname(os.path.abspath(pkl_path))
+    base_name = os.path.splitext(os.path.basename(pkl_path))[0]
 
-    cluster_sums = {}       # cluster_id -> np.ndarray sum of embeddings
-    cluster_counts = {}     # cluster_id -> count of images
-    cluster_metadata = {}   # cluster_id -> {label, parent, description}
+    # Auto-extract k_clusters from filename
+    k_clusters = 50000
+    match = re.search(r'_k_(\d+)', pkl_path)
+    if match:
+        k_clusters = int(match.group(1))
 
-    print("Accumulating centroids and metadata from Parquet row groups...")
+    # Trim '_clustered_k_X' suffix if present to find base name
+    clean_base_name = base_name
+    if "_clustered_k_" in clean_base_name:
+        clean_base_name = clean_base_name.split("_clustered_k_")[0]
+
+    sidecar_name = f"{clean_base_name}_clustered_k_{k_clusters}.parquet"
+    sidecar_path = os.path.join(db_dir, sidecar_name)
+    npy_path = os.path.join(db_dir, f"{clean_base_name}.npy")
+
+    has_decoupled_layout = ('cluster_id' not in available_cols) and os.path.exists(sidecar_path) and os.path.exists(
+        npy_path)
+
+    if not has_decoupled_layout:
+        required_cols = ['cluster_id', 'embedding']
+        for c in required_cols:
+            if c not in available_cols:
+                print(f"Error: Input dataset is missing required column: '{c}'")
+                sys.exit(1)
+
+    cluster_sums = {}  # cluster_id -> np.ndarray sum of embeddings
+    cluster_counts = {}  # cluster_id -> count of images
+    cluster_metadata = {}  # cluster_id -> {label, parent, description}
+
+    print("Accumulating centroids and metadata...")
     dim = None
 
-    for rg in range(pf.num_row_groups):
-        columns_to_read = ['cluster_id', 'embedding']
-        for extra in ['cluster_label', 'parent_cluster_label', 'cluster_description', 'Platform']:
-            if extra in available_cols:
-                columns_to_read.append(extra)
-        
-        table = pf.read_row_group(rg, columns=columns_to_read)
-        df_rg = table.to_pandas()
-        if len(df_rg) == 0:
-            continue
+    if not has_decoupled_layout:
+        # Case A: Old format contains embeddings and clusters inside Parquet
+        for rg in range(pf.num_row_groups):
+            columns_to_read = ['cluster_id', 'embedding']
+            for extra in ['cluster_label', 'parent_cluster_label', 'cluster_description', 'Platform']:
+                if extra in available_cols:
+                    columns_to_read.append(extra)
 
-        # Extract embeddings matrix for this chunk
-        embs = np.vstack(df_rg['embedding'].values).astype(np.float32)
-        if dim is None:
-            dim = embs.shape[1]
-            print(f"Detected embedding dimensionality: {dim}")
-
-        c_ids = df_rg['cluster_id'].values
-
-        # Fast vectorized accumulation by unique ID in the chunk
-        for unique_id in np.unique(c_ids):
-            if unique_id is None or pd.isna(unique_id):
+            table = pf.read_row_group(rg, columns=columns_to_read)
+            df_rg = table.to_pandas()
+            if len(df_rg) == 0:
                 continue
-            unique_id = int(unique_id)
-            mask = (c_ids == unique_id)
-            sum_emb = embs[mask].sum(axis=0)
-            count = int(mask.sum())
 
-            if unique_id not in cluster_sums:
-                cluster_sums[unique_id] = sum_emb
-                cluster_counts[unique_id] = count
-                # Capture metadata from first occurrence in this chunk
-                idx = np.where(mask)[0][0]
-                cluster_metadata[unique_id] = {
-                    'label': df_rg.iloc[idx].get('cluster_label', f"Cluster {unique_id}"),
-                    'parent': df_rg.iloc[idx].get('parent_cluster_label', f"Parent {int(unique_id)//80}"),
-                    'description': df_rg.iloc[idx].get('cluster_description', "No description available")
-                }
-            else:
-                cluster_sums[unique_id] += sum_emb
-                cluster_counts[unique_id] += count
+            # Extract embeddings matrix for this chunk
+            embs = np.vstack(df_rg['embedding'].values).astype(np.float32)
+            if dim is None:
+                dim = embs.shape[1]
+                print(f"Detected embedding dimensionality: {dim}")
+
+            c_ids = df_rg['cluster_id'].values
+
+            # Fast vectorized accumulation by unique ID in the chunk
+            for unique_id in np.unique(c_ids):
+                if unique_id is None or pd.isna(unique_id):
+                    continue
+                unique_id = int(unique_id)
+                mask = (c_ids == unique_id)
+                sum_emb = embs[mask].sum(axis=0)
+                count = int(mask.sum())
+
+                if unique_id not in cluster_sums:
+                    cluster_sums[unique_id] = sum_emb
+                    cluster_counts[unique_id] = count
+                    idx = np.where(mask)[0][0]
+                    cluster_metadata[unique_id] = {
+                        'label': df_rg.iloc[idx].get('cluster_label', f"Cluster {unique_id}"),
+                        'parent': df_rg.iloc[idx].get('parent_cluster_label', f"Parent {int(unique_id) // 80}"),
+                        'description': df_rg.iloc[idx].get('cluster_description', "No description available")
+                    }
+                else:
+                    cluster_sums[unique_id] += sum_emb
+                    cluster_counts[unique_id] += count
+    else:
+        # Case B: New decoupled format (load metadata/clusters and memory-mapped embeddings)
+        df_meta = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
+        embeddings = load_embeddings(pkl_path)
+        dim = embeddings.shape[1]
+        print(f"Detected decoupled embedding matrix dimensionality: {dim}")
+
+        c_ids = df_meta['cluster_id'].values
+
+        # Process in memory-safe chunks of 100,000 rows
+        chunk_size = 100000
+        for start_idx in range(0, len(df_meta), chunk_size):
+            end_idx = min(start_idx + chunk_size, len(df_meta))
+            chunk_df = df_meta.iloc[start_idx:end_idx]
+            chunk_embs = embeddings[start_idx:end_idx]
+            chunk_c_ids = c_ids[start_idx:end_idx]
+
+            for unique_id in np.unique(chunk_c_ids):
+                if unique_id is None or pd.isna(unique_id):
+                    continue
+                unique_id = int(unique_id)
+                mask = (chunk_c_ids == unique_id)
+                sum_emb = chunk_embs[mask].sum(axis=0)
+                count = int(mask.sum())
+
+                if unique_id not in cluster_sums:
+                    cluster_sums[unique_id] = sum_emb
+                    cluster_counts[unique_id] = count
+                    idx = np.where(mask)[0][0]
+                    cluster_metadata[unique_id] = {
+                        'label': chunk_df.iloc[idx].get('cluster_label', f"Cluster {unique_id}"),
+                        'parent': chunk_df.iloc[idx].get('parent_cluster_label', f"Parent {int(unique_id) // 80}"),
+                        'description': chunk_df.iloc[idx].get('cluster_description', "No description available")
+                    }
+                else:
+                    cluster_sums[unique_id] += sum_emb
+                    cluster_counts[unique_id] += count
 
     num_clusters = len(cluster_sums)
     if num_clusters == 0:
@@ -115,11 +177,14 @@ def create_scatter_plot(pkl_path, output_png):
             'image_count': cluster_counts[c_id]
         })
     df_plot = pd.DataFrame(plot_data)
+    df_plot['parent_cluster_label'] = df_plot['parent_cluster_label'].fillna("Unknown").astype(str)
+    df_plot['cluster_label'] = df_plot['cluster_label'].fillna("").astype(str)
+    df_plot['cluster_description'] = df_plot['cluster_description'].fillna("").astype(str)
 
     # --- SAVE INTERACTIVE HTML PLOT (PLOTLY) ---
     output_html = output_png.replace('.png', '.html')
     print("Generating interactive WebGL scatter plot...")
-    
+
     # Scale marker sizes: min size 5, max size 30
     max_count = df_plot['image_count'].max()
     min_count = df_plot['image_count'].min()
@@ -148,7 +213,7 @@ def create_scatter_plot(pkl_path, output_png):
     for parent in parent_categories:
         df_sub = df_plot[df_plot['parent_cluster_label'] == parent]
         sub_hover = [hover_templates[idx] for idx in df_sub.index]
-        
+
         fig.add_trace(go.Scattergl(
             x=df_sub['x'],
             y=df_sub['y'],
@@ -184,7 +249,7 @@ def create_scatter_plot(pkl_path, output_png):
         margin=dict(r=250, t=60, b=40, l=40),
         template="plotly_white"
     )
-    
+
     print(f"Saving interactive WebGL scatter plot to {output_html}...")
     fig.write_html(output_html)
 
@@ -198,7 +263,8 @@ def create_scatter_plot(pkl_path, output_png):
     num_parents = len(parent_categories)
     if num_parents > 0:
         hue_order = parent_categories
-        palette = sns.color_palette("tab20", n_colors=num_parents) if num_parents <= 20 else sns.color_palette("husl", num_parents)
+        palette = sns.color_palette("tab20", n_colors=num_parents) if num_parents <= 20 else sns.color_palette("husl",
+                                                                                                               num_parents)
     else:
         hue_order = None
         palette = 'viridis'
@@ -233,12 +299,13 @@ def create_scatter_plot(pkl_path, output_png):
     print(f"Saving static scatter plot to {output_png}...")
     plt.savefig(output_png, dpi=300)
     plt.close()
-    
+
     print(f"🎉 Complete visualization processing finished in {time.time() - start_time:.2f}s.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Visualize cluster centroids in an interactive 2D semantic scatter plot using UMAP.")
+    parser = argparse.ArgumentParser(
+        description="Visualize cluster centroids in an interactive 2D semantic scatter plot using UMAP.")
     parser.add_argument("--pkl", type=str, required=True, help="Path to the clustered parquet or pkl file.")
     parser.add_argument("--out", type=str, default="cluster_scatter.png", help="Output PNG file name.")
     args = parser.parse_args()
