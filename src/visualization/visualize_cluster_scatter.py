@@ -13,6 +13,7 @@ import pyarrow.parquet as pq
 import seaborn as sns
 import umap
 from sklearn.preprocessing import normalize
+from tqdm import tqdm
 
 from src.utils.io import load_dataset_with_clusters, load_embeddings
 
@@ -64,7 +65,7 @@ def create_scatter_plot(pkl_path, output_png):
 
     if not has_decoupled_layout:
         # Case A: Old format contains embeddings and clusters inside Parquet
-        for rg in range(pf.num_row_groups):
+        for rg in tqdm(range(pf.num_row_groups), desc="Processing row groups"):
             columns_to_read = ['cluster_id', 'embedding']
             for extra in ['cluster_label', 'parent_cluster_label', 'cluster_description', 'Platform']:
                 if extra in available_cols:
@@ -84,7 +85,7 @@ def create_scatter_plot(pkl_path, output_png):
             c_ids = df_rg['cluster_id'].values
 
             # Fast vectorized accumulation by unique ID in the chunk
-            for unique_id in np.unique(c_ids):
+            for unique_id in tqdm(np.unique(c_ids), desc="Processing clusters"):
                 if unique_id is None or pd.isna(unique_id):
                     continue
                 unique_id = int(unique_id)
@@ -115,13 +116,13 @@ def create_scatter_plot(pkl_path, output_png):
 
         # Process in memory-safe chunks of 100,000 rows
         chunk_size = 100000
-        for start_idx in range(0, len(df_meta), chunk_size):
+        for start_idx in tqdm(range(0, len(df_meta), chunk_size), desc="Processing chunks"):
             end_idx = min(start_idx + chunk_size, len(df_meta))
             chunk_df = df_meta.iloc[start_idx:end_idx]
             chunk_embs = embeddings[start_idx:end_idx]
             chunk_c_ids = c_ids[start_idx:end_idx]
 
-            for unique_id in np.unique(chunk_c_ids):
+            for unique_id in tqdm(np.unique(chunk_c_ids), desc="Processing clusters"):
                 if unique_id is None or pd.isna(unique_id):
                     continue
                 unique_id = int(unique_id)
