@@ -291,12 +291,14 @@ def main():
             "TIPSv2 1st CLS": {"query": [], "db": []},
             "TIPSv2 2nd CLS": {"query": [], "db": []},
             "TIPSv2 Average Patch": {"query": [], "db": []},
+            "TIPSv2 1st CLS + Avg Patch": {"query": [], "db": []},
             "TIPSv2 Seg-Masked": {"query": [], "db": []}
         })
     else:
         representations.update({
             "TIPSv2 CLS": {"query": [], "db": []},
             "TIPSv2 Average Patch": {"query": [], "db": []},
+            "TIPSv2 CLS + Avg Patch": {"query": [], "db": []},
             "TIPSv2 Seg-Masked": {"query": [], "db": []}
         })
 
@@ -384,6 +386,14 @@ def main():
                 # TIPSv2 Average Patch
                 avg_patch = np.mean(patch_tokens, axis=0)
                 representations["TIPSv2 Average Patch"][split_key].append(avg_patch)
+
+                # TIPSv2 CLS + Average Patch Concatenation
+                if args.tips_model_path:
+                    cls_val = first_cls[idx]
+                    representations["TIPSv2 1st CLS + Avg Patch"][split_key].append(np.concatenate([cls_val, avg_patch]))
+                else:
+                    cls_val = cls_tokens[idx]
+                    representations["TIPSv2 CLS + Avg Patch"][split_key].append(np.concatenate([cls_val, avg_patch]))
 
                 # TIPSv2 Seg-Masked
                 keep_mask = np.ones_like(pred_mask, dtype=float)
