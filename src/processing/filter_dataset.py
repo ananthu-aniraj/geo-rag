@@ -3,7 +3,7 @@ import os
 
 import requests
 
-from src.utils.io import load_dataframe, save_dataframe
+from src.utils.io import load_dataset_with_clusters, save_dataframe
 
 
 def geocode_location(location_name):
@@ -67,7 +67,7 @@ def main():
 
     # Load dataset
     print(f"Loading dataset from {args.input}...")
-    df = load_dataframe(args.input)
+    df = load_dataset_with_clusters(args.input)
     initial_len = len(df)
     print(f"Loaded {initial_len} records.")
 

@@ -9,7 +9,7 @@ import requests
 from shapely.geometry import Point, box as shapely_box
 from tqdm import tqdm
 
-from src.utils.io import load_dataframe, save_dataframe
+from src.utils.io import load_dataset_with_clusters, save_dataframe
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
@@ -101,7 +101,7 @@ def main():
     out_path = args.output if args.output else args.input
 
     print(f"Loading dataset from {args.input}...")
-    df = load_dataframe(args.input)
+    df = load_dataset_with_clusters(args.input)
 
     # Ensure License column exists
     if 'License' not in df.columns:

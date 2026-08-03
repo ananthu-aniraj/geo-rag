@@ -139,7 +139,12 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
         
+    core_name = get_core_base_name(base_name)
+    
+    # Try finding sidecar with full base_name or core_name
     sidecar_path = os.path.join(db_dir, f"{base_name}_clustered_k_{k_clusters}.parquet")
+    if not os.path.exists(sidecar_path):
+        sidecar_path = os.path.join(db_dir, f"{core_name}_clustered_k_{k_clusters}.parquet")
 
     if os.path.exists(sidecar_path) and req_cluster_cols:
         # We need Platform and Photo_ID in both dataframes for merging
