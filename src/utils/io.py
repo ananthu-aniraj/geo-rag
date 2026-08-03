@@ -1,5 +1,8 @@
+import glob
 import os
+import re
 
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -57,25 +60,24 @@ def save_dataframe(df, file_path, index=False, **kwargs):
         # Default to high-performance zstd compression
         if 'compression' not in kwargs:
             kwargs['compression'] = 'zstd'
-            
+
         if 'embedding' in df.columns:
-            import numpy as np
             db_dir = os.path.dirname(os.path.abspath(file_path))
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
             npy_path = os.path.join(db_dir, f"{base_name}.npy")
-            
+
             print(f" -> Automatically decoupling embeddings to companion file: {npy_path}")
             embs = np.vstack(df['embedding'].values).astype(np.float32)
             np.save(npy_path, embs)
-            
+
             df_to_save = df.copy()
             df_to_save['embedding_idx'] = np.arange(len(df_to_save), dtype=np.int32)
             df_to_save = df_to_save.drop(columns=['embedding'])
             df_to_save.to_parquet(file_path, index=index, **kwargs)
             return
-            
+
         df.to_parquet(file_path, index=index, **kwargs)
     elif ext == '.csv':
         df.to_csv(file_path, index=index, **kwargs)
@@ -108,8 +110,12 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(f"File not found: {parquet_path}")
 
+    # Auto-detect k_clusters if the input filename contains it
+    match = re.search(r'_clustered_k_(\d+)', os.path.basename(parquet_path))
+    if match:
+        k_clusters = int(match.group(1))
+
     # Auto-extract k_clusters from filename if it has _k_X suffix
-    import re
     match = re.search(r'_k_(\d+)', os.path.basename(parquet_path))
     if match:
         k_clusters = int(match.group(1))
@@ -189,7 +195,6 @@ def load_embeddings(parquet_path, column='embedding'):
     Backward-compatible loader that returns memory-mapped or raw embedding matrices.
     Supports dynamic mapping lookup via 'embedding_idx' to load from a shared base file.
     """
-    import numpy as np
 
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(f"File not found: {parquet_path}")
@@ -197,7 +202,7 @@ def load_embeddings(parquet_path, column='embedding'):
     pf = pq.ParquetFile(parquet_path)
     if column in pf.schema_arrow.names:
         # Case A: Combined format (read via pyarrow table and stack)
-        table = pf.read_table(columns=[column])
+        table = pf.read(columns=[column])
         chunked_arr = table[column]
         num_rows = len(table)
         dim = len(chunked_arr.chunk(0)[0].as_py())
@@ -230,7 +235,7 @@ def load_embeddings(parquet_path, column='embedding'):
 
     # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
     if not os.path.exists(npy_path):
-        import glob
+
         core_name = get_core_base_name(base_name)
         bases = [base_name, core_name]
         if "cleaned" in base_name:
