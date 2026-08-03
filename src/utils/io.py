@@ -89,6 +89,12 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(f"File not found: {parquet_path}")
 
+    # Auto-extract k_clusters from filename if it has _k_X suffix
+    import re
+    match = re.search(r'_k_(\d+)', os.path.basename(parquet_path))
+    if match:
+        k_clusters = int(match.group(1))
+
     # Inspect schema names using PyArrow ParquetFile
     pf = pq.ParquetFile(parquet_path)
     schema_names = pf.schema_arrow.names

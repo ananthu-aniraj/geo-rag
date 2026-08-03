@@ -25,6 +25,15 @@ def main():
     from src.utils.io import load_dataset_with_clusters
     df = load_dataset_with_clusters(args.input)
     print(f"Loaded {len(df)} rows in {time.time() - start:.2f} seconds.")
+
+    # Identify which metadata options were present in the source dataframe
+    has_tod = 'Time_Of_Day' in df.columns
+    has_koppen = 'Koppen_Code' in df.columns
+    has_koppen_desc = 'Koppen_Desc' in df.columns
+    has_country = 'country' in df.columns
+    has_continent = 'continent' in df.columns
+    has_parent_id = 'parent_cluster_id' in df.columns
+    has_parent_label = 'parent_cluster_label' in df.columns
  
     # Reconstruct H3_Cell if missing
     if 'H3_Cell' not in df.columns:
