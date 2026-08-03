@@ -31,6 +31,9 @@ MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 # Global connection pooled session configuration for thread-safe high-throughput downloads
 http_session = requests.Session()
+http_session.headers.update({
+    "User-Agent": "Geo-RAG-Scraper-Pipeline/1.0 (aaniraj@home; contact: aaniraj@home.com)"
+})
 _adapter = HTTPAdapter(
     pool_connections=128,
     pool_maxsize=128,

@@ -148,80 +148,7 @@ def fetch_boundary_by_relation(relation_id):
         return None
 
 
-def fetch_wikimedia_batch(grid_box, polygon, max_images, delay, continue_params=None):
-    """Fetches a single batch of images from Wikimedia Commons in a grid box."""
-    min_lon, min_lat, max_lon, max_lat = grid_box
-    url = "https://commons.wikimedia.org/w/api.php"
-    
-    if continue_params is None:
-        continue_params = {}
-        
-    params = {
-        "action": "query",
-        "generator": "geosearch",
-        "ggsnamespace": 6,  # File namespace
-        "ggsbbox": f"{max_lat}|{min_lon}|{min_lat}|{max_lon}",
-        "ggslimit": 500,
-        "prop": "coordinates|imageinfo",
-        "iiprop": "url|timestamp|extmetadata",
-        "coprimary": "all",
-        "format": "json",
-        **continue_params
-    }
-    headers = {"User-Agent": USER_AGENT}
-    
-    time.sleep(delay)
-    response = make_request_with_backoff(url, params=params, headers=headers)
-    if response is None:
-        return {'stat': 'fail', 'data': [], 'continue': None}
-        
-    try:
-        data = response.json()
-        query_data = data.get("query", {})
-        pages = query_data.get("pages", {})
-        
-        results = []
-        for page_id, page in pages.items():
-            coords = page.get("coordinates", [{}])[0]
-            lat = coords.get("lat")
-            lon = coords.get("lon")
-            
-            imageinfo = page.get("imageinfo", [{}])[0]
-            img_url = imageinfo.get("url")
-            timestamp = imageinfo.get("timestamp", "")
-            
-            # Extract license short name
-            extmetadata = imageinfo.get("extmetadata", {})
-            license_val = extmetadata.get("LicenseShortName", {}).get("value", "unknown")
-            
-            if lat is not None and lon is not None and img_url:
-                # Skip aerial/scenic images with "View_of_" in the name/URL
-                title = page.get("title", "")
-                if "view_of_" in title.lower() or "view_of_" in img_url.lower():
-                    continue
 
-                # Ensure only standard image extensions are allowed (.jpg, .jpeg, .png, .webp)
-                title_lower = title.lower()
-                VALID_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
-                if not title_lower.endswith(VALID_EXTENSIONS):
-                    continue
-
-                pt = Point(lon, lat)
-                if polygon.contains(pt):
-                    results.append({
-                        "Photo_ID": page_id,
-                        "Platform": "Wikimedia",
-                        "Latitude": lat,
-                        "Longitude": lon,
-                        "Image_URL": img_url,
-                        "Captured_At": timestamp,
-                        "License": license_val
-                    })
-                    
-        new_continue = data.get("continue")
-        return {'stat': 'ok', 'data': results, 'continue': new_continue}
-    except Exception as e:
-        return {'stat': 'fail', 'data': [], 'continue': None, 'message': str(e)}
 
 
 def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
@@ -327,7 +254,7 @@ def main():
     parser.add_argument("--total_chunks", type=int, default=1, help="Total chunks to split the grid into.")
     parser.add_argument("--base_dir", type=str, default=".", help="Base directory for output files.")
     
-    parser.add_argument("--platforms", type=str, default="all", choices=["wikimedia", "kartaview", "all"],
+    parser.add_argument("--platforms", type=str, default="kartaview", choices=["kartaview"],
                         help="Which platforms to scrape.")
     parser.add_argument("--max_images_per_box", type=int, default=100, help="Max images to retrieve per grid box.")
     parser.add_argument("--countries_shp", type=str, default="shapefiles/ne_10m_admin_0_countries.shp",
@@ -466,31 +393,7 @@ def main():
 
             saved_count = 0
 
-            # A. Wikimedia Commons geosearch
-            if args.platforms in ["all", "wikimedia"]:
-                continue_params = {}
-                while saved_count < args.max_images_per_box:
-                    res = fetch_wikimedia_batch(grid_box, polygon, args.max_images_per_box, args.delay, continue_params)
-                    if res['stat'] == 'ok':
-                        for item in res['data']:
-                            if saved_count >= args.max_images_per_box:
-                                break
-                            writer.writerow([
-                                item["Photo_ID"],
-                                item["Platform"],
-                                item["Latitude"],
-                                item["Longitude"],
-                                item["Image_URL"],
-                                item["Captured_At"],
-                                item["License"]
-                            ])
-                            saved_count += 1
-                        
-                        continue_params = res['continue']
-                        if not continue_params:
-                            break
-                    else:
-                        break
+
 
             # B. KartaView geosearch
             if args.platforms in ["all", "kartaview"] and saved_count < args.max_images_per_box:
