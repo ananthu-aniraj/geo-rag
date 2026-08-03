@@ -18,9 +18,16 @@ def main():
     with open(params_path, "r") as f:
         params = yaml.safe_load(f)
 
-    offline_dirs_str = params.get("offline_dataset_dirs", "")
+    # Support both nested 'pipeline' block and root level config
+    pipeline_params = params.get("pipeline", {}) if isinstance(params, dict) else {}
+    offline_dirs_str = ""
+    if isinstance(pipeline_params, dict):
+        offline_dirs_str = pipeline_params.get("offline_dataset_dirs", "")
+    if not offline_dirs_str and isinstance(params, dict):
+        offline_dirs_str = params.get("offline_dataset_dirs", "")
+
     if not offline_dirs_str:
-        print("No offline dataset directories configured in params.yaml (offline_dataset_dirs).")
+        print("No offline dataset directories configured in params.yaml (pipeline.offline_dataset_dirs).")
         return
 
     offline_dirs = [d.strip() for d in offline_dirs_str.split() if d.strip()]
