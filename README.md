@@ -12,6 +12,8 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 
 👉 **[Evaluation & Benchmarking Documentation](docs/evaluation.md)**
 
+👉 **[Dataset Structure & Loading Guide](docs/dataset.md)**
+
 ---
 
 ## 📂 Project Structure
@@ -28,6 +30,7 @@ geo-rag/
 ├── docs/                         # Technical Documentation
 │   ├── pipeline.md               # Data engineering details & architecture
 │   ├── evaluation.md             # Benchmark evaluations & retrieval suites
+│   ├── dataset.md                # Dataset files, structures, & loading guide
 │   └── metrics.md                # Evaluation & retrieval metrics definitions
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
 ├── templates/                    # Standalone HTML/JS frontend templates
