@@ -44,10 +44,7 @@ def create_scatter_plot(pkl_path, output_png):
 
     sidecar_name = f"{clean_base_name}_clustered_k_{k_clusters}.parquet"
     sidecar_path = os.path.join(db_dir, sidecar_name)
-    npy_path = os.path.join(db_dir, f"{clean_base_name}.npy")
-
-    has_decoupled_layout = ('cluster_id' not in available_cols) and os.path.exists(sidecar_path) and os.path.exists(
-        npy_path)
+    has_decoupled_layout = 'embedding' not in available_cols
 
     if not has_decoupled_layout:
         required_cols = ['cluster_id', 'embedding']
