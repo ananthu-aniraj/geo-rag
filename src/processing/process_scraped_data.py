@@ -679,14 +679,25 @@ def main():
         print("Loading active cell embeddings only using PyArrow Dataset...")
         t0 = time.time()
         import pyarrow.dataset as ds
+        from src.utils.io import load_embeddings
+
         dataset = ds.dataset(args.resume_from, format="parquet")
         active_cells_list = list(active_cells)
 
         filter_expr = ds.field("H3_Cell").isin(active_cells_list)
-        cols_to_load = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL',
-                        'embedding']
+        
+        has_decoupled = 'embedding' not in dataset.schema.names
+        
+        cols_to_load = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL']
+        if not has_decoupled:
+            cols_to_load.append('embedding')
+        else:
+            if 'embedding_idx' in dataset.schema.names:
+                cols_to_load.append('embedding_idx')
+                
         if 'License' in dataset.schema.names:
             cols_to_load.append('License')
+            
         table_active = dataset.to_table(
             filter=filter_expr,
             columns=cols_to_load
@@ -694,15 +705,25 @@ def main():
         df_existing_active = table_active.to_pandas()
 
         if len(df_existing_active) > 0:
-            chunked_arr = table_active['embedding']
-            dim = len(chunked_arr.chunk(0)[0].as_py())
-            existing_embeddings = np.empty((len(df_existing_active), dim), dtype=np.float32)
-            current_row = 0
-            for chunk in chunked_arr.chunks:
-                chunk_len = len(chunk)
-                flat_chunk = chunk.flatten().to_numpy()
-                existing_embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
-                current_row += chunk_len
+            if has_decoupled:
+                # Load the full memory-mapped embedding matrix
+                full_embeddings = load_embeddings(args.resume_from)
+                # Map using embedding_idx, or fallback to row index if missing
+                if 'embedding_idx' in df_existing_active.columns:
+                    indices = df_existing_active['embedding_idx'].values
+                    existing_embeddings = full_embeddings[indices]
+                else:
+                    existing_embeddings = full_embeddings[:len(df_existing_active)]
+            else:
+                chunked_arr = table_active['embedding']
+                dim = len(chunked_arr.chunk(0)[0].as_py())
+                existing_embeddings = np.empty((len(df_existing_active), dim), dtype=np.float32)
+                current_row = 0
+                for chunk in chunked_arr.chunks:
+                    chunk_len = len(chunk)
+                    flat_chunk = chunk.flatten().to_numpy()
+                    existing_embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+                    current_row += chunk_len
 
             # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
             if 'Image_URL' in df_existing_active.columns:

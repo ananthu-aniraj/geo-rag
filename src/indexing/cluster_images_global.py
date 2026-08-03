@@ -86,22 +86,11 @@ def main():
             print(f"Schema inspection fallback: {e}")
             df = load_dataframe(args.pkl)
 
-        print("Loading raw embedding matrix using PyArrow...")
+        print("Loading embedding matrix...")
         t0 = time.time()
-        table = pq.read_table(args.pkl, columns=["embedding"])
-        num_rows = len(table)
-        chunked_arr = table['embedding']
-        dim = len(chunked_arr.chunk(0)[0].as_py())
-
-        embeddings = np.empty((num_rows, dim), dtype=np.float32)
-        current_row = 0
-        for chunk in chunked_arr.chunks:
-            chunk_len = len(chunk)
-            flat_chunk = chunk.flatten().to_numpy()
-            embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
-            current_row += chunk_len
-        del table
-        print(f" -> Successfully loaded {num_rows:,} embeddings in {time.time() - t0:.2f}s.")
+        from src.utils.io import load_embeddings
+        embeddings = load_embeddings(args.pkl)
+        print(f" -> Successfully loaded {len(embeddings):,} embeddings in {time.time() - t0:.2f}s.")
 
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
