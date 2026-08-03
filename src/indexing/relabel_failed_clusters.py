@@ -14,7 +14,7 @@ import yaml
 from PIL import Image
 from sklearn.preprocessing import normalize
 
-from src.utils.io import load_dataframe, save_dataframe
+from src.utils.io import save_dataframe
 
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
@@ -38,29 +38,13 @@ def resize_image_aspect(img, target_max=448):
     return img.resize((new_w, new_h), resample)
 
 
-def load_image(url, target_max=448, timeout=15, image_root_dir=None):
+def load_image(url, target_max=448, timeout=15, image_root_dir=None, photo_id=None, platform=None):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
+    from src.utils.io import resolve_offline_image_path
+    
     resolved_path = None
     if image_root_dir:
-        dirs = [image_root_dir] if isinstance(image_root_dir, str) else image_root_dir
-        for d in dirs:
-            if not d:
-                continue
-            # Try direct relative path join
-            path1 = os.path.join(d, url)
-            if os.path.exists(path1):
-                resolved_path = path1
-                break
-            # Try joining filename only
-            path2 = os.path.join(d, os.path.basename(url))
-            if os.path.exists(path2):
-                resolved_path = path2
-                break
-            # Try joining train/filename or other subdirs
-            path3 = os.path.join(d, "train", os.path.basename(url))
-            if os.path.exists(path3):
-                resolved_path = path3
-                break
+        resolved_path = resolve_offline_image_path(url, image_root_dir, photo_id, platform)
     
     if not resolved_path and os.path.exists(url):
         resolved_path = url
@@ -104,11 +88,11 @@ def load_image(url, target_max=448, timeout=15, image_root_dir=None):
     return None
 
 
-def load_image_with_retry(url, target_max=448, timeout=15, max_retries=3, image_root_dir=None):
+def load_image_with_retry(url, target_max=448, timeout=15, max_retries=3, image_root_dir=None, photo_id=None, platform=None):
     """Wrapper around load_image that retries with exponential backoff on failure."""
     for attempt in range(max_retries):
         try:
-            img = load_image(url, target_max=target_max, timeout=timeout, image_root_dir=image_root_dir)
+            img = load_image(url, target_max=target_max, timeout=timeout, image_root_dir=image_root_dir, photo_id=photo_id, platform=platform)
             if img is not None:
                 return img
         except Exception as e:
@@ -325,7 +309,8 @@ def main():
         with open(args.file, 'rb') as f:
             data = pickle.load(f)
     else:
-        df = load_dataframe(args.file)
+        from src.utils.io import load_dataset_with_clusters
+        df = load_dataset_with_clusters(args.file)
         if 'Latitude' in df.columns:
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
         if 'Longitude' in df.columns:
@@ -406,9 +391,12 @@ def main():
     cluster_ids = np.array([item['cluster_id'] for item in data])
 
     print("Extracting embeddings...")
-    embeddings = np.array([item['embedding'] for item in data]).squeeze()
-    if embeddings.ndim == 1:
-        embeddings = embeddings.reshape(1, -1)
+    from src.utils.io import load_embeddings
+    try:
+        embeddings = load_embeddings(args.file).squeeze()
+    except Exception as e:
+        print(f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load...")
+        embeddings = load_embeddings(args.file, column='embedding').squeeze()
 
     print("Normalizing embeddings...")
     embeddings_norm = normalize(embeddings)
@@ -468,7 +456,8 @@ def main():
                     img_url = f"kartaview://{photo_id}"
 
             img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout,
-                                        max_retries=args.max_retries, image_root_dir=args.image_root_dir)
+                                        max_retries=args.max_retries, image_root_dir=args.image_root_dir,
+                                        photo_id=photo_id, platform=platform)
 
             if img is not None:
                 buffered = BytesIO()
@@ -515,7 +504,8 @@ def main():
                     img_url = f"kartaview://{photo_id}"
 
             img = load_image_with_retry(img_url, target_max=args.img_max_dim, timeout=args.timeout,
-                                        max_retries=args.max_retries, image_root_dir=args.image_root_dir)
+                                        max_retries=args.max_retries, image_root_dir=args.image_root_dir,
+                                        photo_id=photo_id, platform=platform)
 
             if img is not None:
                 buffered = BytesIO()

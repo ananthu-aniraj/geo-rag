@@ -4,6 +4,22 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 
+def get_core_base_name(base_name):
+    """Recursively strips common pipeline suffixes to find the base prefix (e.g. geo_space)."""
+    if "_clustered_k_" in base_name:
+        base_name = base_name.split("_clustered_k_")[0]
+    suffixes = ["_filtered", "_cleaned", "_deduplicated", "_clustered"]
+    changed = True
+    while changed:
+        changed = False
+        for suffix in suffixes:
+            if base_name.endswith(suffix):
+                base_name = base_name[:-len(suffix)]
+                changed = True
+    return base_name
+
+
+
 def load_dataframe(file_path, **kwargs):
     """
     Loads a dataframe from CSV, Parquet, or Pickle files dynamically based on extension.
@@ -77,6 +93,23 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     pf = pq.ParquetFile(parquet_path)
     schema_names = pf.schema_arrow.names
 
+    # If it's a decoupled sidecar file (has cluster_id but lacks base columns like Latitude/Longitude),
+    # resolve the path to the base metadata file instead.
+    if 'cluster_id' in schema_names and ('Latitude' not in schema_names or 'Longitude' not in schema_names):
+        db_dir = os.path.dirname(os.path.abspath(parquet_path))
+        base_name = os.path.splitext(os.path.basename(parquet_path))[0]
+        core_name = get_core_base_name(base_name)
+        for fallback in [
+            f"{base_name}_cleaned.parquet", f"{base_name}_deduplicated.parquet", f"{base_name}.parquet",
+            f"{core_name}_cleaned.parquet", f"{core_name}_deduplicated.parquet", f"{core_name}.parquet"
+        ]:
+            fallback_path = os.path.join(db_dir, fallback)
+            if os.path.exists(fallback_path):
+                parquet_path = fallback_path
+                pf = pq.ParquetFile(parquet_path)
+                schema_names = pf.schema_arrow.names
+                break
+
     cluster_cols = [
         'cluster_id', 'cluster_label', 'cluster_description', 
         'parent_cluster_id', 'parent_cluster_label', 'parent_cluster_description',
@@ -84,12 +117,16 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     ]
 
     # Filter which columns belong to cluster variables vs base metadata
-    requested_cols = columns if columns is not None else schema_names
+    if columns is None:
+        requested_cols = list(schema_names) + cluster_cols
+    else:
+        requested_cols = columns
+
     req_cluster_cols = [c for c in requested_cols if c in cluster_cols]
     req_meta_cols = [c for c in requested_cols if c not in cluster_cols or c in ['Platform', 'Photo_ID']]
 
-    # Case A: Old format contains cluster columns directly
-    if 'cluster_id' in schema_names:
+    # Case A: Old format contains cluster columns directly (or we failed to fallback to base)
+    if 'cluster_id' in schema_names and 'Latitude' in schema_names:
         return load_dataframe(parquet_path, columns=columns, **kwargs)
 
     # Case B: Decoupled format
@@ -162,6 +199,33 @@ def load_embeddings(parquet_path, column='embedding'):
         fallback_name = f"{fallback_base}.npy" if column == 'embedding' else f"{fallback_base}_{column}.npy"
         npy_path = os.path.join(db_dir, fallback_name)
 
+    # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
+    if not os.path.exists(npy_path):
+        import glob
+        core_name = get_core_base_name(base_name)
+        bases = [base_name, core_name]
+        if "cleaned" in base_name:
+            bases.append(base_name.replace("cleaned", "deduplicated"))
+            
+        for b in bases:
+            pattern = os.path.join(db_dir, f"{b}*.npy")
+            matches = glob.glob(pattern)
+            if matches:
+                # If there's a file matching the specific column name, use it
+                col_match = [m for m in matches if column in os.path.basename(m)]
+                if col_match:
+                    npy_path = col_match[0]
+                    break
+                # Otherwise, if default 'embedding' was requested, try finding cls_embeddings or similar
+                if column == 'embedding':
+                    preferred = [m for m in matches if 'cls_embeddings' in os.path.basename(m) or 'embedding' in os.path.basename(m)]
+                    if preferred:
+                        npy_path = preferred[0]
+                        break
+                # Fallback to the first match
+                npy_path = matches[0]
+                break
+
     if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")
         # If 'embedding_idx' is in the parquet columns, map indices dynamically
@@ -171,4 +235,65 @@ def load_embeddings(parquet_path, column='embedding'):
             return emb[indices]
         return emb
 
-    raise FileNotFoundError(f"Could not locate embeddings in parquet schema or at '{npy_path}'")
+    raise FileNotFoundError(f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'")
+
+
+def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=None):
+    """
+    Resolves an image URL/ID to a local path on disk by checking flat files, 
+    train/ folders, and nested GLDv2 directory structures.
+    Returns the absolute path if found, otherwise None.
+    """
+    if not image_root_dirs:
+        return None
+        
+    dirs = [image_root_dirs] if isinstance(image_root_dirs, str) else image_root_dirs
+    for d in dirs:
+        if not d:
+            continue
+            
+        # A. Try direct lookup using Photo_ID (flat file, train/ folder, or nested)
+        if photo_id:
+            photo_str = str(photo_id).strip()
+            if photo_str.endswith('.0'):
+                photo_str = photo_str[:-2]
+            for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG']:
+                # 1. Flat lookup
+                p_flat = os.path.join(d, f"{photo_str}{ext}")
+                if os.path.exists(p_flat):
+                    return os.path.abspath(p_flat)
+                
+                # 2. train/ flat lookup
+                p_train = os.path.join(d, "train", f"{photo_str}{ext}")
+                if os.path.exists(p_train):
+                    return os.path.abspath(p_train)
+                    
+                # 3. Nested GLDv2 lookup (e.g. d/a/b/c/id.jpg)
+                if len(photo_str) == 16:
+                    p_nested = os.path.join(d, photo_str[0], photo_str[1], photo_str[2], f"{photo_str}{ext}")
+                    if os.path.exists(p_nested):
+                        return os.path.abspath(p_nested)
+                    p_nested_train = os.path.join(d, "train", photo_str[0], photo_str[1], photo_str[2], f"{photo_str}{ext}")
+                    if os.path.exists(p_nested_train):
+                        return os.path.abspath(p_nested_train)
+
+        # B. Fallback to URL basename lookup
+        # Strip protocol if present
+        clean_url = url
+        if "://" in url:
+            clean_url = url.split("://")[1]
+        basename = os.path.basename(clean_url)
+        
+        basenames = [basename]
+        if '.' not in basename:
+            basenames.extend([f"{basename}{ext}" for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG']])
+            
+        for b in basenames:
+            p_base = os.path.join(d, b)
+            if os.path.exists(p_base):
+                return os.path.abspath(p_base)
+            p_base_train = os.path.join(d, "train", b)
+            if os.path.exists(p_base_train):
+                return os.path.abspath(p_base_train)
+                
+    return None

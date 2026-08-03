@@ -1,9 +1,10 @@
 import argparse
 import os
 import time
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
+import requests
 from tqdm import tqdm
 
 

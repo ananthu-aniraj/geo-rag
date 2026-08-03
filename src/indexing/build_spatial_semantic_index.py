@@ -5,7 +5,6 @@ import time
 
 import h3
 import pandas as pd
-import pyarrow.parquet as pq
 
 from src.utils.io import save_dataframe
 
@@ -23,66 +22,8 @@ def main():
     print(f"Reading metadata columns from {args.input}...")
     start = time.time()
 
-    # Read necessary columns, dynamically checking what's available
-    parquet_file = pq.ParquetFile(args.input)
-    available_cols = parquet_file.schema_arrow.names
-    
-    read_cols = ['cluster_id']
-    
-    # Handle H3 Cell fallback
-    has_h3 = 'H3_Cell' in available_cols
-    if has_h3:
-        read_cols.append('H3_Cell')
-    else:
-        if 'Latitude' in available_cols and 'Longitude' in available_cols:
-            print("[WARNING] H3_Cell column is missing in input dataset. Reading coordinates to reconstruct H3_Cell...")
-            read_cols.extend(['Latitude', 'Longitude'])
-        else:
-            print("Error: Input dataset is missing required columns H3_Cell (or Latitude & Longitude).")
-            sys.exit(1)
-            
-    # Check other columns
-    has_label = 'cluster_label' in available_cols
-    if has_label:
-        read_cols.append('cluster_label')
-        
-    has_desc = 'cluster_description' in available_cols
-    if has_desc:
-        read_cols.append('cluster_description')
-
-    has_season = 'Season' in available_cols
-    if has_season:
-        read_cols.append('Season')
-    
-    has_tod = 'Time_Of_Day' in available_cols
-    if has_tod:
-        read_cols.append('Time_Of_Day')
-        
-    has_koppen = 'Koppen_Code' in available_cols
-    if has_koppen:
-        read_cols.append('Koppen_Code')
-        
-    has_koppen_desc = 'Koppen_Desc' in available_cols
-    if has_koppen_desc:
-        read_cols.append('Koppen_Desc')
-        
-    has_country = 'country' in available_cols
-    if has_country:
-        read_cols.append('country')
-        
-    has_continent = 'continent' in available_cols
-    if has_continent:
-        read_cols.append('continent')
-        
-    has_parent_id = 'parent_cluster_id' in available_cols
-    has_parent_label = 'parent_cluster_label' in available_cols
-    if has_parent_id:
-        read_cols.append('parent_cluster_id')
-    if has_parent_label:
-        read_cols.append('parent_cluster_label')
-        
-    table = pq.read_table(args.input, columns=read_cols)
-    df = table.to_pandas()
+    from src.utils.io import load_dataset_with_clusters
+    df = load_dataset_with_clusters(args.input)
     print(f"Loaded {len(df)} rows in {time.time() - start:.2f} seconds.")
  
     # Reconstruct H3_Cell if missing

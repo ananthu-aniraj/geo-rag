@@ -1,5 +1,6 @@
 import argparse
 import os
+
 import pandas as pd
 from tqdm import tqdm
 
@@ -63,11 +64,11 @@ def main():
 
     print("\n" + "="*50)
     if args.dry_run:
-        print(f"🎒 [DRY RUN RESULTS]")
+        print("🎒 [DRY RUN RESULTS]")
         print(f"Scan complete. Would have deleted {deleted_count:,} / {total_scanned:,} scanned images.")
         print(f"Estimated space to be freed: {space_freed / 1024**3:.2f} GB")
     else:
-        print(f"✅ [PRUNING COMPLETED SUCCESSFULLY]")
+        print("✅ [PRUNING COMPLETED SUCCESSFULLY]")
         print(f"Pruned {deleted_count:,} / {total_scanned:,} scanned images.")
         print(f"Actual disk space freed: {space_freed / 1024**3:.2f} GB")
     print("="*50)

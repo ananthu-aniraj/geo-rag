@@ -294,7 +294,8 @@ echo "[Step 3/5] Generating Cluster Map..."
 python3 -m src.visualization.visualize_clusters \
   --pkl_file "$CLUSTERED_PARQUET" \
   --output "$MAP_FILE" \
-  --max_markers "$MAX_MARKERS"
+  --max_markers "$MAX_MARKERS" \
+  $IMAGE_ROOT_FLAG
 
 echo ""
 echo "[Step 4/5] Generating Cluster Representative Samples..."
@@ -348,8 +349,8 @@ if [ -d "$HDD_DIR/.dvc" ]; then
     echo "=========================================================="
     echo "Updating DVC dataset version on HDD..."
     
-    # Run DVC commands inside the HDD folder
-    (cd "$HDD_DIR" && dvc add "$(basename "$OUTPUT_DIR")" && dvc push)
+    # Run DVC commands inside the HDD folder and garbage collect local SSD cache (keeping current + previous version)
+    (cd "$HDD_DIR" && dvc add "$(basename "$OUTPUT_DIR")" && dvc push && dvc gc -w -a -n 2 -f)
     
     # Copy the updated tracking .dvc file back to this SSD Git repository
     cp "$HDD_DIR/$(basename "$OUTPUT_DIR").dvc" .

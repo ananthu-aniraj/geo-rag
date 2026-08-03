@@ -241,8 +241,14 @@ def main():
         with open(args.out, 'wb') as f:
             pickle.dump(data, f)
     else:
-        df['embedding'] = list(embeddings)
-        save_dataframe(df, args.out)
+        # Decoupled layout: Save sidecar file with only primary keys + cluster assignments
+        sidecar_cols = ['Platform', 'Photo_ID', 'cluster_id', 'parent_cluster_id']
+        extra_cols = ['cluster_label', 'cluster_description', 'parent_cluster_label', 
+                      'parent_cluster_description', 'visual_description', 'parent_visual_description']
+        active_cols = [c for c in sidecar_cols + extra_cols if c in df.columns]
+        
+        df_sidecar = df[active_cols].copy()
+        save_dataframe(df_sidecar, args.out)
 
     print(f"\n✅ Global FAISS Clustering Complete! Saved {len(df):,} clustered rows to {args.out}.")
 

@@ -13,21 +13,21 @@ pipeline:
   cell_chunk_size: 64
   base_name: "geo_space"
   # Target output folder on the external HDD
-  output_dir: "/home/ananthu/DATA/data_ananthu/full_pipeline_output"
+  output_dir: "/home/ananthu/Projects/data/full_pipeline_output"
   # New MLLM clustering settings
   label_method: "mllm"
   mllm_backend: "sglang"
   mllm_model: "google/gemma-4-E4B-it"
   chunk_size: 64
   # Input directories passed as a space-separated string
-  input_dirs: "/home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5 /home/ananthu/DATA/data_ananthu/mapillary_scrape_rand_5 /home/ananthu/DATA/data_ananthu/google_landmarks_v2"
+  input_dirs: "/home/ananthu/Projects/data/flickr_scrape_rand_6 /home/ananthu/Projects/data/mapillary_scrape_rand_6"
   
   # Zero-shot filters for iNaturalist data (true/false)
   filter_macro: true
   filter_sky: true
   
   # Optional local offline dataset directories (space-separated paths)
-  offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset"
+  offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
 
   # Köppen-Geiger climate classification GeoTIFF path
   koppen_geiger_tif: "/home/ananthu/DATA/data_ananthu/koppen_geiger_tif/1991_2020/koppen_geiger_0p00833333.tif"

@@ -73,7 +73,7 @@ def main():
     elif "deduplicated" in meta_name:
         # Assign direct sequential embedding indices to deduplicated base metadata
         df_meta['embedding_idx'] = np.arange(len(df_meta), dtype=np.int32)
-        print(f" -> Assigned sequential embedding_idx to deduplicated dataset.")
+        print(" -> Assigned sequential embedding_idx to deduplicated dataset.")
 
     for col in embedding_cols:
         if skip_npy:

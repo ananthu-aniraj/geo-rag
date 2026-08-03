@@ -117,9 +117,11 @@ def standardize_timestamps_vectorized(ts_raw):
     return standardized
 
 
-def download_image(url, offline_dirs=None):
+def download_image(url, photo_id=None, platform=None, offline_dirs=None):
     """Downloads an image using the global connection pool session and returns a resized PIL Image."""
     try:
+        from src.utils.io import resolve_offline_image_path
+        
         # Check if url is a local path first
         if not (url.startswith("http://") or url.startswith("https://") or url.startswith(
                 "mapillary://") or url.startswith("kartaview://")):
@@ -128,22 +130,14 @@ def download_image(url, offline_dirs=None):
                 img_resized = img.resize((448, 448))
                 img.close()
                 return img_resized
-            if offline_dirs:
-                for d in offline_dirs:
-                    if not d:
-                        continue
-                    alt_path = os.path.join(d, os.path.basename(url))
-                    if os.path.exists(alt_path):
-                        img = Image.open(alt_path).convert("RGB")
-                        img_resized = img.resize((448, 448))
-                        img.close()
-                        return img_resized
-                    alt_path_train = os.path.join(d, "train", os.path.basename(url))
-                    if os.path.exists(alt_path_train):
-                        img = Image.open(alt_path_train).convert("RGB")
-                        img_resized = img.resize((448, 448))
-                        img.close()
-                        return img_resized
+            
+        if offline_dirs:
+            resolved_path = resolve_offline_image_path(url, offline_dirs, photo_id, platform)
+            if resolved_path:
+                img = Image.open(resolved_path).convert("RGB")
+                img_resized = img.resize((448, 448))
+                img.close()
+                return img_resized
             return None
 
         if url.startswith("mapillary://"):
@@ -210,9 +204,11 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
         chunk_metadata = metadata_list[chunk_start: chunk_start + cell_chunk_size]
         urls = [m['Image_URL'] for m in chunk_metadata]
+        pids = [m['Photo_ID'] for m in chunk_metadata]
+        plats = [m.get('Platform') for m in chunk_metadata]
 
         # Download images in parallel for this chunk
-        imgs = list(executor.map(download_fn, urls))
+        imgs = list(executor.map(download_fn, urls, pids, plats))
 
         valid_indices = [i for i, img in enumerate(imgs) if img is not None]
         if not valid_indices:

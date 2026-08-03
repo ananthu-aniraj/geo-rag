@@ -236,24 +236,8 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             url = sample["url"]
             resolved_path = None
             if image_root_dir:
-                dirs = [image_root_dir] if isinstance(image_root_dir, str) else image_root_dir
-                for d in dirs:
-                    if not d:
-                        continue
-                    path1 = os.path.join(d, url)
-                    if os.path.exists(path1):
-                        resolved_path = path1
-                        break
-                    path2 = os.path.join(d, os.path.basename(url))
-                    if os.path.exists(path2):
-                        resolved_path = path2
-                        break
-                    path3 = os.path.join(d, "train", os.path.basename(url))
-                    if os.path.exists(path3):
-                        resolved_path = path3
-                        break
-            if not resolved_path and os.path.exists(url):
-                resolved_path = url
+                from src.utils.io import resolve_offline_image_path
+                resolved_path = resolve_offline_image_path(url, image_root_dir, photo_id=sample.get("id"), platform=sample.get("platform"))
 
             if resolved_path:
                 sample["url"] = "file://" + os.path.abspath(resolved_path)

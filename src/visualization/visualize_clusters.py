@@ -24,8 +24,8 @@ def get_clean_boundary(cell):
     return coords
 
 
-def create_map(pkl_path, output_html, max_markers=1000):
-    print(f"Loading clustered data from {pkl_path}...")
+def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
+    print(f"Loading data from {pkl_path}...")
     if pkl_path.endswith('.pkl'):
         with open(pkl_path, 'rb') as f:
             data = pickle.load(f)
@@ -151,8 +151,20 @@ def create_map(pkl_path, output_html, max_markers=1000):
                                                                                                   'Koppen_Code'] else ""
         season_text = f"<b>Season:</b> {item['Season']}<br>" if 'Season' in item and item['Season'] else ""
 
+        # Resolve offline paths if root dir is provided
+        image_url = item['Image_URL']
+        if image_root_dir:
+            from src.utils.io import resolve_offline_image_path
+            resolved_path = resolve_offline_image_path(
+                image_url, image_root_dir, 
+                photo_id=item.get('Photo_ID'), 
+                platform=item.get('Platform')
+            )
+            if resolved_path:
+                image_url = "file://" + os.path.abspath(resolved_path)
+
         html = popup_template.format(
-            image_url=item['Image_URL'],
+            image_url=image_url,
             photo_id=item['Photo_ID'],
             platform=item['Platform'],
             taken_text=taken_text,
@@ -192,6 +204,8 @@ if __name__ == "__main__":
     parser.add_argument("--pkl_file", type=str, required=True, help="Path to the .pkl file.")
     parser.add_argument("--output", type=str, default="cluster_map.html", help="Output HTML file name.")
     parser.add_argument("--max_markers", type=int, default=2000, help="Max markers to show.")
+    parser.add_argument("--image_root_dir", type=str, nargs="+", default=None, 
+                        help="Optional local offline image directories.")
     args = parser.parse_args()
 
-    create_map(args.pkl_file, args.output, args.max_markers)
+    create_map(args.pkl_file, args.output, args.max_markers, args.image_root_dir)

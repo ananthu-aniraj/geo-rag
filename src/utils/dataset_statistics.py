@@ -175,11 +175,15 @@ def load_dataset(file_path):
         df = pd.read_csv(file_path, usecols=cols_to_read, dtype={'Platform': str, 'Photo_ID': str})
     else:
         # Parquet
-        parquet_file = pq.ParquetFile(file_path)
-        available_cols = parquet_file.schema_arrow.names
-        cols_to_read = [c for c in target_cols if c in available_cols]
-        table = pq.read_table(file_path, columns=cols_to_read)
-        df = table.to_pandas()
+        from src.utils.io import load_dataset_with_clusters
+        try:
+            df = load_dataset_with_clusters(file_path, columns=target_cols)
+        except Exception:
+            parquet_file = pq.ParquetFile(file_path)
+            available_cols = parquet_file.schema_arrow.names
+            cols_to_read = [c for c in target_cols if c in available_cols]
+            table = pq.read_table(file_path, columns=cols_to_read)
+            df = table.to_pandas()
 
     print(f" -> Loaded {len(df)} records in {time.time() - t0:.2f}s.")
     if 'Latitude' in df.columns:

@@ -52,26 +52,13 @@ def resize_image_aspect(img, target_max=448):
     return img.resize((new_w, new_h), resample)
 
 
-def load_image(url, target_max=448, image_root_dir=None):
+def load_image(url, target_max=448, image_root_dir=None, photo_id=None, platform=None):
     """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
+    from src.utils.io import resolve_offline_image_path
+    
     resolved_path = None
     if image_root_dir:
-        dirs = [image_root_dir] if isinstance(image_root_dir, str) else image_root_dir
-        for d in dirs:
-            if not d:
-                continue
-            path1 = os.path.join(d, url)
-            if os.path.exists(path1):
-                resolved_path = path1
-                break
-            path2 = os.path.join(d, os.path.basename(url))
-            if os.path.exists(path2):
-                resolved_path = path2
-                break
-            path3 = os.path.join(d, "train", os.path.basename(url))
-            if os.path.exists(path3):
-                resolved_path = path3
-                break
+        resolved_path = resolve_offline_image_path(url, image_root_dir, photo_id, platform)
 
     if not resolved_path and os.path.exists(url):
         resolved_path = url
@@ -204,7 +191,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
 
         def prepare_image(task):
             cid = task['cid']
-            img = load_image(task['img_url'], target_max=img_max_dim, image_root_dir=image_root_dir)
+            img = load_image(task['img_url'], target_max=img_max_dim, image_root_dir=image_root_dir, photo_id=task.get('photo_id'), platform=task.get('platform'))
             if img is not None:
                 buffered = BytesIO()
                 img.save(buffered, format="JPEG")
@@ -295,27 +282,20 @@ def main():
         df = pd.DataFrame(data)
         embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
+        # Load dataset with clusters using our decoupled-compatible loader
+        from src.utils.io import load_dataset_with_clusters, load_embeddings
         try:
-            parquet_file = pq.ParquetFile(args.input_file)
-            metadata_cols = [c for c in parquet_file.schema_arrow.names if c != 'embedding']
-            df = load_dataframe(args.input_file, columns=metadata_cols)
+            df = load_dataset_with_clusters(args.input_file)
         except Exception:
             df = load_dataframe(args.input_file)
 
         print("Loading raw embedding matrix temporarily to compute centroids and representative images...")
         t0 = time.time()
-        table = pq.read_table(args.input_file, columns=["embedding"])
-        num_rows = len(table)
-        chunked_arr = table['embedding']
-        dim = len(chunked_arr.chunk(0)[0].as_py())
-        embeddings = np.empty((num_rows, dim), dtype=np.float32)
-        current_row = 0
-        for chunk in chunked_arr.chunks:
-            chunk_len = len(chunk)
-            flat_chunk = chunk.flatten().to_numpy()
-            embeddings[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
-            current_row += chunk_len
-        del table
+        try:
+            embeddings = load_embeddings(args.input_file)
+        except Exception as e:
+            print(f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load...")
+            embeddings = load_embeddings(args.input_file, column='embedding')
         print(f" -> Temporarily loaded raw embedding matrix in {time.time() - t0:.2f}s.")
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
@@ -525,7 +505,9 @@ def main():
                 "cid": cid,
                 "img_url": img_url,
                 "prompt_step1": p1_text,
-                "prompt_step2_template": p2_text
+                "prompt_step2_template": p2_text,
+                "photo_id": photo_id,
+                "platform": platform
             })
 
         results = label_clusters_mllm_batched(
