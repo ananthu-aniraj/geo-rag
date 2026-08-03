@@ -44,6 +44,7 @@ def load_dataframe(file_path, **kwargs):
 def save_dataframe(df, file_path, index=False, **kwargs):
     """
     Saves a dataframe to CSV, Parquet, or Pickle with optimal compression default (Zstd for Parquet).
+    Automatically decouples embeddings into a companion .npy file if the column is present.
     """
     # Ensure output parent directory exists
     output_dir = os.path.dirname(file_path)
@@ -56,6 +57,25 @@ def save_dataframe(df, file_path, index=False, **kwargs):
         # Default to high-performance zstd compression
         if 'compression' not in kwargs:
             kwargs['compression'] = 'zstd'
+            
+        if 'embedding' in df.columns:
+            import numpy as np
+            db_dir = os.path.dirname(os.path.abspath(file_path))
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            if "_clustered_k_" in base_name:
+                base_name = base_name.split("_clustered_k_")[0]
+            npy_path = os.path.join(db_dir, f"{base_name}.npy")
+            
+            print(f" -> Automatically decoupling embeddings to companion file: {npy_path}")
+            embs = np.vstack(df['embedding'].values).astype(np.float32)
+            np.save(npy_path, embs)
+            
+            df_to_save = df.copy()
+            df_to_save['embedding_idx'] = np.arange(len(df_to_save), dtype=np.int32)
+            df_to_save = df_to_save.drop(columns=['embedding'])
+            df_to_save.to_parquet(file_path, index=index, **kwargs)
+            return
+            
         df.to_parquet(file_path, index=index, **kwargs)
     elif ext == '.csv':
         df.to_csv(file_path, index=index, **kwargs)

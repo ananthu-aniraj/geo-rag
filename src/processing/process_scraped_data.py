@@ -3,12 +3,18 @@ import glob
 import os
 import pickle
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 from io import BytesIO
 
 import h3
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 import requests
 import torch
 from PIL import Image
@@ -18,7 +24,13 @@ from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
 
-from src.utils.io import get_parquet_writer, load_dataframe, save_dataframe
+from src.utils.io import (
+    get_parquet_writer,
+    load_dataframe,
+    load_embeddings,
+    resolve_offline_image_path,
+    save_dataframe,
+)
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
 # TIPSv2 specific transform
@@ -120,8 +132,6 @@ def standardize_timestamps_vectorized(ts_raw):
 def download_image(url, photo_id=None, platform=None, offline_dirs=None):
     """Downloads an image using the global connection pool session and returns a resized PIL Image."""
     try:
-        from src.utils.io import resolve_offline_image_path
-        
         # Check if url is a local path first
         if not (url.startswith("http://") or url.startswith("https://") or url.startswith(
                 "mapillary://") or url.startswith("kartaview://")):
@@ -130,7 +140,7 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None):
                 img_resized = img.resize((448, 448))
                 img.close()
                 return img_resized
-            
+
         if offline_dirs:
             resolved_path = resolve_offline_image_path(url, offline_dirs, photo_id, platform)
             if resolved_path:
@@ -196,8 +206,6 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
-
-    from functools import partial
     download_fn = partial(download_image, offline_dirs=offline_dirs)
 
     # Process new images in chunks to limit peak memory usage
@@ -289,47 +297,92 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
 def stream_update_parquet(input_path, output_path, df_new, active_cells):
     """
     Reads input_path in row groups, filters out rows belonging to active_cells,
-    and writes the remaining inactive rows along with df_new to output_path.
+    and writes the remaining inactive rows along with df_new to output_path
+    in the decoupled format (lightweight Parquet + companion .npy).
     """
-    import pyarrow as pa
-    import pyarrow.compute as pc
-    import pyarrow.parquet as pq
-
     pf = pq.ParquetFile(input_path)
-    schema = pf.schema_arrow
+    has_decoupled = 'embedding' not in pf.schema_arrow.names
 
-    # Dynamically upgrade schema to include License if it is present in the new df
+    # Build the output schema
+    new_fields = []
+    for f in pf.schema_arrow:
+        if f.name == 'embedding':
+            continue
+        new_fields.append(f)
+
+    if 'embedding_idx' not in [f.name for f in new_fields]:
+        new_fields.append(pa.field("embedding_idx", pa.int32()))
+
+    # Upgrade schema to include License if it is present in the new df
     # but not in the existing parquet database
     has_license_in_new = "License" in df_new.columns if df_new is not None else False
-    has_license_in_existing = "License" in schema.names
-
+    has_license_in_existing = "License" in pf.schema_arrow.names
     if has_license_in_new and not has_license_in_existing:
-        new_fields = list(schema)
         new_fields.append(pa.field("License", pa.string()))
-        schema = pa.schema(new_fields)
+
+    schema = pa.schema(new_fields)
+
+    # Load existing embeddings
+    full_embeddings = load_embeddings(input_path)
 
     tmp_output = f"{output_path}.tmp_stream"
     try:
         active_arr = pa.array(list(active_cells))
+        inactive_embs_list = []
+
         with get_parquet_writer(tmp_output, schema) as writer:
             # 1. Stream copy inactive rows from original parquet
+            current_idx = 0
             for rg in range(pf.num_row_groups):
                 table = pf.read_row_group(rg)
 
-                # Append a null column for License if we upgraded the schema
-                if has_license_in_new and "License" not in table.column_names:
-                    null_col = pa.array([None] * len(table), type=pa.string())
-                    table = table.append_column("License", null_col)
-
+                # Filter out active cells
                 h3_col = table["H3_Cell"]
                 mask = pc.invert(pc.is_in(h3_col, value_set=active_arr))
                 filtered_table = table.filter(mask)
+
                 if len(filtered_table) > 0:
+                    # Append a null column for License if we upgraded the schema
+                    if has_license_in_new and "License" not in filtered_table.column_names:
+                        null_col = pa.array([None] * len(filtered_table), type=pa.string())
+                        filtered_table = filtered_table.append_column("License", null_col)
+
+                    # Extract and collect inactive embeddings
+                    if 'embedding_idx' in filtered_table.column_names:
+                        idx_col = filtered_table["embedding_idx"].to_numpy()
+                        embs = full_embeddings[idx_col]
+                    else:
+                        start_offset = sum(pf.metadata.row_group(i).num_rows for i in range(rg))
+                        true_indices = np.where(mask.to_numpy())[0]
+                        embs = full_embeddings[start_offset + true_indices]
+
+                    inactive_embs_list.append(embs)
+
+                    # Overwrite/append sequential embedding_idx in the table
+                    new_indices = np.arange(current_idx, current_idx + len(filtered_table), dtype=np.int32)
+                    idx_arr = pa.array(new_indices)
+                    if 'embedding_idx' in filtered_table.column_names:
+                        idx_pos = filtered_table.column_names.index('embedding_idx')
+                        filtered_table = filtered_table.set_column(idx_pos, "embedding_idx", idx_arr)
+                    else:
+                        filtered_table = filtered_table.append_column("embedding_idx", idx_arr)
+
+                    current_idx += len(filtered_table)
                     writer.write_table(filtered_table)
 
             # 2. Write the new/updated active rows
+            new_embs = np.empty((0, 768), dtype=np.float32)
             if df_new is not None and not df_new.empty:
                 df_new_aligned = df_new.copy()
+
+                # Extract new embeddings
+                new_embs = np.vstack(df_new_aligned['embedding'].values).astype(np.float32)
+
+                # Assign new sequential indices
+                df_new_aligned['embedding_idx'] = np.arange(current_idx, current_idx + len(df_new_aligned),
+                                                            dtype=np.int32)
+                df_new_aligned = df_new_aligned.drop(columns=['embedding'], errors='ignore')
+
                 for name in schema.names:
                     if name not in df_new_aligned.columns:
                         df_new_aligned[name] = None
@@ -337,6 +390,26 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
 
                 new_table = pa.Table.from_pandas(df_new_aligned, schema=schema, preserve_index=False)
                 writer.write_table(new_table)
+
+        # 3. Concatenate and save all embeddings to output .npy
+        if inactive_embs_list:
+            all_inactive_embs = np.concatenate(inactive_embs_list, axis=0)
+            if len(new_embs) > 0:
+                final_embs = np.concatenate([all_inactive_embs, new_embs], axis=0)
+            else:
+                final_embs = all_inactive_embs
+        else:
+            final_embs = new_embs
+
+        # Save companion .npy file for the output parquet path
+        db_dir = os.path.dirname(os.path.abspath(output_path))
+        base_name = os.path.splitext(os.path.basename(output_path))[0]
+        if "_clustered_k_" in base_name:
+            base_name = base_name.split("_clustered_k_")[0]
+        npy_path = os.path.join(db_dir, f"{base_name}.npy")
+
+        print(f" -> Saving merged companion embeddings matrix: {npy_path}")
+        np.save(npy_path, final_embs)
 
         if os.path.exists(tmp_output):
             os.replace(tmp_output, output_path)
@@ -394,7 +467,7 @@ def load_and_preprocess_csv(f, offline_dirs=None):
 
         # Check if this is the iWildCam CSV
         is_iwildcam = 'iwildcam' in f.lower() or (
-                    'Platform' in df.columns and df['Platform'].astype(str).str.lower().eq('iwildcam').any())
+                'Platform' in df.columns and df['Platform'].astype(str).str.lower().eq('iwildcam').any())
 
         if 'uuid' in df.columns and 'source' in df.columns and 'orig_id' in df.columns:
             df['Platform'] = df['source']
@@ -506,7 +579,7 @@ def load_and_preprocess_csv(f, offline_dirs=None):
             df.loc[iwildcam_mask, 'License'] = 'CDLA-Permissive-1.0'
 
         inat_mask = (platform_lower.str.contains('inaturalist') | (platform_lower == 'inat')) & (
-                    df['License'].isna() | (df['License'] == ''))
+                df['License'].isna() | (df['License'] == ''))
         if inat_mask.any():
             df.loc[inat_mask, 'License'] = 'CC BY-NC 4.0'
 
@@ -678,26 +751,24 @@ def main():
     if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl') and active_cells:
         print("Loading active cell embeddings only using PyArrow Dataset...")
         t0 = time.time()
-        import pyarrow.dataset as ds
-        from src.utils.io import load_embeddings
 
         dataset = ds.dataset(args.resume_from, format="parquet")
         active_cells_list = list(active_cells)
 
         filter_expr = ds.field("H3_Cell").isin(active_cells_list)
-        
+
         has_decoupled = 'embedding' not in dataset.schema.names
-        
+
         cols_to_load = ['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'H3_Cell', 'Captured_At', 'Image_URL']
         if not has_decoupled:
             cols_to_load.append('embedding')
         else:
             if 'embedding_idx' in dataset.schema.names:
                 cols_to_load.append('embedding_idx')
-                
+
         if 'License' in dataset.schema.names:
             cols_to_load.append('License')
-            
+
         table_active = dataset.to_table(
             filter=filter_expr,
             columns=cols_to_load
@@ -800,7 +871,6 @@ def main():
     last_checkpoint_time = time.time()
 
     print("Grouping metadata by H3 cell...")
-    from collections import defaultdict
     new_metadata_dict = defaultdict(list)
     if not df_all.empty:
         pids = df_all['Photo_ID'].to_numpy()
