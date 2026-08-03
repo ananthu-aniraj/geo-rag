@@ -299,6 +299,23 @@ def main():
     if modified:
         print(f"Saving updated database to: {out_path}")
         save_dataframe(df, out_path)
+        
+        # Propagate to cleaned dataset if we just updated deduplicated
+        if "_deduplicated.parquet" in out_path:
+            cleaned_path = out_path.replace("_deduplicated.parquet", "_cleaned.parquet")
+            if os.path.exists(cleaned_path):
+                print(f" -> Propagating updated licenses to cleaned dataset: {cleaned_path}")
+                try:
+                    df_cleaned = load_dataframe(cleaned_path)
+                    df_cleaned['__temp_idx'] = range(len(df_cleaned))
+                    df_cleaned = df_cleaned.drop(columns=['License'], errors='ignore')
+                    df_cleaned = df_cleaned.merge(df[['Platform', 'Photo_ID', 'License']], on=['Platform', 'Photo_ID'], how='left')
+                    df_cleaned = df_cleaned.sort_values('__temp_idx').drop(columns=['__temp_idx'])
+                    save_dataframe(df_cleaned, cleaned_path)
+                    print(" -> Cleaned dataset updated successfully!")
+                except Exception as e:
+                    print(f"Error propagating licenses to cleaned dataset: {e}")
+                    
         print("Backfill completed successfully!")
     else:
         print("\nNo licenses needed backfilling; database is already fully up to date.")

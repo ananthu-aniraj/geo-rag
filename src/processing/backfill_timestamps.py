@@ -396,6 +396,22 @@ def main():
         if current_save_path.endswith('.parquet'):
             save_dataframe(df, current_save_path)
             
+            # Propagate to cleaned dataset if we just updated deduplicated
+            if "_deduplicated.parquet" in current_save_path:
+                cleaned_path = current_save_path.replace("_deduplicated.parquet", "_cleaned.parquet")
+                if os.path.exists(cleaned_path):
+                    print(f" -> Propagating updated timestamps to cleaned dataset: {cleaned_path}")
+                    try:
+                        df_cleaned = load_dataframe(cleaned_path)
+                        df_cleaned['__temp_idx'] = range(len(df_cleaned))
+                        df_cleaned = df_cleaned.drop(columns=['Captured_At'], errors='ignore')
+                        df_cleaned = df_cleaned.merge(df[['Platform', 'Photo_ID', 'Captured_At']], on=['Platform', 'Photo_ID'], how='left')
+                        df_cleaned = df_cleaned.sort_values('__temp_idx').drop(columns=['__temp_idx'])
+                        save_dataframe(df_cleaned, cleaned_path)
+                        print(" -> Cleaned dataset updated successfully!")
+                    except Exception as e:
+                        print(f"Error propagating timestamps to cleaned dataset: {e}")
+            
             # Auto-discover and enrich corresponding CSV file
             csv_pair = output_base + ".csv"
             if os.path.exists(csv_pair):
