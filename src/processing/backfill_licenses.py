@@ -5,11 +5,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import geopandas as gpd
+import pyarrow.parquet as pq
 import requests
 from shapely.geometry import Point, box as shapely_box
 from tqdm import tqdm
 
-from src.utils.io import load_dataset_with_clusters, save_dataframe
+from src.utils.io import get_core_base_name, load_dataframe, save_dataframe
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
@@ -98,10 +99,31 @@ def main():
                         help="List of log directories containing flickr_completed_boxes_chunk_*.txt files for spatial join optimization.")
     args = parser.parse_args()
 
-    out_path = args.output if args.output else args.input
 
-    print(f"Loading dataset from {args.input}...")
-    df = load_dataset_with_clusters(args.input)
+
+    # Determine input and output paths
+    resolved_input = args.input
+    
+    if os.path.exists(args.input) and args.input.endswith('.parquet'):
+        pf = pq.ParquetFile(args.input)
+        schema_names = pf.schema_arrow.names
+        if 'cluster_id' in schema_names and ('Latitude' not in schema_names or 'Longitude' not in schema_names):
+            db_dir = os.path.dirname(os.path.abspath(args.input))
+            base_name = os.path.splitext(os.path.basename(args.input))[0]
+            core_name = get_core_base_name(base_name)
+            for fallback in [
+                f"{core_name}_cleaned.parquet", f"{core_name}_deduplicated.parquet", f"{core_name}.parquet"
+            ]:
+                fallback_path = os.path.join(db_dir, fallback)
+                if os.path.exists(fallback_path):
+                    resolved_input = fallback_path
+                    print(f" -> Input is a decoupled sidecar. Resolving base metadata to: {resolved_input}")
+                    break
+
+    out_path = args.output if args.output else resolved_input
+
+    print(f"Loading dataset from {resolved_input}...")
+    df = load_dataframe(resolved_input)
 
     # Ensure License column exists
     if 'License' not in df.columns:

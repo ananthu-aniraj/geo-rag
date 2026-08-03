@@ -5,10 +5,13 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import geopandas as gpd
+import pyarrow.parquet as pq
 import requests
+from shapely.geometry import box
 from tqdm import tqdm
 
-from src.utils.io import load_dataframe, save_dataframe
+from src.utils.io import get_core_base_name, load_dataframe, save_dataframe
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
@@ -194,8 +197,27 @@ def main():
         else:
             current_save_path = current_file
 
+        resolved_input = current_file
+        if os.path.exists(current_file) and current_file.endswith('.parquet'):
+            pf = pq.ParquetFile(current_file)
+            schema_names = pf.schema_arrow.names
+            if 'cluster_id' in schema_names and ('Latitude' not in schema_names or 'Longitude' not in schema_names):
+                db_dir = os.path.dirname(os.path.abspath(current_file))
+                base_name = os.path.splitext(os.path.basename(current_file))[0]
+                core_name = get_core_base_name(base_name)
+                for fallback in [
+                    f"{core_name}_cleaned.parquet", f"{core_name}_deduplicated.parquet", f"{core_name}.parquet"
+                ]:
+                    fallback_path = os.path.join(db_dir, fallback)
+                    if os.path.exists(fallback_path):
+                        resolved_input = fallback_path
+                        print(f" -> Input is a decoupled sidecar. Resolving base metadata to: {resolved_input}")
+                        if not args.save_path:
+                            current_save_path = resolved_input
+                        break
+
         # Load Dataset
-        df = load_dataframe(current_file, dtype={'Platform': str, 'Photo_ID': str})
+        df = load_dataframe(resolved_input, dtype={'Platform': str, 'Photo_ID': str})
 
         if 'Captured_At' not in df.columns:
             df['Captured_At'] = None
@@ -263,8 +285,7 @@ def main():
                 # Filter bboxes using spatial join to only query those containing missing points
                 active_bboxes = []
                 try:
-                    import geopandas as gpd
-                    from shapely.geometry import box
+
                     
                     print("Filtering boxes using spatial indexing to find boxes that contain our images...")
                     box_geoms = []
