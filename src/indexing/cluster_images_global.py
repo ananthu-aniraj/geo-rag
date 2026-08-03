@@ -90,12 +90,16 @@ def main():
         t0 = time.time()
         from src.utils.io import load_embeddings
         embeddings = load_embeddings(args.pkl)
+        dim = embeddings.shape[1]
         print(f" -> Successfully loaded {len(embeddings):,} embeddings in {time.time() - t0:.2f}s.")
 
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
     if 'Longitude' in df.columns:
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+
+    # Setup parent cluster count
+    k_parents = args.k // 80 if args.k >= 80 else 1
 
     if len(df) == 0:
         print("No data found.")
@@ -116,6 +120,11 @@ def main():
         start_assign = time.time()
         pf_old = pq.ParquetFile(args.centroids_parquet)
         
+        has_decoupled_old = 'embedding' not in pf_old.schema_arrow.names
+        if has_decoupled_old:
+            from src.utils.io import load_embeddings
+            embs_old_matrix = load_embeddings(args.centroids_parquet)
+            
         # Accumulate centroids dynamically from the old clustered database using vectorized math
         raw_centroids = np.zeros((args.k, dim), dtype=np.float32)
         counts = np.zeros(args.k, dtype=np.int64)
@@ -123,12 +132,29 @@ def main():
         
         print("Computing centroids from pre-existing database...")
         for rg in range(pf_old.num_row_groups):
-            table_old = pf_old.read_row_group(rg, columns=['cluster_id', 'parent_cluster_id', 'embedding'])
+            cols_to_read = ['cluster_id', 'parent_cluster_id']
+            if has_decoupled_old:
+                if 'embedding_idx' in pf_old.schema_arrow.names:
+                    cols_to_read.append('embedding_idx')
+            else:
+                cols_to_read.append('embedding')
+                
+            table_old = pf_old.read_row_group(rg, columns=cols_to_read)
             df_rg_old = table_old.to_pandas()
             if len(df_rg_old) == 0:
                 continue
                 
-            embs_old = np.vstack(df_rg_old['embedding'].values).astype(np.float32)
+            if has_decoupled_old:
+                if 'embedding_idx' in df_rg_old.columns:
+                    indices = df_rg_old['embedding_idx'].values
+                    embs_old = embs_old_matrix[indices]
+                else:
+                    start_idx = sum(pf_old.metadata.row_group(i).num_rows for i in range(rg))
+                    end_idx = start_idx + len(df_rg_old)
+                    embs_old = embs_old_matrix[start_idx:end_idx]
+            else:
+                embs_old = np.vstack(df_rg_old['embedding'].values).astype(np.float32)
+                
             c_ids_old = df_rg_old['cluster_id'].values
             p_ids_old = df_rg_old['parent_cluster_id'].values
             
