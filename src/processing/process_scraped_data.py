@@ -884,36 +884,12 @@ def main():
     csv_path = os.path.join(args.save_path, f"{args.output_name}.csv")
     parquet_path = os.path.join(args.save_path, f"{args.output_name}.parquet")
 
-    # If resume_from exists, we write the final parquet/CSV by streaming
+    # If resume_from exists, we write the final parquet by streaming
     if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl'):
         print("Writing final Parquet database using streaming update...")
         # 1. Parquet stream update
         stream_update_parquet(args.resume_from, parquet_path, out_df, active_cells)
-
-        # 2. CSV stream update (without embeddings)
-        print("Writing final CSV metadata using streaming update...")
-        t_csv = time.time()
-        import pyarrow.parquet as pq
-        pf_out = pq.ParquetFile(parquet_path)
-        csv_cols = [c for c in pf_out.schema_arrow.names if c not in ['embedding', 'patch_embedding']]
-
-        first = True
-        for rg in range(pf_out.num_row_groups):
-            tbl_rg = pf_out.read_row_group(rg, columns=csv_cols)
-            df_rg = tbl_rg.to_pandas()
-            df_rg.to_csv(
-                csv_path,
-                mode="a" if not first else "w",
-                index=False,
-                header=first
-            )
-            first = False
-        print(f" -> Final CSV written in {time.time() - t_csv:.2f}s.")
     else:
-        # Save CSV without embeddings (for human readability)
-        cols_to_drop = [c for c in ['embedding', 'patch_embedding'] if c in out_df.columns]
-        out_df.drop(columns=cols_to_drop).to_csv(csv_path, index=False)
-
         # Save Full Data to Parquet (High-performance binary storage)
         save_dataframe(out_df, parquet_path)
 

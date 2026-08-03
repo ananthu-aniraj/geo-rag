@@ -18,32 +18,39 @@ def main():
     parser.add_argument("--min_count", type=int, default=1, help="Minimum number of images in a cell to display.")
     args = parser.parse_args()
 
-    # 1. Gather all CSVs
+    # 1. Gather all CSVs and Parquets
     csv_files = []
     for d in args.dirs:
         if os.path.isdir(d):
             csv_files.extend(glob.glob(os.path.join(d, "*.csv")))
-        elif os.path.isfile(d) and d.endswith(".csv"):
+            csv_files.extend(glob.glob(os.path.join(d, "*.parquet")))
+        elif os.path.isfile(d) and (d.endswith(".csv") or d.endswith(".parquet")):
             csv_files.append(d)
 
     if not csv_files:
-        print("No CSV files found in the specified directories.")
+        print("No CSV or Parquet files found in the specified paths.")
         return
 
-    print(f"Found {len(csv_files)} CSV files.")
+    print(f"Found {len(csv_files)} files (CSV/Parquet).")
 
     # 2. Aggregate Data
     h3_stats = {} # cell -> {'total': count, 'platforms': {name: count}}
     total_images = 0
 
-    for f in tqdm(csv_files, desc="Reading csv files"):
+    import pyarrow.parquet as pq
+    for f in tqdm(csv_files, desc="Reading files"):
         try:
-            # We only read the necessary columns to save memory
-            df = pd.read_csv(
-                f,
-                usecols=lambda col: col.lower() in ['latitude', 'lat', 'longitude', 'lon', 'photo_id', 'id', 'platform', 'source', 'h3_cell'],
-                dtype={'photo_id': str, 'Photo_ID': str, 'id': str, 'ID': str, 'platform': str, 'Platform': str, 'source': str, 'Source': str}
-            )
+            if f.endswith('.parquet'):
+                avail_cols = pq.ParquetFile(f).schema_arrow.names
+                read_cols = [c for c in ['Latitude', 'Longitude', 'Photo_ID', 'Platform', 'H3_Cell'] if c in avail_cols]
+                df = pd.read_parquet(f, columns=read_cols)
+            else:
+                # We only read the necessary columns to save memory
+                df = pd.read_csv(
+                    f,
+                    usecols=lambda col: col.lower() in ['latitude', 'lat', 'longitude', 'lon', 'photo_id', 'id', 'platform', 'source', 'h3_cell'],
+                    dtype={'photo_id': str, 'Photo_ID': str, 'id': str, 'ID': str, 'platform': str, 'Platform': str, 'source': str, 'Source': str}
+                )
             if df.empty:
                 continue
 

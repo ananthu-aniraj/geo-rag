@@ -121,22 +121,15 @@ if [ -n "$LAND_SHP" ]; then
 fi
 
 python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_FLAG $LAND_SHP_FLAG
-RAW_CSV="$OUTPUT_DIR/${BASE_NAME}_deduplicated.csv"
-if [ -f "$RAW_CSV" ]; then
-    python3 -m src.processing.standardize_timestamps --input "$RAW_CSV" $KOPPEN_FLAG $LAND_SHP_FLAG
-fi
-
 echo ""
 echo "[Step 1c/5] Cleaning Coordinate Anomalies (if enabled)..."
 if [ "$CLEANUP_ANOMALIES" = "true" ]; then
     echo "Running coordinate anomaly cleanup..."
-    python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --csv "$RAW_CSV" --output "$CLEANED_PARQUET" --output_csv "$CLEANED_CSV"
+    python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --output "$CLEANED_PARQUET"
     INPUT_PARQUET="$CLEANED_PARQUET"
-    INPUT_CSV="$CLEANED_CSV"
 else
     echo "Coordinate anomaly cleanup is disabled."
     INPUT_PARQUET="$RAW_PARQUET"
-    INPUT_CSV="$RAW_CSV"
 fi
 
 echo ""
@@ -314,7 +307,7 @@ python3 -m src.visualization.visualize_cluster_scatter \
 echo ""
 echo "Generating occupancy map"
 python3 -m src.visualization.generate_h3_occupancy_map \
-  --dirs "$INPUT_CSV" \
+  --dirs "$INPUT_PARQUET" \
   --output "$OCCUPANCY_MAP"
 
 echo ""
