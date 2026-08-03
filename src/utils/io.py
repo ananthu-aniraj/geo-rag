@@ -19,7 +19,6 @@ def get_core_base_name(base_name):
     return base_name
 
 
-
 def load_dataframe(file_path, **kwargs):
     """
     Loads a dataframe from CSV, Parquet, or Pickle files dynamically based on extension.
@@ -28,7 +27,7 @@ def load_dataframe(file_path, **kwargs):
         raise FileNotFoundError(f"File not found: {file_path}")
 
     ext = os.path.splitext(file_path)[1].lower()
-    
+
     if ext == '.parquet':
         return pd.read_parquet(file_path, **kwargs)
     elif ext == '.csv':
@@ -77,7 +76,7 @@ def get_parquet_writer(file_path, schema, **kwargs):
 
     if 'compression' not in kwargs:
         kwargs['compression'] = 'zstd'
-        
+
     return pq.ParquetWriter(file_path, schema, **kwargs)
 
 
@@ -116,7 +115,7 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
                 break
 
     cluster_cols = [
-        'cluster_id', 'cluster_label', 'cluster_description', 
+        'cluster_id', 'cluster_label', 'cluster_description',
         'parent_cluster_id', 'parent_cluster_label', 'parent_cluster_description',
         'visual_description', 'parent_visual_description'
     ]
@@ -140,13 +139,13 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     # Check for and load sidecar file
     db_dir = os.path.dirname(os.path.abspath(parquet_path))
     base_name = os.path.splitext(os.path.basename(parquet_path))[0]
-    
+
     # Trim '_clustered_k_X' suffix if present to find base name
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
-        
+
     core_name = get_core_base_name(base_name)
-    
+
     # Try finding sidecar with full base_name or core_name
     sidecar_path = os.path.join(db_dir, f"{base_name}_clustered_k_{k_clusters}.parquet")
     if not os.path.exists(sidecar_path):
@@ -158,7 +157,7 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
         # Ensure we only load available columns from the sidecar
         pf_side = pq.ParquetFile(sidecar_path)
         side_avail_cols = [c for c in sidecar_cols if c in pf_side.schema_arrow.names]
-        
+
         df_sidecar = load_dataframe(sidecar_path, columns=side_avail_cols, **kwargs)
         df_meta = df_meta.merge(df_sidecar, on=['Platform', 'Photo_ID'], how='left')
 
@@ -171,7 +170,7 @@ def load_embeddings(parquet_path, column='embedding'):
     Supports dynamic mapping lookup via 'embedding_idx' to load from a shared base file.
     """
     import numpy as np
-    
+
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(f"File not found: {parquet_path}")
 
@@ -182,7 +181,7 @@ def load_embeddings(parquet_path, column='embedding'):
         chunked_arr = table[column]
         num_rows = len(table)
         dim = len(chunked_arr.chunk(0)[0].as_py())
-        
+
         emb_matrix = np.empty((num_rows, dim), dtype=np.float32)
         current_row = 0
         for chunk in chunked_arr.chunks:
@@ -195,11 +194,11 @@ def load_embeddings(parquet_path, column='embedding'):
     # Case B: Decoupled format (.npy)
     db_dir = os.path.dirname(os.path.abspath(parquet_path))
     base_name = os.path.splitext(os.path.basename(parquet_path))[0]
-    
+
     # Trim '_clustered_k_X' suffix if present to find base name
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
-        
+
     npy_name = f"{base_name}.npy" if column == 'embedding' else f"{base_name}_{column}.npy"
     npy_path = os.path.join(db_dir, npy_name)
 
@@ -216,7 +215,7 @@ def load_embeddings(parquet_path, column='embedding'):
         bases = [base_name, core_name]
         if "cleaned" in base_name:
             bases.append(base_name.replace("cleaned", "deduplicated"))
-            
+
         for b in bases:
             pattern = os.path.join(db_dir, f"{b}*.npy")
             matches = glob.glob(pattern)
@@ -228,7 +227,8 @@ def load_embeddings(parquet_path, column='embedding'):
                     break
                 # Otherwise, if default 'embedding' was requested, try finding cls_embeddings or similar
                 if column == 'embedding':
-                    preferred = [m for m in matches if 'cls_embeddings' in os.path.basename(m) or 'embedding' in os.path.basename(m)]
+                    preferred = [m for m in matches if
+                                 'cls_embeddings' in os.path.basename(m) or 'embedding' in os.path.basename(m)]
                     if preferred:
                         npy_path = preferred[0]
                         break
@@ -256,12 +256,17 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
     """
     if not image_root_dirs:
         return None
-        
+
     dirs = [image_root_dirs] if isinstance(image_root_dirs, str) else image_root_dirs
     for d in dirs:
         if not d:
             continue
-            
+
+        # 0. Try direct relative path join first
+        p_direct = os.path.join(d, url)
+        if os.path.exists(p_direct):
+            return os.path.abspath(p_direct)
+
         # A. Try direct lookup using Photo_ID (flat file, train/ folder, or nested)
         if photo_id:
             photo_str = str(photo_id).strip()
@@ -272,18 +277,19 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
                 p_flat = os.path.join(d, f"{photo_str}{ext}")
                 if os.path.exists(p_flat):
                     return os.path.abspath(p_flat)
-                
+
                 # 2. train/ flat lookup
                 p_train = os.path.join(d, "train", f"{photo_str}{ext}")
                 if os.path.exists(p_train):
                     return os.path.abspath(p_train)
-                    
+
                 # 3. Nested GLDv2 lookup (e.g. d/a/b/c/id.jpg)
                 if len(photo_str) == 16:
                     p_nested = os.path.join(d, photo_str[0], photo_str[1], photo_str[2], f"{photo_str}{ext}")
                     if os.path.exists(p_nested):
                         return os.path.abspath(p_nested)
-                    p_nested_train = os.path.join(d, "train", photo_str[0], photo_str[1], photo_str[2], f"{photo_str}{ext}")
+                    p_nested_train = os.path.join(d, "train", photo_str[0], photo_str[1], photo_str[2],
+                                                  f"{photo_str}{ext}")
                     if os.path.exists(p_nested_train):
                         return os.path.abspath(p_nested_train)
 
@@ -293,11 +299,11 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
         if "://" in url:
             clean_url = url.split("://")[1]
         basename = os.path.basename(clean_url)
-        
+
         basenames = [basename]
         if '.' not in basename:
             basenames.extend([f"{basename}{ext}" for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG']])
-            
+
         for b in basenames:
             p_base = os.path.join(d, b)
             if os.path.exists(p_base):
@@ -305,5 +311,5 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
             p_base_train = os.path.join(d, "train", b)
             if os.path.exists(p_base_train):
                 return os.path.abspath(p_base_train)
-                
+
     return None
