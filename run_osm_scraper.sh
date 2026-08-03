@@ -26,8 +26,8 @@ else
     fi
 fi
 
-PLATFORMS="all" # Choices: wikimedia, kartaview, all
-BASE_DIR="/home/ananthu/DATA/data_ananthu/osm_scrape_rand"
+PLATFORMS="kartaview" # Choices: wikimedia, kartaview, all
+BASE_DIR="/home/ananthu/Projects/data/osm_scrape_rand"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
 # Ensure base directory exists
