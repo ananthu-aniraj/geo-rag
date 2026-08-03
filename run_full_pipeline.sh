@@ -121,6 +121,11 @@ fi
 
 python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_FLAG $LAND_SHP_FLAG
 
+echo ""
+echo " -> Backfilling missing Flickr licenses..."
+python3 -m src.processing.backfill_licenses --input "$RAW_PARQUET" --log_dirs "/home/ananthu/DATA/data_ananthu/flickr_scrape /home/ananthu/DATA/data_ananthu/flickr_scrape_rand /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_2 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_3 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_4 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5"
+
+
 
 echo ""
 echo "[Step 1c/5] Cleaning Coordinate Anomalies (if enabled)..."
@@ -132,10 +137,6 @@ else
     echo "Coordinate anomaly cleanup is disabled."
     INPUT_PARQUET="$RAW_PARQUET"
 fi
-
-echo ""
-echo " -> Backfilling missing Flickr licenses..."
-python3 -m src.processing.backfill_licenses --input "$RAW_PARQUET" --log_dirs "/home/ananthu/DATA/data_ananthu/flickr_scrape /home/ananthu/DATA/data_ananthu/flickr_scrape_rand /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_2 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_3 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_4 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5"
 
 
 echo ""

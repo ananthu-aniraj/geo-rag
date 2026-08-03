@@ -99,11 +99,9 @@ def main():
                         help="List of log directories containing flickr_completed_boxes_chunk_*.txt files for spatial join optimization.")
     args = parser.parse_args()
 
-
-
     # Determine input and output paths
     resolved_input = args.input
-    
+
     if os.path.exists(args.input) and args.input.endswith('.parquet'):
         pf = pq.ParquetFile(args.input)
         schema_names = pf.schema_arrow.names
@@ -290,7 +288,8 @@ def main():
         modified = True
 
     # Set any remaining empty or null licenses to the default: 'All Rights Reserved'
-    null_or_empty_mask = df['License'].isna() | (df['License'].astype(str).str.strip() == "") | (df['License'].astype(str) == "nan")
+    null_or_empty_mask = df['License'].isna() | (df['License'].astype(str).str.strip() == "") | (
+                df['License'].astype(str) == "nan")
     if null_or_empty_mask.any():
         print(f"Setting {null_or_empty_mask.sum():,} remaining empty licenses to default 'All Rights Reserved'...")
         df.loc[null_or_empty_mask, 'License'] = 'All Rights Reserved'
@@ -299,23 +298,6 @@ def main():
     if modified:
         print(f"Saving updated database to: {out_path}")
         save_dataframe(df, out_path)
-        
-        # Propagate to cleaned dataset if we just updated deduplicated
-        if "_deduplicated.parquet" in out_path:
-            cleaned_path = out_path.replace("_deduplicated.parquet", "_cleaned.parquet")
-            if os.path.exists(cleaned_path):
-                print(f" -> Propagating updated licenses to cleaned dataset: {cleaned_path}")
-                try:
-                    df_cleaned = load_dataframe(cleaned_path)
-                    df_cleaned['__temp_idx'] = range(len(df_cleaned))
-                    df_cleaned = df_cleaned.drop(columns=['License'], errors='ignore')
-                    df_cleaned = df_cleaned.merge(df[['Platform', 'Photo_ID', 'License']], on=['Platform', 'Photo_ID'], how='left')
-                    df_cleaned = df_cleaned.sort_values('__temp_idx').drop(columns=['__temp_idx'])
-                    save_dataframe(df_cleaned, cleaned_path)
-                    print(" -> Cleaned dataset updated successfully!")
-                except Exception as e:
-                    print(f"Error propagating licenses to cleaned dataset: {e}")
-                    
         print("Backfill completed successfully!")
     else:
         print("\nNo licenses needed backfilling; database is already fully up to date.")
