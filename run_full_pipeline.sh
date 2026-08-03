@@ -41,7 +41,6 @@ FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
 CLEANED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_cleaned.parquet"
-CLEANED_CSV="$OUTPUT_DIR/${BASE_NAME}_cleaned.csv"
 CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
 H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_h3_semantic_index.parquet"
 MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"

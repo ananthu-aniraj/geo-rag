@@ -50,6 +50,7 @@ special_loc_scrape*/
 retrieval_exps/
 iwildcam_subset/
 shapefiles/uncovered_land_areas_test.*
+scratch/
 
 # Do not ignore
 !templates/*.html

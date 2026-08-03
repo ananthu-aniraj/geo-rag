@@ -100,7 +100,6 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
         base_name = os.path.splitext(os.path.basename(parquet_path))[0]
         core_name = get_core_base_name(base_name)
         for fallback in [
-            f"{base_name}_cleaned.parquet", f"{base_name}_deduplicated.parquet", f"{base_name}.parquet",
             f"{core_name}_cleaned.parquet", f"{core_name}_deduplicated.parquet", f"{core_name}.parquet"
         ]:
             fallback_path = os.path.join(db_dir, fallback)
