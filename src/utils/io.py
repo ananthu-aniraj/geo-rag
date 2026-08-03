@@ -240,7 +240,7 @@ def load_embeddings(parquet_path, column='embedding'):
         emb = np.load(npy_path, mmap_mode="r")
         # If 'embedding_idx' is in the parquet columns, map indices dynamically
         if 'embedding_idx' in pf.schema_arrow.names:
-            idx_table = pf.read_table(columns=['embedding_idx'])
+            idx_table = pf.read(columns=['embedding_idx'])
             indices = idx_table['embedding_idx'].to_numpy()
             return emb[indices]
         return emb
