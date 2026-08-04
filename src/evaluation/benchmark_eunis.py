@@ -13,7 +13,6 @@ import pyarrow.parquet as pq
 import rasterio
 import torch
 import torch.nn.functional as F
-from shapely.geometry import Point
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import (
@@ -190,26 +189,8 @@ def main():
         print("Filtering European coordinates using the CSV 'Continent' column...")
         df = df[df[continent_col].astype(str).str.lower() == "europe"].reset_index(drop=True)
         print(f"Keep {len(df)} records inside Europe.")
-    elif args.countries_shp and os.path.exists(args.countries_shp):
-        print(f"Filtering European coordinates using shapefile: {args.countries_shp}...")
-        try:
-            countries_gdf = gpd.read_file(args.countries_shp)
-            europe_gdf = countries_gdf[countries_gdf['CONTINENT'] == 'Europe']
-
-            # Convert df to GeoDataFrame
-            geometry = [Point(xy) for xy in zip(df[lon_col], df[lat_col])]
-            geo_df = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
-
-            if europe_gdf.crs != geo_df.crs:
-                europe_gdf = europe_gdf.to_crs(geo_df.crs)
-
-            joined = gpd.sjoin(geo_df, europe_gdf, how="inner", predicate="intersects")
-            df = pd.DataFrame(joined.drop(columns="geometry")).reset_index(drop=True)
-            print(f"Keep {len(df)} records inside Europe.")
-        except Exception as e:
-            print(f"Warning: Failed to filter Europe using shapefile: {e}. Falling back to raster bounds check.")
     else:
-        print("Neither 'Continent' column in CSV nor countries shapefile found. Falling back to raster bounds check.")
+        print("Warning: 'Continent' column not found in database. Proceeding without European filtering.")
 
     if len(df) == 0:
         print("Error: No coordinates left inside Europe.")

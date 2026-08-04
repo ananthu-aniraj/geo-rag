@@ -18,7 +18,6 @@ get_param() {
 
 # Load parameters from YAML
 ENV_CSV=$(get_param "environmental_zones" "csv_path")
-ENV_SHP=$(get_param "environmental_zones" "countries_shp")
 ENV_RASTER=$(get_param "environmental_zones" "raster")
 ENV_QUERIES=$(get_param "environmental_zones" "num_queries")
 ENV_DB=$(get_param "environmental_zones" "num_database")
@@ -26,7 +25,6 @@ ENV_BATCH=$(get_param "environmental_zones" "batch_size")
 ENV_SEED=$(get_param "environmental_zones" "seed")
 
 EUNIS_CSV=$(get_param "eunis" "csv_path")
-EUNIS_SHP=$(get_param "eunis" "countries_shp")
 EUNIS_RASTER=$(get_param "eunis" "raster")
 EUNIS_QUERIES=$(get_param "eunis" "num_queries")
 EUNIS_DB=$(get_param "eunis" "num_database")
@@ -49,7 +47,6 @@ fi
 
 echo "Configuration (Loaded from eval_params_online.yaml):"
 echo "- Database path: $ENV_CSV"
-echo "- Countries SHP: $ENV_SHP"
 echo "- Env Zones Raster: $ENV_RASTER"
 echo "- EUNIS Raster: $EUNIS_RASTER"
 echo "================================================================================"
@@ -58,7 +55,6 @@ echo "==========================================================================
 echo -e "\n[1/2] Running Environmental Zones of Europe Representation Benchmark..."
 python3 -m src.evaluation.benchmark_environmental_zones \
   --csv_path "$ENV_CSV" \
-  --countries_shp "$ENV_SHP" \
   --raster "$ENV_RASTER" \
   --num_queries "$ENV_QUERIES" \
   --num_database "$ENV_DB" \
@@ -72,7 +68,6 @@ python3 -m src.evaluation.benchmark_environmental_zones \
 echo -e "\n[2/2] Running EUNIS Ecosystems Representation Benchmark..."
 python3 -m src.evaluation.benchmark_eunis \
   --csv_path "$EUNIS_CSV" \
-  --countries_shp "$EUNIS_SHP" \
   --raster "$EUNIS_RASTER" \
   --num_queries "$EUNIS_QUERIES" \
   --num_database "$EUNIS_DB" \
