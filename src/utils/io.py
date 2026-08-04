@@ -407,22 +407,7 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_s
             pass
 
     # 2. Try resolving via offline directories
-    dirs_to_use = offline_dirs
-    if dirs_to_use is None:
-        dirs_to_use = []
-        if os.path.exists("params.yaml"):
-            try:
-                with open("params.yaml", "r") as f:
-                    params = yaml.safe_load(f)
-                pipeline_params = params.get("pipeline", {}) if isinstance(params, dict) else {}
-                offline_dirs_str = pipeline_params.get("offline_dataset_dirs", "") if isinstance(pipeline_params,
-                                                                                                 dict) else ""
-                if not offline_dirs_str and isinstance(params, dict):
-                    offline_dirs_str = params.get("offline_dataset_dirs", "")
-                if offline_dirs_str:
-                    dirs_to_use = [d.strip() for d in offline_dirs_str.split() if d.strip()]
-            except Exception:
-                pass
+    dirs_to_use = offline_dirs if offline_dirs is not None else []
 
     if dirs_to_use and url:
         try:

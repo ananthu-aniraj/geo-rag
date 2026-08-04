@@ -8,6 +8,7 @@ environmental_zones:
   num_database: 300000
   batch_size: 32
   seed: 42
+  offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
 
 eunis:
   csv_path: "/home/ananthu/Projects/data/full_pipeline_output/geo_space_deduplicated.parquet"
@@ -17,3 +18,4 @@ eunis:
   num_database: 300000
   batch_size: 32
   seed: 42
+  offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"

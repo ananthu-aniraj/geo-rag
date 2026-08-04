@@ -23,6 +23,7 @@ ENV_QUERIES=$(get_param "environmental_zones" "num_queries")
 ENV_DB=$(get_param "environmental_zones" "num_database")
 ENV_BATCH=$(get_param "environmental_zones" "batch_size")
 ENV_SEED=$(get_param "environmental_zones" "seed")
+ENV_OFFLINE=$(get_param "environmental_zones" "offline_dataset_dirs")
 
 EUNIS_CSV=$(get_param "eunis" "csv_path")
 EUNIS_RASTER=$(get_param "eunis" "raster")
@@ -30,6 +31,7 @@ EUNIS_QUERIES=$(get_param "eunis" "num_queries")
 EUNIS_DB=$(get_param "eunis" "num_database")
 EUNIS_BATCH=$(get_param "eunis" "batch_size")
 EUNIS_SEED=$(get_param "eunis" "seed")
+EUNIS_OFFLINE=$(get_param "eunis" "offline_dataset_dirs")
 
 OUTPUT_DIR="./benchmark_results"
 mkdir -p "$OUTPUT_DIR"
@@ -49,6 +51,7 @@ echo "Configuration (Loaded from eval_params_online.yaml):"
 echo "- Database path: $ENV_CSV"
 echo "- Env Zones Raster: $ENV_RASTER"
 echo "- EUNIS Raster: $EUNIS_RASTER"
+echo "- Offline Dirs: $ENV_OFFLINE"
 echo "================================================================================"
 
 # --- Step 1: Benchmark Environmental Zones ---
@@ -61,6 +64,7 @@ python3 -m src.evaluation.benchmark_environmental_zones \
   --batch_size "$ENV_BATCH" \
   --seed "$ENV_SEED" \
   --query_platform "flickr" \
+  --offline_dataset_dirs $ENV_OFFLINE \
   --output_report "$OUTPUT_DIR/environmental_zones_report.txt" \
   --output_csv "$OUTPUT_DIR/environmental_zones_results.csv"
 
@@ -74,6 +78,7 @@ python3 -m src.evaluation.benchmark_eunis \
   --batch_size "$EUNIS_BATCH" \
   --seed "$EUNIS_SEED" \
   --query_platform "flickr" \
+  --offline_dataset_dirs $EUNIS_OFFLINE \
   --output_report "$OUTPUT_DIR/eunis_report.txt" \
   --output_csv "$OUTPUT_DIR/eunis_results.csv"
 

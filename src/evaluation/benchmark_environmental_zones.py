@@ -99,6 +99,8 @@ def main():
     parser.add_argument("--num_database", type=int, default=500, help="Number of database images to search against.")
     parser.add_argument("--batch_size", type=int, default=16, help="GPU batch size for feature extraction.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument("--offline_dataset_dirs", type=str, nargs="*", default=None,
+                        help="Base directories containing offline dataset images and CSV folders.")
     parser.add_argument("--tips_model_path", type=str, default=None,
                         help="Path to the official TIPSv2 model checkpoint (.npz). If None, uses Hugging Face 'google/tipsv2-b14'.")
     parser.add_argument("--tips_model_variant", type=str, default="B", choices=["S", "B", "L", "So400m", "g"],
@@ -298,6 +300,7 @@ def main():
                 item['url'],
                 photo_id=item.get('photo_id'),
                 platform=item.get('platform'),
+                offline_dirs=args.offline_dataset_dirs,
                 image_size=image_size
             ): idx
             for idx, item in enumerate(queries_selection)
@@ -484,6 +487,7 @@ def main():
                     item['url'],
                     photo_id=item.get('photo_id'),
                     platform=item.get('platform'),
+                    offline_dirs=args.offline_dataset_dirs,
                     image_size=image_size
                 ): idx
                 for idx, item in enumerate(chunk_meta)
@@ -586,11 +590,14 @@ def main():
             rr = compute_rr(retrieved_labels, q_label, k=10)
             results[rep_name]["mrr@10"] += rr
 
+            q_id = f"{q_item.get('platform', 'unknown')}_{q_item.get('photo_id', '')}" if q_item.get('photo_id') else q_item["url"]
+            r_id = f"{retrieved_items[0].get('platform', 'unknown')}_{retrieved_items[0].get('photo_id', '')}" if retrieved_items[0].get('photo_id') else retrieved_items[0]["url"]
+
             detailed_rows.append({
-                "Query_Image": q_item["filename"],
+                "Query_Image": q_id,
                 "Representation": rep_name,
                 "Ground_Truth": q_label,
-                "Top_1_Retrieved": retrieved_items[0]["filename"],
+                "Top_1_Retrieved": r_id,
                 "Top_1_Label": retrieved_labels[0],
                 "P@1": p1,
                 "P@5": p5,
