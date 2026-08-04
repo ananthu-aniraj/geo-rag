@@ -24,7 +24,9 @@ from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
 
+from src.models.vision_model_inference import extract_model_embeddings
 from src.utils.io import (
+    get_core_base_name,
     get_parquet_writer,
     load_dataframe,
     load_embeddings,
@@ -181,9 +183,6 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None):
     except Exception:
         pass
     return None
-
-
-from src.models.vision_model_inference import extract_model_embeddings
 
 
 def get_tips_embeddings(images, model, device, batch_size=32, representation_type='cls'):
@@ -408,7 +407,6 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
         base_name = os.path.splitext(os.path.basename(output_path))[0]
         if "_clustered_k_" in base_name:
             base_name = base_name.split("_clustered_k_")[0]
-        from src.utils.io import get_core_base_name
         core_name = get_core_base_name(base_name)
         
         npy_path = os.path.join(db_dir, f"{core_name}_{representation_type}_embeddings.npy")
@@ -884,35 +882,13 @@ def main():
     print("Grouping metadata by H3 cell...")
     new_metadata_dict = defaultdict(list)
     if not df_all.empty:
-        pids = df_all['Photo_ID'].to_numpy()
-        plats = df_all['Platform'].to_numpy()
-        lats = df_all['Latitude'].to_numpy()
-        lons = df_all['Longitude'].to_numpy()
-        urls = df_all['Image_URL'].to_numpy()
-        caps = df_all['Captured_At'].to_numpy()
-        cells = df_all['H3_Cell'].to_numpy()
-
-        for pid, plat, lat, lon, url, cap, cell in zip(pids, plats, lats, lons, urls, caps, cells):
-            new_metadata_dict[cell].append({
-                'Photo_ID': pid,
-                'Platform': plat,
-                'Latitude': lat,
-                'Longitude': lon,
-                'Image_URL': url,
-                'Captured_At': cap,
-                'H3_Cell': cell
-            })
+        new_records = df_all.to_dict('records')
+        for r in new_records:
+            cell = r['H3_Cell']
+            new_metadata_dict[cell].append(r)
 
     existing_items_dict = defaultdict(list)
     if df_existing_active is not None and not df_existing_active.empty:
-        pids = df_existing_active['Photo_ID'].to_numpy()
-        plats = df_existing_active['Platform'].to_numpy()
-        lats = df_existing_active['Latitude'].to_numpy()
-        lons = df_existing_active['Longitude'].to_numpy()
-        urls = df_existing_active['Image_URL'].to_numpy()
-        caps = df_existing_active['Captured_At'].to_numpy()
-        cells = df_existing_active['H3_Cell'].to_numpy()
-
         if 'existing_embeddings' in locals() and existing_embeddings is not None:
             if args.resume_from.endswith('.pkl'):
                 active_indices = df_existing_active.index.values
@@ -922,17 +898,11 @@ def main():
         else:
             embs = [None] * len(df_existing_active)
 
-        for pid, plat, lat, lon, url, cap, cell, emb in zip(pids, plats, lats, lons, urls, caps, cells, embs):
-            existing_items_dict[cell].append({
-                'Photo_ID': pid,
-                'Platform': plat,
-                'Latitude': lat,
-                'Longitude': lon,
-                'Image_URL': url,
-                'Captured_At': cap,
-                'H3_Cell': cell,
-                'embedding': emb
-            })
+        existing_records = df_existing_active.to_dict('records')
+        for r, emb in zip(existing_records, embs):
+            cell = r['H3_Cell']
+            r['embedding'] = emb
+            existing_items_dict[cell].append(r)
 
     with ThreadPoolExecutor(max_workers=64) as executor:
         for cell in tqdm(cells_to_process, desc="Processing cells"):

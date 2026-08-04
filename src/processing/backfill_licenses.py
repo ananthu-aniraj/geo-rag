@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import geopandas as gpd
+import pandas as pd
 import pyarrow.parquet as pq
 import requests
 from shapely.geometry import Point, box as shapely_box
@@ -250,8 +251,62 @@ def main():
                 if lic_code is not None:
                     flickr_licenses[pid] = lic_code
 
+    # --- Scan and Load Offline Dataset CSV Licenses from args.log_dirs ---
+    offline_licenses = {}
+    if args.log_dirs:
+        # Split any space-separated strings (shell-quoting issue helper)
+        actual_log_dirs = []
+        for d in args.log_dirs:
+            actual_log_dirs.extend([x.strip() for x in d.split() if x.strip()])
+
+        # Build Photo_ID to Platform map from main dataset
+        pid_to_platform = dict(zip(df['Photo_ID'].astype(str), df['Platform'].astype(str).str.lower()))
+
+        print("Scanning --log_dirs for CSV files to load per-image licenses...")
+        for d in actual_log_dirs:
+            if not os.path.exists(d):
+                continue
+            csv_files = glob.glob(os.path.join(d, "**/*.csv"), recursive=True) + glob.glob(os.path.join(d, "*.csv"))
+            csv_files = list(set(csv_files))
+            for csv_file in csv_files:
+                try:
+                    # Read CSV, only loading columns that match Photo_ID/License (case-insensitive)
+                    df_csv = pd.read_csv(csv_file, usecols=lambda col: col.lower() in ["photo_id", "license"])
+                    df_csv.columns = [c.lower() for c in df_csv.columns]
+                    if "photo_id" in df_csv.columns and "license" in df_csv.columns:
+                        df_csv = df_csv.dropna(subset=["photo_id", "license"])
+                        if not df_csv.empty:
+                            pids = df_csv["photo_id"].astype(str).tolist()
+                            lics = df_csv["license"].astype(str).tolist()
+                            for p, l in zip(pids, lics):
+                                plat = pid_to_platform.get(p, "")
+                                if plat == "flickr":
+                                    clean_code = l.split('.')[0].strip()
+                                    if clean_code in FLICKR_LICENSE_MAP:
+                                        l = FLICKR_LICENSE_MAP[clean_code]
+                                offline_licenses[p] = l
+                except Exception:
+                    pass
+        if offline_licenses:
+            print(f"Loaded {len(offline_licenses):,} licenses from offline CSV files.")
+
     # --- Save back to dataset ---
     modified = False
+
+    # Apply offline licenses
+    if offline_licenses:
+        # Standardize License column type first to combine
+        if 'License' not in df.columns:
+            df['License'] = None
+        df['License'] = df['License'].astype(str).replace({'nan': None, 'None': None, '<NA>': None, '': None})
+        
+        is_missing = df['License'].isna() | (df['License'].astype(str).str.strip() == "")
+        df_missing_pids = df.loc[is_missing, 'Photo_ID'].astype(str)
+        mapped_offline = df_missing_pids.map(offline_licenses)
+        if mapped_offline.notna().any():
+            df['License'] = df['License'].combine_first(mapped_offline)
+            modified = True
+            print(f" -> Backfilled {mapped_offline.notna().sum()} records using offline CSV maps.")
 
     # Standardize License column type and NaNs first
     if 'License' not in df.columns:
