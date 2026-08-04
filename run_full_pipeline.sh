@@ -127,7 +127,7 @@ python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_
 
 echo ""
 echo " -> Backfilling missing Flickr licenses..."
-python3 -m src.processing.backfill_licenses --input "$RAW_PARQUET" --log_dirs "/home/ananthu/DATA/data_ananthu/flickr_scrape /home/ananthu/DATA/data_ananthu/flickr_scrape_rand /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_2 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_3 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_4 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5"
+python3 -m src.processing.backfill_licenses --input "$RAW_PARQUET" --log_dirs /home/ananthu/Projects/data/flickr_scrape /home/ananthu/Projects/data/flickr_scrape_rand /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_2 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_3 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_4 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_5 /home/ananthu/DATA/data_ananthu/flickr_scrape_rand_6 /home/ananthu/DATA/google-landmark
 
 
 
