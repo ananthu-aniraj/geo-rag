@@ -148,7 +148,7 @@ def main():
         print("Parsing completed bounding boxes log files...")
         bboxes = set()
         for log_dir in args.log_dirs:
-            pattern = os.path.join(log_dir, "flickr_completed_boxes_chunk_*.txt")
+            pattern = os.path.join(log_dir, "*_completed_boxes_*.txt")
             log_files = glob.glob(pattern)
             print(f"  -> Found {len(log_files)} log files in: {log_dir}")
             for f in log_files:
