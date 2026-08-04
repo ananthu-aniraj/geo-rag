@@ -183,8 +183,10 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None):
     return None
 
 
-def get_tips_embeddings(images, model, device, batch_size=32):
-    """Computes TIPSv2 embeddings for a list of PIL images in batches."""
+from src.models.vision_model_inference import extract_model_embeddings
+
+def get_tips_embeddings(images, model, device, batch_size=32, representation_type='cls'):
+    """Computes TIPSv2 embeddings for a list of PIL images in batches using a single forward pass."""
     if not images:
         return None
 
@@ -192,17 +194,16 @@ def get_tips_embeddings(images, model, device, batch_size=32):
     with torch.no_grad():
         for i in range(0, len(images), batch_size):
             batch = images[i: i + batch_size]
-            # Batch transform and stack
             batch_tensors = torch.stack([tips_transform(img) for img in batch]).to(device)
-            features = model.encode_image(batch_tensors).cls_token
-            all_features.append(features.squeeze(1).cpu().numpy())
+            features = extract_model_embeddings(model, batch_tensors, representation_type=representation_type)
+            all_features.append(features)
 
     return np.concatenate(all_features, axis=0)
 
 
 def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor, text_features=None,
                  existing_items=None, cell_chunk_size=128, tips_batch_size=32, macro_idx=-1, sky_idx=-1,
-                 offline_dirs=None):
+                 offline_dirs=None, representation_type='cls'):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item['embedding'] for item in results]
@@ -225,7 +226,7 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
         valid_imgs = [imgs[i] for i in valid_indices]
 
         # Compute embeddings for this chunk using configured tips_batch_size
-        all_embeddings = get_tips_embeddings(valid_imgs, model, device, batch_size=tips_batch_size)
+        all_embeddings = get_tips_embeddings(valid_imgs, model, device, batch_size=tips_batch_size, representation_type=representation_type)
 
         # Explicitly close PIL images immediately to free RAM
         for img in valid_imgs:
@@ -294,7 +295,7 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
     return results
 
 
-def stream_update_parquet(input_path, output_path, df_new, active_cells):
+def stream_update_parquet(input_path, output_path, df_new, active_cells, representation_type='cls', precision='float32'):
     """
     Reads input_path in row groups, filters out rows belonging to active_cells,
     and writes the remaining inactive rows along with df_new to output_path
@@ -323,7 +324,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
     schema = pa.schema(new_fields)
 
     # Load existing embeddings
-    full_embeddings = load_embeddings(input_path)
+    full_embeddings = load_embeddings(input_path, representation_type=representation_type)
 
     tmp_output = f"{output_path}.tmp_stream"
     try:
@@ -408,10 +409,13 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
             base_name = base_name.split("_clustered_k_")[0]
         from src.utils.io import get_core_base_name
         core_name = get_core_base_name(base_name)
-        npy_path = os.path.join(db_dir, f"{core_name}_cls_embeddings.npy")
+        
+        npy_path = os.path.join(db_dir, f"{core_name}_{representation_type}_embeddings.npy")
+        dtype = np.float16 if precision == 'float16' else np.float32
+        final_embs_cast = final_embs.astype(dtype)
 
-        print(f" -> Saving merged companion embeddings matrix: {npy_path}")
-        np.save(npy_path, final_embs)
+        print(f" -> Saving merged companion embeddings matrix: {npy_path} (dtype={dtype.__name__})")
+        np.save(npy_path, final_embs_cast)
 
         if os.path.exists(tmp_output):
             os.replace(tmp_output, output_path)
@@ -625,6 +629,10 @@ def main():
     parser.add_argument("--tips_batch_size", type=int, default=32, help="Batch size for TIPSv2 embedding inference.")
     parser.add_argument("--offline_dataset_dirs", type=str, nargs="*", default=None,
                         help="Base directories containing offline dataset CSV indexes and images folders.")
+    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
+                        help="Type of representation embedding to extract (cls, avg_patch, or cls_avg_patch).")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Floating point precision format for stored embeddings (float32 or float16).")
     args = parser.parse_args()
 
     # 1. Gather all CSVs
@@ -780,7 +788,7 @@ def main():
         if len(df_existing_active) > 0:
             if has_decoupled:
                 # Load the full memory-mapped embedding matrix
-                full_embeddings = load_embeddings(args.resume_from)
+                full_embeddings = load_embeddings(args.resume_from, representation_type=args.representation_type)
                 # Map using embedding_idx, or fallback to row index if missing
                 if 'embedding_idx' in df_existing_active.columns:
                     indices = df_existing_active['embedding_idx'].values
@@ -945,7 +953,8 @@ def main():
                                    tips_batch_size=args.tips_batch_size,
                                    macro_idx=macro_idx,
                                    sky_idx=sky_idx,
-                                   offline_dirs=args.offline_dataset_dirs)
+                                   offline_dirs=args.offline_dataset_dirs,
+                                   representation_type=args.representation_type)
             final_data.extend(deduped)
             processed_cells.add(cell)
 
@@ -981,10 +990,11 @@ def main():
     if args.resume_from and os.path.exists(args.resume_from) and not args.resume_from.endswith('.pkl'):
         print("Writing final Parquet database using streaming update...")
         # 1. Parquet stream update
-        stream_update_parquet(args.resume_from, parquet_path, out_df, active_cells)
+        stream_update_parquet(args.resume_from, parquet_path, out_df, active_cells,
+                              representation_type=args.representation_type, precision=args.precision)
     else:
         # Save Full Data to Parquet (High-performance binary storage)
-        save_dataframe(out_df, parquet_path)
+        save_dataframe(out_df, parquet_path, representation_type=args.representation_type, precision=args.precision)
 
     # Clean up checkpoint files on successful completion
     if os.path.exists(checkpoint_path):

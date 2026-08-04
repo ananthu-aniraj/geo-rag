@@ -268,6 +268,10 @@ def main():
     parser.add_argument("--chunk_size", type=int, default=128, help="Batch chunk size for VLM API requests.")
     parser.add_argument("--img_max_dim", type=int, default=672, help="Target max dimension for images.")
     parser.add_argument("--image_root_dir", type=str, nargs="+", default=None, help="Optional root directories for local images.")
+    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
+                        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Stored precision of companion binary file (float32 or float16).")
     args = parser.parse_args()
 
     if args.output_file is None:
@@ -292,10 +296,10 @@ def main():
         print("Loading raw embedding matrix temporarily to compute centroids and representative images...")
         t0 = time.time()
         try:
-            embeddings = load_embeddings(args.input_file)
+            embeddings = load_embeddings(args.input_file, representation_type=args.representation_type)
         except Exception as e:
             print(f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load...")
-            embeddings = load_embeddings(args.input_file, column='embedding')
+            embeddings = load_embeddings(args.input_file, column='embedding', representation_type=args.representation_type)
         print(f" -> Temporarily loaded raw embedding matrix in {time.time() - t0:.2f}s.")
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')

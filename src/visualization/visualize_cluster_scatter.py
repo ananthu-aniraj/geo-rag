@@ -18,7 +18,7 @@ from tqdm import tqdm
 from src.utils.io import load_dataset_with_clusters, load_embeddings
 
 
-def create_scatter_plot(pkl_path, output_png):
+def create_scatter_plot(pkl_path, output_png, representation_type=None):
     print(f"Loading clustered data from {pkl_path}...")
     start_time = time.time()
     try:
@@ -51,17 +51,34 @@ def create_scatter_plot(pkl_path, output_png):
         for c in required_cols:
             if c not in available_cols:
                 print(f"Error: Input dataset is missing required column: '{c}'")
-                sys.exit(1)
+    match = re.search(r'_clustered_k_(\d+)', os.path.basename(pkl_path))
+    if match:
+        k_clusters = int(match.group(1))
 
-    cluster_sums = {}  # cluster_id -> np.ndarray sum of embeddings
-    cluster_counts = {}  # cluster_id -> count of images
-    cluster_metadata = {}  # cluster_id -> {label, parent, description}
+    match = re.search(r'_k_(\d+)', os.path.basename(pkl_path))
+    if match:
+        k_clusters = int(match.group(1))
 
-    print("Accumulating centroids and metadata...")
+    # Verify if it's decoupled parquet format
+    is_pkl = pkl_path.endswith('.pkl')
+    has_decoupled = False
+    if not is_pkl:
+        pf = pq.ParquetFile(pkl_path)
+        has_decoupled = 'embedding' not in pf.schema_arrow.names
+
+    output_html = output_png.replace('.png', '.html')
+
+    # 1. Aggregate embeddings to compute cluster centroids
+    cluster_sums = {}
+    cluster_counts = {}
+    cluster_metadata = {}
     dim = None
 
-    if not has_decoupled_layout:
-        # Case A: Old format contains embeddings and clusters inside Parquet
+    if not is_pkl and not has_decoupled:
+        # Case A: Combined parquet (read raw embeddings directly in chunks)
+        print("Reading combined Parquet dataset...")
+        pf = pq.ParquetFile(pkl_path)
+        available_cols = pf.schema_arrow.names
         for rg in tqdm(range(pf.num_row_groups), desc="Processing row groups"):
             columns_to_read = ['cluster_id', 'embedding']
             for extra in ['cluster_label', 'parent_cluster_label', 'cluster_description', 'Platform']:
@@ -104,8 +121,8 @@ def create_scatter_plot(pkl_path, output_png):
                     cluster_counts[unique_id] += count
     else:
         # Case B: New decoupled format (load metadata/clusters and memory-mapped embeddings)
-        df_meta = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
-        embeddings = load_embeddings(pkl_path)
+        df_meta = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters, representation_type=representation_type)
+        embeddings = load_embeddings(pkl_path, representation_type=representation_type)
         dim = embeddings.shape[1]
         print(f"Detected decoupled embedding matrix dimensionality: {dim}")
 
@@ -306,6 +323,10 @@ if __name__ == "__main__":
         description="Visualize cluster centroids in an interactive 2D semantic scatter plot using UMAP.")
     parser.add_argument("--pkl", type=str, required=True, help="Path to the clustered parquet or pkl file.")
     parser.add_argument("--out", type=str, default="cluster_scatter.png", help="Output PNG file name.")
+    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
+                        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Stored precision of companion binary file (float32 or float16).")
     args = parser.parse_args()
 
-    create_scatter_plot(args.pkl, args.out)
+    create_scatter_plot(args.pkl, args.out, representation_type=args.representation_type)

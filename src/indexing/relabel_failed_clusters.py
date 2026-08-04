@@ -299,6 +299,10 @@ def main():
                         help="Optional root directories containing local images (for offline datasets).")
     parser.add_argument("--save_interval", type=int, default=50,
                         help="Interval of successfully re-labeled clusters at which to save intermediate checkpoints.")
+    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
+                        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Stored precision of companion binary file (float32 or float16).")
     args = parser.parse_args()
 
     if not args.out:
@@ -393,10 +397,10 @@ def main():
     print("Extracting embeddings...")
     from src.utils.io import load_embeddings
     try:
-        embeddings = load_embeddings(args.file).squeeze()
+        embeddings = load_embeddings(args.file, representation_type=args.representation_type).squeeze()
     except Exception as e:
         print(f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load...")
-        embeddings = load_embeddings(args.file, column='embedding').squeeze()
+        embeddings = load_embeddings(args.file, column='embedding', representation_type=args.representation_type).squeeze()
 
     print("Normalizing embeddings...")
     embeddings_norm = normalize(embeddings)

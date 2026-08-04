@@ -19,7 +19,7 @@ from src.utils.io import load_dataframe, load_dataset_with_clusters, load_embedd
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
 
-def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, target_h3_res=5):
+def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, target_h3_res=5, representation_type=None):
     print(f"Loading clustered data from {pkl_path}...")
 
     if pkl_path.endswith('.pkl'):
@@ -40,7 +40,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         # Load embeddings
         print("Loading raw embedding matrix...")
         t0 = time.time()
-        embeddings = load_embeddings(pkl_path)
+        embeddings = load_embeddings(pkl_path, representation_type=representation_type)
         print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
     if len(df) == 0 or 'cluster_id' not in df.columns:
@@ -378,6 +378,11 @@ if __name__ == "__main__":
     parser.add_argument("--image_root_dir", type=str, nargs="+", default=None,
                         help="Optional root directories containing local images (for offline datasets).")
     parser.add_argument("--target_h3_res", type=int, default=8, help="Target H3 resolution for spatial aggregation (default: 8).")
+    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
+                        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Stored precision of companion binary file (float32 or float16).")
     args = parser.parse_args()
 
-    create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir, target_h3_res=args.target_h3_res)
+    create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir, target_h3_res=args.target_h3_res,
+                       representation_type=args.representation_type)

@@ -44,7 +44,7 @@ def load_dataframe(file_path, **kwargs):
         raise ValueError(f"Unsupported file format '{ext}' for loading dataframe.")
 
 
-def save_dataframe(df, file_path, index=False, **kwargs):
+def save_dataframe(df, file_path, index=False, representation_type=None, precision=None, **kwargs):
     """
     Saves a dataframe to CSV, Parquet, or Pickle with optimal compression default (Zstd for Parquet).
     Automatically decouples embeddings into a companion .npy file if the column is present.
@@ -68,11 +68,33 @@ def save_dataframe(df, file_path, index=False, **kwargs):
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
             core_name = get_core_base_name(base_name)
-            npy_path = os.path.join(db_dir, f"{core_name}_cls_embeddings.npy")
-
-            print(f" -> Automatically decoupling embeddings to companion file: {npy_path}")
-            embs = np.vstack(df['embedding'].values).astype(np.float32)
-            np.save(npy_path, embs)
+            
+            embs = np.vstack(df['embedding'].values)
+            dim = embs.shape[1]
+            
+            # 1. Resolve representation suffix
+            if representation_type is not None:
+                rep_suffix = representation_type
+            else:
+                # Auto-detect based on feature dimension
+                if dim == 1536:
+                    rep_suffix = "cls_avg_patch"
+                else:
+                    rep_suffix = "cls"
+            
+            npy_path = os.path.join(db_dir, f"{core_name}_{rep_suffix}_embeddings.npy")
+            
+            # 2. Resolve precision dtype
+            dtype = np.float32
+            if precision == 'float16':
+                dtype = np.float16
+            elif precision == 'float32':
+                dtype = np.float32
+            else:
+                dtype = embs.dtype
+                
+            print(f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={dtype.__name__})")
+            np.save(npy_path, embs.astype(dtype))
 
             df_to_save = df.copy()
             df_to_save['embedding_idx'] = np.arange(len(df_to_save), dtype=np.int32)
@@ -104,7 +126,7 @@ def get_parquet_writer(file_path, schema, **kwargs):
     return pq.ParquetWriter(file_path, schema, **kwargs)
 
 
-def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **kwargs):
+def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, representation_type=None, **kwargs):
     """
     Backward-compatible loader that returns metadata and cluster assignments.
     Merges sidecars automatically if the base parquet does not contain cluster columns.
@@ -192,7 +214,7 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, **k
     return df_meta
 
 
-def load_embeddings(parquet_path, column='embedding'):
+def load_embeddings(parquet_path, column='embedding', representation_type=None):
     """
     Backward-compatible loader that returns memory-mapped or raw embedding matrices.
     Supports dynamic mapping lookup via 'embedding_idx' to load from a shared base file.
@@ -228,7 +250,8 @@ def load_embeddings(parquet_path, column='embedding'):
 
     core_name = get_core_base_name(base_name)
     if column == 'embedding':
-        npy_name = f"{core_name}_cls_embeddings.npy"
+        suffix = representation_type if representation_type else 'cls'
+        npy_name = f"{core_name}_{suffix}_embeddings.npy"
     elif column == 'patch_embedding':
         npy_name = f"{core_name}_patch_embeddings.npy"
     else:
@@ -275,8 +298,8 @@ def load_embeddings(parquet_path, column='embedding'):
         if 'embedding_idx' in pf.schema_arrow.names:
             idx_table = pf.read(columns=['embedding_idx'])
             indices = idx_table['embedding_idx'].to_numpy()
-            return emb[indices]
-        return emb
+            return emb[indices].astype(np.float32)
+        return emb.astype(np.float32)
 
     raise FileNotFoundError(f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'")
 

@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
 
-from src.utils.io import load_dataframe, save_dataframe
+from src.utils.io import load_dataframe, load_embeddings, save_dataframe
 
 
 def cluster_data(input_embeddings, k, gpu_enabled=True, minibatch_enabled=False):
@@ -64,6 +64,10 @@ def main():
     parser.add_argument("--out", type=str, default="clustered_data.parquet", help="Output Parquet path.")
     parser.add_argument("--clustering_mode", type=str, choices=["fit", "assign"], default="fit", help="Clustering mode: fit (re-cluster all) or assign (map to existing centroids).")
     parser.add_argument("--centroids_parquet", type=str, default=None, help="Path to pre-existing clustered Parquet database to load centroids and metadata from.")
+    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
+                        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Stored precision of companion binary file (float32 or float16).")
     args = parser.parse_args()
 
     k_parents = args.k_parents
@@ -88,8 +92,7 @@ def main():
 
         print("Loading embedding matrix...")
         t0 = time.time()
-        from src.utils.io import load_embeddings
-        embeddings = load_embeddings(args.pkl)
+        embeddings = load_embeddings(args.pkl, representation_type=args.representation_type)
         dim = embeddings.shape[1]
         print(f" -> Successfully loaded {len(embeddings):,} embeddings in {time.time() - t0:.2f}s.")
 
@@ -122,8 +125,7 @@ def main():
         
         has_decoupled_old = 'embedding' not in pf_old.schema_arrow.names
         if has_decoupled_old:
-            from src.utils.io import load_embeddings
-            embs_old_matrix = load_embeddings(args.centroids_parquet)
+            embs_old_matrix = load_embeddings(args.centroids_parquet, representation_type=args.representation_type)
             
         # Accumulate centroids dynamically from the old clustered database using vectorized math
         raw_centroids = np.zeros((args.k, dim), dtype=np.float32)

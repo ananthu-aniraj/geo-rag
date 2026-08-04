@@ -462,6 +462,13 @@ def main():
         "Hybrid Land Use Signature": HYBRID_LAND_USE
     }
 
+    # Expand representations to include FP16 versions for direct side-by-side comparison
+    expanded_representations = {}
+    for rep_name, matrix in list(representations.items()):
+        expanded_representations[f"{rep_name} (FP32)"] = matrix
+        expanded_representations[f"{rep_name} (FP16)"] = matrix.astype(np.float16).astype(np.float32)
+    representations = expanded_representations
+
     results = {rep: {"distances": [], "top_10_distances": [], "r_1_5km": 0, "r_5_5km": 0, "r_1_50km": 0, "r_5_50km": 0, "country_match": 0, "cross_platform_success": 0, "cross_platform_total": 0} for rep in representations}
 
     for q_idx in query_indices:

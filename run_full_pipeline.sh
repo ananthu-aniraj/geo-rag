@@ -23,6 +23,8 @@ BATCH_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))[
 CELL_CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cell_chunk_size', 64))" 2>/dev/null || echo "64")
 BASE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('base_name', 'geo_space'))" 2>/dev/null || echo "geo_space")
 OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('output_dir', '/home/ananthu/DATA/data_ananthu/full_pipeline_output'))" 2>/dev/null || echo "/home/ananthu/DATA/data_ananthu/full_pipeline_output")
+REPRESENTATION_TYPE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('representation_type', 'cls'))" 2>/dev/null || echo "cls")
+PRECISION=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('precision', 'float32'))" 2>/dev/null || echo "float32")
 
 # Input dirs
 INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
@@ -94,6 +96,8 @@ python3 -m src.processing.process_scraped_data \
   --checkpoint_interval "$CHECKPOINT_INTERVAL" \
   --tips_batch_size "$BATCH_SIZE" \
   --cell_chunk_size "$CELL_CHUNK_SIZE" \
+  --representation_type "$REPRESENTATION_TYPE" \
+  --precision "$PRECISION" \
   $RESUME_FLAG \
   $FILTER_FLAGS \
   $OFFLINE_FLAG
@@ -201,6 +205,8 @@ if [ "$CLUSTERING_MODE" = "assign" ]; then
       --out "$CLUSTERED_PARQUET.tmp" \
       --clustering_mode assign \
       --centroids_parquet "$CLUSTERED_PARQUET" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
       --gpu
     mv "$CLUSTERED_PARQUET.tmp" "$CLUSTERED_PARQUET"
 else
@@ -208,6 +214,8 @@ else
       --pkl "$INPUT_PARQUET" \
       --k "$K_CLUSTERS" \
       --out "$CLUSTERED_PARQUET" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
       --gpu
 
     # Detect if AppArmor is active on the host system to avoid breaking non-AppArmor systems (macOS, Windows, RedHat)
@@ -267,6 +275,8 @@ else
       --mllm_backend "$MLLM_BACKEND" \
       --mllm_model "$MLLM_MODEL" \
       --chunk_size "$CHUNK_SIZE" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
       $IMAGE_ROOT_FLAG
 
     echo ""
@@ -275,6 +285,8 @@ else
       --in "$CLUSTERED_PARQUET" \
       --mllm_model "$MLLM_MODEL" \
       --mllm_backend "$MLLM_BACKEND" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
       $IMAGE_ROOT_FLAG
 
     echo ""
@@ -303,13 +315,17 @@ python3 -m src.visualization.visualize_cluster_samples \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SAMPLES_FILE" \
   --top_n 6 \
+  --representation_type "$REPRESENTATION_TYPE" \
+  --precision "$PRECISION" \
   $IMAGE_ROOT_FLAG
 
 echo ""
 echo "[Step 5/5] Generating Semantic Scatter Plot (UMAP 2D)..."
 python3 -m src.visualization.visualize_cluster_scatter \
   --pkl "$CLUSTERED_PARQUET" \
-  --out "$SCATTER_FILE"
+  --out "$SCATTER_FILE" \
+  --representation_type "$REPRESENTATION_TYPE" \
+  --precision "$PRECISION"
 
 echo ""
 echo "Generating occupancy map"

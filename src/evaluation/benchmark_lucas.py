@@ -481,6 +481,18 @@ def main():
     extract_features_batch(database_meta, "db")
 
     # 4. Retrieval & Similarity Benchmarking
+    expanded_representations = {}
+    for rep_name, splits in list(representations.items()):
+        expanded_representations[f"{rep_name} (FP32)"] = splits
+        
+        q_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["query"]]
+        db_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["db"]]
+        expanded_representations[f"{rep_name} (FP16)"] = {
+            "query": q_fp16,
+            "db": db_fp16
+        }
+    representations = expanded_representations
+
     label_types = ["lc_label", "lu_label", "eunis_class"]
     label_names = {"lc_label": "Land Cover", "lu_label": "Land Use", "eunis_class": "EUNIS Class (CSV)"}
     
