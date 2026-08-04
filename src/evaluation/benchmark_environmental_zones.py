@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import rasterio
 import torch
 import torch.nn.functional as F
@@ -138,10 +139,9 @@ def main():
 
     if csv_path.endswith('.parquet'):
         print(f"Loading Parquet database from: {csv_path}...")
-        import pyarrow.parquet as pq
-        pf = pq.ParquetFile(csv_path)
-        cols = [c for c in ["Photo_ID", "Platform", "Latitude", "Longitude", "Image_URL", "Continent", "License"] if c in pf.schema_arrow.names]
-        df = pf.read_table(columns=cols).to_pandas()
+        schema = pq.read_schema(csv_path)
+        cols = [c for c in ["Photo_ID", "Platform", "Latitude", "Longitude", "Image_URL", "Continent", "License"] if c in schema.names]
+        df = pq.read_table(csv_path, columns=cols).to_pandas()
     else:
         print(f"Loading CSV database from: {csv_path}...")
         df = pd.read_csv(csv_path)
