@@ -407,31 +407,18 @@ def main():
             # B. TIPSv2 feature extraction
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
-                if args.tips_model_path:
-                    # Official model forward returns: first_cls_token, second_cls_token, patch_tokens
-                    first_cls_token, second_cls_token, patch_tokens = tipsv2(img_tensors)
+                is_local = bool(args.tips_model_path)
+                from src.models.vision_model_inference import extract_benchmark_features_single_pass
+                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
+                patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
 
-                    first_cls = first_cls_token.cpu().numpy()
-                    if first_cls.ndim == 3:
-                        first_cls = first_cls.squeeze(1)
-
-                    second_cls = second_cls_token.cpu().numpy()
-                    if second_cls.ndim == 3:
-                        second_cls = second_cls.squeeze(1)
-
+                if is_local:
+                    first_cls, second_cls = cls_out
                     representations["TIPSv2 1st CLS"][split_key].extend(first_cls)
                     representations["TIPSv2 2nd CLS"][split_key].extend(second_cls)
                 else:
-                    out = tipsv2.encode_image(img_tensors)
-                    cls_tokens = out.cls_token.cpu().numpy()
-                    if cls_tokens.ndim == 3:
-                        cls_tokens = cls_tokens.squeeze(1)
+                    cls_tokens = cls_out
                     representations["TIPSv2 CLS"][split_key].extend(cls_tokens)
-
-                # Extract patch tokens
-                vision_encoder = tipsv2 if args.tips_model_path else tipsv2.vision_encoder
-                patch_tokens_vals = encode_image_value_attention(vision_encoder, img_tensors)
-                patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1).cpu().numpy()
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):
