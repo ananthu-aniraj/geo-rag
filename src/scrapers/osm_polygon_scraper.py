@@ -159,12 +159,12 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
     """Fetches a single batch of images from KartaView in a grid box."""
     min_lon, min_lat, max_lon, max_lat = grid_box
     
-    # KartaView API limits bounding box size to 0.08 degrees per side.
+    # KartaView API limits bounding box size to 0.04 degrees per side.
     # If the box exceeds this limit, we split it into smaller sub-boxes recursively.
     lon_span = max_lon - min_lon
     lat_span = max_lat - min_lat
     
-    if lon_span > 0.08 or lat_span > 0.08:
+    if lon_span > 0.04 or lat_span > 0.04:
         mid_lon = (min_lon + max_lon) / 2.0
         mid_lat = (min_lat + max_lat) / 2.0
         
@@ -175,8 +175,14 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
             (mid_lon, mid_lat, max_lon, max_lat)   # Top-right
         ]
         
+        from shapely.geometry import box as shapely_box
         combined_results = []
         for s_box in sub_boxes:
+            # Check if the sub-box actually intersects the target polygon before querying
+            s_poly = shapely_box(*s_box)
+            if not s_poly.intersects(polygon):
+                continue
+                
             res = fetch_kartaview_batch(s_box, polygon, max_images, delay, page)
             if res['stat'] == 'ok':
                 combined_results.extend(res['data'])
@@ -334,9 +340,9 @@ def main():
             except Exception as e2:
                 print(f"Warning: Could not load uncovered shapefile: {e2}")
 
-    # 2. Partition Bounding Box into 5km x 5km grid boxes
+    # 2. Partition Bounding Box into 3.5km x 3.5km grid boxes
     min_lon, min_lat, max_lon, max_lat = polygon.bounds
-    STEP_KM = 5.0
+    STEP_KM = 3.5
     lat_step = STEP_KM / 111.32
     current_lat = min_lat
 
