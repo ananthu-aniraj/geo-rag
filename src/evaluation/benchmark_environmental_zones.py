@@ -1,5 +1,4 @@
 import argparse
-import math
 import os
 import random
 import sys
@@ -11,7 +10,6 @@ import pandas as pd
 import pyarrow.parquet as pq
 import rasterio
 import torch
-import torch.nn.functional as F
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import (
@@ -36,50 +34,6 @@ from src.utils.spatial_overlays import (
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
-
-
-
-
-def encode_image_value_attention(model_image, img):
-    """Extracts spatial value features from model vision encoder using the MaskCLIP values trick."""
-    B, _, H, W = img.shape
-    P = model_image.patch_size if hasattr(model_image, 'patch_size') else 14
-    new_H = math.ceil(H / P) * P
-    new_W = math.ceil(W / P) * P
-
-    if (H, W) != (new_H, new_W):
-        img = F.interpolate(img, size=(new_H, new_W), mode='bicubic', align_corners=False)
-
-    B, _, h_i, w_i = img.shape
-    x = model_image.prepare_tokens_with_masks(img)
-
-    num_register = getattr(model_image, 'num_register_tokens', 1)
-    all_blocks = list(model_image.blocks)
-    for i, blk in enumerate(all_blocks):
-        if i < len(all_blocks) - 1:
-            x = blk(x)
-        else:
-            x_normed = blk.norm1(x)
-            b_dim, n_dim, c_dim = x_normed.shape
-            qkv = (
-                blk.attn.qkv(x_normed)
-                .reshape(b_dim, n_dim, 3, blk.attn.num_heads, c_dim // blk.attn.num_heads)
-                .permute(2, 0, 3, 1, 4)
-            )
-            v = qkv[2]
-            v_out = v.transpose(1, 2).reshape(b_dim, n_dim, c_dim)
-            v_out = blk.attn.proj(v_out)
-            v_out = blk.ls1(v_out)
-            x_val = v_out + x
-
-            y_val = blk.norm2(x_val)
-            y_val = blk.ls2(blk.mlp(y_val))
-            x_val = x_val + y_val
-
-    x_val = model_image.norm(x_val)
-    patch_tokens = x_val[:, 1 + num_register:, :]
-    blocks_patches = patch_tokens.reshape(B, h_i // P, w_i // P, -1).contiguous()
-    return blocks_patches
 
 
 def main():
