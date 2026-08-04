@@ -284,15 +284,12 @@ def main():
     query_urls = set(item['url'] for item in queries_selection)
     database_selection = [item for item in db_pool if item['url'] not in query_urls][:args.num_database]
 
-    # Combined selection list for downloads
-    selected_images = queries_selection + database_selection
-
     print(
         f"Prereq selection sizes: {len(queries_selection)} Queries ({q_plat if q_plat else 'any'}), {len(database_selection)} Database.")
 
-    # Download images in parallel
-    print(f"Downloading {len(selected_images)} images for benchmarking in parallel...")
-    images_dict = {}
+    # 1. Download query images in parallel
+    print(f"Downloading {len(queries_selection)} query images for benchmarking in parallel...")
+    queries_dict = {}
     image_size = 224 if args.tips_low_res else 448
     with ThreadPoolExecutor(max_workers=32) as executor:
         futures = {
@@ -303,33 +300,27 @@ def main():
                 platform=item.get('platform'),
                 image_size=image_size
             ): idx
-            for idx, item in enumerate(selected_images)
+            for idx, item in enumerate(queries_selection)
         }
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading Queries"):
             idx = futures[future]
             img = future.result()
             if img:
-                images_dict[idx] = img
+                queries_dict[idx] = img
 
-    print(f"Successfully downloaded {len(images_dict)} images.")
-    if len(images_dict) < 10:
-        print("Error: Too few images successfully downloaded to run benchmark.")
+    active_query_indices = sorted(list(queries_dict.keys()))
+    queries_meta = [queries_selection[idx] for idx in active_query_indices]
+    for idx, img in enumerate([queries_dict[k] for k in active_query_indices]):
+        queries_meta[idx]['img'] = img
+
+    print(f"Successfully downloaded {len(queries_meta)} query images.")
+    if len(queries_meta) == 0:
+        print("Error: No query images successfully downloaded.")
         return
 
-    # Keep only downloaded items
-    active_indices = sorted(list(images_dict.keys()))
-    selected_images = [selected_images[idx] for idx in active_indices]
-    for idx, img in enumerate([images_dict[k] for k in active_indices]):
-        selected_images[idx]['img'] = img
-
-    # Resolve queries and database splits from downloaded items (no overlap, platform-respecting)
-    queries_meta = [item for item in selected_images if item in queries_selection]
-    database_meta = [item for item in selected_images if item in database_selection]
-
-    print(f"Final evaluation split: {len(queries_meta)} Queries, {len(database_meta)} Database.")
-    if len(queries_meta) == 0 or len(database_meta) == 0:
-        print("Error: Empty query or database split. Adjust your parameters.")
-        return
+    # Keep database metadata selection without downloading yet (streamed in chunks later)
+    database_meta = database_selection
+    print(f"Final evaluation split: {len(queries_meta)} Queries, {len(database_meta)} Database (processing DB in chunks).")
 
     # 3. Initialize Models
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -469,8 +460,59 @@ def main():
 
                 representations["TIPSv2 Seg-Masked"][split_key].append(masked_avg_embed)
 
+    # Extract query features and free RAM immediately
     extract_features_batch(queries_meta, "query")
-    extract_features_batch(database_meta, "db")
+    for item in queries_meta:
+        if 'img' in item:
+            if hasattr(item['img'], 'close'):
+                item['img'].close()
+            item.pop('img', None)
+
+    # 4.5 Download and extract database features in chunks to protect RAM
+    db_chunk_size = 1000
+    downloaded_database_meta = []
+    print(f"Processing database of {len(database_meta)} images in chunks of {db_chunk_size}...")
+    for chunk_start in range(0, len(database_meta), db_chunk_size):
+        chunk_meta = database_meta[chunk_start : chunk_start + db_chunk_size]
+        print(f"\n--- Processing database chunk {chunk_start // db_chunk_size + 1} ({chunk_start} to {chunk_start + len(chunk_meta)}) ---")
+
+        db_dict = {}
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            futures = {
+                executor.submit(
+                    download_image,
+                    item['url'],
+                    photo_id=item.get('photo_id'),
+                    platform=item.get('platform'),
+                    image_size=image_size
+                ): idx
+                for idx, item in enumerate(chunk_meta)
+            }
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading DB Chunk"):
+                idx = futures[future]
+                img = future.result()
+                if img:
+                    db_dict[idx] = img
+
+        active_db_indices = sorted(list(db_dict.keys()))
+        chunk_downloaded = [chunk_meta[idx] for idx in active_db_indices]
+        for idx, img in enumerate([db_dict[k] for k in active_db_indices]):
+            chunk_downloaded[idx]['img'] = img
+
+        if len(chunk_downloaded) > 0:
+            extract_features_batch(chunk_downloaded, "db")
+            downloaded_database_meta.extend(chunk_downloaded)
+
+            # Immediately free RAM for this chunk's images
+            for item in chunk_downloaded:
+                if 'img' in item:
+                    if hasattr(item['img'], 'close'):
+                        item['img'].close()
+                    item.pop('img', None)
+
+    # Update database_meta to match ONLY the successfully downloaded images
+    database_meta = downloaded_database_meta
+    print(f"Successfully processed features for {len(database_meta)} database images.")
 
     # 5. Retrieval & Similarity Benchmarking
     expanded_representations = {}
