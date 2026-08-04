@@ -35,11 +35,15 @@ def make_request_with_backoff(url, params=None, headers=None, max_retries=5, ini
                 print(f"\n[HTTP 429] Rate limit hit. Retrying in {delay:.1f}s...")
                 time.sleep(delay)
                 delay *= 2.0
+            elif response.status_code == 400:
+                print(f"\n[HTTP 400] Bad Request: The server rejected the request. Response details: {response.text[:300]}")
+                print(f"Requested URL: {url} | Params: {params}")
+                return None
             elif response.status_code == 403:
                 print("\n[HTTP 403] Forbidden: Access blocked. Your IP or User-Agent might be blocked by the server.")
                 return None
             else:
-                print(f"\n[HTTP {response.status_code}] Warning. Retrying in {delay:.1f}s...")
+                print(f"\n[HTTP {response.status_code}] Warning: {response.text[:200]}. Retrying in {delay:.1f}s...")
                 time.sleep(delay)
                 delay *= 2.0
         except Exception as e:
@@ -155,12 +159,12 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
     """Fetches a single batch of images from KartaView in a grid box."""
     min_lon, min_lat, max_lon, max_lat = grid_box
     
-    # KartaView API limits bounding box size to 0.04 degrees per side.
+    # KartaView API limits bounding box size to 0.08 degrees per side.
     # If the box exceeds this limit, we split it into smaller sub-boxes recursively.
     lon_span = max_lon - min_lon
     lat_span = max_lat - min_lat
     
-    if lon_span > 0.04 or lat_span > 0.04:
+    if lon_span > 0.08 or lat_span > 0.08:
         mid_lon = (min_lon + max_lon) / 2.0
         mid_lat = (min_lat + max_lat) / 2.0
         

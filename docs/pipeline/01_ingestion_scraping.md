@@ -42,7 +42,7 @@ Prior to entering the main data engineering pipeline, raw data is harvested usin
 * **`run_inaturalist_presets.sh`**: Ingests species observations using predefined biome presets (e.g. `desert`, `tundra`, `wetland`, `boreal`, `rainforest`, `polar`).
 
 ### 4. OpenStreetMap Boundary Scrapers
-* **`src/scrapers/osm_polygon_scraper.py`**: Scrapes geotagged files inside defined boundaries exclusively from **Wikimedia Commons** (extracting licenses and timestamps using `extmetadata`) and **KartaView** (extracting timestamps, track parameters, and licenses, defaulting to CC BY-SA 4.0). 
+* **`src/scrapers/osm_polygon_scraper.py`**: Scrapes geotagged files inside defined boundaries exclusively from **KartaView** (extracting timestamps, track parameters, and licenses, defaulting to CC BY-SA 4.0). 
 * **`run_osm_scraper.sh`**: Orchestrates sequential batch scraping of the boundary grid chunks over randomized indices with crash-halting checks and state preservation logs. Offers configurable options to toggle between global or location-specific query boundaries.
 
 ---
