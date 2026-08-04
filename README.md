@@ -68,7 +68,7 @@ To download the latest version of the dataset locally (requires SSH access to th
 
 For detailed documentation, scripts, API queries, Nominatim geocoding, boundary filtering, and spatial difference masks, please refer to:
 
-👉 **[Ingestion & Scraping Utilities Documentation](docs/pipeline.md#-21-ingestion--scraping-utilities)**
+👉 **[Ingestion & Scraping Utilities Documentation](docs/pipeline/01_ingestion_scraping.md)**
 
 The project root contains automated shell orchestrators for batch search loops:
 * **Flickr Global/Local Search**: [`run_flickr_scraper.sh`](run_flickr_scraper.sh)
