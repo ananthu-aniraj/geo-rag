@@ -239,3 +239,13 @@ To run an end-to-end evaluation cycle:
 4. Run `caption_test.py` to caption a set of validation images and generate embeddings.
 5. Run `evaluate_retrieval.py` on the resulting pickle output to benchmark the retrieval metrics.
 6. Inspect text reports in the `benchmark_results/` directory (e.g. `lucas_report.txt`, `places_report.txt`, `eunis_report.txt`, `environmental_zones_report.txt`) for overall alignment summaries.
+
+---
+
+## 💾 Memory-Efficient Large-Scale Evaluation
+
+When evaluating large databases (e.g. `num_database` set up to 100,000 or more), holding all images simultaneously in RAM as PIL Image objects will cause system Out-Of-Memory (OOM) crashes. Both `benchmark_environmental_zones.py` and `benchmark_eunis.py` employ a stream-processing and memory-capped architecture:
+1. **Query Pre-load & Free:** Queries are downloaded and embedded first. Raw query images are then immediately closed and popped from RAM.
+2. **Chunked Database Processing:** Database images are downloaded, embedded, and discarded in sequential chunks of **1,000 images**.
+3. **GPU VRAM Cleanup:** Intermediate PyTorch tensors are deleted dynamically and local PIL streams are closed immediately at the end of each chunk.
+4. **Index Mismatch Protection:** The scripts dynamically filter the database metadata list to match only successfully downloaded entries, preventing indexing mismatches during batched similarity evaluations.
