@@ -2,6 +2,7 @@ import argparse
 import os
 import pickle
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -109,69 +110,88 @@ def main():
         print("Loading Hugging Face google/tipsv2-b14 model...")
         tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
 
-    # 3. Compute Embeddings Batch-by-Batch
+    # 3. Compute Embeddings in Parallel Chunks
     print(f"Computing '{args.representation_type}' embeddings with {args.precision} precision...")
     num_rows = len(df)
     
     embeddings_matrix = None
+    successful_indices = []
     
-    batch_imgs = []
-    batch_indices = []
-    
+    def download_thread_fn(global_idx, url, photo_id, platform, offline_dirs, image_size):
+        img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=offline_dirs, image_size=image_size)
+        return global_idx, img
+
     t0 = time.time()
     valid_count = 0
     
-    for idx in tqdm(range(num_rows), desc="Processing images"):
-        row = df.iloc[idx]
-        url = row['Image_URL']
-        photo_id = row['Photo_ID']
-        platform = row['Platform']
+    # Process dataset in parallel download chunks (e.g. 512 images at a time)
+    chunk_size = 512
+    print(f"Processing dataset of {num_rows} images in chunks of {chunk_size} with parallel downloads...")
+    
+    for chunk_start in range(0, num_rows, chunk_size):
+        chunk_df = df.iloc[chunk_start : chunk_start + chunk_size]
+        print(f"\n--- Processing chunk {chunk_start // chunk_size + 1} ({chunk_start} to {chunk_start + len(chunk_df)}) ---")
         
-        # Download / Load image
-        img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=args.image_root_dir, image_size=image_size)
-        if img is None:
-            if platform.lower() == 'mapillary' and not url.startswith('mapillary://'):
-                url = f"mapillary://{photo_id}"
-            elif platform.lower() == 'kartaview' and not url.startswith('kartaview://'):
-                url = f"kartaview://{photo_id}"
-            img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=args.image_root_dir, image_size=image_size)
+        # Parallel downloads for the chunk
+        db_dict = {}
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            futures = {
+                executor.submit(
+                    download_thread_fn,
+                    global_idx,
+                    row['Image_URL'],
+                    row['Photo_ID'],
+                    row['Platform'],
+                    args.image_root_dir,
+                    image_size
+                ): global_idx
+                for global_idx, row in chunk_df.iterrows()
+            }
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading Chunk"):
+                global_idx, img = future.result()
+                if img is not None:
+                    db_dict[global_idx] = img
 
-        if img is not None:
-            try:
-                img_tensor = transform(img)
-                batch_imgs.append(img_tensor)
-                batch_indices.append(idx)
-                valid_count += 1
-            except Exception as e:
-                print(f"Warning: Failed to preprocess image {photo_id}: {e}")
-            finally:
+        # Run model inference in batches of args.batch_size on successfully downloaded images
+        active_indices = sorted(list(db_dict.keys()))
+        valid_imgs = [db_dict[idx] for idx in active_indices]
+        
+        if len(valid_imgs) > 0:
+            for b_start in range(0, len(valid_imgs), args.batch_size):
+                batch_imgs = valid_imgs[b_start : b_start + args.batch_size]
+                batch_indices = active_indices[b_start : b_start + args.batch_size]
+                
+                try:
+                    batch_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
+                    with torch.no_grad():
+                        features = extract_model_embeddings(tipsv2, batch_tensors, representation_type=args.representation_type)
+                    
+                    if embeddings_matrix is None:
+                        dim = features.shape[1]
+                        dtype = np.float32 if args.precision == 'float32' else np.float16
+                        embeddings_matrix = np.zeros((num_rows, dim), dtype=dtype)
+                        print(f"Detected representation feature dimension: {dim}")
+                        
+                    for b_i, global_idx in enumerate(batch_indices):
+                        embeddings_matrix[global_idx] = features[b_i].astype(embeddings_matrix.dtype)
+                        successful_indices.append(global_idx)
+                        valid_count += 1
+                except Exception as e:
+                    print(f"Warning: Failed processing model batch starting at index {batch_indices[0]}: {e}")
+            
+            # Immediately close PIL images to free RAM
+            for img in valid_imgs:
                 if hasattr(img, 'close'):
                     img.close()
-                    
-        # When batch size is reached or at the very end
-        if len(batch_imgs) >= args.batch_size or (idx == num_rows - 1 and batch_imgs):
-            batch_tensors = torch.stack(batch_imgs).to(device)
-            
-            with torch.no_grad():
-                features = extract_model_embeddings(tipsv2, batch_tensors, representation_type=args.representation_type)
-            
-            # Check dimension and initialize output matrix if not done yet
-            if embeddings_matrix is None:
-                dim = features.shape[1]
-                dtype = np.float32 if args.precision == 'float32' else np.float16
-                embeddings_matrix = np.zeros((num_rows, dim), dtype=dtype)
-                print(f"Detected representation feature dimension: {dim}")
-                
-            # Place into the pre-allocated matrix
-            for b_i, global_idx in enumerate(batch_indices):
-                embeddings_matrix[global_idx] = features[b_i].astype(embeddings_matrix.dtype)
-                
-            # Clear batch lists
-            batch_imgs = []
-            batch_indices = []
 
     elapsed = time.time() - t0
     print(f" -> Processed {valid_count}/{num_rows} images successfully in {elapsed:.2f}s ({num_rows/elapsed:.2f} img/s).")
+
+    # Filter out records where the download/load failed (expired links, etc.)
+    if embeddings_matrix is not None and len(successful_indices) < num_rows:
+        print(f"Filtering out {num_rows - len(successful_indices)} rows that failed to load or download...")
+        df = df.iloc[successful_indices].reset_index(drop=True)
+        embeddings_matrix = embeddings_matrix[successful_indices]
 
     # 4. Save Outputs
     db_dir = os.path.dirname(os.path.abspath(out_path))

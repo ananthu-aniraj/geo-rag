@@ -6,7 +6,6 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
-from io import BytesIO
 
 import h3
 import numpy as np
@@ -15,22 +14,18 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
-import requests
 import torch
-from PIL import Image
-from requests.adapters import HTTPAdapter
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import AutoModel
-from urllib3.util import Retry
 
 from src.models.vision_model_inference import extract_model_embeddings
 from src.utils.io import (
+    download_image,
     get_core_base_name,
     get_parquet_writer,
     load_dataframe,
     load_embeddings,
-    resolve_offline_image_path,
     save_dataframe,
 )
 from src.utils.licensing import FLICKR_LICENSE_MAP
@@ -40,21 +35,6 @@ tips_transform = transforms.Compose([
     transforms.Resize((448, 448)),
     transforms.ToTensor(),
 ])
-
-MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
-
-# Global connection pooled session configuration for thread-safe high-throughput downloads
-http_session = requests.Session()
-http_session.headers.update({
-    "User-Agent": "Geo-RAG-Scraper-Pipeline/1.0 (aaniraj@home; contact: aaniraj@home.com)"
-})
-_adapter = HTTPAdapter(
-    pool_connections=128,
-    pool_maxsize=128,
-    max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-)
-http_session.mount("https://", _adapter)
-http_session.mount("http://", _adapter)
 
 
 def clean_photo_id(val):
@@ -129,60 +109,6 @@ def standardize_timestamps_vectorized(ts_raw):
     standardized[invalid_mask] = ts_series[invalid_mask]
 
     return standardized
-
-
-def download_image(url, photo_id=None, platform=None, offline_dirs=None):
-    """Downloads an image using the global connection pool session and returns a resized PIL Image."""
-    try:
-        # Check if url is a local path first
-        if not (url.startswith("http://") or url.startswith("https://") or url.startswith(
-                "mapillary://") or url.startswith("kartaview://")):
-            if os.path.exists(url):
-                img = Image.open(url).convert("RGB")
-                img_resized = img.resize((448, 448))
-                img.close()
-                return img_resized
-
-        if offline_dirs:
-            resolved_path = resolve_offline_image_path(url, offline_dirs, photo_id, platform)
-            if resolved_path:
-                img = Image.open(resolved_path).convert("RGB")
-                img_resized = img.resize((448, 448))
-                img.close()
-                return img_resized
-            return None
-
-        if url.startswith("mapillary://"):
-            orig_id = url.split("://")[1]
-            api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
-            headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-            res = http_session.get(api_url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                url = res.json().get("thumb_1024_url")
-            else:
-                return None
-        elif url.startswith("kartaview://"):
-            orig_id = url.split("://")[1]
-            api_url = f"https://api.openstreetcam.org/2.0/photo/{orig_id}"
-            res = http_session.get(api_url, timeout=10)
-            if res.status_code == 200:
-                data = res.json().get("result", {}).get("data", {})
-                url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
-            else:
-                return None
-
-        if not url:
-            return None
-
-        response = http_session.get(url, timeout=10)
-        if response.status_code == 200:
-            img = Image.open(BytesIO(response.content)).convert("RGB")
-            img_resized = img.resize((448, 448))
-            img.close()
-            return img_resized
-    except Exception:
-        pass
-    return None
 
 
 def get_tips_embeddings(images, model, device, batch_size=32, representation_type='cls'):
