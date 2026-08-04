@@ -214,7 +214,7 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, rep
     return df_meta
 
 
-def load_embeddings(parquet_path, column='embedding', representation_type=None):
+def load_embeddings(parquet_path, column='embedding', representation_type='cls'):
     """
     Backward-compatible loader that returns memory-mapped or raw embedding matrices.
     Supports dynamic mapping lookup via 'embedding_idx' to load from a shared base file.
@@ -250,7 +250,7 @@ def load_embeddings(parquet_path, column='embedding', representation_type=None):
 
     core_name = get_core_base_name(base_name)
     if column == 'embedding':
-        suffix = representation_type if representation_type else 'cls'
+        suffix = representation_type
         npy_name = f"{core_name}_{suffix}_embeddings.npy"
     elif column == 'patch_embedding':
         npy_name = f"{core_name}_patch_embeddings.npy"
