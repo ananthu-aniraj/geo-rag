@@ -5,17 +5,13 @@ import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import BytesIO
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-import requests
 import torch
 import torch.nn.functional as F
-from PIL import Image
-from requests.adapters import HTTPAdapter
 from shapely.geometry import Point
 from torchvision import transforms
 from tqdm import tqdm
@@ -24,13 +20,13 @@ from transformers import (
     SegformerForSemanticSegmentation,
     SegformerImageProcessor,
 )
-from urllib3.util import Retry
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
 from src.models import tips_image_encoder as image_encoder
 from src.models.vision_model_inference import (
     extract_benchmark_features_single_pass,
 )
+from src.utils.io import download_image
 from src.utils.spatial_overlays import (
     get_crs_transformer,
     get_eunis_label,
@@ -39,39 +35,6 @@ from src.utils.spatial_overlays import (
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
-
-# Global connection pooled session for thread-safe downloads
-http_session = requests.Session()
-_adapter = HTTPAdapter(
-    pool_connections=64,
-    pool_maxsize=64,
-    max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-)
-http_session.mount("https://", _adapter)
-http_session.mount("http://", _adapter)
-
-
-def download_image(url, photo_id=None, image_size=448):
-    """Downloads an image using the global connection pool and returns a resized PIL Image."""
-    try:
-        if url.startswith("mapillary://") or (photo_id and "fbcdn.net" in url):
-            orig_id = str(photo_id) if photo_id else url.split("://")[1]
-            api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
-            headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-            res = http_session.get(api_url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                url = res.json().get("thumb_1024_url")
-        if not url:
-            return None
-        res = http_session.get(url, timeout=10)
-        if res.status_code == 200:
-            img = Image.open(BytesIO(res.content)).convert("RGB")
-            img_resized = img.resize((image_size, image_size))
-            img.close()
-            return img_resized
-    except Exception:
-        pass
-    return None
 
 
 def load_eunis_mapping_from_dbf(dbf_path):
@@ -196,8 +159,16 @@ def main():
         print(f"Error: CSV file '{csv_path}' not found.")
         sys.exit(1)
 
-    print(f"Loading image CSV metadata: {csv_path}...")
-    df = pd.read_csv(csv_path)
+    if csv_path.endswith('.parquet'):
+        print(f"Loading Parquet database from: {csv_path}...")
+        import pyarrow.parquet as pq
+        pf = pq.ParquetFile(csv_path)
+        cols = [c for c in ["Photo_ID", "Platform", "Latitude", "Longitude", "Image_URL", "Continent", "License"] if
+                c in pf.schema_arrow.names]
+        df = pf.read_table(columns=cols).to_pandas()
+    else:
+        print(f"Loading CSV database from: {csv_path}...")
+        df = pd.read_csv(csv_path)
 
     # Identify key columns in CSV
     lat_col = next((col for col in df.columns if col.lower() in ["latitude", "lat"]), None)
@@ -315,7 +286,7 @@ def main():
 
     # Enforce platform-specific queries
     q_plat = args.query_platform.lower() if args.query_platform else None
-    
+
     def matches_query_plat(item):
         if not q_plat:
             return True
@@ -347,7 +318,8 @@ def main():
 
     # Select queries from the query pool
     if q_plat and len(query_pool) < args.num_queries:
-        print(f"Warning: Only {len(query_pool)} matched images available for platform '{q_plat}'. Adjusting --num_queries.")
+        print(
+            f"Warning: Only {len(query_pool)} matched images available for platform '{q_plat}'. Adjusting --num_queries.")
         args.num_queries = len(query_pool)
 
     queries_selection = query_pool[:args.num_queries]
@@ -359,7 +331,8 @@ def main():
     # Combined selection list for downloads
     selected_images = queries_selection + database_selection
 
-    print(f"Prereq selection sizes: {len(queries_selection)} Queries ({q_plat if q_plat else 'any'}), {len(database_selection)} Database.")
+    print(
+        f"Prereq selection sizes: {len(queries_selection)} Queries ({q_plat if q_plat else 'any'}), {len(database_selection)} Database.")
 
     # Download images in parallel
     print(f"Downloading {len(selected_images)} images for benchmarking in parallel...")
@@ -367,7 +340,13 @@ def main():
     image_size = 224 if args.tips_low_res else 448
     with ThreadPoolExecutor(max_workers=32) as executor:
         futures = {
-            executor.submit(download_image, item['url'], item.get('photo_id'), image_size): idx
+            executor.submit(
+                download_image,
+                item['url'],
+                photo_id=item.get('photo_id'),
+                platform=item.get('platform'),
+                image_size=image_size
+            ): idx
             for idx, item in enumerate(selected_images)
         }
         for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
@@ -484,7 +463,7 @@ def main():
             logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
                                                      align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
-            
+
             # Free SegFormer GPU memory
             del inputs, outputs, logits
 
@@ -492,7 +471,8 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
+                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors,
+                                                                                    is_local=is_local)
                 patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
 
                 if is_local:
@@ -541,7 +521,7 @@ def main():
     expanded_representations = {}
     for rep_name, splits in list(representations.items()):
         expanded_representations[f"{rep_name} (FP32)"] = splits
-        
+
         q_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["query"]]
         db_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["db"]]
         expanded_representations[f"{rep_name} (FP16)"] = {

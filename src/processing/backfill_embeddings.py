@@ -6,11 +6,18 @@ import time
 import numpy as np
 import pandas as pd
 import torch
+from torchvision import transforms
 from tqdm import tqdm
 from transformers import AutoModel
 
+import src.models.tips_image_encoder as image_encoder
 from src.models.vision_model_inference import extract_model_embeddings
-from src.utils.io import load_dataframe, save_dataframe
+from src.utils.io import (
+    download_image,
+    get_core_base_name,
+    load_dataframe,
+    save_dataframe,
+)
 
 
 def main():
@@ -66,7 +73,6 @@ def main():
     print(f"Initializing model on {device}...")
 
     # Load model transforms
-    from torchvision import transforms
     image_size = 224 if (args.tips_model_path and args.tips_low_res) else 448
     transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
@@ -76,7 +82,6 @@ def main():
 
     if args.tips_model_path:
         print(f"Loading local checkpoint from {args.tips_model_path}...")
-        from src.models import image_encoder
         model_def = {
             's': image_encoder.vit_small14,
             'b': image_encoder.vit_base14,
@@ -104,9 +109,6 @@ def main():
         print("Loading Hugging Face google/tipsv2-b14 model...")
         tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
 
-    # Import download_image from process_scraped_data
-    from src.processing.process_scraped_data import download_image
-    
     # 3. Compute Embeddings Batch-by-Batch
     print(f"Computing '{args.representation_type}' embeddings with {args.precision} precision...")
     num_rows = len(df)
@@ -126,13 +128,13 @@ def main():
         platform = row['Platform']
         
         # Download / Load image
-        img = download_image(url, photo_id, platform, args.image_root_dir)
+        img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=args.image_root_dir, image_size=image_size)
         if img is None:
             if platform.lower() == 'mapillary' and not url.startswith('mapillary://'):
                 url = f"mapillary://{photo_id}"
             elif platform.lower() == 'kartaview' and not url.startswith('kartaview://'):
                 url = f"kartaview://{photo_id}"
-            img = download_image(url, photo_id, platform, args.image_root_dir)
+            img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=args.image_root_dir, image_size=image_size)
 
         if img is not None:
             try:
@@ -174,8 +176,7 @@ def main():
     # 4. Save Outputs
     db_dir = os.path.dirname(os.path.abspath(out_path))
     base_name = os.path.splitext(os.path.basename(out_path))[0]
-    
-    from src.utils.io import get_core_base_name
+
     core_name = get_core_base_name(base_name)
     
     suffix = args.representation_type

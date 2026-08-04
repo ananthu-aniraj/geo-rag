@@ -1,10 +1,16 @@
 import glob
 import os
 import re
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+import requests
+import yaml
+from PIL import Image
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 
 def get_core_base_name(base_name):
@@ -62,16 +68,15 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
             kwargs['compression'] = 'zstd'
 
         if 'embedding' in df.columns:
-            import numpy as np
             db_dir = os.path.dirname(os.path.abspath(file_path))
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
             core_name = get_core_base_name(base_name)
-            
+
             embs = np.vstack(df['embedding'].values)
             dim = embs.shape[1]
-            
+
             # 1. Resolve representation suffix
             if representation_type is not None:
                 rep_suffix = representation_type
@@ -81,9 +86,9 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
                     rep_suffix = "cls_avg_patch"
                 else:
                     rep_suffix = "cls"
-            
+
             npy_path = os.path.join(db_dir, f"{core_name}_{rep_suffix}_embeddings.npy")
-            
+
             # 2. Resolve precision dtype
             dtype = np.float32
             if precision == 'float16':
@@ -92,7 +97,7 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
                 dtype = np.float32
             else:
                 dtype = embs.dtype
-                
+
             print(f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={dtype.__name__})")
             np.save(npy_path, embs.astype(dtype))
 
@@ -368,4 +373,94 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
             if os.path.exists(p_base_train):
                 return os.path.abspath(p_base_train)
 
+    return None
+
+
+# Thread-safe global session for download adapters
+_http_session = None
+_MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+
+
+def _get_http_session():
+    global _http_session
+    if _http_session is None:
+        _http_session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=64,
+            pool_maxsize=64,
+            max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+        )
+        _http_session.mount("https://", adapter)
+        _http_session.mount("http://", adapter)
+    return _http_session
+
+
+def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_size=448):
+    """Loads an image locally if it's part of an offline dataset, or downloads it via connection pool."""
+    # 1. Try local direct path
+    if url and os.path.exists(url):
+        try:
+            img = Image.open(url).convert("RGB")
+            img_resized = img.resize((image_size, image_size))
+            return img_resized
+        except Exception:
+            pass
+
+    # 2. Try resolving via offline directories
+    dirs_to_use = offline_dirs
+    if dirs_to_use is None:
+        dirs_to_use = []
+        if os.path.exists("params.yaml"):
+            try:
+                with open("params.yaml", "r") as f:
+                    params = yaml.safe_load(f)
+                pipeline_params = params.get("pipeline", {}) if isinstance(params, dict) else {}
+                offline_dirs_str = pipeline_params.get("offline_dataset_dirs", "") if isinstance(pipeline_params,
+                                                                                                 dict) else ""
+                if not offline_dirs_str and isinstance(params, dict):
+                    offline_dirs_str = params.get("offline_dataset_dirs", "")
+                if offline_dirs_str:
+                    dirs_to_use = [d.strip() for d in offline_dirs_str.split() if d.strip()]
+            except Exception:
+                pass
+
+    if dirs_to_use and url:
+        try:
+            resolved = resolve_offline_image_path(url, dirs_to_use, photo_id, platform)
+            if resolved and os.path.exists(resolved):
+                img = Image.open(resolved).convert("RGB")
+                img_resized = img.resize((image_size, image_size))
+                return img_resized
+        except Exception:
+            pass
+
+    # 3. Fallback to download over HTTP
+    try:
+        session = _get_http_session()
+        if url.startswith("mapillary://") or (photo_id and "fbcdn.net" in url):
+            orig_id = str(photo_id) if photo_id else url.split("://")[1]
+            api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
+            headers = {"Authorization": f"OAuth {_MAPILLARY_TOKEN}"}
+            res = session.get(api_url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                url = res.json().get("thumb_1024_url")
+        elif url.startswith("kartaview://"):
+            orig_id = url.split("://")[1]
+            api_url = f"https://api.openstreetcam.org/2.0/photo/{orig_id}"
+            res = session.get(api_url, timeout=10)
+            if res.status_code == 200:
+                data = res.json().get("result", {}).get("data", {})
+                url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
+
+        if not url:
+            return None
+
+        res = session.get(url, timeout=10)
+        if res.status_code == 200:
+            img = Image.open(BytesIO(res.content)).convert("RGB")
+            img_resized = img.resize((image_size, image_size))
+            img.close()
+            return img_resized
+    except Exception:
+        pass
     return None

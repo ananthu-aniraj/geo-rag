@@ -5,17 +5,13 @@ import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import BytesIO
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-import requests
 import torch
 import torch.nn.functional as F
-from PIL import Image
-from requests.adapters import HTTPAdapter
 from shapely.geometry import Point
 from torchvision import transforms
 from tqdm import tqdm
@@ -24,7 +20,6 @@ from transformers import (
     SegformerForSemanticSegmentation,
     SegformerImageProcessor,
 )
-from urllib3.util import Retry
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
 from src.models import tips_image_encoder as image_encoder
@@ -33,6 +28,7 @@ from src.models.vision_model_inference import (
 )
 
 # Environmental Zones 2025 (version 2.0 / Metzger 2025) Value Mapping
+from src.utils.io import download_image
 from src.utils.spatial_overlays import (
     get_crs_transformer,
     get_environmental_zone_label as get_zone_label,
@@ -42,38 +38,7 @@ from src.utils.spatial_overlays import (
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
 
-# Global connection pooled session for thread-safe downloads
-http_session = requests.Session()
-_adapter = HTTPAdapter(
-    pool_connections=64,
-    pool_maxsize=64,
-    max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-)
-http_session.mount("https://", _adapter)
-http_session.mount("http://", _adapter)
 
-
-def download_image(url, photo_id=None, image_size=448):
-    """Downloads an image using the global connection pool and returns a resized PIL Image."""
-    try:
-        if url.startswith("mapillary://") or (photo_id and "fbcdn.net" in url):
-            orig_id = str(photo_id) if photo_id else url.split("://")[1]
-            api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
-            headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
-            res = http_session.get(api_url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                url = res.json().get("thumb_1024_url")
-        if not url:
-            return None
-        res = http_session.get(url, timeout=10)
-        if res.status_code == 200:
-            img = Image.open(BytesIO(res.content)).convert("RGB")
-            img_resized = img.resize((image_size, image_size))
-            img.close()
-            return img_resized
-    except Exception:
-        pass
-    return None
 
 
 def encode_image_value_attention(model_image, img):
@@ -171,8 +136,15 @@ def main():
         print(f"Error: CSV file '{csv_path}' not found.")
         sys.exit(1)
 
-    print(f"Loading image CSV metadata: {csv_path}...")
-    df = pd.read_csv(csv_path)
+    if csv_path.endswith('.parquet'):
+        print(f"Loading Parquet database from: {csv_path}...")
+        import pyarrow.parquet as pq
+        pf = pq.ParquetFile(csv_path)
+        cols = [c for c in ["Photo_ID", "Platform", "Latitude", "Longitude", "Image_URL", "Continent", "License"] if c in pf.schema_arrow.names]
+        df = pf.read_table(columns=cols).to_pandas()
+    else:
+        print(f"Loading CSV database from: {csv_path}...")
+        df = pd.read_csv(csv_path)
 
     # Identify key columns in CSV
     lat_col = next((col for col in df.columns if col.lower() in ["latitude", "lat"]), None)
@@ -344,7 +316,13 @@ def main():
     image_size = 224 if args.tips_low_res else 448
     with ThreadPoolExecutor(max_workers=32) as executor:
         futures = {
-            executor.submit(download_image, item['url'], item.get('photo_id'), image_size): idx
+            executor.submit(
+                download_image,
+                item['url'],
+                photo_id=item.get('photo_id'),
+                platform=item.get('platform'),
+                image_size=image_size
+            ): idx
             for idx, item in enumerate(selected_images)
         }
         for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
