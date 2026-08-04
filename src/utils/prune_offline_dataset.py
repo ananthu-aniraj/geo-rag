@@ -45,18 +45,19 @@ def main():
     try:
         # Read only the necessary columns to save memory
         table = pq.read_table(args.parquet, columns=["Photo_ID", "Platform"])
-        df_parquet = table.to_pandas()
+        pids = table["Photo_ID"].to_pylist()
+        plats = table["Platform"].to_pylist()
     except Exception as e:
         print(f"Error reading parquet file: {e}")
         return
 
-    # Create a set of active (platform, photo_id) tuples
+    # Create a set of active (platform, photo_id) tuples via fast zip iteration
     active_keys = set()
-    for _, row in df_parquet.iterrows():
-        plat = str(row["Platform"]).strip().lower()
-        pid = clean_id(row["Photo_ID"])
-        if pid:
-            active_keys.add((plat, pid))
+    for plat, pid in tqdm(zip(plats, pids), total=len(pids), desc="Indexing active database keys"):
+        plat_str = str(plat).strip().lower()
+        pid_str = clean_id(pid)
+        if pid_str:
+            active_keys.add((plat_str, pid_str))
 
     print(f"Found {len(active_keys):,} active unique (Platform, Photo_ID) entries in the deduplicated database.")
 
