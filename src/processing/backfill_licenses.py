@@ -127,131 +127,11 @@ def main():
     # Ensure License column exists
     if 'License' not in df.columns:
         df['License'] = None
+    df['License'] = df['License'].astype(str).replace({'nan': None, 'None': None, '<NA>': None, '': None})
 
-    # Identify Flickr rows with missing/empty licenses
-    # (Licensing codes in Flickr are typically '0' to '10', so missing matches null, nan, or empty string)
-    is_flickr = df['Platform'].astype(str).str.lower() == 'flickr'
-    is_missing = df['License'].isna() | (df['License'] == '')
+    modified = False
 
-    df_missing = df[is_flickr & is_missing].copy()
-
-    if len(df_missing) == 0:
-        print("🎉 No missing Flickr licenses found! Dataset is fully up to date.")
-        return
-
-    print(f"Found {len(df_missing):,} Flickr records lacking license codes.")
-
-    flickr_ids = set(df_missing['Photo_ID'].astype(str).tolist())
-    flickr_licenses = {}
-
-    # --- Option A: Spatial Join Bounding Box Lookup (Bulk Search) ---
-    if args.log_dirs:
-        # Split any space-separated strings (shell-quoting issue helper)
-        actual_dirs = []
-        for d in args.log_dirs:
-            actual_dirs.extend([x.strip() for x in d.split() if x.strip()])
-
-        print("Parsing completed bounding boxes log files...")
-        bboxes = set()
-        for log_dir in actual_dirs:
-            pattern = os.path.join(log_dir, "*completed_boxes*.txt")
-            log_files = glob.glob(pattern)
-            print(f"  -> Found {len(log_files)} log files in: {log_dir}")
-            for f in log_files:
-                try:
-                    with open(f, 'r') as fh:
-                        for line in fh:
-                            line_clean = line.replace('\x00', '').strip()
-                            if line_clean:
-                                parts = line_clean.split(',')
-                                if len(parts) == 4:
-                                    try:
-                                        [float(x) for x in parts]
-                                        bboxes.add(line_clean)
-                                    except ValueError:
-                                        continue
-                except Exception as fe:
-                    print(f"  -> Warning reading log file {f}: {fe}")
-        print(f"Loaded {len(bboxes):,} unique completed bounding boxes.")
-
-        active_bboxes = []
-        box_to_photos = {}
-
-        if bboxes:
-            try:
-
-                print("Running spatial join to associate missing coordinates with bounding boxes...")
-
-                points = [Point(lon, lat) for lat, lon in zip(df_missing['Latitude'], df_missing['Longitude'])]
-                gdf_points = gpd.GeoDataFrame(
-                    {'Photo_ID': df_missing['Photo_ID'].astype(str)},
-                    geometry=points,
-                    crs="EPSG:4326"
-                )
-
-                boxes_list = []
-                box_strs = []
-                for b_str in bboxes:
-                    parts = [float(x) for x in b_str.split(',')]
-                    boxes_list.append(shapely_box(parts[0], parts[1], parts[2], parts[3]))
-                    box_strs.append(b_str)
-
-                gdf_boxes = gpd.GeoDataFrame(
-                    {'bbox_str': box_strs},
-                    geometry=boxes_list,
-                    crs="EPSG:4326"
-                )
-
-                joined = gpd.sjoin(gdf_boxes, gdf_points, how="inner", predicate="intersects")
-                box_to_photos = joined.groupby('bbox_str')['Photo_ID'].apply(set).to_dict()
-                active_bboxes = sorted(box_to_photos.keys(), key=lambda b: len(box_to_photos[b]), reverse=True)
-                print(
-                    f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
-            except Exception as se:
-                print(f"Spatial join optimization failed or geopandas not available: {se}")
-                print("Falling back to scanning all discovered bounding boxes...")
-                active_bboxes = list(bboxes)
-                box_to_photos = {}
-
-            if active_bboxes:
-                print("Running optimized bulk license search on active boxes...")
-                for bbox in tqdm(active_bboxes, desc="Bulk Scan Flickr BBoxes"):
-                    if box_to_photos and bbox in box_to_photos:
-                        box_photos = box_to_photos[bbox]
-                        needed_photos = box_photos - set(flickr_licenses.keys())
-                        if not needed_photos:
-                            continue
-
-                    res_box = fetch_flickr_bbox_licenses(bbox)
-                    for pid, lic_code in res_box.items():
-                        if pid in flickr_ids:
-                            flickr_licenses[pid] = lic_code
-
-                    if len(flickr_licenses) >= len(flickr_ids):
-                        print("\nAll missing Flickr licenses successfully backfilled! Terminating early...")
-                        break
-
-            print(f"Retrieved {len(flickr_licenses)} Flickr licenses using bulk search.")
-
-    # --- Option B: Fallback Individual Queries ---
-    remaining_ids = list(flickr_ids - set(flickr_licenses.keys()))
-    if remaining_ids:
-        if args.log_dirs:
-            print(f"\nBulk search left {len(remaining_ids)} photos un-retrieved. Fetching individually...")
-        else:
-            print(
-                f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(remaining_ids)} photos.")
-            print(f"This will take approximately {len(remaining_ids) / 3000:.1f} hours due to Flickr's API limits.")
-            print("Provide --log_dirs with your completed box text files to speed this up by 250x.")
-
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(fetch_flickr_individual_license, pid): pid for pid in remaining_ids}
-            for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch Flickr License (1-by-1)"):
-                pid, lic_code = future.result()
-                if lic_code is not None:
-                    flickr_licenses[pid] = lic_code
-
-    # --- Scan and Load Offline Dataset CSV Licenses from args.log_dirs ---
+    # --- 1. Scan and Load Offline Dataset CSV Licenses from args.log_dirs ---
     offline_licenses = {}
     if args.log_dirs:
         # Split any space-separated strings (shell-quoting issue helper)
@@ -289,25 +169,135 @@ def main():
                     pass
         if offline_licenses:
             print(f"Loaded {len(offline_licenses):,} licenses from offline CSV files.")
+            is_missing = df['License'].isna() | (df['License'].astype(str).str.strip() == "")
+            df_missing_pids = df.loc[is_missing, 'Photo_ID'].astype(str)
+            mapped_offline = df_missing_pids.map(offline_licenses)
+            if mapped_offline.notna().any():
+                df['License'] = df['License'].combine_first(mapped_offline)
+                modified = True
+                print(f" -> Backfilled {mapped_offline.notna().sum()} records using offline CSV maps.")
+
+    # --- 2. Identify Flickr rows that STILL have missing/empty licenses ---
+    is_flickr = df['Platform'].astype(str).str.lower() == 'flickr'
+    is_missing = df['License'].isna() | (df['License'] == '') | (df['License'].astype(str).str.strip() == "") | (df['License'].astype(str) == "nan")
+
+    df_missing = df[is_flickr & is_missing].copy()
+    flickr_licenses = {}
+
+    if len(df_missing) > 0:
+        print(f"Found {len(df_missing):,} Flickr records lacking license codes.")
+        flickr_ids = set(df_missing['Photo_ID'].astype(str).tolist())
+
+        # --- Option A: Spatial Join Bounding Box Lookup (Bulk Search) ---
+        if args.log_dirs:
+            # Split any space-separated strings (shell-quoting issue helper)
+            actual_dirs = []
+            for d in args.log_dirs:
+                actual_dirs.extend([x.strip() for x in d.split() if x.strip()])
+
+            print("Parsing completed bounding boxes log files...")
+            bboxes = set()
+            for log_dir in actual_dirs:
+                pattern = os.path.join(log_dir, "*completed_boxes*.txt")
+                log_files = glob.glob(pattern)
+                print(f"  -> Found {len(log_files)} log files in: {log_dir}")
+                for f in log_files:
+                    try:
+                        with open(f, 'r') as fh:
+                            for line in fh:
+                                line_clean = line.replace('\x00', '').strip()
+                                if line_clean:
+                                    parts = line_clean.split(',')
+                                    if len(parts) == 4:
+                                        try:
+                                            [float(x) for x in parts]
+                                            bboxes.add(line_clean)
+                                        except ValueError:
+                                            continue
+                    except Exception as fe:
+                        print(f"  -> Warning reading log file {f}: {fe}")
+            print(f"Loaded {len(bboxes):,} unique completed bounding boxes.")
+
+            active_bboxes = []
+            box_to_photos = {}
+
+            if bboxes:
+                try:
+
+                    print("Running spatial join to associate missing coordinates with bounding boxes...")
+
+                    points = [Point(lon, lat) for lat, lon in zip(df_missing['Latitude'], df_missing['Longitude'])]
+                    gdf_points = gpd.GeoDataFrame(
+                        {'Photo_ID': df_missing['Photo_ID'].astype(str)},
+                        geometry=points,
+                        crs="EPSG:4326"
+                    )
+
+                    boxes_list = []
+                    box_strs = []
+                    for b_str in bboxes:
+                        parts = [float(x) for x in b_str.split(',')]
+                        boxes_list.append(shapely_box(parts[0], parts[1], parts[2], parts[3]))
+                        box_strs.append(b_str)
+
+                    gdf_boxes = gpd.GeoDataFrame(
+                        {'bbox_str': box_strs},
+                        geometry=boxes_list,
+                        crs="EPSG:4326"
+                    )
+
+                    joined = gpd.sjoin(gdf_boxes, gdf_points, how="inner", predicate="intersects")
+                    box_to_photos = joined.groupby('bbox_str')['Photo_ID'].apply(set).to_dict()
+                    active_bboxes = sorted(box_to_photos.keys(), key=lambda b: len(box_to_photos[b]), reverse=True)
+                    print(
+                        f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
+                except Exception as se:
+                    print(f"Spatial join optimization failed or geopandas not available: {se}")
+                    print("Falling back to scanning all discovered bounding boxes...")
+                    active_bboxes = list(bboxes)
+                    box_to_photos = {}
+
+                if active_bboxes:
+                    print("Running optimized bulk license search on active boxes...")
+                    for bbox in tqdm(active_bboxes, desc="Bulk Scan Flickr BBoxes"):
+                        if box_to_photos and bbox in box_to_photos:
+                            box_photos = box_to_photos[bbox]
+                            needed_photos = box_photos - set(flickr_licenses.keys())
+                            if not needed_photos:
+                                continue
+
+                        res_box = fetch_flickr_bbox_licenses(bbox)
+                        for pid, lic_code in res_box.items():
+                            if pid in flickr_ids:
+                                flickr_licenses[pid] = lic_code
+
+                        if len(flickr_licenses) >= len(flickr_ids):
+                            print("\nAll missing Flickr licenses successfully backfilled! Terminating early...")
+                            break
+
+                print(f"Retrieved {len(flickr_licenses)} Flickr licenses using bulk search.")
+
+        # --- Option B: Fallback Individual Queries ---
+        remaining_ids = list(flickr_ids - set(flickr_licenses.keys()))
+        if remaining_ids:
+            if args.log_dirs:
+                print(f"\nBulk search left {len(remaining_ids)} photos un-retrieved. Fetching individually...")
+            else:
+                print(
+                    f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(remaining_ids)} photos.")
+                print(f"This will take approximately {len(remaining_ids) / 3000:.1f} hours due to Flickr's API limits.")
+                print("Provide --log_dirs with your completed box text files to speed this up by 250x.")
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(fetch_flickr_individual_license, pid): pid for pid in remaining_ids}
+                for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch Flickr License (1-by-1)"):
+                    pid, lic_code = future.result()
+                    if lic_code is not None:
+                        flickr_licenses[pid] = lic_code
+    else:
+        print("🎉 No missing Flickr licenses found to fetch from API.")
 
     # --- Save back to dataset ---
-    modified = False
-
-    # Apply offline licenses
-    if offline_licenses:
-        # Standardize License column type first to combine
-        if 'License' not in df.columns:
-            df['License'] = None
-        df['License'] = df['License'].astype(str).replace({'nan': None, 'None': None, '<NA>': None, '': None})
-        
-        is_missing = df['License'].isna() | (df['License'].astype(str).str.strip() == "")
-        df_missing_pids = df.loc[is_missing, 'Photo_ID'].astype(str)
-        mapped_offline = df_missing_pids.map(offline_licenses)
-        if mapped_offline.notna().any():
-            df['License'] = df['License'].combine_first(mapped_offline)
-            modified = True
-            print(f" -> Backfilled {mapped_offline.notna().sum()} records using offline CSV maps.")
-
     # Standardize License column type and NaNs first
     if 'License' not in df.columns:
         df['License'] = None
