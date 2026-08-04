@@ -138,7 +138,7 @@ def main():
     if csv_path.endswith('.parquet'):
         print(f"Loading Parquet database from: {csv_path}...")
         schema = pq.read_schema(csv_path)
-        cols = [c for c in ["Photo_ID", "Platform", "Latitude", "Longitude", "Image_URL", "Continent", "License"] if c in schema.names]
+        cols = [c for c in ["Photo_ID", "Platform", "Latitude", "Longitude", "Image_URL", "continent", "License"] if c in schema.names]
         df = pq.read_table(csv_path, columns=cols).to_pandas()
     else:
         print(f"Loading CSV database from: {csv_path}...")
