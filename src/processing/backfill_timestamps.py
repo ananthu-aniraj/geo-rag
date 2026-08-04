@@ -263,10 +263,15 @@ def main():
         
         if flickr_ids:
             if args.log_dirs:
+                # Split any space-separated strings (shell-quoting issue helper)
+                actual_dirs = []
+                for d in args.log_dirs:
+                    actual_dirs.extend([x.strip() for x in d.split() if x.strip()])
+
                 # Optimized Bulk BBox Search
                 log_files = []
-                for folder in args.log_dirs:
-                    log_files.extend(glob.glob(os.path.join(folder, "flickr_completed_boxes_chunk_*.txt")))
+                for folder in actual_dirs:
+                    log_files.extend(glob.glob(os.path.join(folder, "*completed_boxes*.txt")))
                 
                 print(f"Found {len(log_files)} Flickr completed boxes logs. Reading search coordinates...")
                 bboxes = set()

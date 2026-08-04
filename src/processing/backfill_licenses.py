@@ -145,10 +145,15 @@ def main():
 
     # --- Option A: Spatial Join Bounding Box Lookup (Bulk Search) ---
     if args.log_dirs:
+        # Split any space-separated strings (shell-quoting issue helper)
+        actual_dirs = []
+        for d in args.log_dirs:
+            actual_dirs.extend([x.strip() for x in d.split() if x.strip()])
+
         print("Parsing completed bounding boxes log files...")
         bboxes = set()
-        for log_dir in args.log_dirs:
-            pattern = os.path.join(log_dir, "*_completed_boxes_*.txt")
+        for log_dir in actual_dirs:
+            pattern = os.path.join(log_dir, "*completed_boxes*.txt")
             log_files = glob.glob(pattern)
             print(f"  -> Found {len(log_files)} log files in: {log_dir}")
             for f in log_files:
