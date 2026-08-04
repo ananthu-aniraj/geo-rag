@@ -1007,7 +1007,6 @@ def main():
     # Clean up checkpoint companion .npy files
     checkpoint_dir = os.path.dirname(os.path.abspath(checkpoint_path))
     checkpoint_base = os.path.splitext(os.path.basename(checkpoint_path))[0]
-    import glob
     for checkpoint_npy in glob.glob(os.path.join(checkpoint_dir, f"{checkpoint_base}*.npy")):
         try:
             os.remove(checkpoint_npy)
