@@ -279,9 +279,15 @@ def main():
                     try:
                         with open(f, 'r') as file:
                             for line in file:
-                                box_id = line.strip()
+                                box_id = line.replace('\x00', '').strip()
                                 if box_id:
-                                    bboxes.add(box_id)
+                                    parts = box_id.split(',')
+                                    if len(parts) == 4:
+                                        try:
+                                            [float(x) for x in parts]
+                                            bboxes.add(box_id)
+                                        except ValueError:
+                                            continue
                     except Exception:
                         pass
                 

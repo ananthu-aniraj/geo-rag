@@ -157,11 +157,20 @@ def main():
             log_files = glob.glob(pattern)
             print(f"  -> Found {len(log_files)} log files in: {log_dir}")
             for f in log_files:
-                with open(f, 'r') as fh:
-                    for line in fh:
-                        line_clean = line.strip()
-                        if line_clean:
-                            bboxes.add(line_clean)
+                try:
+                    with open(f, 'r') as fh:
+                        for line in fh:
+                            line_clean = line.replace('\x00', '').strip()
+                            if line_clean:
+                                parts = line_clean.split(',')
+                                if len(parts) == 4:
+                                    try:
+                                        [float(x) for x in parts]
+                                        bboxes.add(line_clean)
+                                    except ValueError:
+                                        continue
+                except Exception as fe:
+                    print(f"  -> Warning reading log file {f}: {fe}")
         print(f"Loaded {len(bboxes):,} unique completed bounding boxes.")
 
         active_bboxes = []
