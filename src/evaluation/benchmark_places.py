@@ -353,7 +353,9 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                from src.models.vision_model_inference import extract_benchmark_features_single_pass
+                from src.models.vision_model_inference import (
+                    extract_benchmark_features_single_pass,
+                )
                 cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
                 patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
 

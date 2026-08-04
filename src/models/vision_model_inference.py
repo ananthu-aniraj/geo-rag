@@ -1,7 +1,6 @@
 import math
 
 import numpy as np
-import torch
 import torch.nn.functional as F
 
 
@@ -47,6 +46,8 @@ def extract_model_embeddings(model, batch_tensors, representation_type='cls'):
         cls_token = x_standard_norm[:, 0]
         if cls_token.ndim == 3:
             cls_token = cls_token.squeeze(1)
+        if hasattr(model, 'head'):
+            cls_token = model.head(cls_token)
         cls_token = cls_token.cpu().numpy()
 
         # 3. Value attention forward for the last block to get patch tokens (MaskCLIP values trick)
@@ -77,8 +78,11 @@ def extract_model_embeddings(model, batch_tensors, representation_type='cls'):
             return avg_patch
     else:
         # Standard fast path (only CLS is requested)
-        out = model.encode_image(batch_tensors)
-        cls_token = out.cls_token
+        if hasattr(model, 'encode_image'):
+            out = model.encode_image(batch_tensors)
+            cls_token = out.cls_token
+        else:
+            cls_token, _, _ = model(batch_tensors)
         if cls_token.ndim == 3:
             cls_token = cls_token.squeeze(1)
         return cls_token.cpu().numpy()

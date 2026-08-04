@@ -185,6 +185,7 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None):
 
 from src.models.vision_model_inference import extract_model_embeddings
 
+
 def get_tips_embeddings(images, model, device, batch_size=32, representation_type='cls'):
     """Computes TIPSv2 embeddings for a list of PIL images in batches using a single forward pass."""
     if not images:
