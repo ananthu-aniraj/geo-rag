@@ -331,6 +331,9 @@ def main():
                                                      align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
 
+            # Free SegFormer GPU memory
+            del inputs, outputs, logits
+
             # B. CLIP feature extraction (optional)
             if args.compare_clip:
                 with torch.no_grad():
@@ -348,6 +351,7 @@ def main():
                     if cls_hf.ndim == 3:
                         cls_hf = cls_hf.squeeze(1)
                 representations["TIPSv2 HF CLS"][split_key].extend(cls_hf)
+                del img_tensors_hf
 
             # D. TIPSv2 feature extraction
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
@@ -366,6 +370,7 @@ def main():
                 else:
                     cls_tokens = cls_out
                     representations["TIPSv2 CLS"][split_key].extend(cls_tokens)
+            del img_tensors
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):

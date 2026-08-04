@@ -403,6 +403,9 @@ def main():
             logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
                                                      align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
+            
+            # Free SegFormer GPU memory before running TIPSv2
+            del inputs, outputs, logits
 
             # B. TIPSv2 feature extraction
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
@@ -421,6 +424,9 @@ def main():
                 else:
                     cls_tokens = cls_out
                     representations["TIPSv2 CLS"][split_key].extend(cls_tokens)
+            
+            # Free image tensors from GPU memory
+            del img_tensors
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):
