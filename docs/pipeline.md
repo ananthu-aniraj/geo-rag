@@ -63,6 +63,12 @@ To optimize global random search and avoid querying coordinates that already con
 ### Step 1: Spatial Deduplication & Filtering
 * **Script**: `src/processing/process_scraped_data.py`
 * **Operation**: Groups coordinates into H3 Resolution 11 parent cells [Brodsky, 2018]. Performs spatial-temporal deduplication using TIPSv2 image embeddings [Cao, 2026] to ensure uniform geographic coverage.
+* **Multi-Representation & Precision Customization**:
+  The script accepts `--representation_type` and `--precision` command-line arguments (linked directly to `params.yaml`):
+  * **`--representation_type`**: Chooses between `'cls'` (768-dim), `'avg_patch'` (768-dim MaskCLIP value attention), and `'cls_avg_patch'` (1536-dim concatenated vector).
+  * **`--precision`**: Chooses between `'float32'` and `'float16'`. Storing embeddings as float16 reduces SSD storage requirements by 50% (saving ~8 GB on a 16 GB dataset).
+* **Decoupled Binary Storage Format**:
+  To prevent Parquet file bloating, the heavy embedding matrices are saved separately from metadata in companion NumPy binary files named `{core_name}_{representation_type}_embeddings.npy`. The Parquet file keeps only metadata + a simple `embedding_idx` pointer mapping rows 1-to-1 with the `.npy` file. Slices are memory-mapped dynamically during loading and upcast back to `float32` in RAM for GPU compatibility.
 * **Million-Row Streaming Optimization & Parallel Network Engine**: 
   To support processing datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters and appends chunk-by-chunk. 
   To optimize ingestion speed and minimize network bottlenecks:
