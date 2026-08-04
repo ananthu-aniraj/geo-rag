@@ -28,6 +28,9 @@ from urllib3.util import Retry
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
 from src.models import tips_image_encoder as image_encoder
+from src.models.vision_model_inference import (
+    extract_benchmark_features_single_pass,
+)
 
 # Environmental Zones 2025 (version 2.0 / Metzger 2025) Value Mapping
 from src.utils.spatial_overlays import (
@@ -73,7 +76,6 @@ def download_image(url, photo_id=None, image_size=448):
     return None
 
 
-
 def encode_image_value_attention(model_image, img):
     """Extracts spatial value features from model vision encoder using the MaskCLIP values trick."""
     B, _, H, W = img.shape
@@ -116,18 +118,19 @@ def encode_image_value_attention(model_image, img):
     return blocks_patches
 
 
-
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Environmental Zones of Europe Representation Semantic Retrieval Benchmark.")
-    parser.add_argument("--csv_path", type=str, default="./full_pipeline_output/geo_space_deduplicated.csv", help="Path to CSV containing geolocated images.")
-    parser.add_argument("--csv", type=str, default=None, help="Path to CSV containing geolocated images (alias for --csv_path).")
+    parser = argparse.ArgumentParser(
+        description="Environmental Zones of Europe Representation Semantic Retrieval Benchmark.")
+    parser.add_argument("--csv_path", type=str, default="./full_pipeline_output/geo_space_deduplicated.csv",
+                        help="Path to CSV containing geolocated images.")
+    parser.add_argument("--csv", type=str, default=None,
+                        help="Path to CSV containing geolocated images (alias for --csv_path).")
     parser.add_argument("--countries_shp", type=str, default="shapefiles/ne_10m_admin_0_countries.shp",
                         help="Path to Natural Earth countries shapefile to filter for Europe.")
-    parser.add_argument("--raster", type=str, default="/user/aaniraj/home/Documents/Projects/data/environmental_zones/eea_r_3035_100_m_EnvZ-Metzger_2025_v1_r00.tif",
+    parser.add_argument("--raster", type=str,
+                        default="/user/aaniraj/home/Documents/Projects/data/environmental_zones/eea_r_3035_100_m_EnvZ-Metzger_2025_v1_r00.tif",
                         help="Path to the Environmental Zones GeoTIFF.")
-    
+
     parser.add_argument("--num_queries", type=int, default=100, help="Number of query evaluations to run.")
     parser.add_argument("--num_database", type=int, default=500, help="Number of database images to search against.")
     parser.add_argument("--batch_size", type=int, default=16, help="GPU batch size for feature extraction.")
@@ -137,8 +140,12 @@ def main():
     parser.add_argument("--tips_model_variant", type=str, default="B", choices=["S", "B", "L", "So400m", "g"],
                         help="Variant of the official TIPSv2 model.")
     parser.add_argument("--tips_low_res", action="store_true", help="Set image resolution to 224px instead of 448px.")
-    parser.add_argument("--output_report", type=str, default="./benchmark_results/env_zones_report.txt", help="Path to write the report summary.")
-    parser.add_argument("--output_csv", type=str, default="./benchmark_results/env_zones_results.csv", help="Path to write detailed query CSV results.")
+    parser.add_argument("--output_report", type=str, default="./benchmark_results/env_zones_report.txt",
+                        help="Path to write the report summary.")
+    parser.add_argument("--output_csv", type=str, default="./benchmark_results/env_zones_results.csv",
+                        help="Path to write detailed query CSV results.")
+    parser.add_argument("--query_platform", type=str, default=None,
+                        help="Filter query images to only use this platform (e.g. 'flickr').")
     args = parser.parse_args()
 
     csv_path = args.csv if args.csv is not None else args.csv_path
@@ -151,7 +158,7 @@ def main():
     if not os.path.exists(args.raster):
         print(f"Error: Environmental Zones raster map '{args.raster}' not found.")
         sys.exit(1)
-        
+
     print(f"Opening Environmental Zones raster: {args.raster}...")
     try:
         raster_dataset = rasterio.open(args.raster)
@@ -163,16 +170,16 @@ def main():
     if not os.path.exists(csv_path):
         print(f"Error: CSV file '{csv_path}' not found.")
         sys.exit(1)
-        
+
     print(f"Loading image CSV metadata: {csv_path}...")
     df = pd.read_csv(csv_path)
-    
+
     # Identify key columns in CSV
     lat_col = next((col for col in df.columns if col.lower() in ["latitude", "lat"]), None)
     lon_col = next((col for col in df.columns if col.lower() in ["longitude", "lon", "lng"]), None)
     url_col = next((col for col in df.columns if col.lower() in ["image_url", "url"]), None)
     id_col = next((col for col in df.columns if col.lower() in ["photo_id", "id"]), None)
-    
+
     if not lat_col or not lon_col:
         print("Error: Could not locate Latitude/Longitude columns in the CSV.")
         sys.exit(1)
@@ -192,14 +199,14 @@ def main():
         try:
             countries_gdf = gpd.read_file(args.countries_shp)
             europe_gdf = countries_gdf[countries_gdf['CONTINENT'] == 'Europe']
-            
+
             # Convert df to GeoDataFrame
             geometry = [Point(xy) for xy in zip(df[lon_col], df[lat_col])]
             geo_df = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
-            
+
             if europe_gdf.crs != geo_df.crs:
                 europe_gdf = europe_gdf.to_crs(geo_df.crs)
-                
+
             joined = gpd.sjoin(geo_df, europe_gdf, how="inner", predicate="intersects")
             df = pd.DataFrame(joined.drop(columns="geometry")).reset_index(drop=True)
             print(f"Keep {len(df)} records inside Europe.")
@@ -218,28 +225,45 @@ def main():
 
     matched_images = []
     print("Mapping coordinates to Environmental Zones...")
+    platform_col = next((col for col in df.columns if col.lower() == "platform"), None)
     for idx, row in tqdm(df.iterrows(), total=len(df), desc="Spatial Query"):
         try:
             lat = float(row[lat_col])
             lon = float(row[lon_col])
-            
+
             # Sample pixel value using unified lookup
             pixel_val = lookup_raster_pixel(lat, lon, raster_dataset, transformer, has_axis_order)
-            
+
             # Skip nodata / empty values
             if pixel_val is None or pixel_val == raster_dataset.nodata or pixel_val <= 0:
                 continue
-                
+
             zone_class = get_zone_label(pixel_val)
             if zone_class == "Unknown":
                 continue
-                
+
+            # Extract platform
+            plat_val = str(row[platform_col]).strip().lower() if platform_col else ""
+            if not plat_val:
+                url_val = str(row[url_col]).lower() if url_col else ""
+                if "flickr" in url_val:
+                    plat_val = "flickr"
+                elif "mapillary" in url_val:
+                    plat_val = "mapillary"
+                elif "openstreetcam" in url_val or "kartaview" in url_val:
+                    plat_val = "kartaview"
+                elif "inaturalist" in url_val:
+                    plat_val = "inaturalist"
+                else:
+                    plat_val = "unknown"
+
             matched_images.append({
                 "url": str(row[url_col]) if url_col else "",
                 "photo_id": str(row[id_col]) if id_col else None,
                 "lat": lat,
                 "lon": lon,
-                "env_zone": zone_class
+                "env_zone": zone_class,
+                "platform": plat_val
             })
         except Exception:
             continue
@@ -264,24 +288,55 @@ def main():
     for cls in sorted_classes:
         random.shuffle(images_by_class[cls])
 
-    # Interleave categories to ensure query diversity
-    selected_images = []
-    max_images_in_any_class = max(len(images_by_class[cls]) for cls in sorted_classes)
+    # Enforce platform-specific queries
+    q_plat = args.query_platform.lower() if args.query_platform else None
 
-    for i in range(max_images_in_any_class):
+    def matches_query_plat(item):
+        if not q_plat:
+            return True
+        plat = item.get("platform", "").lower()
+        if plat == q_plat:
+            return True
+        url = item.get("url", "").lower()
+        if q_plat in url:
+            return True
+        return False
+
+    # Interleave to build query pool (only matching query platform)
+    query_pool = []
+    class_q_lists = {cls: [item for item in images_by_class[cls] if matches_query_plat(item)] for cls in sorted_classes}
+    max_q_len = max(len(lst) for lst in class_q_lists.values()) if class_q_lists else 0
+    for i in range(max_q_len):
         for cls in sorted_classes:
-            if i < len(images_by_class[cls]):
-                selected_images.append(images_by_class[cls][i])
+            if i < len(class_q_lists[cls]):
+                query_pool.append(class_q_lists[cls][i])
 
-    # Partition into Queries and Database
-    total_needed = args.num_queries + args.num_database
-    if len(selected_images) < total_needed:
-        print(f"Warning: Only {len(selected_images)} matched images available. Adjusting query/database split.")
-        if len(selected_images) <= args.num_queries:
-            args.num_queries = max(1, len(selected_images) // 5)
-        args.num_database = len(selected_images) - args.num_queries
-        
-    selected_images = selected_images[:args.num_queries + args.num_database]
+    # Interleave to build database pool (all images)
+    db_pool = []
+    db_candidates_by_class = {cls: images_by_class[cls] for cls in sorted_classes}
+    max_db_len = max(len(lst) for lst in db_candidates_by_class.values()) if db_candidates_by_class else 0
+    for i in range(max_db_len):
+        for cls in sorted_classes:
+            if i < len(db_candidates_by_class[cls]):
+                db_pool.append(db_candidates_by_class[cls][i])
+
+    # Select queries from the query pool
+    if q_plat and len(query_pool) < args.num_queries:
+        print(
+            f"Warning: Only {len(query_pool)} matched images available for platform '{q_plat}'. Adjusting --num_queries.")
+        args.num_queries = len(query_pool)
+
+    queries_selection = query_pool[:args.num_queries]
+
+    # Select database from remaining (non-overlapping) candidates
+    query_urls = set(item['url'] for item in queries_selection)
+    database_selection = [item for item in db_pool if item['url'] not in query_urls][:args.num_database]
+
+    # Combined selection list for downloads
+    selected_images = queries_selection + database_selection
+
+    print(
+        f"Prereq selection sizes: {len(queries_selection)} Queries ({q_plat if q_plat else 'any'}), {len(database_selection)} Database.")
 
     # Download images in parallel
     print(f"Downloading {len(selected_images)} images for benchmarking in parallel...")
@@ -309,8 +364,9 @@ def main():
     for idx, img in enumerate([images_dict[k] for k in active_indices]):
         selected_images[idx]['img'] = img
 
-    queries_meta = selected_images[:args.num_queries]
-    database_meta = selected_images[args.num_queries:]
+    # Resolve queries and database splits from downloaded items (no overlap, platform-respecting)
+    queries_meta = [item for item in selected_images if item in queries_selection]
+    database_meta = [item for item in selected_images if item in database_selection]
 
     print(f"Final evaluation split: {len(queries_meta)} Queries, {len(database_meta)} Database.")
     if len(queries_meta) == 0 or len(database_meta) == 0:
@@ -320,7 +376,7 @@ def main():
     # 3. Initialize Models
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Initializing models on {device}...")
-    
+
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
@@ -333,11 +389,11 @@ def main():
         }[args.tips_model_variant]
 
         ffn_layer = 'swiglu' if args.tips_model_variant == 'g' else 'mlp'
-        
+
         checkpoint = dict(np.load(args.tips_model_path, allow_pickle=False))
         for key in checkpoint:
             checkpoint[key] = torch.tensor(checkpoint[key])
-            
+
         image_size = 224 if args.tips_low_res else 448
         model = model_def(
             img_size=image_size,
@@ -354,10 +410,11 @@ def main():
         print("Loading Hugging Face google/tipsv2-b14 model...")
         tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
         image_size = 448
-    
+
     print("Loading SegFormer model...")
     seg_processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
-    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(device)
+    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(
+        device)
 
     # 4. Setup representations dynamically
     if args.tips_model_path:
@@ -381,9 +438,9 @@ def main():
     def extract_features_batch(metadata_list, split_key):
         print(f"Extracting features for {len(metadata_list)} images ({split_key} split)...")
         for i in tqdm(range(0, len(metadata_list), args.batch_size), desc=f"Extraction ({split_key})"):
-            batch_meta = metadata_list[i : i + args.batch_size]
+            batch_meta = metadata_list[i: i + args.batch_size]
             batch_imgs = []
-            
+
             for item in batch_meta:
                 try:
                     img = item['img']
@@ -392,7 +449,7 @@ def main():
                     batch_imgs.append(img)
                 except Exception as e:
                     print(f"Warning: Failed to load image '{item.get('url', '')}': {e}")
-            
+
             if not batch_imgs:
                 continue
 
@@ -400,9 +457,10 @@ def main():
             inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
             with torch.no_grad():
                 outputs = seg_model(**inputs)
-            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear", align_corners=False)
+            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
+                                                     align_corners=False)
             pred_masks = logits.argmax(dim=1).cpu().numpy()
-            
+
             # Free SegFormer GPU memory
             del inputs, outputs, logits
 
@@ -410,10 +468,8 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                from src.models.vision_model_inference import (
-                    extract_benchmark_features_single_pass,
-                )
-                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
+                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors,
+                                                                                    is_local=is_local)
                 patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
 
                 if is_local:
@@ -427,7 +483,7 @@ def main():
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):
-                patch_tokens = patch_tokens_vals[idx] # (num_patches, D)
+                patch_tokens = patch_tokens_vals[idx]  # (num_patches, D)
                 pred_mask = pred_masks[idx]
 
                 # TIPSv2 Average Patch
@@ -438,13 +494,13 @@ def main():
                 keep_mask = np.ones_like(pred_mask, dtype=float)
                 for c in DISCARD_CLASSES:
                     keep_mask[pred_mask == c] = 0.0
-                
+
                 # Downsample keep mask to grid_size x grid_size patch resolution
                 patch_weights = np.zeros((grid_size, grid_size))
                 for r in range(grid_size):
                     for c in range(grid_size):
-                        patch_weights[r, c] = np.mean(keep_mask[r*14:(r+1)*14, c*14:(c+1)*14])
-                patch_weights_flat = patch_weights.flatten()[:, np.newaxis] # (num_patches, 1)
+                        patch_weights[r, c] = np.mean(keep_mask[r * 14:(r + 1) * 14, c * 14:(c + 1) * 14])
+                patch_weights_flat = patch_weights.flatten()[:, np.newaxis]  # (num_patches, 1)
 
                 masked_patch_sum = np.sum(patch_tokens * patch_weights_flat, axis=0)
                 masked_patch_weight_sum = np.sum(patch_weights_flat)
@@ -452,7 +508,7 @@ def main():
                     masked_avg_embed = (masked_patch_sum / (masked_patch_weight_sum + 1e-9))
                 else:
                     masked_avg_embed = avg_patch
-                
+
                 representations["TIPSv2 Seg-Masked"][split_key].append(masked_avg_embed)
 
     extract_features_batch(queries_meta, "query")
@@ -462,7 +518,7 @@ def main():
     expanded_representations = {}
     for rep_name, splits in list(representations.items()):
         expanded_representations[f"{rep_name} (FP32)"] = splits
-        
+
         q_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["query"]]
         db_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["db"]]
         expanded_representations[f"{rep_name} (FP16)"] = {
@@ -473,7 +529,7 @@ def main():
 
     results = {}
     detailed_rows = []
-    
+
     for rep_name, splits in representations.items():
         q_vectors = np.array(splits["query"])
         db_vectors = np.array(splits["db"])
@@ -509,11 +565,11 @@ def main():
 
             retrieved_items = [database_meta[idx] for idx in sorted_db_indices[:10]]
             retrieved_labels = [item["env_zone"] for item in retrieved_items]
-            
+
             # P@1
             p1 = compute_precision_at_k(retrieved_labels, q_label, k=1)
             results[rep_name]["p@1"] += p1
-            
+
             # P@5
             p5 = compute_precision_at_k(retrieved_labels, q_label, k=5)
             results[rep_name]["p@5"] += p5
@@ -560,15 +616,15 @@ def main():
     report_lines.append(f"- Database count: {len(database_meta)} images")
     report_lines.append("")
 
-    print("\n" + "="*95)
+    print("\n" + "=" * 95)
     print("                    ENVIRONMENTAL ZONES SEMANTIC RETRIEVAL REPORT")
-    print("="*95)
+    print("=" * 95)
 
     row_format = "{:<24} | {:<12} | {:<12} | {:<12} | {:<12} | {:<12}"
     header = row_format.format("Representation", "P@1 (%)", "P@5 (%)", "P@10 (%)", "mAP@10 (%)", "MRR@10 (%)")
     print(header)
     print("-" * 90)
-    
+
     report_lines.append(header)
     report_lines.append("-" * 90)
 
@@ -584,8 +640,8 @@ def main():
         )
         print(row_str)
         report_lines.append(row_str)
-        
-    print("="*95)
+
+    print("=" * 95)
 
     # Save TXT report summary
     os.makedirs(os.path.dirname(args.output_report), exist_ok=True)

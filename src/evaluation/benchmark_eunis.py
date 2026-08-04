@@ -27,7 +27,15 @@ from transformers import (
 from urllib3.util import Retry
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
-from src.utils.spatial_overlays import get_crs_transformer, lookup_raster_pixel
+from src.models import tips_image_encoder as image_encoder
+from src.models.vision_model_inference import (
+    extract_benchmark_features_single_pass,
+)
+from src.utils.spatial_overlays import (
+    get_crs_transformer,
+    get_eunis_label,
+    lookup_raster_pixel,
+)
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
@@ -88,9 +96,6 @@ def load_eunis_mapping_from_dbf(dbf_path):
             print(f"Warning: Failed to load DBF attribute mapping: {e}")
 
     return mapping
-
-
-from src.utils.spatial_overlays import get_eunis_label
 
 
 def encode_image_value_attention(model_image, img):
@@ -160,6 +165,8 @@ def main():
                         help="Path to write the report summary.")
     parser.add_argument("--output_csv", type=str, default="./benchmark_results/eunis_results.csv",
                         help="Path to write detailed query CSV results.")
+    parser.add_argument("--query_platform", type=str, default=None,
+                        help="Filter query images to only use this platform (e.g. 'flickr').")
     args = parser.parse_args()
 
     csv_path = args.csv if args.csv is not None else args.csv_path
@@ -243,6 +250,7 @@ def main():
 
     matched_images = []
     print("Mapping coordinates to EUNIS Ecosystem classes...")
+    platform_col = next((col for col in df.columns if col.lower() == "platform"), None)
     for idx, row in tqdm(df.iterrows(), total=len(df), desc="Spatial Query"):
         try:
             lat = float(row[lat_col])
@@ -259,12 +267,28 @@ def main():
             if eunis_class == "Unknown":
                 continue
 
+            # Extract platform
+            plat_val = str(row[platform_col]).strip().lower() if platform_col else ""
+            if not plat_val:
+                url_val = str(row[url_col]).lower() if url_col else ""
+                if "flickr" in url_val:
+                    plat_val = "flickr"
+                elif "mapillary" in url_val:
+                    plat_val = "mapillary"
+                elif "openstreetcam" in url_val or "kartaview" in url_val:
+                    plat_val = "kartaview"
+                elif "inaturalist" in url_val:
+                    plat_val = "inaturalist"
+                else:
+                    plat_val = "unknown"
+
             matched_images.append({
                 "url": str(row[url_col]) if url_col else "",
                 "photo_id": str(row[id_col]) if id_col else None,
                 "lat": lat,
                 "lon": lon,
-                "eunis_class": eunis_class
+                "eunis_class": eunis_class,
+                "platform": plat_val
             })
         except Exception:
             continue
@@ -289,24 +313,53 @@ def main():
     for cls in sorted_classes:
         random.shuffle(images_by_class[cls])
 
-    # Interleave categories to ensure query diversity
-    selected_images = []
-    max_images_in_any_class = max(len(images_by_class[cls]) for cls in sorted_classes)
+    # Enforce platform-specific queries
+    q_plat = args.query_platform.lower() if args.query_platform else None
+    
+    def matches_query_plat(item):
+        if not q_plat:
+            return True
+        plat = item.get("platform", "").lower()
+        if plat == q_plat:
+            return True
+        url = item.get("url", "").lower()
+        if q_plat in url:
+            return True
+        return False
 
-    for i in range(max_images_in_any_class):
+    # Interleave to build query pool (only matching query platform)
+    query_pool = []
+    class_q_lists = {cls: [item for item in images_by_class[cls] if matches_query_plat(item)] for cls in sorted_classes}
+    max_q_len = max(len(lst) for lst in class_q_lists.values()) if class_q_lists else 0
+    for i in range(max_q_len):
         for cls in sorted_classes:
-            if i < len(images_by_class[cls]):
-                selected_images.append(images_by_class[cls][i])
+            if i < len(class_q_lists[cls]):
+                query_pool.append(class_q_lists[cls][i])
 
-    # Partition into Queries and Database
-    total_needed = args.num_queries + args.num_database
-    if len(selected_images) < total_needed:
-        print(f"Warning: Only {len(selected_images)} matched images available. Adjusting query/database split.")
-        if len(selected_images) <= args.num_queries:
-            args.num_queries = max(1, len(selected_images) // 5)
-        args.num_database = len(selected_images) - args.num_queries
+    # Interleave to build database pool (all images)
+    db_pool = []
+    db_candidates_by_class = {cls: images_by_class[cls] for cls in sorted_classes}
+    max_db_len = max(len(lst) for lst in db_candidates_by_class.values()) if db_candidates_by_class else 0
+    for i in range(max_db_len):
+        for cls in sorted_classes:
+            if i < len(db_candidates_by_class[cls]):
+                db_pool.append(db_candidates_by_class[cls][i])
 
-    selected_images = selected_images[:args.num_queries + args.num_database]
+    # Select queries from the query pool
+    if q_plat and len(query_pool) < args.num_queries:
+        print(f"Warning: Only {len(query_pool)} matched images available for platform '{q_plat}'. Adjusting --num_queries.")
+        args.num_queries = len(query_pool)
+
+    queries_selection = query_pool[:args.num_queries]
+
+    # Select database from remaining (non-overlapping) candidates
+    query_urls = set(item['url'] for item in queries_selection)
+    database_selection = [item for item in db_pool if item['url'] not in query_urls][:args.num_database]
+
+    # Combined selection list for downloads
+    selected_images = queries_selection + database_selection
+
+    print(f"Prereq selection sizes: {len(queries_selection)} Queries ({q_plat if q_plat else 'any'}), {len(database_selection)} Database.")
 
     # Download images in parallel
     print(f"Downloading {len(selected_images)} images for benchmarking in parallel...")
@@ -334,8 +387,9 @@ def main():
     for idx, img in enumerate([images_dict[k] for k in active_indices]):
         selected_images[idx]['img'] = img
 
-    queries_meta = selected_images[:args.num_queries]
-    database_meta = selected_images[args.num_queries:]
+    # Resolve queries and database splits from downloaded items (no overlap, platform-respecting)
+    queries_meta = [item for item in selected_images if item in queries_selection]
+    database_meta = [item for item in selected_images if item in database_selection]
 
     print(f"Final evaluation split: {len(queries_meta)} Queries, {len(database_meta)} Database.")
     if len(queries_meta) == 0 or len(database_meta) == 0:
@@ -349,7 +403,6 @@ def main():
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
-        from src.models import tips_image_encoder as image_encoder
 
         model_def = {
             'S': image_encoder.vit_small,
@@ -439,9 +492,6 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                from src.models.vision_model_inference import (
-                    extract_benchmark_features_single_pass,
-                )
                 cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
                 patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
 

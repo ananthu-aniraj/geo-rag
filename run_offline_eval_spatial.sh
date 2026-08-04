@@ -64,6 +64,7 @@ python3 -m src.evaluation.benchmark_environmental_zones \
   --num_database "$ENV_DB" \
   --batch_size "$ENV_BATCH" \
   --seed "$ENV_SEED" \
+  --query_platform "flickr" \
   --output_report "$OUTPUT_DIR/environmental_zones_report.txt" \
   --output_csv "$OUTPUT_DIR/environmental_zones_results.csv"
 
@@ -77,6 +78,7 @@ python3 -m src.evaluation.benchmark_eunis \
   --num_database "$EUNIS_DB" \
   --batch_size "$EUNIS_BATCH" \
   --seed "$EUNIS_SEED" \
+  --query_platform "flickr" \
   --output_report "$OUTPUT_DIR/eunis_report.txt" \
   --output_csv "$OUTPUT_DIR/eunis_results.csv"
 
