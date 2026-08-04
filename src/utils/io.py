@@ -62,11 +62,13 @@ def save_dataframe(df, file_path, index=False, **kwargs):
             kwargs['compression'] = 'zstd'
 
         if 'embedding' in df.columns:
+            import numpy as np
             db_dir = os.path.dirname(os.path.abspath(file_path))
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
-            npy_path = os.path.join(db_dir, f"{base_name}.npy")
+            core_name = get_core_base_name(base_name)
+            npy_path = os.path.join(db_dir, f"{core_name}_cls_embeddings.npy")
 
             print(f" -> Automatically decoupling embeddings to companion file: {npy_path}")
             embs = np.vstack(df['embedding'].values).astype(np.float32)
@@ -224,7 +226,13 @@ def load_embeddings(parquet_path, column='embedding'):
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
 
-    npy_name = f"{base_name}.npy" if column == 'embedding' else f"{base_name}_{column}.npy"
+    core_name = get_core_base_name(base_name)
+    if column == 'embedding':
+        npy_name = f"{core_name}_cls_embeddings.npy"
+    elif column == 'patch_embedding':
+        npy_name = f"{core_name}_patch_embeddings.npy"
+    else:
+        npy_name = f"{core_name}_{column}_embeddings.npy"
     npy_path = os.path.join(db_dir, npy_name)
 
     # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet

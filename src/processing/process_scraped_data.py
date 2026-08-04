@@ -259,7 +259,7 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
                 best_class = np.argmax(sims)
 
                 # 1. Flickr & Wikimedia/GoogleLandmarks Indoor Filter (always Class 0)
-                if metadata['Platform'] in ['Flickr', 'Wikimedia', 'GoogleLandmarks'] and best_class == 0:
+                if str(metadata['Platform']).lower() in ['flickr', 'wikimedia', 'googlelandmarks'] and best_class == 0:
                     continue
 
                 # 2. iNaturalist-only Macro/Close-up Filter
@@ -406,7 +406,9 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells):
         base_name = os.path.splitext(os.path.basename(output_path))[0]
         if "_clustered_k_" in base_name:
             base_name = base_name.split("_clustered_k_")[0]
-        npy_path = os.path.join(db_dir, f"{base_name}.npy")
+        from src.utils.io import get_core_base_name
+        core_name = get_core_base_name(base_name)
+        npy_path = os.path.join(db_dir, f"{core_name}_cls_embeddings.npy")
 
         print(f" -> Saving merged companion embeddings matrix: {npy_path}")
         np.save(npy_path, final_embs)
@@ -990,6 +992,17 @@ def main():
             os.remove(checkpoint_path)
         except Exception:
             pass
+
+    # Clean up checkpoint companion .npy files
+    checkpoint_dir = os.path.dirname(os.path.abspath(checkpoint_path))
+    checkpoint_base = os.path.splitext(os.path.basename(checkpoint_path))[0]
+    import glob
+    for checkpoint_npy in glob.glob(os.path.join(checkpoint_dir, f"{checkpoint_base}*.npy")):
+        try:
+            os.remove(checkpoint_npy)
+        except Exception:
+            pass
+
     if os.path.exists(checkpoint_meta_path):
         try:
             os.remove(checkpoint_meta_path)
