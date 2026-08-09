@@ -328,12 +328,15 @@ def main():
             "TIPSv2 1st CLS": {"query": [], "db": []},
             "TIPSv2 2nd CLS": {"query": [], "db": []},
             "TIPSv2 Average Patch": {"query": [], "db": []},
+            "TIPSv2 1st CLS + Average Patch": {"query": [], "db": []},
+            "TIPSv2 2nd CLS + Average Patch": {"query": [], "db": []},
             "TIPSv2 Seg-Masked": {"query": [], "db": []}
         }
     else:
         representations = {
             "TIPSv2 CLS": {"query": [], "db": []},
             "TIPSv2 Average Patch": {"query": [], "db": []},
+            "TIPSv2 CLS + Average Patch": {"query": [], "db": []},
             "TIPSv2 Seg-Masked": {"query": [], "db": []}
         }
 
@@ -395,6 +398,16 @@ def main():
                 # TIPSv2 Average Patch
                 avg_patch = np.mean(patch_tokens, axis=0)
                 representations["TIPSv2 Average Patch"][split_key].append(avg_patch)
+
+                # Concatenated CLS + Average Patch
+                if is_local:
+                    first_cls_token = first_cls[idx]
+                    second_cls_token = second_cls[idx]
+                    representations["TIPSv2 1st CLS + Average Patch"][split_key].append(np.concatenate([first_cls_token, avg_patch]))
+                    representations["TIPSv2 2nd CLS + Average Patch"][split_key].append(np.concatenate([second_cls_token, avg_patch]))
+                else:
+                    cls_token = cls_tokens[idx]
+                    representations["TIPSv2 CLS + Average Patch"][split_key].append(np.concatenate([cls_token, avg_patch]))
 
                 # TIPSv2 Seg-Masked
                 keep_mask = np.ones_like(pred_mask, dtype=float)
