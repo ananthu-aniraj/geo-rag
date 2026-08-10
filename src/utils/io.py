@@ -61,6 +61,12 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
         os.makedirs(output_dir, exist_ok=True)
 
     ext = os.path.splitext(file_path)[1].lower()
+    if ext == '.tmp':
+        # Split again to find the actual format extension, e.g. .parquet from .parquet.tmp
+        base_without_tmp = os.path.splitext(file_path)[0]
+        ext = os.path.splitext(base_without_tmp)[1].lower()
+        if not ext:
+            ext = '.parquet' # Default fallback if only .tmp was provided
 
     if ext == '.parquet':
         # Default to high-performance zstd compression
