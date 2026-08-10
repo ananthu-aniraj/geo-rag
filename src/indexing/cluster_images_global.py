@@ -95,6 +95,10 @@ def main():
         embeddings = load_embeddings(args.pkl, representation_type=args.representation_type)
         if 'embedding_idx' in df.columns:
             print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
+            valid_mask = (df['embedding_idx'] >= 0) & (df['embedding_idx'] < len(embeddings))
+            if not valid_mask.all():
+                print(f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Filtering them out...")
+                df = df.iloc[valid_mask.values].reset_index(drop=True)
             embeddings = embeddings[df['embedding_idx'].values]
         dim = embeddings.shape[1]
         print(f" -> Successfully loaded {len(embeddings):,} embeddings in {time.time() - t0:.2f}s.")

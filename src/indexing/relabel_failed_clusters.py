@@ -405,6 +405,12 @@ def main():
     if len(data) > 0 and 'embedding_idx' in data[0]:
         print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
         idx_vals = np.array([item['embedding_idx'] for item in data], dtype=int)
+        valid_mask = (idx_vals >= 0) & (idx_vals < len(embeddings))
+        if not valid_mask.all():
+            print(f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Filtering them out...")
+            data = [data[i] for i in range(len(data)) if valid_mask[i]]
+            idx_vals = idx_vals[valid_mask]
+            cluster_ids = cluster_ids[valid_mask]
         embeddings = embeddings[idx_vals]
 
     print("Normalizing embeddings...")

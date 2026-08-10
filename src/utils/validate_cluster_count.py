@@ -115,6 +115,19 @@ def main():
     df = load_dataframe(args.input, columns=cols_to_load)
     print(f" -> Loaded {len(df):,} H3 cell records in {time.time() - t0:.2f}s.")
 
+    # Load embeddings matrix
+    print("Loading raw embedding matrix...")
+    t0_emb = time.time()
+    embeddings_matrix = load_embeddings(args.input)
+    if 'embedding_idx' in df.columns:
+        print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
+        valid_mask = (df['embedding_idx'] >= 0) & (df['embedding_idx'] < len(embeddings_matrix))
+        if not valid_mask.all():
+            print(f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Filtering them out...")
+            df = df.iloc[valid_mask.values].reset_index(drop=True)
+        embeddings_matrix = embeddings_matrix[df['embedding_idx'].values]
+    print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0_emb:.2f}s.")
+
     # 2. Downscale H3 cells to coarse block resolution (Res 4)
     print(f"Downscaling H3 cells to resolution {args.block_res} parent blocks...")
     t0 = time.time()
@@ -152,15 +165,6 @@ def main():
         if len(val_df) > val_limit:
             print(f"Downsampling validation set to {val_limit:,} images...")
             val_df = val_df.sample(n=val_limit, random_state=42)
-
-    # 5. Extract Embeddings to Float32 Numpy Arrays (required by FAISS) using backward-compatible loader
-    print("Loading raw embedding matrix...")
-    t0 = time.time()
-    embeddings_matrix = load_embeddings(args.input)
-    if 'embedding_idx' in df.columns:
-        print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
-        embeddings_matrix = embeddings_matrix[df['embedding_idx'].values]
-    print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
     print("Slicing train/val embedding matrices...")
     train_emb = embeddings_matrix[train_df.index.values]
