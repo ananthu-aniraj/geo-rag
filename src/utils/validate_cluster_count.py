@@ -107,7 +107,12 @@ def main():
 
     print(f"Loading H3 cells from '{args.input}'...")
     t0 = time.time()
-    df = load_dataframe(args.input, columns=["H3_Cell"])
+    import pyarrow.parquet as pq
+    pf = pq.ParquetFile(args.input)
+    cols_to_load = ["H3_Cell"]
+    if "embedding_idx" in pf.schema_arrow.names:
+        cols_to_load.append("embedding_idx")
+    df = load_dataframe(args.input, columns=cols_to_load)
     print(f" -> Loaded {len(df):,} H3 cell records in {time.time() - t0:.2f}s.")
 
     # 2. Downscale H3 cells to coarse block resolution (Res 4)
@@ -152,6 +157,9 @@ def main():
     print("Loading raw embedding matrix...")
     t0 = time.time()
     embeddings_matrix = load_embeddings(args.input)
+    if 'embedding_idx' in df.columns:
+        print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
+        embeddings_matrix = embeddings_matrix[df['embedding_idx'].values]
     print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
     print("Slicing train/val embedding matrices...")

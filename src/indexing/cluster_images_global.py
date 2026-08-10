@@ -93,6 +93,9 @@ def main():
         print("Loading embedding matrix...")
         t0 = time.time()
         embeddings = load_embeddings(args.pkl, representation_type=args.representation_type)
+        if 'embedding_idx' in df.columns:
+            print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
+            embeddings = embeddings[df['embedding_idx'].values]
         dim = embeddings.shape[1]
         print(f" -> Successfully loaded {len(embeddings):,} embeddings in {time.time() - t0:.2f}s.")
 

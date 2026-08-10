@@ -301,6 +301,9 @@ def main():
             print(f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load...")
             embeddings = load_embeddings(args.input_file, column='embedding', representation_type=args.representation_type)
         print(f" -> Temporarily loaded raw embedding matrix in {time.time() - t0:.2f}s.")
+        if 'embedding_idx' in df.columns:
+            print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
+            embeddings = embeddings[df['embedding_idx'].values]
     if 'Latitude' in df.columns:
         df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
     if 'Longitude' in df.columns:

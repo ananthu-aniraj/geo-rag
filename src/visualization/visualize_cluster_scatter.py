@@ -123,6 +123,9 @@ def create_scatter_plot(pkl_path, output_png, representation_type=None):
         # Case B: New decoupled format (load metadata/clusters and memory-mapped embeddings)
         df_meta = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters, representation_type=representation_type)
         embeddings = load_embeddings(pkl_path, representation_type=representation_type)
+        if 'embedding_idx' in df_meta.columns:
+            print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
+            embeddings = embeddings[df_meta['embedding_idx'].values]
         dim = embeddings.shape[1]
         print(f"Detected decoupled embedding matrix dimensionality: {dim}")
 
