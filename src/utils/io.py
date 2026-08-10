@@ -314,7 +314,6 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
             emb = np.load(npy_path, mmap_mode="r")
             if emb.shape[0] != N:
                 suffix = representation_type if column == 'embedding' else (column if column != 'patch_embedding' else 'patch')
-                import glob
                 npy_pattern = os.path.join(db_dir, f"*{suffix}*.npy")
                 candidates = glob.glob(npy_pattern)
                 for cand in candidates:
