@@ -382,7 +382,14 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
             if photo_str.endswith('.0'):
                 photo_str = photo_str[:-2]
             for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG']:
-                # 1. Flat lookup
+                # 1. Platform-specific subfolder lookup (e.g. d/platform/photo_id.jpg)
+                if platform:
+                    plat_str = str(platform).strip().lower()
+                    p_plat = os.path.join(d, plat_str, f"{photo_str}{ext}")
+                    if os.path.exists(p_plat):
+                        return os.path.abspath(p_plat)
+
+                # 2. Flat lookup
                 p_flat = os.path.join(d, f"{photo_str}{ext}")
                 if os.path.exists(p_flat):
                     return os.path.abspath(p_flat)

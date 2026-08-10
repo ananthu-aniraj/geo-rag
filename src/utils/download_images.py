@@ -225,6 +225,10 @@ def main():
         
     df_clean['file_name'] = file_names
     df_clean['Image_Location'] = local_locations
+    if 'Image_URL' in df_clean.columns:
+        df_clean['Image_URL'] = local_locations
+    if 'url' in df_clean.columns:
+        df_clean['url'] = local_locations
 
     # Drop existing embedding_idx so save_dataframe will rebuild it for the new 1-to-1 matrix
     if 'embedding_idx' in df_clean.columns:
