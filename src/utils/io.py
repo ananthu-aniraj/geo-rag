@@ -309,26 +309,6 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
                 break
 
     if os.path.exists(npy_path):
-        try:
-            N = pf.metadata.num_rows
-            emb = np.load(npy_path, mmap_mode="r")
-            if emb.shape[0] != N:
-                suffix = representation_type if column == 'embedding' else (column if column != 'patch_embedding' else 'patch')
-                npy_pattern = os.path.join(db_dir, f"*{suffix}*.npy")
-                candidates = glob.glob(npy_pattern)
-                for cand in candidates:
-                    try:
-                        cand_emb = np.load(cand, mmap_mode="r")
-                        if cand_emb.shape[0] == N:
-                            print(f" -> Found matching embedding file with {N} rows: {os.path.basename(cand)}")
-                            npy_path = cand
-                            break
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-
-    if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")
         
         # If 'embedding_idx' is in the parquet columns, map indices dynamically
@@ -354,6 +334,16 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
         if has_embedding_idx:
             idx_table = pf_for_idx.read(columns=['embedding_idx'])
             indices = idx_table['embedding_idx'].to_numpy()
+            
+            # Check bounds safety against the actual loaded matrix
+            valid_mask = (indices >= 0) & (indices < len(emb))
+            if not valid_mask.all():
+                print(f"Warning: Found {np.sum(~valid_mask):,} out-of-bounds indices in embedding_idx. Clamping and zero-filling...")
+                safe_indices = np.clip(indices, 0, len(emb) - 1)
+                sliced_emb = emb[safe_indices].astype(np.float32)
+                sliced_emb[~valid_mask] = 0.0
+                return sliced_emb
+                
             return emb[indices].astype(np.float32)
             
         return emb.astype(np.float32)

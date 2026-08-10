@@ -119,13 +119,7 @@ def main():
     print("Loading raw embedding matrix...")
     t0_emb = time.time()
     embeddings_matrix = load_embeddings(args.input)
-    if 'embedding_idx' in df.columns:
-        print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
-        valid_mask = (df['embedding_idx'] >= 0) & (df['embedding_idx'] < len(embeddings_matrix))
-        if not valid_mask.all():
-            print(f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Filtering them out...")
-            df = df.iloc[valid_mask.values].reset_index(drop=True)
-        embeddings_matrix = embeddings_matrix[df['embedding_idx'].values]
+
     print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0_emb:.2f}s.")
 
     # 2. Downscale H3 cells to coarse block resolution (Res 4)

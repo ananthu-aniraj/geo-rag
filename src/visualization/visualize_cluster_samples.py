@@ -41,9 +41,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         print("Loading raw embedding matrix...")
         t0 = time.time()
         embeddings = load_embeddings(pkl_path, representation_type=representation_type)
-        if 'embedding_idx' in df.columns:
-            print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
-            embeddings = embeddings[df['embedding_idx'].values]
+
         print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
 
     if len(df) == 0 or 'cluster_id' not in df.columns:

@@ -51,6 +51,7 @@ retrieval_exps/
 iwildcam_subset/
 shapefiles/uncovered_land_areas_test.*
 scratch/
+benchmark_results/
 
 # Do not ignore
 !templates/*.html

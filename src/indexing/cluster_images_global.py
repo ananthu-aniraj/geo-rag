@@ -93,13 +93,7 @@ def main():
         print("Loading embedding matrix...")
         t0 = time.time()
         embeddings = load_embeddings(args.pkl, representation_type=args.representation_type)
-        if 'embedding_idx' in df.columns:
-            print("Aligning raw embedding matrix with decoupled metadata using 'embedding_idx'...")
-            valid_mask = (df['embedding_idx'] >= 0) & (df['embedding_idx'] < len(embeddings))
-            if not valid_mask.all():
-                print(f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Filtering them out...")
-                df = df.iloc[valid_mask.values].reset_index(drop=True)
-            embeddings = embeddings[df['embedding_idx'].values]
+
         dim = embeddings.shape[1]
         print(f" -> Successfully loaded {len(embeddings):,} embeddings in {time.time() - t0:.2f}s.")
 
@@ -154,13 +148,9 @@ def main():
                 continue
                 
             if has_decoupled_old:
-                if 'embedding_idx' in df_rg_old.columns:
-                    indices = df_rg_old['embedding_idx'].values
-                    embs_old = embs_old_matrix[indices]
-                else:
-                    start_idx = sum(pf_old.metadata.row_group(i).num_rows for i in range(rg))
-                    end_idx = start_idx + len(df_rg_old)
-                    embs_old = embs_old_matrix[start_idx:end_idx]
+                start_idx = sum(pf_old.metadata.row_group(i).num_rows for i in range(rg))
+                end_idx = start_idx + len(df_rg_old)
+                embs_old = embs_old_matrix[start_idx:end_idx]
             else:
                 embs_old = np.vstack(df_rg_old['embedding'].values).astype(np.float32)
                 
