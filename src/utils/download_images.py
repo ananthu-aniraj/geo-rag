@@ -1,15 +1,13 @@
 import argparse
 import concurrent.futures
 import os
-import re
 import sys
-import time
+
 import numpy as np
-import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
 from tqdm import tqdm
+from urllib3.util import Retry
 
 from src.utils.io import load_dataframe, load_embeddings
 
@@ -206,7 +204,7 @@ def main():
     print(f"Saving aligned embeddings to {out_npy}...")
     np.save(out_npy, embeddings_clean)
 
-    print(f"\n🎉 Offline dataset created successfully!")
+    print("\n🎉 Offline dataset created successfully!")
     print(f" -> Parquet: {out_parquet}")
     print(f" -> Embeddings: {out_npy}")
 
