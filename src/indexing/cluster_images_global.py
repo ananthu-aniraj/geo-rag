@@ -266,7 +266,7 @@ def main():
             pickle.dump(data, f)
     else:
         # Decoupled layout: Save sidecar file with only primary keys + cluster assignments
-        sidecar_cols = ['Platform', 'Photo_ID', 'cluster_id', 'parent_cluster_id']
+        sidecar_cols = ['Platform', 'Photo_ID', 'embedding_idx', 'cluster_id', 'parent_cluster_id']
         extra_cols = ['cluster_label', 'cluster_description', 'parent_cluster_label', 
                       'parent_cluster_description', 'visual_description', 'parent_visual_description']
         active_cols = [c for c in sidecar_cols + extra_cols if c in df.columns]

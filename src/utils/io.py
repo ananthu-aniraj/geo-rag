@@ -331,11 +331,32 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
 
     if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")
+        
         # If 'embedding_idx' is in the parquet columns, map indices dynamically
-        if 'embedding_idx' in pf.schema_arrow.names:
-            idx_table = pf.read(columns=['embedding_idx'])
+        has_embedding_idx = 'embedding_idx' in pf.schema_arrow.names
+        pf_for_idx = pf
+        
+        if not has_embedding_idx and 'Latitude' not in pf.schema_arrow.names:
+            # Resolve to base metadata file if this is a sidecar file
+            core_name = get_core_base_name(base_name)
+            for fallback in [
+                f"{base_name}_cleaned.parquet", f"{core_name}_cleaned.parquet",
+                f"{base_name}_deduplicated.parquet", f"{core_name}_deduplicated.parquet",
+                f"{base_name}.parquet", f"{core_name}.parquet"
+            ]:
+                fallback_path = os.path.join(db_dir, fallback)
+                if os.path.exists(fallback_path):
+                    pf_base = pq.ParquetFile(fallback_path)
+                    if 'embedding_idx' in pf_base.schema_arrow.names:
+                        has_embedding_idx = True
+                        pf_for_idx = pf_base
+                    break
+                    
+        if has_embedding_idx:
+            idx_table = pf_for_idx.read(columns=['embedding_idx'])
             indices = idx_table['embedding_idx'].to_numpy()
             return emb[indices].astype(np.float32)
+            
         return emb.astype(np.float32)
 
     raise FileNotFoundError(f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'")
