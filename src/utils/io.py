@@ -253,15 +253,26 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
 
-    core_name = get_core_base_name(base_name)
+    # First, try to load using the base name directly (e.g. geo_space_cleaned_cls_embeddings.npy)
     if column == 'embedding':
         suffix = representation_type
-        npy_name = f"{core_name}_{suffix}_embeddings.npy"
+        npy_name = f"{base_name}_{suffix}_embeddings.npy"
     elif column == 'patch_embedding':
-        npy_name = f"{core_name}_patch_embeddings.npy"
+        npy_name = f"{base_name}_patch_embeddings.npy"
     else:
-        npy_name = f"{core_name}_{column}_embeddings.npy"
+        npy_name = f"{base_name}_{column}_embeddings.npy"
     npy_path = os.path.join(db_dir, npy_name)
+
+    # Fallback to stripped core_name if base file is cleaned/filtered and has no dedicated npy
+    if not os.path.exists(npy_path):
+        core_name = get_core_base_name(base_name)
+        if column == 'embedding':
+            npy_name = f"{core_name}_{suffix}_embeddings.npy"
+        elif column == 'patch_embedding':
+            npy_name = f"{core_name}_patch_embeddings.npy"
+        else:
+            npy_name = f"{core_name}_{column}_embeddings.npy"
+        npy_path = os.path.join(db_dir, npy_name)
 
     # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet
     if not os.path.exists(npy_path) and "cleaned" in base_name:
@@ -296,6 +307,27 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
                 # Fallback to the first match
                 npy_path = matches[0]
                 break
+
+    if os.path.exists(npy_path):
+        try:
+            N = pf.metadata.num_rows
+            emb = np.load(npy_path, mmap_mode="r")
+            if emb.shape[0] != N:
+                suffix = representation_type if column == 'embedding' else (column if column != 'patch_embedding' else 'patch')
+                import glob
+                npy_pattern = os.path.join(db_dir, f"*{suffix}*.npy")
+                candidates = glob.glob(npy_pattern)
+                for cand in candidates:
+                    try:
+                        cand_emb = np.load(cand, mmap_mode="r")
+                        if cand_emb.shape[0] == N:
+                            print(f" -> Found matching embedding file with {N} rows: {os.path.basename(cand)}")
+                            npy_path = cand
+                            break
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")

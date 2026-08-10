@@ -84,15 +84,18 @@ def main():
 
     flagged_lats = set(anomalies.index)
 
-    # 3. Stream write filtered row groups to a temporary Parquet file
+    # 3. Stream write filtered row groups to a temporary Parquet file and collect kept indices
     temp_parquet_path = output_parquet_path + ".tmp"
     schema = pf.schema_arrow
+    has_embedding_idx = "embedding_idx" in schema.names
 
     print("\nStreaming row groups and filtering in C++ memory...")
     t_stream = time.time()
     removed_count = 0
+    current_idx = 0
+    kept_emb_indices = []
 
-    from src.utils.io import get_parquet_writer
+    from src.utils.io import get_parquet_writer, get_core_base_name
     with get_parquet_writer(temp_parquet_path, schema) as writer:
         for rg in range(num_row_groups):
             tbl_rg = pf.read_row_group(rg)
@@ -101,16 +104,76 @@ def main():
 
             # Keep indices not matching flagged lats
             keep_mask = ~np.isin(rg_lat_round, list(flagged_lats))
-
             filtered_tbl = tbl_rg.filter(pa.array(keep_mask))
-            writer.write_table(filtered_tbl)
 
+            if len(filtered_tbl) > 0:
+                if has_embedding_idx:
+                    # Collect old embedding indices before we overwrite them
+                    emb_idxs = filtered_tbl["embedding_idx"].to_numpy()
+                    kept_emb_indices.append(emb_idxs)
+                    
+                    # Reset embedding_idx sequentially
+                    new_indices = np.arange(current_idx, current_idx + len(filtered_tbl), dtype=np.int32)
+                    idx_arr = pa.array(new_indices)
+                    idx_pos = filtered_tbl.column_names.index('embedding_idx')
+                    filtered_tbl = filtered_tbl.set_column(idx_pos, "embedding_idx", idx_arr)
+                    current_idx += len(filtered_tbl)
+                else:
+                    # Fallback: collect relative row indices
+                    start_offset = sum(pf.metadata.row_group(i).num_rows for i in range(rg))
+                    true_indices = np.where(keep_mask)[0] + start_offset
+                    kept_emb_indices.append(true_indices)
+
+                writer.write_table(filtered_tbl)
             removed_count += (len(tbl_rg) - len(filtered_tbl))
 
     os.replace(temp_parquet_path, output_parquet_path)
     print(f" -> Saved cleaned Parquet in {time.time() - t_stream:.2f}s.")
 
-    # 4. Clean matching CSV if it exists
+    # 4. Filter companion embedding matrices (.npy)
+    if kept_emb_indices:
+        kept_emb_indices = np.concatenate(kept_emb_indices)
+        db_dir = os.path.dirname(os.path.abspath(parquet_path))
+        input_base = os.path.splitext(os.path.basename(parquet_path))[0]
+        output_base = os.path.splitext(os.path.basename(output_parquet_path))[0]
+        
+        input_core = get_core_base_name(input_base)
+        output_core = get_core_base_name(output_base)
+        
+        import glob
+        npy_pattern = os.path.join(db_dir, f"{input_core}_*_embeddings.npy")
+        npy_files = glob.glob(npy_pattern)
+        
+        # Also check default core name
+        default_npy = os.path.join(db_dir, f"{input_core}.npy")
+        if os.path.exists(default_npy):
+            npy_files.append(default_npy)
+            
+        # Clean target directory for output npy path
+        output_dir = os.path.dirname(os.path.abspath(output_parquet_path))
+            
+        for npy_file in npy_files:
+            print(f"Filtering embedding matrix: {npy_file}...")
+            try:
+                embs = np.load(npy_file, mmap_mode='r')
+                dim = embs.shape[1]
+                
+                # Slicing with zero-filling for any out-of-bound references (preserves 1-to-1 array shape)
+                cleaned_embs = np.zeros((len(kept_emb_indices), dim), dtype=embs.dtype)
+                valid_idx_mask = (kept_emb_indices >= 0) & (kept_emb_indices < len(embs))
+                if valid_idx_mask.any():
+                    cleaned_embs[valid_idx_mask] = embs[kept_emb_indices[valid_idx_mask]]
+                
+                filename = os.path.basename(npy_file)
+                new_filename = filename.replace(input_core, output_core, 1)
+                output_npy_path = os.path.join(output_dir, new_filename)
+                
+                print(f" -> Saving cleaned embeddings matrix to: {output_npy_path}")
+                np.save(output_npy_path, cleaned_embs)
+            except Exception as e:
+                print(f"Error filtering embedding matrix {npy_file}: {e}")
+
+    # 5. Clean matching CSV if it exists
     if os.path.exists(csv_path):
         print("Cleaning CSV file...")
         t_csv = time.time()
