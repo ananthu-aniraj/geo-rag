@@ -9,7 +9,12 @@ from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 from urllib3.util import Retry
 
-from src.utils.io import load_dataframe, load_embeddings
+from src.utils.io import (
+    load_dataframe,
+    load_embeddings,
+    resolve_offline_image_path,
+    save_dataframe,
+)
 
 MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 
@@ -84,7 +89,7 @@ def main():
     parser.add_argument("--image_root_dirs", type=str, nargs="*", default=None, 
                         help="Optional list of existing local image directories to check before downloading.")
     parser.add_argument("--output", type=str, default=None,
-                        help="Path to write the updated offline Parquet file. Defaults to [input_base]_offline.parquet.")
+                        help="Path to write the updated offline metadata file (.csv or .parquet). Defaults to [input_base]_offline.csv.")
     parser.add_argument("--threads", type=int, default=32, help="Number of download threads.")
     parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
                         help="Type of representation embedding to update.")
@@ -122,7 +127,6 @@ def main():
 
     # 3. Identify images to download
     print("Checking local image cache...")
-    from src.utils.io import resolve_offline_image_path
     
     check_dirs = []
     if args.image_root_dirs:
@@ -185,27 +189,80 @@ def main():
 
     # Resolve output paths
     if args.output:
-        out_parquet = args.output
+        out_metadata = args.output
     else:
         in_dir = os.path.dirname(os.path.abspath(args.input))
         in_base = os.path.splitext(os.path.basename(args.input))[0]
-        out_parquet = os.path.join(in_dir, f"{in_base}_offline.parquet")
+        out_metadata = os.path.join(in_dir, f"{in_base}_offline.csv")
 
-    out_dir = os.path.dirname(os.path.abspath(out_parquet))
-    out_base = os.path.splitext(os.path.basename(out_parquet))[0]
+    out_dir = os.path.dirname(os.path.abspath(out_metadata))
+    out_base = os.path.splitext(os.path.basename(out_metadata))[0]
 
-    # Update indices to be a dense, gap-free sequence in the new offline file
-    df_clean['embedding_idx'] = np.arange(len(df_clean), dtype=np.int32)
+    # Compute relative Image_Location and file_name columns to make it drop-in compatible with offline datasets like iwildcam_subset
+    file_names = []
+    local_locations = []
     
-    print(f"Saving offline dataset metadata to {out_parquet}...")
-    df_clean.to_parquet(out_parquet, index=False, compression='zstd')
-    
+    for row in df_clean.itertuples():
+        photo_id = getattr(row, "Photo_ID", "")
+        platform = getattr(row, "Platform", "")
+        platform_str = str(platform).strip().lower() or "unknown"
+        photo_str = str(photo_id).strip()
+        if photo_str.endswith('.0'):
+            photo_str = photo_str[:-2]
+        name = f"{photo_str}.jpg"
+        
+        # Determine output absolute path
+        abs_img_path = os.path.abspath(os.path.join(args.output_dir, platform_str, name))
+        
+        # Calculate path relative to the metadata output directory
+        try:
+            rel_path = "./" + os.path.relpath(abs_img_path, out_dir)
+        except Exception:
+            rel_path = os.path.join(args.output_dir, platform_str, name)
+            
+        file_names.append(name)
+        local_locations.append(rel_path)
+        
+    df_clean['file_name'] = file_names
+    df_clean['Image_Location'] = local_locations
+
+    # Drop existing embedding_idx so save_dataframe will rebuild it for the new 1-to-1 matrix
+    if 'embedding_idx' in df_clean.columns:
+        df_clean = df_clean.drop(columns=['embedding_idx'])
+        
+    # Re-insert embedding to let save_dataframe decouple it dynamically
+    df_clean['embedding'] = list(embeddings_clean)
+
+    # Leverage the tested save_dataframe logic by writing to a temporary parquet file (which handles the .npy decoupling)
+    temp_parquet_path = os.path.join(out_dir, f"{out_base}.parquet")
+    print("Utilizing save_dataframe() to decouple companion embeddings matrix...")
+    save_dataframe(
+        df_clean,
+        temp_parquet_path,
+        representation_type=args.representation_type,
+        precision="float32"
+    )
+
+    # Load back the decoupled dataframe containing the generated 'embedding_idx' column
+    df_decoupled = load_dataframe(temp_parquet_path)
+
+    # Save to CSV or Parquet based on requested format
+    ext = os.path.splitext(out_metadata)[1].lower()
+    if ext == '.parquet':
+        # Re-save the clean parquet to the requested location
+        if out_metadata != temp_parquet_path:
+            os.replace(temp_parquet_path, out_metadata)
+    else:
+        # Save CSV metadata
+        print(f"Saving offline dataset metadata to CSV: {out_metadata}...")
+        df_decoupled.to_csv(out_metadata, index=False)
+        # Clean up temporary parquet file
+        if os.path.exists(temp_parquet_path):
+            os.remove(temp_parquet_path)
+
     out_npy = os.path.join(out_dir, f"{out_base}_{args.representation_type}_embeddings.npy")
-    print(f"Saving aligned embeddings to {out_npy}...")
-    np.save(out_npy, embeddings_clean)
-
-    print("\n🎉 Offline dataset created successfully!")
-    print(f" -> Parquet: {out_parquet}")
+    print(f"\n🎉 Offline dataset created successfully!")
+    print(f" -> Metadata: {out_metadata}")
     print(f" -> Embeddings: {out_npy}")
 
 
