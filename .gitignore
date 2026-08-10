@@ -2,6 +2,7 @@
 .idea
 .vscode
 _darcs
+.ruff_cache/
 
 # compilation and distribution
 __pycache__

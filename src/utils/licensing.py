@@ -12,5 +12,11 @@ FLICKR_LICENSE_MAP = {
     '7': 'No known copyright restrictions',
     '8': 'United States Government Work',
     '9': 'CC0 1.0',
-    '10': 'Public Domain Mark 1.0'
+    '10': 'Public Domain Mark 1.0',
+    '11': 'CC BY 4.0',
+    '12': 'CC BY-NC 4.0',
+    '13': 'CC BY-NC-ND 4.0',
+    '14': 'CC BY-NC-SA 4.0',
+    '15': 'CC BY-ND 4.0',
+    '16': 'CC BY-SA 4.0'
 }
