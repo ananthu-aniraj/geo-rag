@@ -95,6 +95,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
     col_country = df['country'].to_numpy() if 'country' in df.columns else np.array(["Unknown"] * len(df))
     col_continent = df['continent'].to_numpy() if 'continent' in df.columns else np.array(["Unknown"] * len(df))
     col_visual_desc = df['visual_description'].to_numpy() if 'visual_description' in df.columns else np.array([""] * len(df))
+    col_license = df['License'].to_numpy() if 'License' in df.columns else np.array([""] * len(df))
     print("Successfully pre-extracted columns for fast access.")
 
     def make_sample(global_idx, sim_score, is_outlier, rank_label):
@@ -108,6 +109,9 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
 
         cap = col_captured_at[global_idx]
         cap_str = str(cap) if cap is not None and not (isinstance(cap, float) and np.isnan(cap)) else ""
+
+        lic = col_license[global_idx]
+        lic_str = str(lic) if lic is not None and not (isinstance(lic, float) and np.isnan(lic)) else ""
 
         return {
             "url": str(col_url[global_idx]),
@@ -123,6 +127,7 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             "koppen_desc": str(col_koppen_desc[global_idx]) if pd.notna(col_koppen_desc[global_idx]) else "",
             "country": str(col_country[global_idx]) if pd.notna(col_country[global_idx]) else "Unknown",
             "continent": str(col_continent[global_idx]) if pd.notna(col_continent[global_idx]) else "Unknown",
+            "license": lic_str,
             "is_outlier": is_outlier,
             "rank_label": rank_label
         }
