@@ -1,5 +1,6 @@
 import argparse
 import base64
+import gc
 import os
 import pickle
 import time
@@ -9,6 +10,7 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
 import torch
@@ -18,7 +20,14 @@ from sklearn.preprocessing import normalize
 from transformers import AutoModel
 from urllib3.util import Retry
 
-from src.utils.io import get_parquet_writer, load_dataframe
+# Load dataset with clusters using our decoupled-compatible loader
+from src.utils.io import (
+    get_parquet_writer,
+    load_dataframe,
+    load_dataset_with_clusters,
+    load_embeddings,
+    resolve_offline_image_path,
+)
 
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
@@ -53,9 +62,7 @@ def resize_image_aspect(img, target_max=448):
 
 
 def load_image(url, target_max=448, image_root_dir=None, photo_id=None, platform=None):
-    """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
-    from src.utils.io import resolve_offline_image_path
-    
+    """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""    
     resolved_path = None
     if image_root_dir:
         resolved_path = resolve_offline_image_path(url, image_root_dir, photo_id, platform)
@@ -286,8 +293,6 @@ def main():
         df = pd.DataFrame(data)
         embeddings = np.vstack(df['embedding'].values).astype(np.float32)
     else:
-        # Load dataset with clusters using our decoupled-compatible loader
-        from src.utils.io import load_dataset_with_clusters, load_embeddings
         try:
             df = load_dataset_with_clusters(args.input_file)
         except Exception:
@@ -391,7 +396,6 @@ def main():
     # Release heavy embedding matrices immediately
     del embeddings
     del embeddings_norm
-    import gc
     gc.collect()
     print(" -> Released embedding matrices from memory to conserve RAM during VLM labeling.")
 
@@ -588,9 +592,6 @@ def main():
             pickle.dump(data, f)
     else:
         print(f"Streaming and merging labels to output parquet: {args.output_file}...")
-        
-        import pyarrow as pa
-        
         pf_in = pq.ParquetFile(args.input_file)
         schema_in = pf_in.schema_arrow
         

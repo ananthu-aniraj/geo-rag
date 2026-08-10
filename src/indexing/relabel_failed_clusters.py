@@ -14,7 +14,11 @@ import yaml
 from PIL import Image
 from sklearn.preprocessing import normalize
 
-from src.utils.io import save_dataframe
+from src.utils.io import (
+    load_dataset_with_clusters,
+    resolve_offline_image_path,
+    save_dataframe,
+)
 
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
@@ -39,9 +43,7 @@ def resize_image_aspect(img, target_max=448):
 
 
 def load_image(url, target_max=448, timeout=15, image_root_dir=None, photo_id=None, platform=None):
-    """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""
-    from src.utils.io import resolve_offline_image_path
-    
+    """Loads an image from local path or downloads from Mapillary, Kartaview, or standard URL."""    
     resolved_path = None
     if image_root_dir:
         resolved_path = resolve_offline_image_path(url, image_root_dir, photo_id, platform)
@@ -313,7 +315,6 @@ def main():
         with open(args.file, 'rb') as f:
             data = pickle.load(f)
     else:
-        from src.utils.io import load_dataset_with_clusters
         df = load_dataset_with_clusters(args.file)
         if 'Latitude' in df.columns:
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
