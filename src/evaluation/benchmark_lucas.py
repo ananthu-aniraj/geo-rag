@@ -290,18 +290,63 @@ def main():
             h3_res4 = "unknown"
         item["parent_block"] = h3_res4
 
-    # 2. Gather unique H3 blocks and perform split
-    unique_blocks = sorted(list(set(item["parent_block"] for item in matched_images if item["parent_block"] != "unknown")))
+    # 2. Perform Greedy Block Stratification to ensure full class coverage (stratified by lc_label)
+    class_to_blocks = {}
+    for item in matched_images:
+        blk = item["parent_block"]
+        if blk == "unknown":
+            continue
+        cls = item["lc_label"]
+        if cls not in class_to_blocks:
+            class_to_blocks[cls] = set()
+        class_to_blocks[cls].add(blk)
+
+    sorted_classes = sorted(class_to_blocks.keys(), key=lambda c: len(class_to_blocks[c]))
+    query_blocks = set()
+    database_blocks = set()
     random.seed(args.seed)
-    random.shuffle(unique_blocks)
-    
-    # Allocate 20% of the blocks for queries, 80% for database search space
-    split_idx = int(len(unique_blocks) * 0.20)
-    query_blocks = set(unique_blocks[:split_idx])
-    database_blocks = set(unique_blocks[split_idx:])
+
+    for cls in sorted_classes:
+        blocks = list(class_to_blocks[cls])
+        random.shuffle(blocks)
+        
+        assigned_q = sum(1 for b in blocks if b in query_blocks)
+        assigned_db = sum(1 for b in blocks if b in database_blocks)
+        
+        total_class_blocks = len(blocks)
+        target_q = max(1, int(total_class_blocks * 0.20)) if total_class_blocks > 1 else 0
+        
+        unassigned_blocks = [b for b in blocks if b not in query_blocks and b not in database_blocks]
+        
+        needed_q = max(0, target_q - assigned_q)
+        needed_db = max(0, 1 - assigned_db) if total_class_blocks > 1 else 0
+        
+        for b in unassigned_blocks:
+            if needed_q > 0:
+                query_blocks.add(b)
+                needed_q -= 1
+            elif needed_db > 0:
+                database_blocks.add(b)
+                needed_db -= 1
+            else:
+                if random.random() < 0.20:
+                    query_blocks.add(b)
+                else:
+                    database_blocks.add(b)
+
+    # Allocate any remaining unassigned blocks in the dataset
+    all_blocks = set(item["parent_block"] for item in matched_images if item["parent_block"] != "unknown")
+    unassigned_all = all_blocks - query_blocks - database_blocks
+    for b in unassigned_all:
+        if random.random() < 0.20:
+            query_blocks.add(b)
+        else:
+            database_blocks.add(b)
 
     query_candidates = [item for item in matched_images if item["parent_block"] in query_blocks]
     database_candidates = [item for item in matched_images if item["parent_block"] in database_blocks]
+    
+    unique_blocks = sorted(list(all_blocks))
     
     print(f" -> Found {len(unique_blocks)} unique H3 blocks.")
     print(f" -> Query block pool: {len(query_blocks)} blocks ({len(query_candidates):,} images)")
