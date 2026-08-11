@@ -7,6 +7,7 @@ import sys
 import time
 
 import geopandas as gpd
+import h3
 import numpy as np
 import pandas as pd
 import rasterio
@@ -23,6 +24,9 @@ from transformers import (
 
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
 from src.models import tips_image_encoder as image_encoder
+from src.models.vision_model_inference import (
+    extract_benchmark_features_single_pass,
+)
 from src.utils import lucas_class_mapping
 from src.utils.spatial_overlays import (
     get_crs_transformer,
@@ -276,39 +280,76 @@ def main():
         return
 
     print(f"Found {len(matched_images):,} matched image files in directory.")
-
-    # Group matched images by point ID to preserve geographical diversity in sampling
-    images_by_point = {}
+    print("Partitioning queries and database geographically to prevent spatial autocorrelation/point-level leakage...")
+    
+    # 1. Map each image to an H3 Resolution 4 parent block (~11,000 km2)
     for item in matched_images:
+        try:
+            h3_res4 = h3.geo_to_h3(float(item["lat"]), float(item["lon"]), 4)
+        except Exception:
+            h3_res4 = "unknown"
+        item["parent_block"] = h3_res4
+
+    # 2. Gather unique H3 blocks and perform split
+    unique_blocks = sorted(list(set(item["parent_block"] for item in matched_images if item["parent_block"] != "unknown")))
+    random.seed(args.seed)
+    random.shuffle(unique_blocks)
+    
+    # Allocate 20% of the blocks for queries, 80% for database search space
+    split_idx = int(len(unique_blocks) * 0.20)
+    query_blocks = set(unique_blocks[:split_idx])
+    database_blocks = set(unique_blocks[split_idx:])
+
+    query_candidates = [item for item in matched_images if item["parent_block"] in query_blocks]
+    database_candidates = [item for item in matched_images if item["parent_block"] in database_blocks]
+    
+    print(f" -> Found {len(unique_blocks)} unique H3 blocks.")
+    print(f" -> Query block pool: {len(query_blocks)} blocks ({len(query_candidates):,} images)")
+    print(f" -> Database block pool: {len(database_blocks)} blocks ({len(database_candidates):,} images)")
+
+    # Group query candidates by point
+    query_by_point = {}
+    for item in query_candidates:
         pt_id = item['point_id']
-        if pt_id not in images_by_point:
-            images_by_point[pt_id] = []
-        images_by_point[pt_id].append(item)
+        if pt_id not in query_by_point:
+            query_by_point[pt_id] = []
+        query_by_point[pt_id].append(item)
+        
+    sorted_q_points = sorted(query_by_point.keys())
+    random.shuffle(sorted_q_points)
+    
+    selected_queries = []
+    max_q_dirs = max(len(query_by_point[pt]) for pt in sorted_q_points) if sorted_q_points else 0
+    for dir_idx in range(max_q_dirs):
+        for pt in sorted_q_points:
+            if dir_idx < len(query_by_point[pt]):
+                selected_queries.append(query_by_point[pt][dir_idx])
 
-    sorted_points = sorted(images_by_point.keys())
-    random.shuffle(sorted_points)
-
-    # Interleave images across different points to maximize variety
-    selected_images = []
-    max_dirs = max(len(images_by_point[pt]) for pt in sorted_points)
-
-    for dir_idx in range(max_dirs):
-        for pt in sorted_points:
-            if dir_idx < len(images_by_point[pt]):
-                selected_images.append(images_by_point[pt][dir_idx])
+    # Group database candidates by point
+    db_by_point = {}
+    for item in database_candidates:
+        pt_id = item['point_id']
+        if pt_id not in db_by_point:
+            db_by_point[pt_id] = []
+        db_by_point[pt_id].append(item)
+        
+    sorted_db_points = sorted(db_by_point.keys())
+    random.shuffle(sorted_db_points)
+    
+    selected_db = []
+    max_db_dirs = max(len(db_by_point[pt]) for pt in sorted_db_points) if sorted_db_points else 0
+    for dir_idx in range(max_db_dirs):
+        for pt in sorted_db_points:
+            if dir_idx < len(db_by_point[pt]):
+                selected_db.append(db_by_point[pt][dir_idx])
 
     # Determine subset counts
-    total_needed = args.num_queries + (
-        args.num_database if args.num_database > 0 else (len(selected_images) - args.num_queries))
-    if len(selected_images) < total_needed:
-        print(f"Warning: Only {len(selected_images)} matched images available. Adjusting query/database split.")
-        total_needed = len(selected_images)
+    if len(selected_queries) < args.num_queries:
+        print(f"Warning: Only {len(selected_queries)} query candidates available in query blocks. Adjusting --num_queries.")
+        args.num_queries = len(selected_queries)
 
-    selected_images = selected_images[:total_needed]
-
-    # Split into Queries and Database
-    queries_meta = selected_images[:args.num_queries]
-    database_meta = selected_images[args.num_queries:]
+    queries_meta = selected_queries[:args.num_queries]
+    database_meta = selected_db[:args.num_database] if args.num_database > 0 else selected_db
 
     print(f"Split data into: {len(queries_meta)} Queries and {len(database_meta)} Database images.")
     if len(queries_meta) == 0 or len(database_meta) == 0:
@@ -411,9 +452,7 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                from src.models.vision_model_inference import (
-                    extract_benchmark_features_single_pass,
-                )
+              
                 cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
                 patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
 

@@ -102,8 +102,9 @@ python3 -m src.evaluation.evaluate_retrieval \
 This script benchmarks the semantic retrieval capability of different image representations (TIPSv2 CLS, average patch, and SegFormer-masked embeddings) on the **LUCAS 2018** dataset. It measures how well nearest-neighbor retrieval aligns with ground-truth land cover, land use, and habitat classes, as well as projected spatial-ecological zones.
  
 ### 🔍 Methodology
-1. **LUCAS Metadata Ingestion & Sampling:** Loads the validation CSV coordinates, matches local images using point ID grouping, and shuffles them to build a query set and database pool.
-2. **Spatial Raster Overlay:** Extracts the GPS coordinates (`lat`, `lon`) for each LUCAS point. If EUNIS and Metzger Environmental Zones GeoTIFF rasters are provided, it projects the coordinates to EPSG:3035 to query and append projected EUNIS ecosystem categories and biogeographical climate zones.
+1. **LUCAS Metadata Ingestion & Sampling:** Loads the validation CSV coordinates, matches local images using point ID grouping, and shuffles them.
+2. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are split: 20% of the blocks are allocated for queries, and 80% for the database. This ensures complete geographic segregation and prevents point-level leakage (such as directional views of the same surveyor coordinate field being split between query and database).
+3. **Spatial Raster Overlay:** Extracts the GPS coordinates (`lat`, `lon`) for each LUCAS point. If EUNIS and Metzger Environmental Zones GeoTIFF rasters are provided, it projects the coordinates to EPSG:3035 to query and append projected EUNIS ecosystem categories and biogeographical climate zones.
 3. **Batch Feature Extraction:** Computes embeddings in batches on the GPU. If loading a custom checkpoint (via `--tips_model_path`), it evaluates both `TIPSv2 1st CLS` (visual/semantic) and `TIPSv2 2nd CLS` (geographic) tokens against average patch and Seg-Masked embeddings. Otherwise, it defaults to Hugging Face `google/tipsv2-b14`.
 4. **Retrieval Metric Computation:** Queries the database using cosine similarity to retrieve the Top-10 nearest neighbors. It reports alignment metrics (P@1, P@5, P@10, mAP@10, and MRR@10) across five hierarchical/ecological levels:
    * **Land Cover** (`lc_label`)
@@ -171,8 +172,9 @@ This script performs geobotanical representation benchmarking on arbitrary geolo
 ### 🔍 Methodology
 1. **EUNIS Raster Coordinate Lookup:** Reads your scraped CSV metadata, transforms coordinates into EPSG:3035 using `pyproj`, and queries the local EUNIS GeoTIFF.
 2. **Dynamic Label Parsing:** If the `.vat.dbf` database file is found next to the raster, the script parses it dynamically using Geopandas to map raster values to terrestrial labels (e.g., *Woodland*, *Cropland*).
-3. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
-4. **Retrieval Evaluations:** Reports P@1, P@5, P@10, mAP@10, and MRR@10 on geobotanical classifications.
+3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are split: 20% of the blocks are allocated for queries, and 80% for the database. This ensures complete geographic segregation and prevents spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
+4. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
+5. **Retrieval Evaluations:** Reports P@1, P@5, P@10, mAP@10, and MRR@10 on geobotanical classifications.
  
 ### 💻 Usage
 ```bash
@@ -199,8 +201,9 @@ This script performs macro-scale biogeographical representation benchmarking on 
 ### 🔍 Methodology
 1. **Environmental Zone Raster Lookup:** Reads scraped image CSV coordinates, projects them to EPSG:3035, and queries the Metzger 2025 GeoTIFF using `rasterio`.
 2. **Category Extraction:** Maps the sampled value to one of the 19 Environmental Zones (e.g. *Boreal*, *Continental*, *Arctic*).
-3. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
-4. **Retrieval Evaluations:** Reports Precision@1, Precision@5, Precision@10, mAP@10, and MRR@10 on European Environmental Zones.
+3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are split: 20% of the blocks are allocated for queries, and 80% for the database. This ensures complete geographic segregation and prevents spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
+4. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
+5. **Retrieval Evaluations:** Reports Precision@1, Precision@5, Precision@10, mAP@10, and MRR@10 on European Environmental Zones.
  
 ### 💻 Usage
 ```bash

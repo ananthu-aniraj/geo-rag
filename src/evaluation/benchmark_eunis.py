@@ -209,19 +209,55 @@ def main():
         print("Error: No images mapped successfully to EUNIS ecosystem categories.")
         return
 
-    print(f"Successfully mapped {len(matched_images):,} records to EUNIS categories.")
-
-    # Group matched images by EUNIS category
-    images_by_class = {}
+    import h3
+    print("Partitioning queries and database geographically to prevent spatial autocorrelation/sequence leakage...")
+    
+    # 1. Map each image to an H3 Resolution 4 parent block (~11,000 km2)
     for item in matched_images:
-        cls = item["eunis_class"]
-        if cls not in images_by_class:
-            images_by_class[cls] = []
-        images_by_class[cls].append(item)
+        try:
+            h3_res4 = h3.geo_to_h3(float(item["lat"]), float(item["lon"]), 4)
+        except Exception:
+            h3_res4 = "unknown"
+        item["parent_block"] = h3_res4
 
-    sorted_classes = sorted(images_by_class.keys())
+    # 2. Gather unique H3 blocks and perform split
+    unique_blocks = sorted(list(set(item["parent_block"] for item in matched_images if item["parent_block"] != "unknown")))
+    random.seed(args.seed)
+    random.shuffle(unique_blocks)
+    
+    # Allocate 20% of the blocks for queries, 80% for database search space
+    split_idx = int(len(unique_blocks) * 0.20)
+    query_blocks = set(unique_blocks[:split_idx])
+    database_blocks = set(unique_blocks[split_idx:])
+
+    query_candidates = [item for item in matched_images if item["parent_block"] in query_blocks]
+    database_candidates = [item for item in matched_images if item["parent_block"] in database_blocks]
+    
+    print(f" -> Found {len(unique_blocks)} unique H3 blocks.")
+    print(f" -> Query block pool: {len(query_blocks)} blocks ({len(query_candidates):,} images)")
+    print(f" -> Database block pool: {len(database_blocks)} blocks ({len(database_candidates):,} images)")
+
+    # Group candidates by EUNIS category
+    query_by_class = {}
+    for item in query_candidates:
+        cls = item["eunis_class"]
+        if cls not in query_by_class:
+            query_by_class[cls] = []
+        query_by_class[cls].append(item)
+
+    db_by_class = {}
+    for item in database_candidates:
+        cls = item["eunis_class"]
+        if cls not in db_by_class:
+            db_by_class[cls] = []
+        db_by_class[cls].append(item)
+
+    sorted_classes = sorted(list(set(item["eunis_class"] for item in matched_images)))
     for cls in sorted_classes:
-        random.shuffle(images_by_class[cls])
+        if cls in query_by_class:
+            random.shuffle(query_by_class[cls])
+        if cls in db_by_class:
+            random.shuffle(db_by_class[cls])
 
     # Enforce platform-specific queries
     q_plat = args.query_platform.lower() if args.query_platform else None
@@ -239,33 +275,30 @@ def main():
 
     # Interleave to build query pool (only matching query platform)
     query_pool = []
-    class_q_lists = {cls: [item for item in images_by_class[cls] if matches_query_plat(item)] for cls in sorted_classes}
+    class_q_lists = {cls: [item for item in query_by_class.get(cls, []) if matches_query_plat(item)] for cls in sorted_classes}
     max_q_len = max(len(lst) for lst in class_q_lists.values()) if class_q_lists else 0
     for i in range(max_q_len):
         for cls in sorted_classes:
             if i < len(class_q_lists[cls]):
                 query_pool.append(class_q_lists[cls][i])
 
-    # Interleave to build database pool (all images)
+    # Interleave to build database pool (all images in database blocks)
     db_pool = []
-    db_candidates_by_class = {cls: images_by_class[cls] for cls in sorted_classes}
-    max_db_len = max(len(lst) for lst in db_candidates_by_class.values()) if db_candidates_by_class else 0
+    class_db_lists = {cls: db_by_class.get(cls, []) for cls in sorted_classes}
+    max_db_len = max(len(lst) for lst in class_db_lists.values()) if class_db_lists else 0
     for i in range(max_db_len):
         for cls in sorted_classes:
-            if i < len(db_candidates_by_class[cls]):
-                db_pool.append(db_candidates_by_class[cls][i])
+            if i < len(class_db_lists[cls]):
+                db_pool.append(class_db_lists[cls][i])
 
     # Select queries from the query pool
     if q_plat and len(query_pool) < args.num_queries:
         print(
-            f"Warning: Only {len(query_pool)} matched images available for platform '{q_plat}'. Adjusting --num_queries.")
+            f"Warning: Only {len(query_pool)} query candidates available for platform '{q_plat}' in query blocks. Adjusting --num_queries.")
         args.num_queries = len(query_pool)
 
     queries_selection = query_pool[:args.num_queries]
-
-    # Select database from remaining (non-overlapping) candidates
-    query_urls = set(item['url'] for item in queries_selection)
-    database_selection = [item for item in db_pool if item['url'] not in query_urls][:args.num_database]
+    database_selection = db_pool[:args.num_database]
 
     print(
         f"Prereq selection sizes: {len(queries_selection)} Queries ({q_plat if q_plat else 'any'}), {len(database_selection)} Database.")
