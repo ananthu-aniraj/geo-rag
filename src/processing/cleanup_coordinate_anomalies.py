@@ -14,6 +14,8 @@ def main():
     parser.add_argument("--csv", type=str, default="full_pipeline_output/geo_space_deduplicated.csv", help="Path to the CSV metadata file.")
     parser.add_argument("--output", type=str, default=None, help="Path to write the cleaned Parquet dataset. Defaults to input path.")
     parser.add_argument("--output_csv", type=str, default=None, help="Path to write the cleaned CSV metadata file. Defaults to input CSV path.")
+    parser.add_argument("--platform", type=str, default=None, help="Restrict anomaly detection and cleanup to this specific platform (e.g. 'mapillary').")
+    parser.add_argument("--continent", type=str, default=None, help="Restrict anomaly detection and cleanup to this specific continent (e.g. 'africa').")
     args = parser.parse_args()
 
     parquet_path = args.input
@@ -35,38 +37,78 @@ def main():
     num_row_groups = pf.num_row_groups
     print(f" -> Found {num_row_groups} row groups.")
 
-    # 1. Read coordinates only (extremely fast and memory efficient)
+    # Detect if continent column is present in the schema
+    schema = pf.schema_arrow
+    has_continent = "continent" in schema.names or "Continent" in schema.names
+    continent_col = "continent" if "continent" in schema.names else ("Continent" if "Continent" in schema.names else None)
+
+    # 1. Read coordinates and group columns only (extremely fast and memory efficient)
+    load_cols = ["Latitude", "Longitude", "Platform"]
+    if has_continent and continent_col:
+        load_cols.append(continent_col)
+
     lats = []
     lons = []
+    plats = []
+    conts = []
+
     for rg in range(num_row_groups):
-        tbl_rg = pf.read_row_group(rg, columns=["Latitude", "Longitude"])
+        tbl_rg = pf.read_row_group(rg, columns=load_cols)
         lats.append(tbl_rg["Latitude"].to_numpy())
         lons.append(tbl_rg["Longitude"].to_numpy())
+        plats.append(tbl_rg["Platform"].to_numpy().astype(str))
+        if has_continent and continent_col:
+            conts.append(tbl_rg[continent_col].to_numpy().astype(str))
 
-    df_meta = pd.DataFrame({
+    meta_dict = {
         "Latitude": np.concatenate(lats),
-        "Longitude": np.concatenate(lons)
-    })
+        "Longitude": np.concatenate(lons),
+        "Platform": np.concatenate(plats)
+    }
+    if has_continent and continent_col:
+        meta_dict[continent_col] = np.concatenate(conts)
+
+    df_meta = pd.DataFrame(meta_dict)
     df_meta["Latitude"] = pd.to_numeric(df_meta["Latitude"], errors='coerce')
     df_meta["Longitude"] = pd.to_numeric(df_meta["Longitude"], errors='coerce')
+    df_meta["Platform"] = df_meta["Platform"].fillna("").astype(str)
+    if has_continent and continent_col:
+        df_meta[continent_col] = df_meta[continent_col].fillna("").astype(str)
+
     print(f" -> Loaded coordinates metadata for {len(df_meta):,} records in {time.time() - t0:.2f}s.")
 
-    # 2. Group by rounded latitude to detect locked lines
-    df_meta["lat_round"] = df_meta["Latitude"].round(5)
-    stats = df_meta.groupby("lat_round").agg(
+    # Filter target platform/continent before analyzing anomalies if requested
+    df_meta_for_stats = df_meta.copy()
+    if args.platform:
+        print(f"Filtering detection scope to platform: {args.platform}")
+        df_meta_for_stats = df_meta_for_stats[df_meta_for_stats["Platform"].str.lower() == args.platform.lower()]
+    if args.continent:
+        if has_continent and continent_col:
+            print(f"Filtering detection scope to continent: {args.continent}")
+            df_meta_for_stats = df_meta_for_stats[df_meta_for_stats[continent_col].str.lower() == args.continent.lower()]
+        else:
+            print(f"Warning: --continent '{args.continent}' specified but no continent column was found in schema. Skipping.")
+
+    # 2. Group by Platform (+ Continent) and rounded latitude to detect locked lines per platform
+    df_meta_for_stats["lat_round"] = df_meta_for_stats["Latitude"].round(5)
+    
+    groupby_cols = ["Platform", "lat_round"]
+    if has_continent and continent_col:
+        groupby_cols.insert(1, continent_col)
+
+    stats = df_meta_for_stats.groupby(groupby_cols).agg(
         count=("Longitude", "count"),
         min_lon=("Longitude", "min"),
         max_lon=("Longitude", "max")
-    )
+    ).reset_index()
+    
     stats["span"] = stats["max_lon"] - stats["min_lon"]
 
     # Flag: high frequency (>10 images) across a global span (>1.0 degree longitude difference)
-    # This prevents dropping dense urban centers (which have a tiny span, <0.05 degree)
     anomalies = stats[(stats["count"] > 10) & (stats["span"] > 1.0)]
 
     if anomalies.empty:
-        print("✅ No locked-latitude coordinate anomalies found in the dataset.")
-        # Ensure output files exist (copy input to output if they differ)
+        print("✅ No locked-latitude coordinate anomalies found in the dataset scope.")
         if parquet_path != output_parquet_path:
             import shutil
             print(f"Copying clean Parquet database to output: {output_parquet_path}")
@@ -77,12 +119,16 @@ def main():
             shutil.copy2(csv_path, output_csv_path)
         return
 
-    print(f"\n🚨 Found {len(anomalies)} locked-latitude coordinate lines:")
+    print(f"\n🚨 Found {len(anomalies)} locked-latitude coordinate anomaly lines:")
     print("================================================================================")
-    print(anomalies[["count", "span"]].to_string())
+    print(anomalies.to_string(index=False))
     print("================================================================================")
 
-    flagged_lats = set(anomalies.index)
+    # Build lookup set of flagged keys
+    if has_continent and continent_col:
+        flagged_keys = set(zip(anomalies["Platform"], anomalies[continent_col], anomalies["lat_round"]))
+    else:
+        flagged_keys = set(zip(anomalies["Platform"], anomalies["lat_round"]))
 
     # 3. Stream write filtered row groups to a temporary Parquet file
     temp_parquet_path = output_parquet_path + ".tmp"
@@ -98,9 +144,16 @@ def main():
             tbl_rg = pf.read_row_group(rg)
             rg_lat = tbl_rg["Latitude"].to_numpy()
             rg_lat_round = np.round(rg_lat, 5)
+            rg_plat = tbl_rg["Platform"].to_numpy().astype(str)
+            
+            if has_continent and continent_col:
+                rg_cont = tbl_rg[continent_col].to_numpy().astype(str)
+                keys = list(zip(rg_plat, rg_cont, rg_lat_round))
+            else:
+                keys = list(zip(rg_plat, rg_lat_round))
 
-            # Keep indices not matching flagged lats
-            keep_mask = ~np.isin(rg_lat_round, list(flagged_lats))
+            # Keep indices not matching flagged keys
+            keep_mask = np.array([k not in flagged_keys for k in keys], dtype=bool)
 
             filtered_tbl = tbl_rg.filter(pa.array(keep_mask))
             writer.write_table(filtered_tbl)
@@ -120,7 +173,16 @@ def main():
             chunk["Latitude"] = pd.to_numeric(chunk["Latitude"], errors='coerce')
             chunk["Longitude"] = pd.to_numeric(chunk["Longitude"], errors='coerce')
             chunk["lat_round"] = chunk["Latitude"].round(5)
-            cleaned_chunk = chunk[~chunk["lat_round"].isin(flagged_lats)].drop(columns=["lat_round"])
+            chunk["Platform"] = chunk["Platform"].fillna("").astype(str)
+            
+            if has_continent and continent_col:
+                chunk[continent_col] = chunk[continent_col].fillna("").astype(str)
+                keys = list(zip(chunk["Platform"], chunk[continent_col], chunk["lat_round"]))
+            else:
+                keys = list(zip(chunk["Platform"], chunk["lat_round"]))
+                
+            keep_mask = [k not in flagged_keys for k in keys]
+            cleaned_chunk = chunk[keep_mask].drop(columns=["lat_round"])
 
             cleaned_chunk.to_csv(
                 temp_csv_path,

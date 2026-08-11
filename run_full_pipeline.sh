@@ -16,6 +16,8 @@ K_MIN=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipe
 K_MAX=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_max', 50000))" 2>/dev/null || echo "50000")
 K_STEP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_step', 10000))" 2>/dev/null || echo "10000")
 CLEANUP_ANOMALIES=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_anomalies', False)).lower())" 2>/dev/null || echo "false")
+CLEANUP_PLATFORM=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_platform', ''))" 2>/dev/null || echo "")
+CLEANUP_CONTINENT=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_continent', ''))" 2>/dev/null || echo "")
 MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('max_markers', 10000))" 2>/dev/null || echo "10000")
 LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
 CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
@@ -135,7 +137,16 @@ echo ""
 echo "[Step 1c/5] Cleaning Coordinate Anomalies (if enabled)..."
 if [ "$CLEANUP_ANOMALIES" = "true" ]; then
     echo "Running coordinate anomaly cleanup..."
-    python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --output "$CLEANED_PARQUET"
+    CLEANUP_FLAGS=""
+    if [ -n "$CLEANUP_PLATFORM" ]; then
+        echo " -> Restricting cleanup to platform: $CLEANUP_PLATFORM"
+        CLEANUP_FLAGS="$CLEANUP_FLAGS --platform $CLEANUP_PLATFORM"
+    fi
+    if [ -n "$CLEANUP_CONTINENT" ]; then
+        echo " -> Restricting cleanup to continent: $CLEANUP_CONTINENT"
+        CLEANUP_FLAGS="$CLEANUP_FLAGS --continent $CLEANUP_CONTINENT"
+    fi
+    python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --output "$CLEANED_PARQUET" $CLEANUP_FLAGS
     INPUT_PARQUET="$CLEANED_PARQUET"
 else
     echo "Coordinate anomaly cleanup is disabled."
