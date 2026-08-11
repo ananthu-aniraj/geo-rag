@@ -188,7 +188,7 @@ def main():
     # 1. Map each image to an H3 Resolution 4 parent block (~11,000 km2)
     for item in matched_images:
         try:
-            h3_res4 = h3.geo_to_h3(float(item["lat"]), float(item["lon"]), 4)
+            h3_res4 = h3.latlng_to_cell(float(item["lat"]), float(item["lon"]), 4)
         except Exception:
             h3_res4 = "unknown"
         item["parent_block"] = h3_res4
