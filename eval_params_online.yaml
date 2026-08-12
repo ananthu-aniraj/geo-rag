@@ -4,8 +4,8 @@ environmental_zones:
   csv_path: "/home/ananthu/Projects/data/full_pipeline_output/geo_space_deduplicated.parquet"
   countries_shp: "shapefiles/ne_10m_admin_0_countries.shp"
   raster: "/home/ananthu/DATA/data_ananthu/environmental_zones/eea_r_3035_100_m_EnvZ-Metzger_2025_v1_r00.tif"
-  num_queries: 3000
-  num_database: 300000
+  num_queries: 5000
+  num_database: 400000
   batch_size: 32
   seed: 42
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
@@ -14,8 +14,8 @@ eunis:
   csv_path: "/home/ananthu/Projects/data/full_pipeline_output/geo_space_deduplicated.parquet"
   countries_shp: "shapefiles/ne_10m_admin_0_countries.shp"
   raster: "/home/ananthu/DATA/data_ananthu/eea_r_3035_100_m_ecosystem-types-terrestrial-r_p_2012_v03_r01/eea_r_3035_100_m_etm-terrestrial-r_2012_v3-1_r00.tif"
-  num_queries: 3000
-  num_database: 300000
+  num_queries: 5000
+  num_database: 400000
   batch_size: 32
   seed: 42
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
