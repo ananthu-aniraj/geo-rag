@@ -93,6 +93,8 @@ def main():
     parser.add_argument("--threads", type=int, default=32, help="Number of download threads.")
     parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
                         help="Type of representation embedding to update.")
+    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
+                        help="Floating point precision format for stored embeddings (float32 or float16).")
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
@@ -244,7 +246,7 @@ def main():
         df_clean,
         temp_parquet_path,
         representation_type=args.representation_type,
-        precision="float32"
+        precision=args.precision
     )
 
     # Load back the decoupled dataframe containing the generated 'embedding_idx' column

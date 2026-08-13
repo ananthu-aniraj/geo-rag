@@ -390,7 +390,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
 
 
 def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path, resume_from=None,
-                    active_cells=None):
+                    active_cells=None, representation_type='cls', precision='float32'):
     """Saves the intermediate state to checkpoint files atomically."""
     tmp_path = f"{checkpoint_path}.tmp"
     tmp_meta_path = f"{checkpoint_meta_path}.tmp"
@@ -407,9 +407,10 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
 
         if resume_from and os.path.exists(resume_from) and active_cells:
-            stream_update_parquet(resume_from, tmp_path, df, active_cells)
+            stream_update_parquet(resume_from, tmp_path, df, active_cells,
+                                  representation_type=representation_type, precision=precision)
         else:
-            save_dataframe(df, tmp_path)
+            save_dataframe(df, tmp_path, representation_type=representation_type, precision=precision)
 
         # Save processed cells to tmp meta
         with open(tmp_meta_path, 'wb') as f:
@@ -896,14 +897,16 @@ def main():
                 current_time = time.time()
                 if current_time - last_checkpoint_time > args.checkpoint_interval:
                     save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path,
-                                    resume_from=args.resume_from, active_cells=active_cells)
+                                    resume_from=args.resume_from, active_cells=active_cells,
+                                    representation_type=args.representation_type, precision=args.precision)
                     last_checkpoint_time = current_time
 
     # Save a final checkpoint upon loop completion so that raw data is never lost if saving fails
     if args.checkpoint_interval > 0:
         print("\nSaving final completed checkpoint...")
         save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_meta_path,
-                        resume_from=args.resume_from, active_cells=active_cells)
+                        resume_from=args.resume_from, active_cells=active_cells,
+                        representation_type=args.representation_type, precision=args.precision)
 
     # 5. Save Results
     if not final_data:
