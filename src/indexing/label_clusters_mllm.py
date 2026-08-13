@@ -227,7 +227,7 @@ def label_clusters_mllm_batched(tasks, model_name, endpoint_url, chunk_size=128,
             classification_text = query_vlm_openai_api(None, step2_prompt, model_name, endpoint_url)
             batch_responses[cid] = (desc_text, classification_text)
 
-        with ThreadPoolExecutor(max_workers=16) as executor:
+        with ThreadPoolExecutor(max_workers=64) as executor:
             executor.map(query_task, valid_chunk)
 
         for t in chunk:

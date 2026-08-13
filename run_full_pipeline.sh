@@ -128,12 +128,6 @@ fi
 python3 -m src.processing.standardize_timestamps --input "$RAW_PARQUET" $KOPPEN_FLAG $LAND_SHP_FLAG
 
 echo ""
-echo " -> Backfilling missing Flickr licenses..."
-python3 -m src.processing.backfill_licenses --input "$RAW_PARQUET" --log_dirs /home/ananthu/Projects/data/flickr_scrape /home/ananthu/Projects/data/flickr_scrape_rand /home/ananthu/Projects/data/flickr_scrape_rand_2 /home/ananthu/Projects/data/flickr_scrape_rand_3 /home/ananthu/Projects/data/flickr_scrape_rand_4 /home/ananthu/Projects/data/flickr_scrape_rand_5 /home/ananthu/Projects/data/flickr_scrape_rand_6 /home/ananthu/DATA/google-landmark
-
-
-
-echo ""
 echo "[Step 1c/5] Cleaning Coordinate Anomalies (if enabled)..."
 if [ "$CLEANUP_ANOMALIES" = "true" ]; then
     echo "Running coordinate anomaly cleanup..."
@@ -261,7 +255,7 @@ else
       --env "HF_TOKEN=HF_TOKEN_PLACEHOLDER" \
       --ipc=host \
       lmsysorg/sglang:latest-runtime \
-      bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph --mem-fraction-static 0.7"
+      bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --disable-cuda-graph --mem-fraction-static 0.75"
 
     SGLANG_STARTED=true
 
