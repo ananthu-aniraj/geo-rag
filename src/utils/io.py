@@ -108,6 +108,19 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
             np.save(npy_path, embs.astype(dtype))
 
             df_to_save = df.copy()
+            
+            # Generate stable photo_key using Platform and Photo_ID
+            if 'Platform' in df_to_save.columns and 'Photo_ID' in df_to_save.columns:
+                df_to_save['photo_key'] = df_to_save['Platform'].astype(str) + "_" + df_to_save['Photo_ID'].astype(str)
+            else:
+                df_to_save['photo_key'] = "idx_" + np.arange(len(df_to_save)).astype(str)
+
+            # Save the companion keys file
+            keys_df = pd.DataFrame({'photo_key': df_to_save['photo_key']})
+            keys_path = os.path.join(db_dir, f"{core_name}_{rep_suffix}_embeddings.keys.parquet")
+            print(f" -> Saving companion keys file to: {keys_path}")
+            keys_df.to_parquet(keys_path, compression='zstd')
+
             df_to_save['embedding_idx'] = np.arange(len(df_to_save), dtype=np.int32)
             df_to_save = df_to_save.drop(columns=['embedding'])
             df_to_save.to_parquet(file_path, index=index, **kwargs)
@@ -317,10 +330,38 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
     if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")
         
-        # If 'embedding_idx' is in the parquet columns, map indices dynamically
+        # If stable photo_key or platform/ID is available, and companion keys file exists, use it
+        keys_path = npy_path.replace(".npy", ".keys.parquet")
+        has_photo_key = 'photo_key' in pf.schema_arrow.names
+        has_platform_and_id = 'Platform' in pf.schema_arrow.names and 'Photo_ID' in pf.schema_arrow.names
+
+        if (has_photo_key or has_platform_and_id) and os.path.exists(keys_path):
+            print(f" -> Resolving embeddings via companion keys index: {keys_path}")
+            if has_photo_key:
+                meta_keys_table = pf.read(columns=['photo_key'])
+                meta_keys = meta_keys_table['photo_key'].to_pandas().values
+            else:
+                meta_keys_table = pf.read(columns=['Platform', 'Photo_ID'])
+                df_temp = meta_keys_table.to_pandas()
+                meta_keys = (df_temp['Platform'].astype(str) + "_" + df_temp['Photo_ID'].astype(str)).values
+
+            master_keys = pd.Index(pd.read_parquet(keys_path, columns=['photo_key'])['photo_key'])
+            indices = master_keys.get_indexer(meta_keys)
+
+            valid_mask = indices >= 0
+            if not valid_mask.all():
+                print(f"Warning: Found {np.sum(~valid_mask):,} missing keys in embeddings keys index. Zero-filling...")
+                safe_indices = np.clip(indices, 0, len(emb) - 1)
+                sliced_emb = emb[safe_indices].astype(np.float32)
+                sliced_emb[~valid_mask] = 0.0
+                return sliced_emb
+
+            return emb[indices].astype(np.float32)
+
+        # Fallback to older embedding_idx mapping logic
         has_embedding_idx = 'embedding_idx' in pf.schema_arrow.names
         pf_for_idx = pf
-        
+
         if not has_embedding_idx and 'Latitude' not in pf.schema_arrow.names:
             # Resolve to base metadata file if this is a sidecar file
             core_name = get_core_base_name(base_name)
@@ -336,11 +377,11 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
                         has_embedding_idx = True
                         pf_for_idx = pf_base
                     break
-                    
+
         if has_embedding_idx:
             idx_table = pf_for_idx.read(columns=['embedding_idx'])
             indices = idx_table['embedding_idx'].to_numpy()
-            
+
             # Check bounds safety against the actual loaded matrix
             valid_mask = (indices >= 0) & (indices < len(emb))
             if not valid_mask.all():
@@ -349,9 +390,9 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
                 sliced_emb = emb[safe_indices].astype(np.float32)
                 sliced_emb[~valid_mask] = 0.0
                 return sliced_emb
-                
+
             return emb[indices].astype(np.float32)
-            
+
         return emb.astype(np.float32)
 
     raise FileNotFoundError(f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'")

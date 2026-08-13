@@ -240,6 +240,10 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
     if 'embedding_idx' not in [f.name for f in new_fields]:
         new_fields.append(pa.field("embedding_idx", pa.int32()))
 
+    # Ensure photo_key is in the output schema
+    if 'photo_key' not in [f.name for f in new_fields]:
+        new_fields.append(pa.field("photo_key", pa.string()))
+
     # Upgrade schema to include License if it is present in the new df
     # but not in the existing parquet database
     has_license_in_new = "License" in df_new.columns if df_new is not None else False
@@ -256,6 +260,7 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
     try:
         active_arr = pa.array(list(active_cells))
         inactive_embs_list = []
+        inactive_keys_list = []
 
         with get_parquet_writer(tmp_output, schema) as writer:
             # 1. Stream copy inactive rows from original parquet
@@ -294,11 +299,22 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
                     else:
                         filtered_table = filtered_table.append_column("embedding_idx", idx_arr)
 
+                    # Ensure photo_key is populated in the table
+                    if 'photo_key' in filtered_table.column_names:
+                        keys_arr = filtered_table["photo_key"]
+                    else:
+                        df_temp = filtered_table.select(['Platform', 'Photo_ID']).to_pandas()
+                        keys_arr = pa.array(df_temp['Platform'].astype(str) + "_" + df_temp['Photo_ID'].astype(str))
+                        filtered_table = filtered_table.append_column("photo_key", keys_arr)
+                    
+                    inactive_keys_list.append(keys_arr.to_numpy())
+
                     current_idx += len(filtered_table)
                     writer.write_table(filtered_table)
 
             # 2. Write the new/updated active rows
             new_embs = np.empty((0, 768), dtype=np.float32)
+            new_keys = np.empty(0, dtype=object)
             if df_new is not None and not df_new.empty:
                 df_new_aligned = df_new.copy()
 
@@ -308,6 +324,12 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
                 # Assign new sequential indices
                 df_new_aligned['embedding_idx'] = np.arange(current_idx, current_idx + len(df_new_aligned),
                                                             dtype=np.int32)
+
+                # Generate stable photo_key
+                if 'photo_key' not in df_new_aligned.columns:
+                    df_new_aligned['photo_key'] = df_new_aligned['Platform'].astype(str) + "_" + df_new_aligned['Photo_ID'].astype(str)
+
+                new_keys = df_new_aligned['photo_key'].values
                 df_new_aligned = df_new_aligned.drop(columns=['embedding'], errors='ignore')
 
                 for name in schema.names:
@@ -328,6 +350,16 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
         else:
             final_embs = new_embs
 
+        # 4. Concatenate and save all keys to output .keys.parquet
+        if inactive_keys_list:
+            all_inactive_keys = np.concatenate(inactive_keys_list, axis=0)
+            if len(new_keys) > 0:
+                final_keys = np.concatenate([all_inactive_keys, new_keys], axis=0)
+            else:
+                final_keys = all_inactive_keys
+        else:
+            final_keys = new_keys
+
         # Save companion .npy file for the output parquet path
         db_dir = os.path.dirname(os.path.abspath(output_path))
         base_name = os.path.splitext(os.path.basename(output_path))[0]
@@ -341,6 +373,10 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
 
         print(f" -> Saving merged companion embeddings matrix: {npy_path} (dtype={dtype.__name__})")
         np.save(npy_path, final_embs_cast)
+
+        keys_path = npy_path.replace(".npy", ".keys.parquet")
+        print(f" -> Saving companion keys index: {keys_path}")
+        pd.DataFrame({'photo_key': final_keys}).to_parquet(keys_path, compression='zstd')
 
         if os.path.exists(tmp_output):
             os.replace(tmp_output, output_path)
