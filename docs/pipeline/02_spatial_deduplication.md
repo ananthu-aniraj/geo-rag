@@ -26,9 +26,10 @@ When computing concatenated representations (`cls_avg_patch`), rather than runni
 ## 📐 Decoupled Storage Layout
 
 To prevent Parquet file bloating and RAM starvation, the database uses a decoupled storage architecture:
-* **Lightweight Parquet File**: The `.parquet` output holds only metadata columns (Photo ID, Platform, coordinates, H3 cell) and an `embedding_idx` integer column. No heavy vectors are stored inside the Parquet format.
+* **Lightweight Parquet File**: The `.parquet` output holds only metadata columns (Photo ID, Platform, coordinates, H3 cell) and a stable unique `photo_key` column (formatted as `{Platform}_{Photo_ID}`). No heavy vectors are stored inside the Parquet format.
 * **Companion NumPy Binary File**: The embedding vectors are stacked in a dense NumPy matrix and saved to an independent file named `{core_name}_{representation_type}_embeddings.npy` (e.g., `geo_space_cls_avg_patch_embeddings.npy`).
-* **Alignment**: The $i$-th row of the `.npy` binary file matches the metadata row that holds `embedding_idx = i`.
+* **Keys Index File**: A companion index file named `{core_name}_{representation_type}_embeddings.keys.parquet` stores the ordered list of `photo_key` values matching the rows of the `.npy` matrix.
+* **Alignment**: The loader dynamically resolves alignment by matching the metadata's `photo_key` against the companion `keys.parquet` index (with a backward-compatible fallback to the legacy `embedding_idx` offset column if the keys index is missing).
 
 ---
 
