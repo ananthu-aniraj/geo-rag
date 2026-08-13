@@ -2,7 +2,7 @@
 pipeline:
   k_clusters: 40000
   representation_type: "cls"   # Representation embedding variant (options: "cls", "avg_patch", "cls_avg_patch")
-  precision: "float32"         # Stored binary precision (options: "float32", "float16")
+  precision: "float16"         # Stored binary precision (options: "float32", "float16")
   auto_find_k: true  # Mathematically estimate and update k before clustering
   k_min: 20000       # Minimum cluster count for validation search range
   k_max: 80000       # Maximum cluster count for validation search range
