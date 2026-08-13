@@ -73,6 +73,12 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
         if 'compression' not in kwargs:
             kwargs['compression'] = 'zstd'
 
+        df_to_save = df.copy()
+        # Generate stable photo_key using Platform and Photo_ID for all parquet files
+        if 'Platform' in df_to_save.columns and 'Photo_ID' in df_to_save.columns:
+            if 'photo_key' not in df_to_save.columns:
+                df_to_save['photo_key'] = df_to_save['Platform'].astype(str) + "_" + df_to_save['Photo_ID'].astype(str)
+
         if 'embedding' in df.columns:
             db_dir = os.path.dirname(os.path.abspath(file_path))
             base_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -107,12 +113,7 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
             print(f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={dtype.__name__})")
             np.save(npy_path, embs.astype(dtype))
 
-            df_to_save = df.copy()
-            
-            # Generate stable photo_key using Platform and Photo_ID
-            if 'Platform' in df_to_save.columns and 'Photo_ID' in df_to_save.columns:
-                df_to_save['photo_key'] = df_to_save['Platform'].astype(str) + "_" + df_to_save['Photo_ID'].astype(str)
-            else:
+            if 'photo_key' not in df_to_save.columns:
                 df_to_save['photo_key'] = "idx_" + np.arange(len(df_to_save)).astype(str)
 
             # Save the companion keys file
@@ -126,7 +127,7 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
             df_to_save.to_parquet(file_path, index=index, **kwargs)
             return
 
-        df.to_parquet(file_path, index=index, **kwargs)
+        df_to_save.to_parquet(file_path, index=index, **kwargs)
     elif ext == '.csv':
         df.to_csv(file_path, index=index, **kwargs)
     elif ext in ('.pkl', '.pickle'):
