@@ -122,8 +122,7 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
             print(f" -> Saving companion keys file to: {keys_path}")
             keys_df.to_parquet(keys_path, compression='zstd')
 
-            df_to_save['embedding_idx'] = np.arange(len(df_to_save), dtype=np.int32)
-            df_to_save = df_to_save.drop(columns=['embedding'])
+            df_to_save = df_to_save.drop(columns=['embedding', 'embedding_idx'], errors='ignore')
             df_to_save.to_parquet(file_path, index=index, **kwargs)
             return
 
