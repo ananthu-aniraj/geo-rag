@@ -223,22 +223,19 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
 
 def stream_update_parquet(input_path, output_path, df_new, active_cells, representation_type='cls', precision='float32'):
     """
-    Reads input_path in row groups, filters out rows belonging to active_cells,
-    and writes the remaining inactive rows along with df_new to output_path
-    in the decoupled format (lightweight Parquet + companion .npy).
+    Standardized stream updater that copies/appends data chunk-by-chunk using PyArrow.
     """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"File not found: {input_path}")
+
     pf = pq.ParquetFile(input_path)
-    has_decoupled = 'embedding' not in pf.schema_arrow.names
 
     # Build the output schema
     new_fields = []
     for f in pf.schema_arrow:
-        if f.name == 'embedding':
+        if f.name in ('embedding', 'embedding_idx'):
             continue
         new_fields.append(f)
-
-    if 'embedding_idx' not in [f.name for f in new_fields]:
-        new_fields.append(pa.field("embedding_idx", pa.int32()))
 
     # Ensure photo_key is in the output schema
     if 'photo_key' not in [f.name for f in new_fields]:
@@ -253,8 +250,18 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
 
     schema = pa.schema(new_fields)
 
-    # Load existing embeddings
+    # Load existing embeddings (aligned with the input Parquet's rows)
     full_embeddings = load_embeddings(input_path, representation_type=representation_type)
+
+    # Load the keys of the input database to perform a key-based index lookup
+    print("Reading master key index from input database...")
+    if 'photo_key' in pf.schema_arrow.names:
+        input_keys = pf.read(columns=['photo_key'])['photo_key'].to_pandas().values
+    else:
+        df_temp = pf.read(columns=['Platform', 'Photo_ID']).to_pandas()
+        input_keys = (df_temp['Platform'].astype(str) + "_" + df_temp['Photo_ID'].astype(str)).values
+    
+    input_keys_index = pd.Index(input_keys)
 
     tmp_output = f"{output_path}.tmp_stream"
     try:
@@ -264,7 +271,6 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
 
         with get_parquet_writer(tmp_output, schema) as writer:
             # 1. Stream copy inactive rows from original parquet
-            current_idx = 0
             for rg in range(pf.num_row_groups):
                 table = pf.read_row_group(rg)
 
@@ -273,43 +279,33 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
                 mask = pc.invert(pc.is_in(h3_col, value_set=active_arr))
                 filtered_table = table.filter(mask)
 
+                # Drop legacy embedding_idx if present
+                if 'embedding_idx' in filtered_table.column_names:
+                    idx_pos = filtered_table.column_names.index('embedding_idx')
+                    filtered_table = filtered_table.remove_column(idx_pos)
+
                 if len(filtered_table) > 0:
                     # Append a null column for License if we upgraded the schema
                     if has_license_in_new and "License" not in filtered_table.column_names:
                         null_col = pa.array([None] * len(filtered_table), type=pa.string())
                         filtered_table = filtered_table.append_column("License", null_col)
 
-                    # Extract and collect inactive embeddings
-                    if 'embedding_idx' in filtered_table.column_names:
-                        idx_col = filtered_table["embedding_idx"].to_numpy()
-                        embs = full_embeddings[idx_col]
-                    else:
-                        start_offset = sum(pf.metadata.row_group(i).num_rows for i in range(rg))
-                        true_indices = np.where(mask.to_numpy())[0]
-                        embs = full_embeddings[start_offset + true_indices]
-
-                    inactive_embs_list.append(embs)
-
-                    # Overwrite/append sequential embedding_idx in the table
-                    new_indices = np.arange(current_idx, current_idx + len(filtered_table), dtype=np.int32)
-                    idx_arr = pa.array(new_indices)
-                    if 'embedding_idx' in filtered_table.column_names:
-                        idx_pos = filtered_table.column_names.index('embedding_idx')
-                        filtered_table = filtered_table.set_column(idx_pos, "embedding_idx", idx_arr)
-                    else:
-                        filtered_table = filtered_table.append_column("embedding_idx", idx_arr)
-
                     # Ensure photo_key is populated in the table
                     if 'photo_key' in filtered_table.column_names:
                         keys_arr = filtered_table["photo_key"]
                     else:
-                        df_temp = filtered_table.select(['Platform', 'Photo_ID']).to_pandas()
-                        keys_arr = pa.array(df_temp['Platform'].astype(str) + "_" + df_temp['Photo_ID'].astype(str))
+                        df_temp_rg = filtered_table.select(['Platform', 'Photo_ID']).to_pandas()
+                        keys_arr = pa.array(df_temp_rg['Platform'].astype(str) + "_" + df_temp_rg['Photo_ID'].astype(str))
                         filtered_table = filtered_table.append_column("photo_key", keys_arr)
                     
-                    inactive_keys_list.append(keys_arr.to_numpy())
+                    chunk_keys = keys_arr.to_numpy()
+                    inactive_keys_list.append(chunk_keys)
 
-                    current_idx += len(filtered_table)
+                    # Retrieve matching embeddings using stable keys Indexer
+                    indices = input_keys_index.get_indexer(chunk_keys)
+                    embs = full_embeddings[indices]
+                    inactive_embs_list.append(embs)
+
                     writer.write_table(filtered_table)
 
             # 2. Write the new/updated active rows
@@ -321,16 +317,12 @@ def stream_update_parquet(input_path, output_path, df_new, active_cells, represe
                 # Extract new embeddings
                 new_embs = np.vstack(df_new_aligned['embedding'].values).astype(np.float32)
 
-                # Assign new sequential indices
-                df_new_aligned['embedding_idx'] = np.arange(current_idx, current_idx + len(df_new_aligned),
-                                                            dtype=np.int32)
-
                 # Generate stable photo_key
                 if 'photo_key' not in df_new_aligned.columns:
                     df_new_aligned['photo_key'] = df_new_aligned['Platform'].astype(str) + "_" + df_new_aligned['Photo_ID'].astype(str)
 
                 new_keys = df_new_aligned['photo_key'].values
-                df_new_aligned = df_new_aligned.drop(columns=['embedding'], errors='ignore')
+                df_new_aligned = df_new_aligned.drop(columns=['embedding', 'embedding_idx'], errors='ignore')
 
                 for name in schema.names:
                     if name not in df_new_aligned.columns:
@@ -735,6 +727,8 @@ def main():
         if not has_decoupled:
             cols_to_load.append('embedding')
         else:
+            if 'photo_key' in dataset.schema.names:
+                cols_to_load.append('photo_key')
             if 'embedding_idx' in dataset.schema.names:
                 cols_to_load.append('embedding_idx')
 
@@ -751,12 +745,25 @@ def main():
             if has_decoupled:
                 # Load the full memory-mapped embedding matrix
                 full_embeddings = load_embeddings(args.resume_from, representation_type=args.representation_type)
-                # Map using embedding_idx, or fallback to row index if missing
-                if 'embedding_idx' in df_existing_active.columns:
-                    indices = df_existing_active['embedding_idx'].values
-                    existing_embeddings = full_embeddings[indices]
+                
+                # Build master keys index from df_existing
+                df_existing_keys = df_existing['Platform'].astype(str) + "_" + df_existing['Photo_ID'].astype(str)
+                master_keys = pd.Index(df_existing_keys)
+                
+                # Get keys of active cells
+                active_keys = df_existing_active['Platform'].astype(str) + "_" + df_existing_active['Photo_ID'].astype(str)
+                
+                # Resolve indices using pd.Index.get_indexer
+                indices = master_keys.get_indexer(active_keys)
+                
+                valid_mask = indices >= 0
+                if not valid_mask.all():
+                    print(f"Warning: Found {np.sum(~valid_mask):,} unmatched active cells in master database index.")
+                    safe_indices = np.clip(indices, 0, len(full_embeddings) - 1)
+                    existing_embeddings = full_embeddings[safe_indices]
+                    existing_embeddings[~valid_mask] = 0.0
                 else:
-                    existing_embeddings = full_embeddings[:len(df_existing_active)]
+                    existing_embeddings = full_embeddings[indices]
             else:
                 chunked_arr = table_active['embedding']
                 dim = len(chunked_arr.chunk(0)[0].as_py())

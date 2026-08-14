@@ -63,17 +63,13 @@ def main():
         dedup_base = meta_name.replace("cleaned", "deduplicated")
         dedup_path = os.path.join(db_dir, f"{dedup_base}.parquet")
         if os.path.exists(dedup_path):
-            print(f"\nFound deduplicated metadata at: {dedup_path}. Mapping cleaned row indices...")
-            df_dedup = load_dataframe(dedup_path, columns=['Platform', 'Photo_ID'])
-            df_dedup['embedding_idx'] = np.arange(len(df_dedup), dtype=np.int32)
-            df_meta = df_meta.merge(df_dedup[['Platform', 'Photo_ID', 'embedding_idx']], on=['Platform', 'Photo_ID'], how='left')
-            df_meta['embedding_idx'] = df_meta['embedding_idx'].fillna(-1).astype(np.int32)
-            print(f" -> Mapped {len(df_meta):,} rows. Skipping cleaned .npy generation to share {dedup_base}.npy.")
+            print(f"\nFound deduplicated metadata at: {dedup_path}. Cleaned database will share {dedup_base}.npy.")
             skip_npy = True
-    elif "deduplicated" in meta_name:
-        # Assign direct sequential embedding indices to deduplicated base metadata
-        df_meta['embedding_idx'] = np.arange(len(df_meta), dtype=np.int32)
-        print(" -> Assigned sequential embedding_idx to deduplicated dataset.")
+
+    # Generate stable photo_key using Platform and Photo_ID for all output parquet files
+    if 'Platform' in df_meta.columns and 'Photo_ID' in df_meta.columns:
+        df_meta['photo_key'] = df_meta['Platform'].astype(str) + "_" + df_meta['Photo_ID'].astype(str)
+        print(" -> Added stable photo_key column to metadata.")
 
     for col in embedding_cols:
         if skip_npy:
@@ -98,6 +94,14 @@ def main():
             
         np.save(npy_path, emb_matrix)
         print(f" -> Saved {emb_matrix.shape} matrix ({os.path.getsize(npy_path)/1024**2:.1f} MB).")
+        
+        # Save companion keys index
+        if 'photo_key' in df_meta.columns:
+            keys_df = pd.DataFrame({'photo_key': df_meta['photo_key']})
+            keys_path = npy_path.replace(".npy", ".keys.parquet")
+            print(f" -> Saving companion keys index file to: {keys_path}")
+            keys_df.to_parquet(keys_path, compression='zstd')
+            
         del emb_matrix
         del table
 
