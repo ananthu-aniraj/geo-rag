@@ -29,13 +29,13 @@ To prevent Parquet file bloating and RAM starvation, the database uses a decoupl
 * **Lightweight Parquet File**: The `.parquet` output holds only metadata columns (Photo ID, Platform, coordinates, H3 cell) and a stable unique `photo_key` column (formatted as `{Platform}_{Photo_ID}`). No heavy vectors are stored inside the Parquet format.
 * **Companion NumPy Binary File**: The embedding vectors are stacked in a dense NumPy matrix and saved to an independent file named `{core_name}_{representation_type}_embeddings.npy` (e.g., `geo_space_cls_avg_patch_embeddings.npy`).
 * **Keys Index File**: A companion index file named `{core_name}_{representation_type}_embeddings.keys.parquet` stores the ordered list of `photo_key` values matching the rows of the `.npy` matrix.
-* **Alignment**: The loader dynamically resolves alignment by matching the metadata's `photo_key` against the companion `keys.parquet` index (with a backward-compatible fallback to the legacy `embedding_idx` offset column if the keys index is missing).
+* **Alignment**: The loader dynamically resolves alignment by matching the metadata's `photo_key` against the companion `keys.parquet` index.
 
 ---
 
 ## 🏎️ Million-Row Streaming Optimization
 
-To process datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters, matches, and appends chunk-by-chunk. This streaming process is now **100% key-driven**, utilizing the unique `photo_key` strings and C-accelerated hash lookups to dynamically resolve embeddings. This completely eliminates legacy `embedding_idx` integers and makes updates immune to index-shift corruptions. 
+To process datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters, matches, and appends chunk-by-chunk. This streaming process is now **100% key-driven**, utilizing the unique `photo_key` strings and C-accelerated hash lookups to dynamically resolve embeddings. This makes updates completely immune to index-shift corruptions. 
 
 ### Parallel Network Engine
 To optimize ingestion speed and minimize network bottlenecks:
