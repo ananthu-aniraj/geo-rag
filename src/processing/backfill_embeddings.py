@@ -194,28 +194,12 @@ def main():
         embeddings_matrix = embeddings_matrix[successful_indices]
 
     # 4. Save Outputs
-    db_dir = os.path.dirname(os.path.abspath(out_path))
-    base_name = os.path.splitext(os.path.basename(out_path))[0]
+    # Re-integrate embeddings into the dataframe so that save_dataframe handles decoupling and key mapping automatically
+    df['embedding'] = list(embeddings_matrix)
 
-    core_name = get_core_base_name(base_name)
-    
-    suffix = args.representation_type
-    npy_name = f"{core_name}_{suffix}_embeddings.npy"
-    npy_path = os.path.join(db_dir, npy_name)
-    
-    print(f"Saving companion embeddings matrix to: {npy_path}")
-    np.save(npy_path, embeddings_matrix)
-    
-    # Update dataframe mapping columns
-    df['embedding_idx'] = np.arange(len(df), dtype=np.int32)
-    
-    print(f"Saving metadata dataset to: {out_path}")
-    # Drop existing embedded 'embedding' column if it exists to strictly enforce decoupled format
-    meta_cols = [c for c in df.columns if c != 'embedding']
-    df_meta = df[meta_cols].copy()
-    
-    save_dataframe(df_meta, out_path, representation_type=args.representation_type, precision=args.precision)
-    
+    print(f"Saving decoupled dataset to: {out_path}")
+    save_dataframe(df, out_path, representation_type=args.representation_type, precision=args.precision)
+
     print("✅ Embeddings backfilling and metadata alignment complete!")
 
 if __name__ == "__main__":
