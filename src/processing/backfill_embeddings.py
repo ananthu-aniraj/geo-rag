@@ -61,13 +61,37 @@ def main():
         print("Error: Input dataset is empty.")
         return
 
-    # Verify key columns exist
+    # Normalize schema using common column mappings (aligned with process_scraped_data.py)
+    col_map = {
+        'latitude': 'Latitude',
+        'longitude': 'Longitude',
+        'image_url': 'Image_URL',
+        'Image_Location': 'Image_URL',
+        'local_path': 'Image_URL',
+        'file_name': 'Image_URL',
+        'path': 'Image_URL',
+        'photo_id': 'Photo_ID',
+        'ID': 'Photo_ID',
+        'captured_at': 'Captured_At',
+        'Captured_At': 'Captured_At',
+        'Date_Observed': 'Captured_At',
+        'observed_on_string': 'Captured_At',
+        'license': 'License',
+        'License': 'License',
+        'platform': 'Platform'
+    }
+    df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+
+    # Default missing Platform to 'Offline'
+    if 'Platform' not in df.columns:
+        df['Platform'] = 'Offline'
+        print(" -> Platform column missing. Defaulting to 'Offline'.")
+
+    # Verify final key columns exist
     for col in ['Platform', 'Photo_ID', 'Image_URL']:
         if col not in df.columns:
-            if col == 'Image_URL' and 'local_path' in df.columns:
-                df['Image_URL'] = df['local_path']
-            else:
-                raise ValueError(f"Required column '{col}' is missing from the dataset schema.")
+            raise ValueError(
+                f"Required column '{col}' is missing from the dataset schema (even after mapping column aliases).")
 
     # 2. Setup Device & Initialize Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -113,25 +137,27 @@ def main():
     # 3. Compute Embeddings in Parallel Chunks
     print(f"Computing '{args.representation_type}' embeddings with {args.precision} precision...")
     num_rows = len(df)
-    
+
     embeddings_matrix = None
     successful_indices = []
-    
+
     def download_thread_fn(global_idx, url, photo_id, platform, offline_dirs, image_size):
-        img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=offline_dirs, image_size=image_size)
+        img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=offline_dirs,
+                             image_size=image_size)
         return global_idx, img
 
     t0 = time.time()
     valid_count = 0
-    
+
     # Process dataset in parallel download chunks (e.g. 512 images at a time)
     chunk_size = 512
     print(f"Processing dataset of {num_rows} images in chunks of {chunk_size} with parallel downloads...")
-    
+
     for chunk_start in range(0, num_rows, chunk_size):
-        chunk_df = df.iloc[chunk_start : chunk_start + chunk_size]
-        print(f"\n--- Processing chunk {chunk_start // chunk_size + 1} ({chunk_start} to {chunk_start + len(chunk_df)}) ---")
-        
+        chunk_df = df.iloc[chunk_start: chunk_start + chunk_size]
+        print(
+            f"\n--- Processing chunk {chunk_start // chunk_size + 1} ({chunk_start} to {chunk_start + len(chunk_df)}) ---")
+
         # Parallel downloads for the chunk
         db_dict = {}
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -155,37 +181,39 @@ def main():
         # Run model inference in batches of args.batch_size on successfully downloaded images
         active_indices = sorted(list(db_dict.keys()))
         valid_imgs = [db_dict[idx] for idx in active_indices]
-        
+
         if len(valid_imgs) > 0:
             for b_start in range(0, len(valid_imgs), args.batch_size):
-                batch_imgs = valid_imgs[b_start : b_start + args.batch_size]
-                batch_indices = active_indices[b_start : b_start + args.batch_size]
-                
+                batch_imgs = valid_imgs[b_start: b_start + args.batch_size]
+                batch_indices = active_indices[b_start: b_start + args.batch_size]
+
                 try:
                     batch_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
                     with torch.no_grad():
-                        features = extract_model_embeddings(tipsv2, batch_tensors, representation_type=args.representation_type)
-                    
+                        features = extract_model_embeddings(tipsv2, batch_tensors,
+                                                            representation_type=args.representation_type)
+
                     if embeddings_matrix is None:
                         dim = features.shape[1]
                         dtype = np.float32 if args.precision == 'float32' else np.float16
                         embeddings_matrix = np.zeros((num_rows, dim), dtype=dtype)
                         print(f"Detected representation feature dimension: {dim}")
-                        
+
                     for b_i, global_idx in enumerate(batch_indices):
                         embeddings_matrix[global_idx] = features[b_i].astype(embeddings_matrix.dtype)
                         successful_indices.append(global_idx)
                         valid_count += 1
                 except Exception as e:
                     print(f"Warning: Failed processing model batch starting at index {batch_indices[0]}: {e}")
-            
+
             # Immediately close PIL images to free RAM
             for img in valid_imgs:
                 if hasattr(img, 'close'):
                     img.close()
 
     elapsed = time.time() - t0
-    print(f" -> Processed {valid_count}/{num_rows} images successfully in {elapsed:.2f}s ({num_rows/elapsed:.2f} img/s).")
+    print(
+        f" -> Processed {valid_count}/{num_rows} images successfully in {elapsed:.2f}s ({num_rows / elapsed:.2f} img/s).")
 
     # Filter out records where the download/load failed (expired links, etc.)
     if embeddings_matrix is not None and len(successful_indices) < num_rows:
@@ -201,6 +229,7 @@ def main():
     save_dataframe(df, out_path, representation_type=args.representation_type, precision=args.precision)
 
     print("✅ Embeddings backfilling and metadata alignment complete!")
+
 
 if __name__ == "__main__":
     main()
