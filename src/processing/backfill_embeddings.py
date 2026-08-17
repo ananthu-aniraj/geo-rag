@@ -193,7 +193,7 @@ def main():
         valid_imgs = [db_dict[idx] for idx in active_indices]
 
         if len(valid_imgs) > 0:
-            for b_start in range(0, len(valid_imgs), args.batch_size):
+            for b_start in tqdm(range(0, len(valid_imgs), args.batch_size), desc="Processing Batches"):
                 batch_imgs = valid_imgs[b_start: b_start + args.batch_size]
                 batch_indices = active_indices[b_start: b_start + args.batch_size]
 
