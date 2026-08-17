@@ -30,11 +30,13 @@ Prior to entering the main data engineering pipeline, raw data is harvested usin
 * **`src/scrapers/flickr_density_profiler.py`**: Scrapes Flickr outdoor photos for targeted cities/landmarks. Supports geocoding location names via the Nominatim API, automatically padding landmark coordinate boxes, and generating 5km grids with stratified image limits per box.
 * **`src/scrapers/flickr_5km_grid_search.py`**: Performs a global grid search to gather representative outdoor photos across the globe. Features a land mask to skip ocean areas.
 * **`run_flickr_scraper.sh`**: A pipeline runner that loops through 10,000 randomized chunks sequentially to execute the global grid search, with crash-halting checks to ensure continuity.
+* **`run_flickr_density_profiler.sh`**: Helper shell wrapper to launch `flickr_density_profiler.py` for specific location queries or manual bounding boxes. Configurable API keys can be modified easily at the top of the script.
 
 ### 2. Mapillary Scrapers
 * **`src/scrapers/mapillary_density_profiler.py`**: Scrapes street-level coordinate tracks for targeted cities/landmarks. Supports geocoding, landmark padding, and stratified grid-box limits.
 * **`src/scrapers/mapillary_scraper.py`**: Standard batch grid scraper for Mapillary.
 * **`run_mapillary_scraper.sh`**: Orchestrates sequential batch street view scraping over 10,000 randomized grid chunks with crash-halting checks.
+* **`run_mapillary_density_profiler.sh`**: Helper shell wrapper to launch `mapillary_density_profiler.py` for specific location queries or manual bounding boxes. Configurable access tokens can be modified easily at the top of the script.
 
 ### 3. iNaturalist Scrapers
 * **`src/scrapers/fetch_inaturalist_data.py`**: Connects to the iNaturalist API to download species observations.

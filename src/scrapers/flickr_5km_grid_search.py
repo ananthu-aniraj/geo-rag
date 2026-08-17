@@ -12,25 +12,36 @@ from shapely.geometry import box
 from tqdm import tqdm
 
 # --- 1. Configuration ---
-API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'  # <-- REPLACE THIS WITH YOUR ACTUAL FLICKR API KEY
-STEP_KM = 5
 # Global Region for a representative scan
 REGION = (-180, -90, 180, 90)
-MAX_PHOTOS_PER_BOX = 100
-DELAY_BETWEEN_CALLS = (3600 / 3600) * 1.1
 
-# Uncovered Land Configuration
-UNCOVERED_SHAPEFILE = "shapefiles/uncovered_land_areas_test.shp" if os.path.exists("shapefiles/uncovered_land_areas_test.shp") else "uncovered_land_areas_test.shp"
 
-argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
-argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
-argparser.add_argument('--total_chunks', type=int, default=10000, help='Total number of chunks to split the grid into')
-argparser.add_argument('--base_dir', type=str, default='.', help='Base directory for output files')
-args = argparser.parse_args()
+def parse_args():
+    argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
+    argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
+    argparser.add_argument('--total_chunks', type=int, default=10000,
+                           help='Total number of chunks to split the grid into')
+    argparser.add_argument('--base_dir', type=str, default='.', help='Base directory for output files')
+    argparser.add_argument('--api_key', type=str, help='Flickr API key')
+    argparser.add_argument('--step_km', type=float, default=5, help='Grid step size in kilometers')
+    argparser.add_argument('--max_photos_per_box', type=int, default=100,
+                           help='Maximum number of photos to fetch per grid box')
+    argparser.add_argument('--delay_between_calls', type=float, default=1.1, help='Delay between API calls in seconds')
+    argparser.add_argument('--uncovered_shapefile', type=str, default="shapefiles/uncovered_land_areas_test.shp",
+                           help='Path to the uncovered land areas shapefile')
+    arguments = argparser.parse_args()
+    return arguments
 
+
+args = parse_args()
 # --- Splitting Variables ---
 TOTAL_CHUNKS = args.total_chunks  # How many pieces to split the region into
 CURRENT_CHUNK = args.chunk  # Which piece THIS script will process (0 through 9)
+MAX_PHOTOS_PER_BOX = args.max_photos_per_box
+STEP_KM = args.step_km
+DELAY_BETWEEN_CALLS = args.delay_between_calls
+UNCOVERED_SHAPEFILE = args.uncovered_shapefile
+API_KEY = args.api_key
 
 # File Setup
 Path(args.base_dir).mkdir(parents=True, exist_ok=True)  # Ensure base directory exists

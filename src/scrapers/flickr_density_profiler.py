@@ -1,13 +1,12 @@
+import argparse
 import csv
 import os
+import sys
 import time
 from pathlib import Path
 
 import pandas as pd
 import requests
-
-API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
-DELAY_BETWEEN_CALLS = 1.1
 
 # Target Bounding Boxes (min_lon, min_lat, max_lon, max_lat)
 # Centered around the landmarks (~1.5km to 3km boxes)
@@ -92,13 +91,13 @@ preset_locs = {
 }
 
 
-def fetch_flickr_photos(bbox_coords, page=1, geo_context=2, delay=2.0):
+def fetch_flickr_photos(bbox_coords, api_key, page=1, geo_context=2, delay=2.0):
     """Fetches geo-tagged photos from Flickr REST API for a bounding box."""
     bbox_str = f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
     url = (
         f"https://www.flickr.com/services/rest/"
         f"?method=flickr.photos.search"
-        f"&api_key={API_KEY}"
+        f"&api_key={api_key}"
         f"&bbox={bbox_str}"
         f"&has_geo=1"
         f"&geo_context={geo_context}"
@@ -183,14 +182,13 @@ def generate_grid_boxes(bbox, step_km=5.0):
 
 
 def main():
-    import argparse
-    import sys
     parser = argparse.ArgumentParser(description="Scrape Flickr outdoor images of locations.")
     parser.add_argument("--limit", type=int, default=500, help="Maximum photos to collect per landmark (only used if grid_size=0).")
     parser.add_argument("--limit_per_box", type=int, default=100, help="Maximum photos to collect per grid sub-box (default: 100).")
     parser.add_argument("--grid_size", type=float, default=5.0, help="Grid size in km (default: 5.0). Set to 0 to disable grid splitting.")
     parser.add_argument("--out", type=str, default="seven_wonders_flickr.csv", help="Output CSV path.")
     parser.add_argument("--delay", type=float, default=2.0, help="Delay between API calls in seconds (default: 2.0).")
+    parser.add_argument("--api_key", type=str, required=True, help="Flickr API key")
     parser.add_argument("--location", type=str, default=None, help="Dynamic location name to geocode and scrape.")
     parser.add_argument("--bbox", type=str, default=None, help="Manual bounding box coords (min_lon,min_lat,max_lon,max_lat).")
     args = parser.parse_args()
@@ -278,7 +276,7 @@ def main():
                 
                 while page <= total_pages:
                     print(f"    - Querying Flickr [Context: {context}, Page: {page}/{total_pages}]...")
-                    data = fetch_flickr_photos(box, page=page, geo_context=context, delay=args.delay)
+                    data = fetch_flickr_photos(box, api_key=args.api_key, page=page, geo_context=context, delay=args.delay)
                     if data.get('stat') == 'ok':
                         if page == 1:
                             total_pages = min(data.get('photos', {}).get('pages', 1), 16)  # limit paging to avoid rate limits

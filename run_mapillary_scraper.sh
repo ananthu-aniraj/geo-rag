@@ -5,6 +5,10 @@ TOTAL_CHUNKS=10000
 SCRIPT_NAME="src.scrapers.mapillary_scraper"
 BASE_DIR="/home/ananthu/Projects/data/mapillary_scrape_rand_8"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
+ACCESS_TOKEN='MAPILLARY_TOKEN_PLACEHOLDER'
+STEP_KM=5
+MAX_PHOTOS_PER_BOX=100
+UNCOVERED_SHAPEFILE="shapefiles/uncovered_land_areas_test.shp"
 
 # Ensure base directory exists
 mkdir -p "$BASE_DIR"
@@ -36,7 +40,7 @@ do
     echo "========================================"
 
     # Run the Python script
-    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR"; then
+    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR" --access_token "$ACCESS_TOKEN" --uncovered_shapefile "$UNCOVERED_SHAPEFILE" --step_km "$STEP_KM" --max_photos_per_box "$MAX_PHOTOS_PER_BOX" --delay_between_calls "$DELAY_BETWEEN_CALLS"; then
         echo "CRITICAL ERROR: Script failed on chunk $i. Halting execution."
         exit 1
     fi

@@ -7,9 +7,6 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-ACCESS_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
-DELAY_BETWEEN_CALLS = 1.8  # Be polite to Mapillary servers
-
 # Target Bounding Boxes (min_lon, min_lat, max_lon, max_lat)
 # Centered around the landmarks (~1.5km to 3km boxes)
 preset_locs = {
@@ -93,10 +90,10 @@ preset_locs = {
 }
 
 
-def fetch_mapillary_photos(bbox_coords=None, next_url=None, delay=3.0):
+def fetch_mapillary_photos(access_token, bbox_coords=None, next_url=None, delay=3.0):
     """Fetches Mapillary photos using a bounding box OR a pagination URL."""
     headers = {
-        "Authorization": f"OAuth {ACCESS_TOKEN}"
+        "Authorization": f"OAuth {access_token}"
     }
 
     if next_url:
@@ -124,7 +121,7 @@ def fetch_mapillary_photos(bbox_coords=None, next_url=None, delay=3.0):
         return {'stat': 'fail', 'message': f"Timeout or connection error: {str(e)}"}
 
 
-def collect_images_for_bbox(bbox, limit, delay, depth=0):
+def collect_images_for_bbox(access_token, bbox, limit, delay, depth=0):
     """
     Recursively fetches images for a bounding box.
     If Mapillary throws an HTTP 500, a data density error, or a read timeout, we subdivide the box.
@@ -132,7 +129,7 @@ def collect_images_for_bbox(bbox, limit, delay, depth=0):
     images_collected = []
     
     # Try fetching the first page
-    res = fetch_mapillary_photos(bbox_coords=bbox, next_url=None, delay=delay)
+    res = fetch_mapillary_photos(access_token, bbox_coords=bbox, next_url=None, delay=delay)
     
     if res['stat'] == 'fail':
         msg = res['message'].lower()
@@ -154,7 +151,7 @@ def collect_images_for_bbox(bbox, limit, delay, depth=0):
                 needed = limit - len(images_collected)
                 if needed <= 0:
                     break
-                sub_images = collect_images_for_bbox(quad, needed, delay, depth + 1)
+                sub_images = collect_images_for_bbox(access_token, quad, needed, delay, depth + 1)
                 images_collected.extend(sub_images)
             return images_collected
         else:
@@ -167,7 +164,7 @@ def collect_images_for_bbox(bbox, limit, delay, depth=0):
     
     # Paginate through remaining records
     while current_url and len(images_collected) < limit:
-        res = fetch_mapillary_photos(bbox_coords=None, next_url=current_url, delay=delay)
+        res = fetch_mapillary_photos(access_token, bbox_coords=None, next_url=current_url, delay=delay)
         if res['stat'] == 'ok':
             images = res.get('data', [])
             if not images:
@@ -256,6 +253,7 @@ def main():
     parser.add_argument("--delay", type=float, default=3.0, help="Delay between API calls in seconds (default: 3.0).")
     parser.add_argument("--location", type=str, default=None, help="Dynamic location name to geocode and scrape.")
     parser.add_argument("--bbox", type=str, default=None, help="Manual bounding box coords (min_lon,min_lat,max_lon,max_lat).")
+    parser.add_argument("--access_token", type=str, required=True, help="Mapillary API access token")
     args = parser.parse_args()
 
     out_dir = Path(args.out).parent
@@ -328,7 +326,7 @@ def main():
 
             print(f"\n -> Scraping Sub-box #{idx+1}/{len(sub_boxes)} ({box_id})...")
             
-            photos = collect_images_for_bbox(box, args.limit_per_box, args.delay)
+            photos = collect_images_for_bbox(args.access_token, box, args.limit_per_box, args.delay)
             
             photos_saved = 0
             for img in photos:

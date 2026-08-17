@@ -12,6 +12,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Strict Representation Type Checking**: Added verification of filename representation suffixes (e.g. `_cls_embeddings.npy` vs `_avg_patch_`) in `load_embeddings()` to prevent loading mismatched vector configurations.
 - **First-Match Column Fallbacks**: Implemented first-match fallback column mapping (`local_path`, `Image_Location`, `file_name`, `path`) to prevent duplicate column collisions (e.g. when a dataset contains both `Image_Location` and `file_name`).
 - **Configurable API Arguments**: Added command-line arguments (`--api_key` and `--token`) to scrapers and density profilers to allow running them as standalone tools with explicit keys without modifying files.
+- **Profiler Shell Wrappers**: Added `run_flickr_density_profiler.sh` and `run_mapillary_density_profiler.sh` wrappers to easily configure and run density profiling scrapers from the command line with token fallbacks and command line location overrides.
+
 
 ### Changed
 - **Decoupled API Token Infrastructure**: Moved Mapillary token and Flickr API key out of source code files and into the centralized config file `params.yaml`. Updated shell wrappers (`run_flickr_scraper.sh`, `run_mapillary_scraper.sh`, and `run_full_pipeline.sh`) to automatically parse and export them.

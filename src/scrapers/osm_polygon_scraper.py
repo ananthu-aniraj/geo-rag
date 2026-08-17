@@ -36,7 +36,8 @@ def make_request_with_backoff(url, params=None, headers=None, max_retries=5, ini
                 time.sleep(delay)
                 delay *= 2.0
             elif response.status_code == 400:
-                print(f"\n[HTTP 400] Bad Request: The server rejected the request. Response details: {response.text[:300]}")
+                print(
+                    f"\n[HTTP 400] Bad Request: The server rejected the request. Response details: {response.text[:300]}")
                 print(f"Requested URL: {url} | Params: {params}")
                 return None
             elif response.status_code == 403:
@@ -57,11 +58,11 @@ def fetch_boundary_from_local_countries(query_str, shapefile_path="shapefiles/ne
     """Attempts to find the boundary of a country or continent in the local shapefile."""
     if not os.path.exists(shapefile_path):
         return None
-    
+
     try:
         print(f"Checking local country/continent shapefile for: '{query_str}'...")
         gdf = gpd.read_file(shapefile_path)
-        
+
         # Try matching country columns case-insensitively
         for col in ['NAME', 'SOVEREIGNT', 'ADMIN', 'NAME_LONG']:
             if col in gdf.columns:
@@ -69,17 +70,17 @@ def fetch_boundary_from_local_countries(query_str, shapefile_path="shapefiles/ne
                 if not matches.empty:
                     print(f"Matched country '{query_str}' under column '{col}' in local shapefile.")
                     return unary_union(matches.geometry)
-                    
+
         # Check continent match
         if 'CONTINENT' in gdf.columns:
             matches = gdf[gdf['CONTINENT'].astype(str).str.lower() == query_str.lower()]
             if not matches.empty:
                 print(f"Matched continent '{query_str}' in local shapefile.")
                 return unary_union(matches.geometry)
-                
+
     except Exception as e:
         print(f"Warning: Failed reading local countries shapefile: {e}")
-        
+
     return None
 
 
@@ -98,22 +99,22 @@ def fetch_boundary_by_query(query_str, shapefile_path="shapefiles/ne_10m_admin_0
         "limit": 1
     }
     headers = {"User-Agent": USER_AGENT}
-    
+
     response = make_request_with_backoff(url, params=params, headers=headers)
     if response is None:
         return None
-        
+
     try:
         data = response.json()
         if not data:
             print(f"No boundary found for query: '{query_str}'")
             return None
-            
+
         geojson = data[0].get("geojson")
         if not geojson:
             print(f"No geometry found in Nominatim result for: '{query_str}'")
             return None
-            
+
         return shape(geojson)
     except Exception as e:
         print(f"Failed to parse Nominatim search response: {e}")
@@ -130,51 +131,48 @@ def fetch_boundary_by_relation(relation_id):
         "polygon_geojson": 1
     }
     headers = {"User-Agent": USER_AGENT}
-    
+
     response = make_request_with_backoff(url, params=params, headers=headers)
     if response is None:
         return None
-        
+
     try:
         data = response.json()
         if not data:
             print(f"No boundary found for relation ID: {relation_id}")
             return None
-            
+
         geojson = data[0].get("geojson")
         if not geojson:
             print(f"No geometry found in Nominatim result for relation: R{relation_id}")
             return None
-            
+
         return shape(geojson)
     except Exception as e:
         print(f"Failed to parse Nominatim lookup response: {e}")
         return None
 
 
-
-
-
 def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
     """Fetches a single batch of images from KartaView in a grid box."""
     min_lon, min_lat, max_lon, max_lat = grid_box
-    
+
     # KartaView API limits bounding box size to 0.04 degrees per side.
     # If the box exceeds this limit, we split it into smaller sub-boxes recursively.
     lon_span = max_lon - min_lon
     lat_span = max_lat - min_lat
-    
+
     if lon_span > 0.04 or lat_span > 0.04:
         mid_lon = (min_lon + max_lon) / 2.0
         mid_lat = (min_lat + max_lat) / 2.0
-        
+
         sub_boxes = [
             (min_lon, min_lat, mid_lon, mid_lat),  # Bottom-left
             (mid_lon, min_lat, max_lon, mid_lat),  # Bottom-right
             (min_lon, mid_lat, mid_lon, max_lat),  # Top-left
-            (mid_lon, mid_lat, max_lon, max_lat)   # Top-right
+            (mid_lon, mid_lat, max_lon, max_lat)  # Top-right
         ]
-        
+
         from shapely.geometry import box as shapely_box
         combined_results = []
         for s_box in sub_boxes:
@@ -182,7 +180,7 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
             s_poly = shapely_box(*s_box)
             if not s_poly.intersects(polygon):
                 continue
-                
+
             res = fetch_kartaview_batch(s_box, polygon, max_images, delay, page)
             if res['stat'] == 'ok':
                 combined_results.extend(res['data'])
@@ -191,7 +189,7 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
         return {'stat': 'ok', 'data': combined_results[:max_images]}
 
     url = "https://api.openstreetcam.org/2.0/photo/"
-    
+
     params = {
         "nwLat": max_lat,
         "nwLng": min_lon,
@@ -200,16 +198,16 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
         "itemsPerPage": 150,
         "page": page
     }
-    
+
     time.sleep(delay)
     response = make_request_with_backoff(url, params=params)
     if response is None:
         return {'stat': 'fail', 'data': []}
-        
+
     try:
         data = response.json()
         photos = data.get("result", {}).get("data", [])
-        
+
         results = []
         for photo in photos:
             photo_id = photo.get("id")
@@ -217,7 +215,7 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
             lon = photo.get("longitude") or photo.get("lng")
             img_url = photo.get("fileurl") or photo.get("fileurlLd") or photo.get("thumbnail")
             captured_at = photo.get("shotDate") or photo.get("dateAdded") or ""
-            
+
             if lat is not None and lon is not None and img_url:
                 lat_f = float(lat)
                 lon_f = float(lon)
@@ -257,13 +255,14 @@ def main():
     parser.add_argument("--osm_relation", type=int, help="OSM Relation ID (e.g. 74263 for Paris).")
     parser.add_argument("--osm_query", type=str, help="Free-text search query (e.g. 'Central Park, New York').")
     parser.add_argument("--geojson", type=str, help="Path to local GeoJSON/Shapefile containing target boundary.")
-    parser.add_argument("--global_search", action="store_true", help="Enable global grid search mode spanning the entire Earth.")
-    
+    parser.add_argument("--global_search", action="store_true",
+                        help="Enable global grid search mode spanning the entire Earth.")
+
     # Grid sampling & Chunking properties (matches flickr_5km_grid_search)
     parser.add_argument("--chunk", type=int, default=0, help="Which chunk of the grid to process.")
     parser.add_argument("--total_chunks", type=int, default=1, help="Total chunks to split the grid into.")
     parser.add_argument("--base_dir", type=str, default=".", help="Base directory for output files.")
-    
+
     parser.add_argument("--platforms", type=str, default="kartaview", choices=["kartaview"],
                         help="Which platforms to scrape.")
     parser.add_argument("--max_images_per_box", type=int, default=100, help="Max images to retrieve per grid box.")
@@ -282,7 +281,7 @@ def main():
     # Load polygon boundary (checking local base_dir cache first)
     polygon = None
     local_geojson_path = os.path.join(args.base_dir, "boundary.geojson")
-    
+
     if args.global_search:
         print("Enabling Global Search mode. Bounding box: (-180, -90, 180, 90)")
         polygon = box(-180, -90, 180, 90)
@@ -353,7 +352,7 @@ def main():
     while current_lat < max_lat:
         cos_lat = math.cos(math.radians(max(-89.9, min(89.9, current_lat))))
         lon_step = STEP_KM / (111.32 * cos_lat)
-        
+
         current_lon = min_lon
         while current_lon < max_lon:
             if is_global:
@@ -389,7 +388,7 @@ def main():
 
         for grid_box in tqdm(my_boxes, desc=f"Processing Chunk {args.chunk}"):
             box_id = f"{grid_box[0]:.4f},{grid_box[1]:.4f},{grid_box[2]:.4f},{grid_box[3]:.4f}"
-            
+
             if box_id in completed_boxes:
                 continue
 
@@ -402,8 +401,6 @@ def main():
                     continue
 
             saved_count = 0
-
-
 
             # B. KartaView geosearch
             if args.platforms in ["all", "kartaview"] and saved_count < args.max_images_per_box:
