@@ -4,6 +4,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ---
 
+## [Unreleased]
+
+### Planned Security Refactoring
+- **Credential Decoupling & Ignored Configuration**:
+  - Untrack and add local `params.yaml` to `.gitignore` to prevent committing active keys.
+  - Create a `params.template.yaml` template file for tracking configuration parameters.
+  - Clear hardcoded API keys and tokens from all shell scripts, letting them fall back to local `params.yaml` or env variables.
+
 ## [1.1.0] - 2026-08-17
 
 ### Added
