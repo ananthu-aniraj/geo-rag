@@ -4,11 +4,6 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ---
 
-## [Unreleased]
-
-### Planned Refactoring
-- **Pipeline Script Migration**: Move the final main entrypoint `run_full_pipeline.sh` from the root directory to `/scripts/` after the active background execution completes.
-
 ## [1.1.0] - 2026-08-17
 
 ### Added
