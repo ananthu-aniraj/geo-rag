@@ -14,6 +14,8 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 
 👉 **[Dataset Structure & Loading Guide](docs/dataset.md)**
 
+👉 **[Changelog & Recent Updates](CHANGELOG.md)**
+
 ---
 
 ## 📂 Project Structure
