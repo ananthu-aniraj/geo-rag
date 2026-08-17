@@ -42,6 +42,7 @@ def main():
                         help="TIPSv2 model variant to load if local checkpoint is specified (s, b, l, g).")
     parser.add_argument("--tips_low_res", action="store_true",
                         help="Use 224x224 input resolution for local checkpoints instead of 448x448.")
+    parser.add_argument("--chunk_size", type=int, default=512, help="Number of images to process in parallel download chunks.")
     args = parser.parse_args()
 
     out_path = args.output if args.output else args.input
@@ -159,7 +160,7 @@ def main():
     valid_count = 0
 
     # Process dataset in parallel download chunks (e.g. 512 images at a time)
-    chunk_size = 512
+    chunk_size = args.chunk_size
     print(f"Processing dataset of {num_rows} images in chunks of {chunk_size} with parallel downloads...")
 
     for chunk_start in range(0, num_rows, chunk_size):
