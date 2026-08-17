@@ -1,4 +1,5 @@
 import argparse
+import os
 import pickle
 import sys
 import time
@@ -141,9 +142,27 @@ def main():
     successful_indices = []
 
     def download_thread_fn(global_idx, url, photo_id, platform, offline_dirs, image_size):
-        img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=offline_dirs,
-                             image_size=image_size)
-        return global_idx, img
+        try:
+            img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=offline_dirs, image_size=image_size)
+            if global_idx == 0 or global_idx == 1:
+                from src.utils.io import resolve_offline_image_path
+                resolved = resolve_offline_image_path(url, offline_dirs, photo_id, platform)
+                print(f"\n[DEBUG] global_idx={global_idx} | url={url} | photo_id={photo_id} | platform={platform} | offline_dirs={offline_dirs}")
+                print(f"[DEBUG] resolved path: {resolved}")
+                if resolved:
+                    print(f"[DEBUG] resolved path exists: {os.path.exists(resolved)}")
+                    try:
+                        from PIL import Image
+                        test_img = Image.open(resolved)
+                        print(f"[DEBUG] PIL open test: Success ({test_img.size})")
+                    except Exception as pe:
+                        print(f"[DEBUG] PIL open test: Failed: {pe}")
+                print(f"[DEBUG] download_image returned: {img}\n")
+            return global_idx, img
+        except Exception as e:
+            if global_idx == 0 or global_idx == 1:
+                print(f"[DEBUG] Thread exception: {e}")
+            return global_idx, None
 
     t0 = time.time()
     valid_count = 0
