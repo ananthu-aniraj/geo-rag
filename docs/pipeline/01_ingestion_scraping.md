@@ -53,25 +53,3 @@ To optimize global random search and avoid querying coordinates that already con
 * **`src/utils/create_uncovered_land_areas_shp.py`**: Reads existing image CSV datasets, aggregates coordinate points into H3 cells at a user-defined resolution (default: resolution 5), and flags cells as "covered" if they exceed an image count threshold (default: 0). It then converts the covered H3 cells to polygon geometry and subtracts them from a standard global land mass shapefile (e.g., Natural Earth admin borders).
 * **Usage in Search**: The resulting output shapefile (`shapefiles/uncovered_land_areas_test.shp`) represents land areas that are still poorly mapped. The global grid searchers (like `src/scrapers/flickr_5km_grid_search.py`) load this shapefile at startup and perform a fast spatial R-tree index check. They skip querying any grid box that does not intersect an uncovered land polygon, which reduces API requests and concentrates scraping efforts on data-poor zones.
 
----
-
-## ⚙️ Ingestion & Deduplication Pipeline (`process_scraped_data.py`)
-
-Raw data gathered by the scrapers (or pre-computed offline datasets) is processed and consolidated into the main database using `src/processing/process_scraped_data.py`. Key pipeline capabilities include:
-
-### 1. Unified Ingestion (CSV & Parquet)
-* The pipeline accepts both **`.csv`** and **`.parquet`** files in the input directories (`--dirs` and `--offline_dataset_dirs`).
-* Companion indexes (`*.keys.parquet`), checkpoint tables (`*_checkpoint.parquet`), and the final database itself (`{output_name}.parquet`) are automatically filtered out during scanning to prevent self-ingestion loops.
-
-### 2. Precomputed Embeddings Bypass
-* If an input Parquet file has precomputed embeddings (e.g. from `backfill_embeddings.py`), the loader automatically reconstructs the `'embedding'` column from the companion `.npy` matrix.
-* During cell-by-cell deduplication, images with precomputed embeddings **completely bypass the image download and the TIPSv2 GPU model forward pass**, saving massive bandwidth and compute time.
-
-### 3. Strict Representation Type Checking
-* Precomputed embeddings are validated against the requested `representation_type` (e.g. `cls`, `avg_patch`, `cls_avg_patch`).
-* Suffix verification (e.g., checks for `_cls_embeddings.npy` in the filename) prevents loading mismatched vector representations. Mismatched or missing representation vectors are scheduled for re-inference.
-
-### 4. Schema Normalization & Path Resolution
-* Columns from diverse datasets (such as lowercase/camelCase fields like `photo_id`, `Captured_At`, `latitude`) are normalized into the canonical PascalCase schema.
-* To prevent duplicate column name collisions (e.g. if a dataset has both `Image_Location` and `file_name` columns), a first-match fallback strategy is used for locating image URLs.
-

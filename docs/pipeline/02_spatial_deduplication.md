@@ -33,6 +33,28 @@ To prevent Parquet file bloating and RAM starvation, the database uses a decoupl
 
 ---
 
+## ⚙️ Unified Ingestion & Offline Dataset Support
+
+The deduplication pipeline has been upgraded to support seamless ingestion of pre-computed offline datasets:
+
+### 1. Unified Ingestion (CSV & Parquet)
+* The pipeline accepts both **`.csv`** and **`.parquet`** files in the input directories (`--dirs` and `--offline_dataset_dirs`).
+* Helper index files (`*.keys.parquet`), checkpoint files (`*_checkpoint.parquet`), and the output database itself (`{output_name}.parquet`) are automatically ignored during directory scanning to prevent circular ingestion.
+
+### 2. Precomputed Embeddings Bypass
+* When loading input `.parquet` files, the loader automatically resolves and maps their companion `.npy` embeddings.
+* During cell-by-cell deduplication, images with matching precomputed embeddings **completely bypass image downloading and TIPSv2 GPU forward passes**, saving massive network bandwidth and compute resources.
+
+### 3. Strict Representation Type Checking
+* Precomputed embeddings are validated against the requested `representation_type` (e.g. `cls`, `avg_patch`, `cls_avg_patch`).
+* Suffix verification (e.g., checking for `_cls_embeddings.npy` in the filename) prevents loading mismatched vector configurations. Mismatched or missing representation vectors are scheduled for re-inference.
+
+### 4. Schema Normalization & Path Resolution
+* Columns from diverse datasets (such as lowercase/camelCase fields like `photo_id`, `Captured_At`, `latitude`) are normalized into the canonical PascalCase schema.
+* To prevent duplicate column name collisions (e.g. if a dataset has both `Image_Location` and `file_name` columns), a first-match fallback strategy is used for locating image URLs.
+
+---
+
 ## 🏎️ Million-Row Streaming Optimization
 
 To process datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters, matches, and appends chunk-by-chunk. This streaming process is now **100% key-driven**, utilizing the unique `photo_key` strings and C-accelerated hash lookups to dynamically resolve embeddings. This makes updates completely immune to index-shift corruptions. 
