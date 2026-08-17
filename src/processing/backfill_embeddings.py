@@ -45,6 +45,12 @@ def main():
     args = parser.parse_args()
 
     out_path = args.output if args.output else args.input
+    if out_path.endswith('.csv'):
+        out_path = out_path.replace('.csv', '.parquet')
+        print(f" -> Enforcing decoupled Parquet output format: {out_path}")
+    elif out_path.endswith('.pkl') or out_path.endswith('.pickle'):
+        out_path = os.path.splitext(out_path)[0] + '.parquet'
+        print(f" -> Enforcing decoupled Parquet output format: {out_path}")
 
     # 1. Load dataset metadata
     print(f"Loading dataset from {args.input}...")

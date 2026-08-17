@@ -450,11 +450,15 @@ def load_and_preprocess_csv(f, offline_dirs=None):
                 'photo_id': 'Photo_ID',
                 'ID': 'Photo_ID',
                 'captured_at': 'Captured_At',
-                'Captured_At': 'Captured_At',
-                'Image_Location': 'Image_URL',
-                'Image_URL': 'Image_URL'
+                'Captured_At': 'Captured_At'
             }
             df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            # Map Image_URL fallback safely
+            if 'Image_URL' not in df.columns:
+                for fallback in ['Image_Location', 'Image_URL']:
+                    if fallback in df.columns:
+                        df = df.rename(columns={fallback: 'Image_URL'})
+                        break
             df['Platform'] = platform
         else:
             if 'inaturalist' in f.lower():
@@ -469,8 +473,6 @@ def load_and_preprocess_csv(f, offline_dirs=None):
             col_map = {
                 'latitude': 'Latitude',
                 'longitude': 'Longitude',
-                'image_url': 'Image_URL',
-                'Image_Location': 'Image_URL',
                 'photo_id': 'Photo_ID',
                 'ID': 'Photo_ID',
                 'captured_at': 'Captured_At',
@@ -481,6 +483,12 @@ def load_and_preprocess_csv(f, offline_dirs=None):
                 'License': 'License'
             }
             df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            # Map Image_URL fallback safely
+            if 'Image_URL' not in df.columns:
+                for fallback in ['image_url', 'Image_Location', 'Image_URL']:
+                    if fallback in df.columns:
+                        df = df.rename(columns={fallback: 'Image_URL'})
+                        break
             if 'Platform' not in df.columns:
                 df['Platform'] = platform
 
