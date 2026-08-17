@@ -128,12 +128,12 @@ Please refer to the [official PyTorch installation guide](https://pytorch.org/ge
 
 * **For CUDA-enabled GPU (Highly Recommended for fast clustering):**
   ```bash
-  conda install -c pytorch -c nvidia pytorch torchvision -y
+  pip3 install torch torchvision
   pip install faiss-gpu
   ```
 * **For CPU-only:**
   ```bash
-  pip install torch torchvision
+  pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
   pip install faiss-cpu
   ```
 
