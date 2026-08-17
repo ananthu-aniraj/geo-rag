@@ -1,6 +1,6 @@
 import argparse
-import os
 import pickle
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -15,7 +15,6 @@ import src.models.tips_image_encoder as image_encoder
 from src.models.vision_model_inference import extract_model_embeddings
 from src.utils.io import (
     download_image,
-    get_core_base_name,
     load_dataframe,
     save_dataframe,
 )
@@ -216,7 +215,12 @@ def main():
         f" -> Processed {valid_count}/{num_rows} images successfully in {elapsed:.2f}s ({num_rows / elapsed:.2f} img/s).")
 
     # Filter out records where the download/load failed (expired links, etc.)
-    if embeddings_matrix is not None and len(successful_indices) < num_rows:
+    if embeddings_matrix is None:
+        print("\n❌ Error: No images were successfully processed or loaded.")
+        print("Please verify that your image file paths exist or that you passed the correct directory to --image_root_dir.")
+        sys.exit(1)
+
+    if len(successful_indices) < num_rows:
         print(f"Filtering out {num_rows - len(successful_indices)} rows that failed to load or download...")
         df = df.iloc[successful_indices].reset_index(drop=True)
         embeddings_matrix = embeddings_matrix[successful_indices]
