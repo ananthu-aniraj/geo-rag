@@ -40,7 +40,7 @@ do
     echo "========================================"
 
     # Run the Python script
-    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR" --access_token "$ACCESS_TOKEN" --uncovered_shapefile "$UNCOVERED_SHAPEFILE" --step_km "$STEP_KM" --max_photos_per_box "$MAX_PHOTOS_PER_BOX" --delay_between_calls "$DELAY_BETWEEN_CALLS"; then
+    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR" --access_token "$ACCESS_TOKEN" --uncovered_shapefile "$UNCOVERED_SHAPEFILE" --step_km "$STEP_KM" --max_photos_per_box "$MAX_PHOTOS_PER_BOX"; then
         echo "CRITICAL ERROR: Script failed on chunk $i. Halting execution."
         exit 1
     fi
