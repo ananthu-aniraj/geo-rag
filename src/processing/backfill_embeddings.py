@@ -62,25 +62,27 @@ def main():
         return
 
     # Normalize schema using common column mappings (aligned with process_scraped_data.py)
+    # 1. Map other standard fields (excluding URL fallbacks to prevent duplicates)
     col_map = {
         'latitude': 'Latitude',
         'longitude': 'Longitude',
-        'image_url': 'Image_URL',
-        'Image_Location': 'Image_URL',
-        'local_path': 'Image_URL',
-        'file_name': 'Image_URL',
-        'path': 'Image_URL',
         'photo_id': 'Photo_ID',
         'ID': 'Photo_ID',
         'captured_at': 'Captured_At',
-        'Captured_At': 'Captured_At',
         'Date_Observed': 'Captured_At',
         'observed_on_string': 'Captured_At',
         'license': 'License',
-        'License': 'License',
         'platform': 'Platform'
     }
     df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+
+    # 2. Map Image_URL fallback column (only map the first available one to avoid duplicates)
+    if 'Image_URL' not in df.columns:
+        for fallback in ['local_path', 'Image_Location', 'file_name', 'path']:
+            if fallback in df.columns:
+                df = df.rename(columns={fallback: 'Image_URL'})
+                print(f" -> Mapping missing column 'Image_URL' to existing column '{fallback}'.")
+                break
 
     # Default missing Platform to 'Offline'
     if 'Platform' not in df.columns:
@@ -90,8 +92,7 @@ def main():
     # Verify final key columns exist
     for col in ['Platform', 'Photo_ID', 'Image_URL']:
         if col not in df.columns:
-            raise ValueError(
-                f"Required column '{col}' is missing from the dataset schema (even after mapping column aliases).")
+            raise ValueError(f"Required column '{col}' is missing from the dataset schema (even after mapping column aliases).")
 
     # 2. Setup Device & Initialize Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -144,24 +145,8 @@ def main():
     def download_thread_fn(global_idx, url, photo_id, platform, offline_dirs, image_size):
         try:
             img = download_image(url, photo_id=photo_id, platform=platform, offline_dirs=offline_dirs, image_size=image_size)
-            if global_idx == 0 or global_idx == 1:
-                from src.utils.io import resolve_offline_image_path
-                resolved = resolve_offline_image_path(url, offline_dirs, photo_id, platform)
-                print(f"\n[DEBUG] global_idx={global_idx} | url={url} | photo_id={photo_id} | platform={platform} | offline_dirs={offline_dirs}")
-                print(f"[DEBUG] resolved path: {resolved}")
-                if resolved:
-                    print(f"[DEBUG] resolved path exists: {os.path.exists(resolved)}")
-                    try:
-                        from PIL import Image
-                        test_img = Image.open(resolved)
-                        print(f"[DEBUG] PIL open test: Success ({test_img.size})")
-                    except Exception as pe:
-                        print(f"[DEBUG] PIL open test: Failed: {pe}")
-                print(f"[DEBUG] download_image returned: {img}\n")
             return global_idx, img
-        except Exception as e:
-            if global_idx == 0 or global_idx == 1:
-                print(f"[DEBUG] Thread exception: {e}")
+        except Exception:
             return global_idx, None
 
     t0 = time.time()
