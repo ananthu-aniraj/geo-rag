@@ -4,6 +4,16 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ---
 
+## [Unreleased]
+
+### Planned Refactoring
+- **Shell Script Consolidation**: Move all 12 shell scripts currently in the root directory to modular subfolders:
+  - `/scripts/scrapers/` for data harvesting and density profiling.
+  - `/scripts/evaluation/` for benchmarking and evaluations.
+  - `/scripts/run_full_pipeline.sh` for the main pipeline execution.
+- **Relocatable Path Safety**: Prepend self-resolving directory headers to all scripts to ensure they run correctly from any working directory (using project root auto-resolution).
+- **Documentation Alignment**: Update all paths and commands referencing `.sh` scripts in `README.md` and the `docs/` folder.
+
 ## [1.1.0] - 2026-08-17
 
 ### Added
