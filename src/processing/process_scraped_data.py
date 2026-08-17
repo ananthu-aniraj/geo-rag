@@ -448,7 +448,7 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
         print(f"\nError saving checkpoint: {e}")
 
 
-def load_and_preprocess_csv(f, offline_dirs=None):
+def load_and_preprocess_csv(f, offline_dirs=None, representation_type='cls'):
     """Loads a single CSV or Parquet file, normalizes column names, and converts Mapillary/KartaView URLs."""
     try:
         if f.endswith('.parquet'):
@@ -457,6 +457,13 @@ def load_and_preprocess_csv(f, offline_dirs=None):
             for col in df.columns:
                 if col not in ['embedding', 'Latitude', 'Longitude']:
                     df[col] = df[col].astype(str)
+            # Load matching companion embeddings if present
+            try:
+                embeddings = load_embeddings(f, representation_type=representation_type)
+                df['embedding'] = list(embeddings)
+                print(f" -> Successfully loaded precomputed '{representation_type}' embeddings for: {f}")
+            except FileNotFoundError:
+                print(f" -> No precomputed '{representation_type}' embeddings found for: {f} (will compute from scratch)")
         else:
             df = pd.read_csv(f, dtype=str)
         if df.empty:
@@ -710,7 +717,7 @@ def main():
     if csv_files:
         print(f"Reading {len(csv_files)} files in parallel...")
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(load_and_preprocess_csv, f, offline_dirs=args.offline_dataset_dirs) for f in
+            futures = [executor.submit(load_and_preprocess_csv, f, offline_dirs=args.offline_dataset_dirs, representation_type=args.representation_type) for f in
                        csv_files]
             for fut in tqdm(as_completed(futures), total=len(csv_files), desc="Reading input files"):
                 res = fut.result()

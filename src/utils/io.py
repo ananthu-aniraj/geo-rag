@@ -293,6 +293,22 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
             npy_name = f"{core_name}_{column}_embeddings.npy"
         npy_path = os.path.join(db_dir, npy_name)
 
+    def suffix_matches(filename, req_rep):
+        has_cls_avg = 'cls_avg_patch' in filename
+        has_avg = 'avg_patch' in filename and not has_cls_avg
+        has_cls = 'cls' in filename and not has_cls_avg
+
+        if req_rep == 'cls_avg_patch':
+            return has_cls_avg
+        elif req_rep == 'avg_patch':
+            return has_avg
+        elif req_rep == 'cls':
+            # Allow fallback if the filename doesn't contain any known suffix
+            if not has_cls_avg and not has_avg:
+                return True
+            return has_cls
+        return True
+
     # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet
     if not os.path.exists(npy_path) and "cleaned" in base_name:
         fallback_base = base_name.replace("cleaned", "deduplicated")
@@ -301,7 +317,6 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
 
     # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
     if not os.path.exists(npy_path):
-
         core_name = get_core_base_name(base_name)
         bases = [base_name, core_name]
         if "cleaned" in base_name:
@@ -311,6 +326,12 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
             pattern = os.path.join(db_dir, f"{b}*.npy")
             matches = glob.glob(pattern)
             if matches:
+                # Filter matches by representation type if default 'embedding' column is requested
+                if column == 'embedding' and representation_type:
+                    matches = [m for m in matches if suffix_matches(os.path.basename(m), representation_type)]
+                if not matches:
+                    continue
+
                 # If there's a file matching the specific column name, use it
                 col_match = [m for m in matches if column in os.path.basename(m)]
                 if col_match:
