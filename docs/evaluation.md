@@ -223,12 +223,12 @@ To make evaluations easily reproducible and readable, the pipeline uses YAML fil
 
 ### 1. Offline Semantic Evaluation (LUCAS & Places365)
 * **Configuration**: `eval_params_offline.yaml`
-* **Shell Script**: `./run_offline_eval_semantic.sh`
+* **Shell Script**: `./scripts/evaluation/run_offline_eval_semantic.sh`
 * **Operation**: Reads parameters from the offline YAML file and runs `benchmark_lucas.py` and `benchmark_places.py` sequentially, saving results into `benchmark_results/`.
 
 ### 2. Spatial/Environmental Evaluation (Environmental Zones & EUNIS)
 * **Configuration**: `eval_params_online.yaml`
-* **Shell Script**: `./run_offline_eval_spatial.sh`
+* **Shell Script**: `./scripts/evaluation/run_offline_eval_spatial.sh`
 * **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
 
 ---
@@ -237,8 +237,8 @@ To make evaluations easily reproducible and readable, the pipeline uses YAML fil
 
 To run an end-to-end evaluation cycle:
 1. Populate your dataset paths and parameters in `eval_params_offline.yaml` and `eval_params_online.yaml`.
-2. Run `./run_offline_eval_semantic.sh` to benchmark semantic representation retrieval precision on local datasets.
-3. Run `./run_offline_eval_spatial.sh` to measure geobotanical and climate alignment retrieval precision on geolocated databases.
+2. Run `./scripts/evaluation/run_offline_eval_semantic.sh` to benchmark semantic representation retrieval precision on local datasets.
+3. Run `./scripts/evaluation/run_offline_eval_spatial.sh` to measure geobotanical and climate alignment retrieval precision on geolocated databases.
 4. Run `caption_test.py` to caption a set of validation images and generate embeddings.
 5. Run `evaluate_retrieval.py` on the resulting pickle output to benchmark the retrieval metrics.
 6. Inspect text reports in the `benchmark_results/` directory (e.g. `lucas_report.txt`, `places_report.txt`, `eunis_report.txt`, `environmental_zones_report.txt`) for overall alignment summaries.

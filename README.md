@@ -34,6 +34,9 @@ geo-rag/
 │   ├── evaluation.md             # Benchmark evaluations & retrieval suites
 │   ├── dataset.md                # Dataset files, structures, & loading guide
 │   └── metrics.md                # Evaluation & retrieval metrics definitions
+├── scripts/                      # Automated shell orchestrators
+│   ├── scrapers/                 # Data collection and profiling runner wrappers
+│   └── evaluation/               # Benchmark and evaluation runner scripts
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
 ├── templates/                    # Standalone HTML/JS frontend templates
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
@@ -72,11 +75,11 @@ For detailed documentation, scripts, API queries, Nominatim geocoding, boundary 
 
 👉 **[Ingestion & Scraping Utilities Documentation](docs/pipeline/01_ingestion_scraping.md)**
 
-The project root contains automated shell orchestrators for batch search loops:
-* **Flickr Global/Local Search**: [`run_flickr_scraper.sh`](run_flickr_scraper.sh)
-* **Mapillary Street View Search**: [`run_mapillary_scraper.sh`](run_mapillary_scraper.sh)
-* **iNaturalist Species Observations**: [`run_inaturalist_scrapers.sh`](run_inaturalist_scrapers.sh)
-* **OpenStreetMap Boundaries Search**: [`run_osm_scraper.sh`](run_osm_scraper.sh)
+The `/scripts/scrapers/` folder contains automated shell orchestrators for batch search loops:
+* **Flickr Global/Local Search**: [`run_flickr_scraper.sh`](scripts/scrapers/run_flickr_scraper.sh)
+* **Mapillary Street View Search**: [`run_mapillary_scraper.sh`](scripts/scrapers/run_mapillary_scraper.sh)
+* **iNaturalist Species Observations**: [`run_inaturalist_scrapers.sh`](scripts/scrapers/run_inaturalist_scrapers.sh)
+* **OpenStreetMap Boundaries Search**: [`run_osm_scraper.sh`](scripts/scrapers/run_osm_scraper.sh)
 
 ---
 

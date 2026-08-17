@@ -7,16 +7,15 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [Unreleased]
 
 ### Planned Refactoring
-- **Shell Script Consolidation**: Move all 12 shell scripts currently in the root directory to modular subfolders:
-  - `/scripts/scrapers/` for data harvesting and density profiling.
-  - `/scripts/evaluation/` for benchmarking and evaluations.
-  - `/scripts/run_full_pipeline.sh` for the main pipeline execution.
-- **Relocatable Path Safety**: Prepend self-resolving directory headers to all scripts to ensure they run correctly from any working directory (using project root auto-resolution).
-- **Documentation Alignment**: Update all paths and commands referencing `.sh` scripts in `README.md` and the `docs/` folder.
+- **Pipeline Script Migration**: Move the final main entrypoint `run_full_pipeline.sh` from the root directory to `/scripts/` after the active background execution completes.
 
 ## [1.1.0] - 2026-08-17
 
 ### Added
+- **Directory Refactoring (Shell Scripts)**: Consolidated 11 of the 12 shell scripts from the repository root into functional subdirectories:
+  - `/scripts/scrapers/` for scraping loops and density profilers.
+  - `/scripts/evaluation/` for Places365, LUCAS, and spatial benchmarks.
+- **Relocatable Path Safety**: Prepended auto-resolution headers to all migrated scripts (`SCRIPT_DIR` + `PROJECT_ROOT`) so they dynamically resolve imports and config relative to the project root directory, allowing safe execution from anywhere.
 - **Unified Format Ingestion (CSV & Parquet)**: Updated `process_scraped_data.py` to accept both `.csv` and `.parquet` files as raw input scraping sources (found via `--dirs` and `--offline_dataset_dirs`). Included safety filtering to ignore keys, checkpoints, and output databases during ingestion.
 - **Precomputed Embedding Bypass**: If an ingested Parquet file has precomputed embeddings (e.g., from `backfill_embeddings.py`), `process_cell` dynamically loads them and bypasses both the image downloading and the GPU-based TIPSv2 model forward pass.
 - **Strict Representation Type Checking**: Added verification of filename representation suffixes (e.g. `_cls_embeddings.npy` vs `_avg_patch_`) in `load_embeddings()` to prevent loading mismatched vector configurations.
