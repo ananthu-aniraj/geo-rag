@@ -11,6 +11,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Untrack and add local `params.yaml` to `.gitignore` to prevent committing active keys.
   - Create a `params.template.yaml` template file for tracking configuration parameters.
   - Clear hardcoded API keys and tokens from all shell scripts, letting them fall back to local `params.yaml` or env variables.
+  - Add a `--mapillary_token` CLI argument to all Python scripts that interact with Mapillary, and configure shell runners to parse and pass this token dynamically (removing hardcoded keys from Python files).
 
 ## [1.1.0] - 2026-08-17
 
