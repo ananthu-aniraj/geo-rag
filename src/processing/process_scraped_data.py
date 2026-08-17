@@ -138,31 +138,61 @@ def process_cell(cell_id, metadata_list, model, device, sim_threshold, executor,
     # Process new images in chunks to limit peak memory usage
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
         chunk_metadata = metadata_list[chunk_start: chunk_start + cell_chunk_size]
-        urls = [m['Image_URL'] for m in chunk_metadata]
-        pids = [m['Photo_ID'] for m in chunk_metadata]
-        plats = [m.get('Platform') for m in chunk_metadata]
 
-        # Download images in parallel for this chunk
-        imgs = list(executor.map(download_fn, urls, pids, plats))
+        # Separate items that already have pre-computed embeddings from those that need them
+        to_compute_indices = []
+        precomputed_embeddings = {}  # maps chunk_metadata index -> embedding vector
+        for idx, m in enumerate(chunk_metadata):
+            if m.get('embedding') is not None:
+                precomputed_embeddings[idx] = m['embedding']
+            else:
+                to_compute_indices.append(idx)
 
-        valid_indices = [i for i, img in enumerate(imgs) if img is not None]
-        if not valid_indices:
+        # Download and compute embeddings only for those that need it
+        computed_embeddings = None
+        valid_dl_indices = []
+        if to_compute_indices:
+            urls = [chunk_metadata[idx]['Image_URL'] for idx in to_compute_indices]
+            pids = [chunk_metadata[idx]['Photo_ID'] for idx in to_compute_indices]
+            plats = [chunk_metadata[idx].get('Platform') for idx in to_compute_indices]
+
+            # Download images in parallel for this chunk
+            imgs = list(executor.map(download_fn, urls, pids, plats))
+
+            valid_dl_indices = [i for i, img in enumerate(imgs) if img is not None]
+            if valid_dl_indices:
+                valid_imgs = [imgs[i] for i in valid_dl_indices]
+
+                # Compute embeddings for this chunk using configured tips_batch_size
+                computed_embeddings = get_tips_embeddings(valid_imgs, model, device, batch_size=tips_batch_size, representation_type=representation_type)
+
+                # Explicitly close PIL images immediately to free RAM
+                for img in valid_imgs:
+                    try:
+                        img.close()
+                    except Exception:
+                        pass
+
+        # Build unified lists of valid indices and embeddings for this chunk
+        valid_indices = []
+        all_embeddings_list = []
+
+        # 1. Add precomputed ones
+        for idx, emb in precomputed_embeddings.items():
+            valid_indices.append(idx)
+            all_embeddings_list.append(emb)
+
+        # 2. Add newly computed ones
+        if computed_embeddings is not None:
+            for i, dl_idx in enumerate(valid_dl_indices):
+                global_idx = to_compute_indices[dl_idx]
+                valid_indices.append(global_idx)
+                all_embeddings_list.append(computed_embeddings[i])
+
+        if not all_embeddings_list:
             continue
 
-        valid_imgs = [imgs[i] for i in valid_indices]
-
-        # Compute embeddings for this chunk using configured tips_batch_size
-        all_embeddings = get_tips_embeddings(valid_imgs, model, device, batch_size=tips_batch_size, representation_type=representation_type)
-
-        # Explicitly close PIL images immediately to free RAM
-        for img in valid_imgs:
-            try:
-                img.close()
-            except Exception:
-                pass
-
-        if all_embeddings is None:
-            continue
+        all_embeddings = np.vstack(all_embeddings_list).astype(np.float32)
 
         # Matrix multiply for indoor/outdoor zero-shot classification
         if text_features is not None:
@@ -419,9 +449,16 @@ def save_checkpoint(final_data, processed_cells, checkpoint_path, checkpoint_met
 
 
 def load_and_preprocess_csv(f, offline_dirs=None):
-    """Loads a single CSV file, normalizes column names, and converts Mapillary/KartaView URLs."""
+    """Loads a single CSV or Parquet file, normalizes column names, and converts Mapillary/KartaView URLs."""
     try:
-        df = pd.read_csv(f, dtype=str)
+        if f.endswith('.parquet'):
+            df = load_dataframe(f)
+            # Ensure metadata columns are string for downstream code compatibility
+            for col in df.columns:
+                if col not in ['embedding', 'Latitude', 'Longitude']:
+                    df[col] = df[col].astype(str)
+        else:
+            df = pd.read_csv(f, dtype=str)
         if df.empty:
             return None
 
@@ -597,18 +634,30 @@ def main():
                         help="Floating point precision format for stored embeddings (float32 or float16).")
     args = parser.parse_args()
 
-    # 1. Gather all CSVs
+    # 1. Gather all CSVs and Parquets
     csv_files = []
+    def is_valid_input_file(filepath):
+        basename = os.path.basename(filepath)
+        if filepath.endswith('.keys.parquet'):
+            return False
+        if '_checkpoint.parquet' in basename:
+            return False
+        if basename == f"{args.output_name}.parquet":
+            return False
+        return True
+
     for d in args.dirs:
-        csv_files.extend(glob.glob(os.path.join(d, "*.csv")))
+        files = glob.glob(os.path.join(d, "*.csv")) + glob.glob(os.path.join(d, "*.parquet"))
+        csv_files.extend([f for f in files if is_valid_input_file(f)])
 
     if args.offline_dataset_dirs:
         for d in args.offline_dataset_dirs:
-            offline_csvs = glob.glob(os.path.join(d, "*.csv"))
-            print(f"Found {len(offline_csvs)} CSV files in offline directory '{d}'.")
-            csv_files.extend(offline_csvs)
+            files = glob.glob(os.path.join(d, "*.csv")) + glob.glob(os.path.join(d, "*.parquet"))
+            offline_files = [f for f in files if is_valid_input_file(f)]
+            print(f"Found {len(offline_files)} CSV/Parquet files in offline directory '{d}'.")
+            csv_files.extend(offline_files)
 
-    print(f"Found {len(csv_files)} total CSV files to process.")
+    print(f"Found {len(csv_files)} total input files (CSVs/Parquets) to process.")
 
     # 2. Check for resume files
     df_existing = None
@@ -656,14 +705,14 @@ def main():
             df_existing['Longitude'] = pd.to_numeric(df_existing['Longitude'], errors='coerce')
         print(f"Loaded {len(df_existing)} existing images across {df_existing['H3_Cell'].nunique()} cells.")
 
-    # Read CSVs in parallel using ThreadPoolExecutor
+    # Read input files in parallel using ThreadPoolExecutor
     all_dfs = []
     if csv_files:
-        print(f"Reading {len(csv_files)} CSV files in parallel...")
+        print(f"Reading {len(csv_files)} files in parallel...")
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [executor.submit(load_and_preprocess_csv, f, offline_dirs=args.offline_dataset_dirs) for f in
                        csv_files]
-            for fut in tqdm(as_completed(futures), total=len(csv_files), desc="Reading CSVs"):
+            for fut in tqdm(as_completed(futures), total=len(csv_files), desc="Reading input files"):
                 res = fut.result()
                 if res is not None:
                     all_dfs.append(res)

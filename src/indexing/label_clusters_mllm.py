@@ -474,7 +474,9 @@ def main():
                     "cid": pid,
                     "img_url": img_url,
                     "prompt_step1": p1_text,
-                    "prompt_step2_template": p2_text
+                    "prompt_step2_template": p2_text,
+                    "photo_id": photo_id,
+                    "platform": platform
                 })
 
             parent_results = label_clusters_mllm_batched(
