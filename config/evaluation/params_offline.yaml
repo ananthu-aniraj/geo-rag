@@ -6,7 +6,7 @@ lucas:
   img_dir: "/home/ananthu/DATA/data_ananthu/LUCAS2018"
   num_queries: 3000
   num_database: 0
-  batch_size: 32
+  batch_size: 128
   seed: 42
   use_segformer: false
 
@@ -16,7 +16,7 @@ places:
   img_dir: "/home/ananthu/DATA/data_ananthu/places365/versions/1/val"
   num_queries: 3000
   num_database: 0
-  batch_size: 32
+  batch_size: 128
   seed: 42
   use_segformer: false
   compare_clip: false
