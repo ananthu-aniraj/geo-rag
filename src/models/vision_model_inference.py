@@ -107,6 +107,15 @@ def extract_benchmark_features_single_pass(model, batch_tensors, is_local=False)
             - cls_out is either (first_cls, second_cls) or a single cls_token array.
             - patch_tokens_vals is the MaskCLIP value attention patch tokens array.
     """
+    # Verify and cache class token presence check on the model instance on the first pass
+    if getattr(model, 'has_cls_token', None) is None:
+        has_cls = (
+            (getattr(model, 'cls_token', None) is not None) or
+            (getattr(model, 'num_prefix_tokens', 0) > 0) or
+            (hasattr(model, 'vision_encoder') and getattr(model.vision_encoder, 'cls_token', None) is not None)
+        )
+        model.has_cls_token = has_cls
+
     # Case 1: timm Model Integration
     if not is_local and hasattr(model, 'forward_features'):
         return _extract_features_timm(model, batch_tensors)
@@ -125,10 +134,16 @@ def _extract_features_timm(model, batch_tensors):
         b, c, h, w = features.shape
         patch_tokens_vals = features.permute(0, 2, 3, 1).reshape(b, h*w, c).cpu().numpy()
     else:
-        # Transformer output: token 0 is CLS, tokens after prefix are patches
-        cls_out = features[:, 0].cpu().numpy()
-        num_prefix = getattr(model, 'num_prefix_tokens', 1)
-        patch_tokens_vals = features[:, num_prefix:].cpu().numpy()
+        has_cls = getattr(model, 'has_cls_token', True)
+        if has_cls:
+            # Transformer output with CLS: token 0 is CLS, tokens after prefix are patches
+            cls_out = features[:, 0].cpu().numpy()
+            num_prefix = getattr(model, 'num_prefix_tokens', 1)
+            patch_tokens_vals = features[:, num_prefix:].cpu().numpy()
+        else:
+            # Transformer output without CLS: average pool patches for CLS representation
+            cls_out = torch.mean(features, dim=1).cpu().numpy()
+            patch_tokens_vals = features.cpu().numpy()
     return cls_out, patch_tokens_vals
 
 
