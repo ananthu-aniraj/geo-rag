@@ -145,7 +145,7 @@ def main():
     parser.add_argument("--no_segformer", action="store_true", help="Skip SegFormer background segmentation.")
     parser.add_argument("--compare_clip", action="store_true", help="Include standard CLIP model in the comparison.")
     parser.add_argument("--compare_hf_tips", action="store_true",
-                        help="Include Hugging Face google/tipsv2-b14 model in the comparison.")
+                        help="Include Hugging Face google/model-b14 model in the comparison.")
     parser.add_argument("--output_report", type=str, default="./benchmark_results/places_report.txt",
                         help="Path to write the report summary.")
     parser.add_argument("--output_csv", type=str, default="./benchmark_results/places_results.csv",
@@ -244,7 +244,7 @@ def main():
     # Load Hugging Face TIPSv2 model as baseline if requested (and if we are loading official checkpoint)
     hf_tipsv2 = None
     if args.compare_hf_tips and args.tips_model_path:
-        print("Loading Hugging Face google/tipsv2-b14 model as baseline...")
+        print("Loading Hugging Face google/model-b14 model as baseline...")
         hf_tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
 
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
@@ -276,9 +276,9 @@ def main():
             interpolate_offset=0.0,
         )
         model.load_state_dict(checkpoint)
-        tipsv2 = model.eval().to(device)
+        model = model.eval().to(device)
     else:
-        tipsv2, transform, image_size = load_vision_model(args.model_name, device)
+        model, transform, image_size = load_vision_model(args.model_name, device)
 
     seg_processor = None
     seg_model = None
@@ -295,7 +295,7 @@ def main():
     if hf_tipsv2 is not None:
         representations["TIPSv2 HF CLS"] = {"query": [], "db": []}
 
-    model_label = "TIPSv2" if (args.tips_model_path or "tipsv2" in args.model_name.lower()) else os.path.basename(args.model_name)
+    model_label = "TIPSv2" if (args.tips_model_path or "model" in args.model_name.lower()) else os.path.basename(args.model_name)
     if args.tips_model_path:
         representations.update({
             f"{model_label} 1st CLS": {"query": [], "db": []},
@@ -371,7 +371,7 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors, is_local=is_local)
+                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(model, img_tensors, is_local=is_local)
                 patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), -1, patch_tokens_vals.shape[-1])
                 curr_num_patches = patch_tokens_vals.shape[1]
                 curr_grid_size = int(math.sqrt(curr_num_patches))

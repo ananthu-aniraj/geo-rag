@@ -54,17 +54,17 @@ ENV_RASTER=$(python3 -c "import yaml; print(yaml.safe_load(open('config/evaluati
 EUNIS_RASTER=$(python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml'))['eunis']['raster'])")
 
 LUCAS_SEG_FLAG=""
-if [ "$LUCAS_USE_SEG" = "false" ]; then
+if [ "$LUCAS_USE_SEG" = "false" ] || [ "$LUCAS_USE_SEG" = "False" ]; then
     LUCAS_SEG_FLAG="--no_segformer"
 fi
 
 PLACES_SEG_FLAG=""
-if [ "$PLACES_USE_SEG" = "false" ]; then
+if [ "$PLACES_USE_SEG" = "false" ] || [ "$PLACES_USE_SEG" = "False" ]; then
     PLACES_SEG_FLAG="--no_segformer"
 fi
 
 PLACES_CLIP_FLAG=""
-if [ "$PLACES_COMP_CLIP" = "true" ]; then
+if [ "$PLACES_COMP_CLIP" = "true" ] || [ "$PLACES_COMP_CLIP" = "True" ]; then
     PLACES_CLIP_FLAG="--compare_clip"
 fi
 

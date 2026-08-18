@@ -59,12 +59,12 @@ if [ ! -f "$EUNIS_RASTER" ]; then
 fi
 
 ENV_SEG_FLAG=""
-if [ "$ENV_USE_SEG" = "false" ]; then
+if [ "$ENV_USE_SEG" = "false" ] || [ "$ENV_USE_SEG" = "False" ]; then
     ENV_SEG_FLAG="--no_segformer"
 fi
 
 EUNIS_SEG_FLAG=""
-if [ "$EUNIS_USE_SEG" = "false" ]; then
+if [ "$EUNIS_USE_SEG" = "false" ] || [ "$EUNIS_USE_SEG" = "False" ]; then
     EUNIS_SEG_FLAG="--no_segformer"
 fi
 
