@@ -26,10 +26,16 @@ geo-rag/
 │   ├── evaluation/               # Evaluation parameters (offline/online)
 │   └── scrapers/                 # Scraper execution configs (YAML)
 ├── docs/                         # Technical Documentation
+│   ├── pipeline/                 # Data engineering step-by-step pipeline stages
+│   │   ├── 01_ingestion_scraping.md
+│   │   ├── 02_spatial_deduplication.md
+│   │   ├── ...
+│   │   └── 09_visualization_dashboards.md
 │   ├── dataset.md                # Dataset files, structures, & loading guide
 │   ├── evaluation.md             # Benchmark evaluations & retrieval suites
 │   ├── metrics.md                # Evaluation & retrieval metrics definitions
-│   └── pipeline.md               # Data engineering details & architecture
+│   ├── pipeline.md               # Data engineering details & architecture overview
+│   └── pipeline_flowchart_clean.jpg # Pipeline architecture flowchart diagram
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
 ├── scripts/                      # Automated shell orchestrators
 │   ├── evaluation/               # Benchmark and evaluation runner scripts
