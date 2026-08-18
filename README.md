@@ -35,11 +35,7 @@ geo-rag/
 │   ├── dataset.md                # Dataset files, structures, & loading guide
 │   └── metrics.md                # Evaluation & retrieval metrics definitions
 ├── config/                       # Centralized parameter & credentials files
-│   ├── pipeline/                 # Core pipeline configurations
-│   │   └── params.yaml           # Pipeline hyperparameters
-│   ├── evaluation/               # Benchmark parameters (offline/online)
-│   │   ├── params_offline.yaml
-│   │   └── params_online.yaml
+│   ├── evaluation/               # Evaluation parameters (offline/online)
 │   └── scrapers/                 # Scraper execution configs (YAML)
 ├── scripts/                      # Automated shell orchestrators
 │   ├── scrapers/                 # Data collection and profiling runner wrappers
