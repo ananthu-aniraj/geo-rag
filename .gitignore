@@ -54,6 +54,9 @@ shapefiles/uncovered_land_areas_test.*
 scratch/
 benchmark_results/
 
+# Secrets and environment configurations
+.env
+
 # Do not ignore
 !templates/*.html
 !prompts/*/*.txt

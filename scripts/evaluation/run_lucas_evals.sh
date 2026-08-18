@@ -10,26 +10,29 @@ conda activate ananthu_venv
 # ==========================================
 # CONFIGURATION
 # ==========================================
-# Update these variables to match your environment
-PYTHON_SCRIPT="src.evaluation.evaluate_lucas"
-IMG_DIR="/home/ananthu/DATA/data_ananthu/LUCAS2018"                                             # Update this to the actual image directory path
-CSV_FILE="/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"
-MAX_IMAGES=1000                                                             # Set to 0 to run the entire dataset
+YAML_PATH="config/evaluation/lucas_evals.yaml"
+PYTHON_SCRIPT=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('python_script', 'src.evaluation.evaluate_lucas'))" 2>/dev/null)
+IMG_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('img_dir', ''))" 2>/dev/null)
+CSV_FILE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('csv_file', ''))" 2>/dev/null)
+MAX_IMAGES=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('max_images', 1000))" 2>/dev/null)
 
-# Define the list of models you want to evaluate.
-MODELS=(
-    "gemma4:e4b"
-    # "llava:7b"
-    # "qwen3-vl:8b"
-    # "llama3.2-vision:11b"
-)
+# Load models array
+MODELS_STR=$(python3 -c "
+import yaml
+with open('$YAML_PATH') as f:
+    models = yaml.safe_load(f)['eval'].get('models', [])
+    print(' '.join(['\"' + m + '\"' for m in models]))
+" 2>/dev/null)
+eval "MODELS=($MODELS_STR)"
 
-# Define the list of prompt versions you want to evaluate (folder names in prompts_lucas/)
-VERSIONS=(
-#    "v1"
-#    "v2"
-    "v3"
-)
+# Load versions array
+VERSIONS_STR=$(python3 -c "
+import yaml
+with open('$YAML_PATH') as f:
+    versions = yaml.safe_load(f)['eval'].get('versions', [])
+    print(' '.join(['\"' + v + '\"' for v in versions]))
+" 2>/dev/null)
+eval "VERSIONS=($VERSIONS_STR)"
 
 # ==========================================
 # PRE-FLIGHT CHECKS

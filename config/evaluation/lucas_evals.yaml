@@ -1,0 +1,10 @@
+# LUCAS Evaluation parameters
+eval:
+  python_script: "src.evaluation.evaluate_lucas"
+  img_dir: "/home/ananthu/DATA/data_ananthu/LUCAS2018"
+  csv_file: "/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"
+  max_images: 1000
+  models:
+    - "gemma4:e4b"
+  versions:
+    - "v3"

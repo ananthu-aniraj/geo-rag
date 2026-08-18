@@ -1,0 +1,9 @@
+# Mapillary Density Profiler Parameters
+scraper:
+  location: ""
+  bbox: ""
+  grid_size: 5.0
+  limit_per_box: 100
+  limit_global: 500
+  delay: 3.0
+  out_file: "output/mapillary_density_profile.csv"

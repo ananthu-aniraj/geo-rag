@@ -1,0 +1,10 @@
+# Caption Evaluation parameters
+eval:
+  python_script: "src.evaluation.caption_test"
+  img_dir: "/home/ananthu/DATA/data_ananthu/places365/versions/1/val"
+  labels_file: "/home/ananthu/DATA/data_ananthu/places365/versions/1/Scene_hierarchy.xlsx"
+  max_images: 1000
+  models:
+    - "gemma4:e4b"
+  versions:
+    - "v1"

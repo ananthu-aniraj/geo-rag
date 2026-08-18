@@ -10,32 +10,25 @@ cd "$PROJECT_ROOT" || exit 1
 # iNaturalist Batch Scraping Runner
 # ==============================================================================
 
-# 1. Define list of countries/regions to loop over
-# Wrapped in quotes to support places with spaces (e.g., "North Korea")
-COUNTRIES=(
-    "Angola"
-    "North Korea"
-    "Mongolia"
-    "Australia"
-    "Greenland"
-    "Iceland"
-    "Algeria"
-    "Northwest Territories"
-    "Western Sahara"
-    "Sahara"
-    "Alaska"
-    "Siberia"
-)
+# Load parameters from config/scrapers/inaturalist_scraper.yaml
+YAML_PATH="config/scrapers/inaturalist_scraper.yaml"
 
-# 2. General parameters
-LIMIT=5000                  # Max observations to download PER country
-NUM_SPECIES=10             # Number of top native species to balance across
-TARGET_TAXON="plants"      # Taxon to search (e.g., "plants", "animals", "birds")
-EXCLUDE_FLYING=true        # Exclude flying animals (birds and insects)
-SCRAPE_WIKI=false          # Set to true to scrape Wikipedia instead of native place counts
+# Load countries array using Python helper
+COUNTRIES_STR=$(python3 -c "
+import yaml
+with open('$YAML_PATH') as f:
+    countries = yaml.safe_load(f)['scraper'].get('countries', [])
+    print(' '.join(['\"' + c + '\"' for c in countries]))
+" 2>/dev/null)
+eval "COUNTRIES=($COUNTRIES_STR)"
 
-# 3. Output Configuration
-OUT_DIR="./inaturalist_outputs"
+LIMIT=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('limit', 5000))" 2>/dev/null)
+NUM_SPECIES=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('num_species', 10))" 2>/dev/null)
+TARGET_TAXON=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('target_taxon', 'plants'))" 2>/dev/null)
+EXCLUDE_FLYING=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('exclude_flying', True)).lower())" 2>/dev/null)
+SCRAPE_WIKI=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('scrape_wiki', False)).lower())" 2>/dev/null)
+OUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('out_dir', './inaturalist_outputs'))" 2>/dev/null)
+
 mkdir -p "$OUT_DIR"
 
 # ==============================================================================

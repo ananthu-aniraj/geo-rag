@@ -8,22 +8,21 @@ cd "$PROJECT_ROOT" || exit 1
 
 # --- OSM Polygon Scraper Bash Runner ---
 
-# Configuration
-TOTAL_CHUNKS=200
+# Load parameters from config/scrapers/osm_scraper.yaml
+YAML_PATH="config/scrapers/osm_scraper.yaml"
+MODE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('mode', 'global'))" 2>/dev/null)
+OSM_QUERY=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('osm_query', 'Montpellier, France'))" 2>/dev/null)
+OSM_RELATION=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('osm_relation', ''))" 2>/dev/null)
+PLATFORMS=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('platforms', 'kartaview'))" 2>/dev/null)
+BASE_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('base_dir', 'output/osm_scrape'))" 2>/dev/null)
+TOTAL_CHUNKS=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('total_chunks', 10000))" 2>/dev/null)
+
 SCRIPT_NAME="src.scrapers.osm_polygon_scraper"
 
-# Scraping Mode Selection: "global" or "location"
-MODE="global"
-
-# 1. Target settings for "location" mode
-OSM_QUERY="Montpellier, France"
-# OSM_RELATION=74263 # e.g. Paris (uncomment to use relation instead of query)
-
-# 2. Setup target arguments based on MODE selection
+# Setup target arguments based on MODE selection
 OSM_TARGET_ARGS=()
 if [ "$MODE" = "global" ]; then
     OSM_TARGET_ARGS=(--global_search)
-    TOTAL_CHUNKS=10000
 else
     if [ -n "$OSM_RELATION" ]; then
         OSM_TARGET_ARGS=(--osm_relation "$OSM_RELATION")
@@ -32,8 +31,6 @@ else
     fi
 fi
 
-PLATFORMS="kartaview" # Choices: wikimedia, kartaview, all
-BASE_DIR="/home/ananthu/Projects/data/osm_scrape_rand_2"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
 # Ensure base directory exists

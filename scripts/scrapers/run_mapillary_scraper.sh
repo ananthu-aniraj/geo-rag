@@ -6,15 +6,28 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
 
-# Configuration
-TOTAL_CHUNKS=10000
+# Source the .env file if it exists to load keys into environment variables
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+if [ -z "$MAPILLARY_TOKEN" ]; then
+    echo "❌ Error: MAPILLARY_TOKEN is not set in your environment or .env file."
+    exit 1
+fi
+
+ACCESS_TOKEN="$MAPILLARY_TOKEN"
+
+# Load parameters from config/scrapers/mapillary_scraper.yaml
+YAML_PATH="config/scrapers/mapillary_scraper.yaml"
+TOTAL_CHUNKS=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('total_chunks', 10000))" 2>/dev/null)
+STEP_KM=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('step_km', 5))" 2>/dev/null)
+MAX_PHOTOS_PER_BOX=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('max_photos_per_box', 100))" 2>/dev/null)
+UNCOVERED_SHAPEFILE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('uncovered_shapefile', 'shapefiles/uncovered_land_areas_test.shp'))" 2>/dev/null)
+BASE_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('base_dir', 'output/mapillary_scrape'))" 2>/dev/null)
+
 SCRIPT_NAME="src.scrapers.mapillary_scraper"
-BASE_DIR="/home/ananthu/Projects/data/mapillary_scrape_rand_8"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
-ACCESS_TOKEN='MAPILLARY_TOKEN_PLACEHOLDER'
-STEP_KM=5
-MAX_PHOTOS_PER_BOX=100
-UNCOVERED_SHAPEFILE="shapefiles/uncovered_land_areas_test.shp"
 
 # Ensure base directory exists
 mkdir -p "$BASE_DIR"

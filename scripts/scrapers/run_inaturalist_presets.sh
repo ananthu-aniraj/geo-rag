@@ -10,23 +10,23 @@ cd "$PROJECT_ROOT" || exit 1
 # iNaturalist Biome Presets Batch Runner
 # ==============================================================================
 
-# 1. Define list of presets to loop over
-PRESETS=(
-    "desert"
-    "tundra"
-    "wetland"
-    "boreal"
-    "rainforest"
-    "polar"
-)
+# Load parameters from config/scrapers/inaturalist_presets.yaml
+YAML_PATH="config/scrapers/inaturalist_presets.yaml"
 
-# 2. General parameters
-LIMIT=200                  # Max observations to download PER preset
-EXCLUDE_FLYING=false       # Keep false for presets (allows hand-selected birds like penguins & kingfishers)
-SCRAPE_WIKI=false          # Set to true to scrape Wikipedia for these biomes dynamically
+# Load presets array using Python helper
+PRESETS_STR=$(python3 -c "
+import yaml
+with open('$YAML_PATH') as f:
+    presets = yaml.safe_load(f)['scraper'].get('presets', [])
+    print(' '.join(['\"' + p + '\"' for p in presets]))
+" 2>/dev/null)
+eval "PRESETS=($PRESETS_STR)"
 
-# 3. Output Configuration
-OUT_DIR="./inaturalist_preset_outputs"
+LIMIT=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('limit', 200))" 2>/dev/null)
+EXCLUDE_FLYING=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('exclude_flying', False)).lower())" 2>/dev/null)
+SCRAPE_WIKI=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('scrape_wiki', False)).lower())" 2>/dev/null)
+OUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('out_dir', './inaturalist_preset_outputs'))" 2>/dev/null)
+
 mkdir -p "$OUT_DIR"
 
 # ==============================================================================

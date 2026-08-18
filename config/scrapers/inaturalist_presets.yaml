@@ -1,0 +1,13 @@
+# iNaturalist Biome Presets Scraper Parameters
+scraper:
+  limit: 200
+  exclude_flying: false
+  scrape_wiki: false
+  out_dir: "./inaturalist_preset_outputs"
+  presets:
+    - "desert"
+    - "tundra"
+    - "wetland"
+    - "boreal"
+    - "rainforest"
+    - "polar"

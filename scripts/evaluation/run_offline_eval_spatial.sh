@@ -9,17 +9,13 @@ cd "$PROJECT_ROOT" || exit 1
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# Base directory setup
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$PROJECT_DIR"
-
 echo "================================================================================"
 echo "      Starting Spatial Representation Evaluation (Env Zones & EUNIS)            "
 echo "================================================================================"
 
 # Helper function to read yaml values using Python
 get_param() {
-    python3 -c "import yaml; print(yaml.safe_load(open('eval_params_online.yaml'))['$1']['$2'])"
+    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml'))['$1']['$2'])"
 }
 
 # Load parameters from YAML

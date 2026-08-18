@@ -1,0 +1,8 @@
+# OpenStreetMap Boundary Scraper Parameters
+scraper:
+  mode: "global"
+  osm_query: "Montpellier, France"
+  osm_relation: ""
+  platforms: "kartaview"
+  base_dir: "/home/ananthu/Projects/data/osm_scrape_rand_2"
+  total_chunks: 10000

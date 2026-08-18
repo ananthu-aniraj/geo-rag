@@ -1,0 +1,21 @@
+# iNaturalist Batch Scraper Parameters
+scraper:
+  limit: 5000
+  num_species: 10
+  target_taxon: "plants"
+  exclude_flying: true
+  scrape_wiki: false
+  out_dir: "./inaturalist_outputs"
+  countries:
+    - "Angola"
+    - "North Korea"
+    - "Mongolia"
+    - "Australia"
+    - "Greenland"
+    - "Iceland"
+    - "Algeria"
+    - "Northwest Territories"
+    - "Western Sahara"
+    - "Sahara"
+    - "Alaska"
+    - "Siberia"

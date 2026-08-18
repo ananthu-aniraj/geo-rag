@@ -222,12 +222,12 @@ python3 -m src.evaluation.benchmark_environmental_zones \
 To make evaluations easily reproducible and readable, the pipeline uses YAML files to manage configuration parameters, and provides two unified shell runners:
 
 ### 1. Offline Semantic Evaluation (LUCAS & Places365)
-* **Configuration**: `eval_params_offline.yaml`
+* **Configuration**: `config/evaluation/params_offline.yaml`
 * **Shell Script**: `./scripts/evaluation/run_offline_eval_semantic.sh`
 * **Operation**: Reads parameters from the offline YAML file and runs `benchmark_lucas.py` and `benchmark_places.py` sequentially, saving results into `benchmark_results/`.
 
 ### 2. Spatial/Environmental Evaluation (Environmental Zones & EUNIS)
-* **Configuration**: `eval_params_online.yaml`
+* **Configuration**: `config/evaluation/params_online.yaml`
 * **Shell Script**: `./scripts/evaluation/run_offline_eval_spatial.sh`
 * **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
 
@@ -236,7 +236,7 @@ To make evaluations easily reproducible and readable, the pipeline uses YAML fil
 ## 📈 Combined Evaluation Flow
 
 To run an end-to-end evaluation cycle:
-1. Populate your dataset paths and parameters in `eval_params_offline.yaml` and `eval_params_online.yaml`.
+1. Populate your dataset paths and parameters in `config/evaluation/params_offline.yaml` and `config/evaluation/params_online.yaml`.
 2. Run `./scripts/evaluation/run_offline_eval_semantic.sh` to benchmark semantic representation retrieval precision on local datasets.
 3. Run `./scripts/evaluation/run_offline_eval_spatial.sh` to measure geobotanical and climate alignment retrieval precision on geolocated databases.
 4. Run `caption_test.py` to caption a set of validation images and generate embeddings.

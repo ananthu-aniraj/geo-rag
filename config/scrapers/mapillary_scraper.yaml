@@ -1,0 +1,7 @@
+# Mapillary Grid Search Scraper Parameters
+scraper:
+  total_chunks: 10000
+  step_km: 5
+  max_photos_per_box: 100
+  uncovered_shapefile: "shapefiles/uncovered_land_areas_test.shp"
+  base_dir: "/home/ananthu/Projects/data/mapillary_scrape_rand_8"
