@@ -34,6 +34,13 @@ geo-rag/
 │   ├── evaluation.md             # Benchmark evaluations & retrieval suites
 │   ├── dataset.md                # Dataset files, structures, & loading guide
 │   └── metrics.md                # Evaluation & retrieval metrics definitions
+├── config/                       # Centralized parameter & credentials files
+│   ├── pipeline/                 # Core pipeline configurations
+│   │   └── params.yaml           # Pipeline hyperparameters
+│   ├── evaluation/               # Benchmark parameters (offline/online)
+│   │   ├── params_offline.yaml
+│   │   └── params_online.yaml
+│   └── scrapers/                 # Scraper execution configs (YAML)
 ├── scripts/                      # Automated shell orchestrators
 │   ├── scrapers/                 # Data collection and profiling runner wrappers
 │   └── evaluation/               # Benchmark and evaluation runner scripts
@@ -41,7 +48,9 @@ geo-rag/
 ├── templates/                    # Standalone HTML/JS frontend templates
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
 ├── run_full_pipeline.sh          # Full end-to-end data processing pipeline
-└── params.yaml                   # Pipeline configuration parameters
+├── params.yaml                   # Root pipeline params (loaded by running process)
+├── .env.template                 # Template for API credentials configuration
+└── .env                          # Local credentials file (gitignored)
 ```
 
 ---
@@ -66,6 +75,14 @@ To download the latest version of the dataset locally (requires SSH access to th
    ```bash
    dvc pull full_pipeline_output.dvc
    ```
+
+### Setting up API Credentials
+Before running scraper utilities or evaluation runs, set up your local API keys:
+1. Copy the environment template file:
+   ```bash
+   cp .env.template .env
+   ```
+2. Open `.env` and fill in your Flickr API keys, Mapillary access tokens, and Hugging Face tokens. The `.env` file is gitignored and remains local.
 
 ---
 
