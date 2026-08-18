@@ -22,31 +22,31 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 
 ```text
 geo-rag/
-├── src/                          # Core Python Package
-│   ├── scrapers/                 # Data collection (Mapillary, Flickr, iNaturalist, GBIF)
-│   ├── processing/               # Data cleaning, deduplication & timestamp standardization
-│   ├── indexing/                 # K-Means clustering & H3 spatial-semantic index builder
-│   ├── visualization/            # Map generators & HTML dashboard builders
-│   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
-│   └── utils/                    # LULC taxonomies, statistics, & cluster validation
-├── docs/                         # Technical Documentation
-│   ├── pipeline.md               # Data engineering details & architecture
-│   ├── evaluation.md             # Benchmark evaluations & retrieval suites
-│   ├── dataset.md                # Dataset files, structures, & loading guide
-│   └── metrics.md                # Evaluation & retrieval metrics definitions
 ├── config/                       # Centralized parameter & credentials files
 │   ├── evaluation/               # Evaluation parameters (offline/online)
 │   └── scrapers/                 # Scraper execution configs (YAML)
-├── scripts/                      # Automated shell orchestrators
-│   ├── scrapers/                 # Data collection and profiling runner wrappers
-│   └── evaluation/               # Benchmark and evaluation runner scripts
-├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
-├── templates/                    # Standalone HTML/JS frontend templates
+├── docs/                         # Technical Documentation
+│   ├── dataset.md                # Dataset files, structures, & loading guide
+│   ├── evaluation.md             # Benchmark evaluations & retrieval suites
+│   ├── metrics.md                # Evaluation & retrieval metrics definitions
+│   └── pipeline.md               # Data engineering details & architecture
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
-├── run_full_pipeline.sh          # Full end-to-end data processing pipeline
-├── params.yaml                   # Root pipeline params (loaded by running process)
+├── scripts/                      # Automated shell orchestrators
+│   ├── evaluation/               # Benchmark and evaluation runner scripts
+│   └── scrapers/                 # Data collection and profiling runner wrappers
+├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
+├── src/                          # Core Python Package
+│   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
+│   ├── indexing/                 # K-Means clustering & H3 spatial-semantic index builder
+│   ├── processing/               # Data cleaning, deduplication & timestamp standardization
+│   ├── scrapers/                 # Data collection (Mapillary, Flickr, iNaturalist, GBIF)
+│   ├── utils/                    # LULC taxonomies, statistics, & cluster validation
+│   └── visualization/            # Map generators & HTML dashboard builders
+├── templates/                    # Standalone HTML/JS frontend templates
+├── .env                          # Local credentials file (gitignored)
 ├── .env.template                 # Template for API credentials configuration
-└── .env                          # Local credentials file (gitignored)
+├── params.yaml                   # Root pipeline params (loaded by running process)
+└── run_full_pipeline.sh          # Full end-to-end data processing pipeline
 ```
 
 ---
