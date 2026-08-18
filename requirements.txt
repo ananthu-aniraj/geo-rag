@@ -23,6 +23,7 @@ openpyxl
 # torch
 # torchvision
 # transformers
+# timm
 # faiss-gpu   # Use if NVIDIA CUDA GPU is available (strongly recommended)
 # faiss-cpu   # Use if CPU-only
 

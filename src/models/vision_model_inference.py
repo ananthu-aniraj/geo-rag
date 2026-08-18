@@ -1,7 +1,11 @@
 import math
 
 import numpy as np
+import timm
+import torch
 import torch.nn.functional as F
+from torchvision import transforms
+from transformers import AutoModel
 
 
 def extract_model_embeddings(model, batch_tensors, representation_type='cls'):
@@ -94,7 +98,7 @@ def extract_benchmark_features_single_pass(model, batch_tensors, is_local=False)
     value attention patch tokens in a single optimized forward pass.
     
     Args:
-        model: TIPSv2 model instance (local checkpoint or Hugging Face wrapper).
+        model: TIPSv2 model instance, local checkpoint, or standard timm/HF model.
         batch_tensors (torch.Tensor): Preprocessed image batch tensor of shape (B, 3, H, W).
         is_local (bool): True if using local check-pointed ImageEncoder, False if Hugging Face.
         
@@ -103,18 +107,45 @@ def extract_benchmark_features_single_pass(model, batch_tensors, is_local=False)
             - cls_out is either (first_cls, second_cls) or a single cls_token array.
             - patch_tokens_vals is the MaskCLIP value attention patch tokens array.
     """
+    # Case 1: timm Model Integration
+    if not is_local and hasattr(model, 'forward_features'):
+        return _extract_features_timm(model, batch_tensors)
+
+    # Case 2: TIPSv2 model (local or Hugging Face wrapper)
+    return _extract_features_tipsv2(model, batch_tensors, is_local)
+
+
+def _extract_features_timm(model, batch_tensors):
+    """Extracts features from a timm model."""
+    features = model.forward_features(batch_tensors)
+    
+    if features.ndim == 4:
+        # CNN output: pool spatial dims for CLS, reshape for patches
+        cls_out = torch.nn.functional.adaptive_avg_pool2d(features, 1).flatten(1).cpu().numpy()
+        b, c, h, w = features.shape
+        patch_tokens_vals = features.permute(0, 2, 3, 1).reshape(b, h*w, c).cpu().numpy()
+    else:
+        # Transformer output: token 0 is CLS, tokens after prefix are patches
+        cls_out = features[:, 0].cpu().numpy()
+        num_prefix = getattr(model, 'num_prefix_tokens', 1)
+        patch_tokens_vals = features[:, num_prefix:].cpu().numpy()
+    return cls_out, patch_tokens_vals
+
+
+def _extract_features_tipsv2(model, batch_tensors, is_local):
+    """Extracts features from a TIPSv2 model (local or HF)."""
     vision_encoder = model if is_local else (model.vision_encoder if hasattr(model, 'vision_encoder') else model)
     
-    # 1. Prepare tokens (TIPSv2 resolution divides patch_size 14 perfectly, so no resize needed)
+    # 1. Prepare tokens
     x = vision_encoder.prepare_tokens_with_masks(batch_tensors)
     num_register = getattr(vision_encoder, 'num_register_tokens', 1)
     
-    # 2. Forward through first N-1 blocks (out of 12)
+    # 2. Forward through first N-1 blocks
     all_blocks = list(vision_encoder.blocks)
     for blk in all_blocks[:-1]:
         x = blk(x)
         
-    # 3. Last block standard output (runs standard self-attention)
+    # 3. Last block standard output (CLS token)
     x_standard = all_blocks[-1](x)
     x_standard_norm = vision_encoder.norm(x_standard)
     
@@ -159,3 +190,50 @@ def extract_benchmark_features_single_pass(model, batch_tensors, is_local=False)
     patch_tokens_vals = patch_tokens.cpu().numpy()
     
     return cls_out, patch_tokens_vals
+
+
+def load_vision_model(model_name, device):
+    """
+    Loads a vision model (timm or Hugging Face AutoModel) and resolves its required 
+    image size and transform.
+    
+    Args:
+        model_name (str): Hugging Face identifier or timm model name.
+        device (torch.device): Device to load the model on.
+        
+    Returns:
+        tuple: (model, transform, image_size)
+    """
+    
+    is_timm = False
+    try:
+        is_timm = model_name in timm.list_models() or any(
+            x in model_name for x in ['vit_', 'resnet', 'efficientnet', 'convnext', 'swin']
+        )
+    except Exception:
+        pass
+        
+    if is_timm:
+        print(f"Loading timm model: {model_name}...")
+        model = timm.create_model(model_name, pretrained=True).eval().to(device)
+        
+        # Resolve data config and create transform
+        data_config = timm.data.resolve_model_data_config(model)
+        timm_transform = timm.data.create_transform(**data_config, is_training=False)
+        
+        # Get required image size (timm uses a 3-element tuple (C, H, W))
+        input_size = data_config.get('input_size', (3, 224, 224))
+        image_size = input_size[1]
+        
+        return model, timm_transform, image_size
+    else:
+        # Load TIPSv2 (local or Hugging Face wrapper)
+        print(f"Loading TIPSv2 model: {model_name}...")
+        model = AutoModel.from_pretrained(model_name, trust_remote_code=True).eval().to(device)
+        image_size = 448
+        hf_transform = transforms.Compose([
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+        ])
+        return model, hf_transform, image_size
+

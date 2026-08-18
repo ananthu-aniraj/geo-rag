@@ -512,7 +512,7 @@ def _get_http_session():
     return _http_session
 
 
-def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_size=448, max_retries=3):
+def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_size=448, max_retries=3, mapillary_token=_MAPILLARY_TOKEN):
     """Loads an image locally if it's part of an offline dataset, or downloads it via connection pool with retries and fallbacks."""
     for attempt in range(max_retries):
         try:
@@ -538,7 +538,7 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_s
                 if url.startswith("mapillary://") or (photo_id and "fbcdn.net" in url):
                     orig_id = str(photo_id) if photo_id else url.split("://")[1]
                     api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
-                    headers = {"Authorization": f"OAuth {_MAPILLARY_TOKEN}"}
+                    headers = {"Authorization": f"OAuth {mapillary_token}"}
                     res = session.get(api_url, headers=headers, timeout=10)
                     if res.status_code == 200:
                         url = res.json().get("thumb_1024_url")

@@ -20,6 +20,10 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Refactored Scraper Scripts**: Updated all 7 scraper shell scripts in `scripts/scrapers/` to load their parameters from `config/scrapers/*.yaml` and credentials from `.env`, removing all fallback references to the main `params.yaml` file.
 - **Evaluation Configuration Decoupling**: Relocated root evaluation configs (`eval_params_offline.yaml` and `eval_params_online.yaml`) into a new `config/evaluation/` directory as `params_offline.yaml` and `params_online.yaml`, and created dedicated YAML parameter configurations for the LUCAS and Places365 visual model evaluation runners.
 - **Refactored Evaluation Scripts**: Updated all 4 evaluation shell runners in `scripts/evaluation/` to dynamically load parameters from the new `config/evaluation/` YAML files, fixing relative path bugs and imports.
+- **Multi-Model Benchmarking Support**: Added a unified `load_vision_model` helper supporting `timm` models and custom local/HF `TIPSv2` models, dynamically resolving input resolution, normalization, and transforms.
+- **Dynamic Prefix and Patch Extraction**: Updated the feature extraction pipelines in all 4 python benchmarks to automatically respect prefix tokens (using `model.num_prefix_tokens`) and dynamically compute grid sizes and patch boundaries at run-time (removing hardcoded patch-size expectations).
+- **Configurable YAML Model Names**: Exposed `model_name` attributes in the offline and online evaluation configs, enabling seamless comparisons across diverse representation models (like DINOv2, SigLIP, or CLIP via timm) by updating the YAML parameters.
+- **Optional SegFormer Speedup Toggle**: Added `--no_segformer` CLI argument and `use_segformer` YAML configuration support, enabling users to completely bypass SegFormer model loading and background segmentation checks for a massive (several times) performance speedup.
 
 ## [1.1.0] - 2026-08-17
 

@@ -231,6 +231,22 @@ To make evaluations easily reproducible and readable, the pipeline uses YAML fil
 * **Shell Script**: `./scripts/evaluation/run_offline_eval_spatial.sh`
 * **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
 
+### 🎛️ Multi-Model Benchmarking (timm & TIPSv2)
+
+All 4 benchmark scripts support evaluating different vision representations. You can configure which model to load in the YAML configuration parameters:
+* **timm Models**: Set `model_name` to a timm identifier (e.g. `vit_base_patch14_dinov2.lvd142m` or `resnet50`). Standard models like DINOv2 or SigLIP are loaded through timm.
+* **TIPSv2 Models**: Set `model_name` to `google/tipsv2-b14` or a path to a local TIPSv2 checkpoint. These models employ the custom TIPSv2 feature extraction layout and MaskCLIP value attention tricks.
+
+At runtime, the loader automatically queries `timm` to resolve the correct input resolution, normalization, and transforms for timm models, and defaults to custom preprocessing for TIPSv2. It also checks for prefix tokens (such as CLS and registers) via `model.num_prefix_tokens` to dynamically align patch tokens during spatial masking evaluations.
+
+### ⚡ Optional SegFormer Segmentation (Speedup Toggle)
+
+To calculate the geobotanical `Seg-Masked` patch representations, the benchmark scripts load the **SegFormer** model (`nvidia/segformer-b0-finetuned-ade-512-512`) to identify and discard background/sky classes. Because running SegFormer inference on every batch introduces a non-trivial computational and memory overhead, you can turn it off to significantly speed up your evaluations:
+* **YAML Toggle**: Set `use_segformer: false` in `config/evaluation/params_offline.yaml` or `config/evaluation/params_online.yaml`.
+* **CLI Flag**: Run individual scripts with the `--no_segformer` command-line argument.
+
+When disabled, SegFormer is not loaded into memory, background masks are not processed, and evaluation runs **several times faster**, extracting only the core visual representations (`CLS`, `Average Patch`, and concatenation combos).
+
 ---
 
 ## 📈 Combined Evaluation Flow

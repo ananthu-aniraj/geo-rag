@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import random
 import sys
@@ -6,15 +7,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import geopandas as gpd
+import h3
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import rasterio
 import torch
-from torchvision import transforms
 from tqdm import tqdm
 from transformers import (
-    AutoModel,
     SegformerForSemanticSegmentation,
     SegformerImageProcessor,
 )
@@ -23,6 +23,7 @@ from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_r
 from src.models import tips_image_encoder as image_encoder
 from src.models.vision_model_inference import (
     extract_benchmark_features_single_pass,
+    load_vision_model,
 )
 from src.utils.io import download_image
 from src.utils.spatial_overlays import (
@@ -31,7 +32,6 @@ from src.utils.spatial_overlays import (
     lookup_raster_pixel,
 )
 
-MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
 DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
 
 
@@ -78,17 +78,25 @@ def main():
     parser.add_argument("--offline_dataset_dirs", type=str, nargs="*", default=None,
                         help="Base directories containing offline dataset images and CSV folders.")
     parser.add_argument("--tips_model_path", type=str, default=None,
-                        help="Path to the official TIPSv2 model checkpoint (.npz). If None, uses Hugging Face 'google/tipsv2-b14'.")
+                        help="Path to the official TIPSv2 model checkpoint (.npz). If None, uses --model_name.")
+    parser.add_argument("--model_name", type=str, default="google/tipsv2-b14",
+                        help="Hugging Face model identifier or timm model name.")
     parser.add_argument("--tips_model_variant", type=str, default="B", choices=["S", "B", "L", "So400m", "g"],
                         help="Variant of the official TIPSv2 model.")
     parser.add_argument("--tips_low_res", action="store_true", help="Set image resolution to 224px instead of 448px.")
+    parser.add_argument("--no_segformer", action="store_true", help="Skip SegFormer background segmentation.")
     parser.add_argument("--output_report", type=str, default="./benchmark_results/eunis_report.txt",
                         help="Path to write the report summary.")
     parser.add_argument("--output_csv", type=str, default="./benchmark_results/eunis_results.csv",
                         help="Path to write detailed query CSV results.")
     parser.add_argument("--query_platform", type=str, default=None,
                         help="Filter query images to only use this platform (e.g. 'flickr').")
+    parser.add_argument("--mapillary_token", type=str, default=None,
+                        help="Mapillary API access token to override default/environment settings.")
     args = parser.parse_args()
+
+    # Dynamic override of Mapillary Token in shared utils module without altering source file
+    m_token = args.mapillary_token
 
     csv_path = args.csv if args.csv is not None else args.csv_path
 
@@ -209,7 +217,7 @@ def main():
         print("Error: No images mapped successfully to EUNIS ecosystem categories.")
         return
 
-    import h3
+
     print("Partitioning queries and database geographically to prevent spatial autocorrelation/sequence leakage...")
     
     # 1. Map each image to an H3 Resolution 4 parent block (~11,000 km2)
@@ -360,7 +368,8 @@ def main():
                 photo_id=item.get('photo_id'),
                 platform=item.get('platform'),
                 offline_dirs=args.offline_dataset_dirs,
-                image_size=image_size
+                image_size=image_size,
+                mapillary_token=m_token
             ): idx
             for idx, item in enumerate(queries_selection)
         }
@@ -419,34 +428,39 @@ def main():
         model.load_state_dict(checkpoint)
         tipsv2 = model.eval().to(device)
     else:
-        print("Loading Hugging Face google/tipsv2-b14 model...")
-        tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
-        image_size = 448
+        # Load from HF or timm via unified helper
+        tipsv2, transform, image_size = load_vision_model(args.model_name, device)
 
-    print("Loading SegFormer model...")
-    seg_processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
-    seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(
-        device)
+    seg_processor = None
+    seg_model = None
+    if not args.no_segformer:
+        print("Loading SegFormer model...")
+        seg_processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
+        seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(
+            device)
 
     # 4. Setup representations dynamically
+    model_label = "TIPSv2" if (args.tips_model_path or "tipsv2" in args.model_name.lower()) else os.path.basename(args.model_name)
     if args.tips_model_path:
         representations = {
-            "TIPSv2 1st CLS": {"query": [], "db": []},
-            "TIPSv2 2nd CLS": {"query": [], "db": []},
-            "TIPSv2 Average Patch": {"query": [], "db": []},
-            "TIPSv2 1st CLS + Average Patch": {"query": [], "db": []},
-            "TIPSv2 2nd CLS + Average Patch": {"query": [], "db": []},
-            "TIPSv2 Seg-Masked": {"query": [], "db": []}
+            f"{model_label} 1st CLS": {"query": [], "db": []},
+            f"{model_label} 2nd CLS": {"query": [], "db": []},
+            f"{model_label} Average Patch": {"query": [], "db": []},
+            f"{model_label} 1st CLS + Average Patch": {"query": [], "db": []},
+            f"{model_label} 2nd CLS + Average Patch": {"query": [], "db": []}
         }
+        if not args.no_segformer:
+            representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
     else:
         representations = {
-            "TIPSv2 CLS": {"query": [], "db": []},
-            "TIPSv2 Average Patch": {"query": [], "db": []},
-            "TIPSv2 CLS + Average Patch": {"query": [], "db": []},
-            "TIPSv2 Seg-Masked": {"query": [], "db": []}
+            f"{model_label} CLS": {"query": [], "db": []},
+            f"{model_label} Average Patch": {"query": [], "db": []},
+            f"{model_label} CLS + Average Patch": {"query": [], "db": []}
         }
+        if not args.no_segformer:
+            representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
 
-    transform = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor()])
+    transform = transform
     grid_size = 16 if (args.tips_model_path and args.tips_low_res) else 32
     num_patches = grid_size * grid_size
 
@@ -469,72 +483,78 @@ def main():
                 continue
 
             # A. SegFormer segmentation masks
-            inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
-            with torch.no_grad():
-                outputs = seg_model(**inputs)
-            logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
-                                                     align_corners=False)
-            pred_masks = logits.argmax(dim=1).cpu().numpy()
+            pred_masks = None
+            if not args.no_segformer:
+                inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
+                with torch.no_grad():
+                    outputs = seg_model(**inputs)
+                logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
+                                                         align_corners=False)
+                pred_masks = logits.argmax(dim=1).cpu().numpy()
+                
+                # Free SegFormer GPU memory
+                del inputs, outputs, logits
 
-            # Free SegFormer GPU memory
-            del inputs, outputs, logits
-
-            # B. TIPSv2 feature extraction
+            # B. Feature extraction
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
                 cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(tipsv2, img_tensors,
                                                                                     is_local=is_local)
-                patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), num_patches, -1)
+                patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), -1, patch_tokens_vals.shape[-1])
+                curr_num_patches = patch_tokens_vals.shape[1]
+                curr_grid_size = int(math.sqrt(curr_num_patches))
+                curr_patch_size = image_size // curr_grid_size
 
                 if is_local:
                     first_cls, second_cls = cls_out
-                    representations["TIPSv2 1st CLS"][split_key].extend(first_cls)
-                    representations["TIPSv2 2nd CLS"][split_key].extend(second_cls)
+                    representations[f"{model_label} 1st CLS"][split_key].extend(first_cls)
+                    representations[f"{model_label} 2nd CLS"][split_key].extend(second_cls)
                 else:
                     cls_tokens = cls_out
-                    representations["TIPSv2 CLS"][split_key].extend(cls_tokens)
+                    representations[f"{model_label} CLS"][split_key].extend(cls_tokens)
             del img_tensors
 
             # Process patch poolings for each image in batch
             for idx in range(len(batch_imgs)):
                 patch_tokens = patch_tokens_vals[idx]  # (num_patches, D)
-                pred_mask = pred_masks[idx]
 
-                # TIPSv2 Average Patch
+                # Average Patch
                 avg_patch = np.mean(patch_tokens, axis=0)
-                representations["TIPSv2 Average Patch"][split_key].append(avg_patch)
+                representations[f"{model_label} Average Patch"][split_key].append(avg_patch)
 
                 # Concatenated CLS + Average Patch
                 if is_local:
                     first_cls_token = first_cls[idx]
                     second_cls_token = second_cls[idx]
-                    representations["TIPSv2 1st CLS + Average Patch"][split_key].append(np.concatenate([first_cls_token, avg_patch]))
-                    representations["TIPSv2 2nd CLS + Average Patch"][split_key].append(np.concatenate([second_cls_token, avg_patch]))
+                    representations[f"{model_label} 1st CLS + Average Patch"][split_key].append(np.concatenate([first_cls_token, avg_patch]))
+                    representations[f"{model_label} 2nd CLS + Average Patch"][split_key].append(np.concatenate([second_cls_token, avg_patch]))
                 else:
                     cls_token = cls_tokens[idx]
-                    representations["TIPSv2 CLS + Average Patch"][split_key].append(np.concatenate([cls_token, avg_patch]))
+                    representations[f"{model_label} CLS + Average Patch"][split_key].append(np.concatenate([cls_token, avg_patch]))
 
-                # TIPSv2 Seg-Masked
-                keep_mask = np.ones_like(pred_mask, dtype=float)
-                for c in DISCARD_CLASSES:
-                    keep_mask[pred_mask == c] = 0.0
+                # Seg-Masked
+                if not args.no_segformer:
+                    pred_mask = pred_masks[idx]
+                    keep_mask = np.ones_like(pred_mask, dtype=float)
+                    for c in DISCARD_CLASSES:
+                        keep_mask[pred_mask == c] = 0.0
 
-                # Downsample keep mask to grid_size x grid_size patch resolution
-                patch_weights = np.zeros((grid_size, grid_size))
-                for r in range(grid_size):
-                    for c in range(grid_size):
-                        patch_weights[r, c] = np.mean(keep_mask[r * 14:(r + 1) * 14, c * 14:(c + 1) * 14])
-                patch_weights_flat = patch_weights.flatten()[:, np.newaxis]  # (num_patches, 1)
+                    # Downsample keep mask to grid_size x grid_size patch resolution
+                    patch_weights = np.zeros((curr_grid_size, curr_grid_size))
+                    for r in range(curr_grid_size):
+                        for c in range(curr_grid_size):
+                            patch_weights[r, c] = np.mean(keep_mask[r * curr_patch_size:(r + 1) * curr_patch_size, c * curr_patch_size:(c + 1) * curr_patch_size])
+                    patch_weights_flat = patch_weights.flatten()[:, np.newaxis]  # (num_patches, 1)
 
-                masked_patch_sum = np.sum(patch_tokens * patch_weights_flat, axis=0)
-                masked_patch_weight_sum = np.sum(patch_weights_flat)
-                if masked_patch_weight_sum > 0:
-                    masked_avg_embed = (masked_patch_sum / (masked_patch_weight_sum + 1e-9))
-                else:
-                    masked_avg_embed = avg_patch
+                    masked_patch_sum = np.sum(patch_tokens * patch_weights_flat, axis=0)
+                    masked_patch_weight_sum = np.sum(patch_weights_flat)
+                    if masked_patch_weight_sum > 0:
+                        masked_avg_embed = (masked_patch_sum / (masked_patch_weight_sum + 1e-9))
+                    else:
+                        masked_avg_embed = avg_patch
 
-                representations["TIPSv2 Seg-Masked"][split_key].append(masked_avg_embed)
+                    representations[f"{model_label} Seg-Masked"][split_key].append(masked_avg_embed)
 
     # Extract query features and free RAM immediately
     extract_features_batch(queries_meta, "query")
@@ -561,7 +581,8 @@ def main():
                     photo_id=item.get('photo_id'),
                     platform=item.get('platform'),
                     offline_dirs=args.offline_dataset_dirs,
-                    image_size=image_size
+                    image_size=image_size,
+                    mapillary_token=m_token
                 ): idx
                 for idx, item in enumerate(chunk_meta)
             }

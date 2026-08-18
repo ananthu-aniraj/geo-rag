@@ -31,7 +31,8 @@ dependencies = [
     "dvc",
     "dvc-ssh",
     "plotly",
-    "openpyxl"
+    "openpyxl",
+    "timm"
 ]
 
 [project.optional-dependencies]

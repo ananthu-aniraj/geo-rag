@@ -1,7 +1,9 @@
 import argparse
 import os
 import sys
+
 import numpy as np
+
 
 def main():
     parser = argparse.ArgumentParser(description="Convert npy embedding matrix from float32 to float16 memory-efficiently.")

@@ -267,7 +267,7 @@ def main():
             os.remove(temp_parquet_path)
 
     out_npy = os.path.join(out_dir, f"{out_base}_{args.representation_type}_embeddings.npy")
-    print(f"\n🎉 Offline dataset created successfully!")
+    print("\n🎉 Offline dataset created successfully!")
     print(f" -> Metadata: {out_metadata}")
     print(f" -> Embeddings: {out_npy}")
 
