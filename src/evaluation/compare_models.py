@@ -75,11 +75,20 @@ def parse_report_file(report_path, model_name):
             ):
                 parts = [p.strip() for p in line.split("|")]
                 if len(parts) >= 6:
+                    rep = parts[0]
+                    # Strip model name or clean version from representation name
+                    model_clean = model_name.replace("/", "_")
+                    for prefix in [model_name, model_clean]:
+                        if rep.startswith(prefix):
+                            rep = rep[len(prefix) :].strip()
+                    # Strip leading spaces/hyphens/underscores
+                    rep = re.sub(r"^[-_\s]+", "", rep)
+
                     results.append(
                         {
                             "Model": model_name,
                             "Evaluation": current_evaluation,
-                            "Representation": parts[0],
+                            "Representation": rep,
                             "P@1": parts[1],
                             "P@5": parts[2],
                             "P@10": parts[3],
@@ -88,6 +97,44 @@ def parse_report_file(report_path, model_name):
                         }
                     )
     return results
+
+
+def deduplicate_cnn_rows(results):
+    """
+    If a model doesn't have a real CLS token, CLS and Average Patch scores
+    will be identical. We filter out the redundant CLS row for such cases.
+    """
+    grouped = {}
+    for r in results:
+        key = (r["Model"], r["Evaluation"])
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(r)
+
+    filtered_results = []
+    for key, rows in grouped.items():
+        cls_row = next((r for r in rows if r["Representation"] == "CLS"), None)
+        avg_row = next(
+            (r for r in rows if r["Representation"] == "Average Patch"), None
+        )
+
+        if cls_row and avg_row:
+            metrics_match = (
+                cls_row["P@1"] == avg_row["P@1"]
+                and cls_row["P@5"] == avg_row["P@5"]
+                and cls_row["P@10"] == avg_row["P@10"]
+                and cls_row["MAP@10"] == avg_row["MAP@10"]
+                and cls_row["MRR@10"] == avg_row["MRR@10"]
+            )
+            if metrics_match:
+                # Remove redundant CLS row and rename Average Patch to show it's a CNN/No-CLS model
+                rows = [r for r in rows if r is not cls_row]
+                for r in rows:
+                    if r["Representation"] == "Average Patch":
+                        r["Representation"] = "Average (No CLS)"
+
+        filtered_results.extend(rows)
+    return filtered_results
 
 
 def main():
@@ -214,9 +261,18 @@ def main():
         print("\nError: No benchmarking metrics were successfully parsed.")
         sys.exit(1)
 
+    # Deduplicate redundant rows for CNN/No-CLS models
+    all_results = deduplicate_cnn_rows(all_results)
+
     # Generate comparative Markdown table
     collate_path = f"./benchmark_results/comparison_{args.benchmark}.md"
     os.makedirs(os.path.dirname(collate_path), exist_ok=True)
+
+    def parse_pct(pct_str):
+        try:
+            return float(pct_str.replace("%", "").strip())
+        except Exception:
+            return -1.0
 
     with open(collate_path, "w", encoding="utf-8") as f:
         f.write(f"# Comparative Benchmark Report: {args.benchmark.upper()}\n")
@@ -232,6 +288,11 @@ def main():
             f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
 
             cat_results = [r for r in all_results if r["Evaluation"] == category]
+            # Sort by P@1 metric descending
+            cat_results = sorted(
+                cat_results, key=lambda x: parse_pct(x["P@1"]), reverse=True
+            )
+
             for r in cat_results:
                 f.write(
                     f"| {r['Model']} | {r['Representation']} | {r['P@1']} | {r['P@5']} | {r['P@10']} | {r['MAP@10']} | {r['MRR@10']} |\n"
