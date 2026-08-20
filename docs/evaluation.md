@@ -248,6 +248,22 @@ To calculate the geobotanical `Seg-Masked` patch representations, the benchmark 
 
 When disabled, SegFormer is not loaded into memory, background masks are not processed, and evaluation runs **several times faster**, extracting only the core visual representations (`CLS`, `Average Patch`, and concatenation combos).
 
+### 📊 Automated Multi-Model Comparison (`compare_models.py`)
+
+If you want to evaluate multiple models side-by-side on a specific dataset without manually editing configuration files or copy-pasting tables, you can use the automated `compare_models.py` script:
+
+```bash
+python3 -m src.evaluation.compare_models \
+  --benchmark [lucas|places|eunis|env_zones] \
+  --models model_name_1 model_name_2 ...
+```
+
+#### How it works:
+1. **Reads config**: Automatically reads dataset parameters (number of queries, dataset paths, SegFormer status, etc.) from `config/evaluation/params_offline.yaml` or `params_online.yaml` based on the selected benchmark.
+2. **Runs benchmarks sequentially**: Executes the underlying python benchmark for each model in sequence, saving individual model reports safely with sanitized filenames (preventing them from overwriting each other).
+3. **Collates results**: Parses each generated text report, extracts the metrics (Precision@1, Precision@5, Precision@10, MAP@10, and MRR@10) across all representations, and consolidates them into a single markdown file (`benchmark_results/comparison_[benchmark].md`).
+4. **Prints summary**: Outputs the final collated comparison markdown table directly to your console.
+
 ---
 
 ## 📈 Combined Evaluation Flow

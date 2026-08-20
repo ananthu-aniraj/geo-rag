@@ -14,6 +14,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [1.1.2] - 2026-08-20
 
 ### Added
+- **Automated Model Benchmarking Comparison**: Created `compare_models.py` to automate running the benchmarking pipeline across multiple models sequentially, parsing the metrics, and collating them into a single markdown comparison report.
 - **Interactive Project Wiki & MathJax Support**: Added a Material for MkDocs configuration (`config/wiki/mkdocs.yml`) with support for Mermaid diagrams and MathJax LaTeX equation rendering (delimiters: `$ ... $`, `$$ ... $$`). Relocated the changelog inside the `docs/` folder and created a site homepage.
 - **Configurable CLIP Comparison**: Added the `compare_clip` parameter to the Places365 config, allowing users to toggle CLIP baselines directly from the YAML.
 - **Sanitized Model-Specific Output Reports**: Appended clean model names to benchmark report text and CSV files (e.g. `lucas_report_google_tipsv2-b14.txt`), preventing concurrent runs from overwriting each other.
