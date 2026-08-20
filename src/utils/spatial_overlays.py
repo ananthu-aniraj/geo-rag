@@ -104,3 +104,92 @@ def get_environmental_zone_label(pixel_val):
         pass
 
     return "Unknown"
+
+
+def load_eunis_legend(raster_path):
+    """
+    Loads EUNIS Level 3 legend mappings from 'eunis_legend_detailed.csv'
+    located in the same directory as the raster.
+
+    Returns:
+        dict: A mapping from Id (int) -> dict of level names: 'eunis_l1', 'eunis_l2', 'eunis_l3'
+    """
+    import os
+
+    import pandas as pd
+
+    legend_path = os.path.join(
+        os.path.dirname(raster_path), "eunis_legend_detailed.csv"
+    )
+    if not os.path.exists(legend_path):
+        legend_path = os.path.join(
+            os.path.dirname(os.path.dirname(raster_path)), "eunis_legend_detailed.csv"
+        )
+
+    legend_df = pd.read_csv(legend_path)
+    legend_mapping = {}
+    for _, row in legend_df.iterrows():
+        try:
+            rid = int(row["Id"])
+            l1_name = (
+                str(row["EUNIS1_name"]).strip()
+                if pd.notna(row["EUNIS1_name"])
+                else str(row["EUNIS1"]).strip()
+            )
+
+            l2_name = (
+                str(row["EUNIS2_name"]).strip()
+                if pd.notna(row["EUNIS2_name"])
+                else l1_name
+            )
+            if not l2_name or l2_name.lower() == "nan":
+                l2_name = l1_name
+
+            l3_name = (
+                str(row["EUNIS3_name"]).strip()
+                if pd.notna(row["EUNIS3_name"])
+                else l2_name
+            )
+            if not l3_name or l3_name.lower() == "nan":
+                l3_name = l2_name
+
+            legend_mapping[rid] = {
+                "eunis_l1": l1_name,
+                "eunis_l2": l2_name,
+                "eunis_l3": l3_name,
+            }
+        except Exception:
+            continue
+    return legend_mapping
+
+
+def lookup_environmental_zone(lat, lon, r_ds, transformer, has_axis_order):
+    """
+    Looks up the Environmental Zone label for a given coordinate.
+
+    Returns:
+        str: Environmental Zone name, or "" if not found/invalid.
+    """
+    pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
+    if pixel_val is None or pixel_val == r_ds.nodata or pixel_val <= 0:
+        return ""
+    label = get_environmental_zone_label(pixel_val)
+    return label if label != "Unknown" else ""
+
+
+def lookup_eunis_levels(lat, lon, r_ds, transformer, has_axis_order, legend_mapping):
+    """
+    Looks up the EUNIS Level 1, 2, and 3 classifications for a coordinate.
+
+    Returns:
+        dict: {'eunis_l1': ..., 'eunis_l2': ..., 'eunis_l3': ...} or None if not found/invalid.
+    """
+    pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
+    if (
+        pixel_val is None
+        or pixel_val == r_ds.nodata
+        or pixel_val <= 0
+        or pixel_val not in legend_mapping
+    ):
+        return None
+    return legend_mapping[pixel_val]

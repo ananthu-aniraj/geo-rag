@@ -111,14 +111,14 @@ This script benchmarks the semantic retrieval capability of different image repr
    * **Land Cover** (`lc_label`)
    * **Land Use** (`lu_label`)
    * **EUNIS Class** (`eunis_class` from CSV metadata)
-   * **EUNIS Ecosystem** (`eunis_raster_class` from raster overlay, optional)
+   * **EUNIS Ecosystem Raster Levels 1, 2, and 3** (`eunis_raster_l1`, `eunis_raster_l2`, `eunis_raster_l3` from raster overlay, optional)
    * **Environmental Zone** (`env_zone_class` from raster overlay, optional)
 
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_lucas \
   --csv path/to/Sen4Map_Metadata_test.csv \
-  --img_dir path/to/lucas_images/ \
+  --images_dir path/to/lucas_images/ \
   --eunis_raster path/to/eunis_ecosystem.tif \
   --env_zones_raster path/to/environmental_zones.tif \
   --tips_model_path path/to/checkpoint.npz \
@@ -168,14 +168,14 @@ Output filenames are formatted dynamically by appending the seed and query count
 
 ## 🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (`benchmark_eunis.py`)
 
-This script performs geobotanical representation benchmarking on arbitrary geolocated images in Europe (e.g. scraped Flickr/Mapillary datasets). It overlays WGS84 coordinates on a local **EUNIS Ecosystem GeoTIFF raster map** to extract the ecosystem type, evaluating whether nearest-neighbor retrieval aligns with European habitats.
+This script performs geobotanical representation benchmarking on arbitrary geolocated images in Europe (e.g. scraped Flickr/Mapillary datasets). It overlays WGS84 coordinates on the 2024 **EUNIS Ecosystem GeoTIFF raster map** (`eunis_dominant.tif`) to extract the ecosystem type, evaluating whether nearest-neighbor retrieval aligns with European habitats across hierarchical levels.
 
 ### 🔍 Methodology
 1. **EUNIS Raster Coordinate Lookup:** Reads your scraped CSV metadata, transforms coordinates into EPSG:3035 using `pyproj`, and queries the local EUNIS GeoTIFF.
-2. **Dynamic Label Parsing:** If the `.vat.dbf` database file is found next to the raster, the script parses it dynamically using Geopandas to map raster values to terrestrial labels (e.g., *Woodland*, *Cropland*).
+2. **EUNIS Legend Parsing:** Reads the `eunis_legend_detailed.csv` legend file located alongside the raster to extract EUNIS Level 1 (Macro), Level 2 (Meso), and Level 3 (Exact) class labels.
 3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by EUNIS category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
 4. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
-5. **Retrieval Evaluations:** Reports P@1, P@5, P@10, mAP@10, and MRR@10 on geobotanical classifications.
+5. **Retrieval Evaluations:** Reports P@1, P@5, P@10, mAP@10, and MRR@10 across three hierarchical habitat levels: **EUNIS Level 1 (Macro)**, **EUNIS Level 2 (Meso)**, and **EUNIS Level 3 (Exact)**.
 
 ### 💻 Usage
 ```bash
@@ -190,7 +190,7 @@ python3 -m src.evaluation.benchmark_eunis \
 ```
 
 ### 📦 Outputs
-- `benchmark_results/eunis_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations.
+- `benchmark_results/eunis_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and EUNIS levels.
 - `benchmark_results/eunis_results.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
 
 ---

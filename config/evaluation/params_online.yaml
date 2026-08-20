@@ -16,7 +16,7 @@ eunis:
   model_name: "google/tipsv2-b14"
   csv_path: "/home/ananthu/Projects/data/full_pipeline_output/geo_space_deduplicated.parquet"
   countries_shp: "shapefiles/ne_10m_admin_0_countries.shp"
-  raster: "/home/ananthu/DATA/data_ananthu/eea_r_3035_100_m_ecosystem-types-terrestrial-r_p_2012_v03_r01/eea_r_3035_100_m_etm-terrestrial-r_2012_v3-1_r00.tif"
+  raster: "/home/ananthu/Projects/data/eunis_updated_dataset/eunis_dominant.tif"
   num_queries: 5000
   num_database: 400000
   batch_size: 32

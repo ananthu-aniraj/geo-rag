@@ -29,8 +29,7 @@ from src.models.vision_model_inference import (
 from src.utils.io import download_image
 from src.utils.spatial_overlays import (
     get_crs_transformer,
-    get_environmental_zone_label as get_zone_label,
-    lookup_raster_pixel,
+    lookup_environmental_zone,
 )
 
 DISCARD_CLASSES = {
@@ -262,21 +261,11 @@ def main():
             lat = float(row[lat_col])
             lon = float(row[lon_col])
 
-            # Sample pixel value using unified lookup
-            pixel_val = lookup_raster_pixel(
+            # Resolve Environmental Zone label
+            zone_class = lookup_environmental_zone(
                 lat, lon, raster_dataset, transformer, has_axis_order
             )
-
-            # Skip nodata / empty values
-            if (
-                pixel_val is None
-                or pixel_val == raster_dataset.nodata
-                or pixel_val <= 0
-            ):
-                continue
-
-            zone_class = get_zone_label(pixel_val)
-            if zone_class == "Unknown":
+            if not zone_class:
                 continue
 
             # Extract platform

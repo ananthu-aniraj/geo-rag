@@ -6,7 +6,6 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import geopandas as gpd
 import h3
 import numpy as np
 import pandas as pd
@@ -28,8 +27,8 @@ from src.models.vision_model_inference import (
 from src.utils.io import download_image
 from src.utils.spatial_overlays import (
     get_crs_transformer,
-    get_eunis_label,
-    lookup_raster_pixel,
+    load_eunis_legend,
+    lookup_eunis_levels,
 )
 
 DISCARD_CLASSES = {
@@ -42,37 +41,6 @@ DISCARD_CLASSES = {
     102,
     127,
 }  # sky, person, car, sign, bus, truck, van, bike
-
-
-def load_eunis_mapping_from_dbf(dbf_path):
-    """Loads EUNIS value mapping dynamically from the associated DBF file if it exists."""
-    mapping = {}
-    if os.path.exists(dbf_path):
-        try:
-            print(f"Loading EUNIS classification mapping from local DBF: {dbf_path}...")
-            # Geopandas can read DBF files directly via read_file
-            gdf = gpd.read_file(dbf_path)
-            val_col = next((c for c in gdf.columns if c.lower() == "value"), None)
-            label_col = next(
-                (
-                    c
-                    for c in gdf.columns
-                    if c.lower() in ["maes_l2", "maes_level2", "class_name"]
-                ),
-                None,
-            )
-
-            if val_col and label_col:
-                for _, row in gdf.iterrows():
-                    val = int(float(str(row[val_col])))
-                    label = str(row[label_col]).strip()
-                    if label and label.lower() != "none":
-                        mapping[val] = label
-                print(f"Loaded {len(mapping)} dynamic class mappings from DBF.")
-        except Exception as e:
-            print(f"Warning: Failed to load DBF attribute mapping: {e}")
-
-    return mapping
 
 
 def main():
@@ -100,7 +68,7 @@ def main():
     parser.add_argument(
         "--raster",
         type=str,
-        default="/user/aaniraj/home/Documents/Projects/data/eea_r_3035_100_m_ecosystem-types-terrestrial-r_p_2012_v03_r01/eea_r_3035_100_m_etm-terrestrial-r_2012_v3-1_r00.tif",
+        default="/user/aaniraj/home/Documents/Projects/data/eunis_paper/eunis_dominant.tif",
         help="Path to EUNIS Ecosystem map GeoTIFF.",
     )
 
@@ -213,9 +181,12 @@ def main():
         print(f"Error opening raster: {e}")
         sys.exit(1)
 
-    # Load dynamic attribute mappings from associated DBF if available
-    dbf_path = args.raster.replace(".tif", ".tif.vat.dbf")
-    dynamic_mapping = load_eunis_mapping_from_dbf(dbf_path)
+    # Load EUNIS Level 3 legend mappings
+    try:
+        legend_mapping = load_eunis_legend(args.raster)
+    except Exception as e:
+        print(f"Error loading EUNIS legend: {e}")
+        sys.exit(1)
 
     # 2. Load CSV
     if not os.path.exists(csv_path):
@@ -296,22 +267,16 @@ def main():
             lat = float(row[lat_col])
             lon = float(row[lon_col])
 
-            # Sample pixel value using unified lookup
-            pixel_val = lookup_raster_pixel(
-                lat, lon, raster_dataset, transformer, has_axis_order
+            # Resolve EUNIS levels
+            levels = lookup_eunis_levels(
+                lat, lon, raster_dataset, transformer, has_axis_order, legend_mapping
             )
-
-            # Skip nodata / empty values
-            if (
-                pixel_val is None
-                or pixel_val == raster_dataset.nodata
-                or pixel_val <= 0
-            ):
+            if not levels:
                 continue
-
-            eunis_class = get_eunis_label(pixel_val, dynamic_mapping)
-            if eunis_class == "Unknown":
-                continue
+            eunis_l1 = levels["eunis_l1"]
+            eunis_l2 = levels["eunis_l2"]
+            eunis_l3 = levels["eunis_l3"]
+            eunis_class = eunis_l3
 
             # Extract platform
             plat_val = str(row[platform_col]).strip().lower() if platform_col else ""
@@ -335,6 +300,9 @@ def main():
                     "lat": lat,
                     "lon": lon,
                     "eunis_class": eunis_class,
+                    "eunis_l1": eunis_l1,
+                    "eunis_l2": eunis_l2,
+                    "eunis_l3": eunis_l3,
                     "platform": plat_val,
                 }
             )
@@ -841,6 +809,13 @@ def main():
         }
     representations = expanded_representations
 
+    label_types = ["eunis_l1", "eunis_l2", "eunis_l3"]
+    label_names = {
+        "eunis_l1": "EUNIS Level 1 (Macro)",
+        "eunis_l2": "EUNIS Level 2 (Meso)",
+        "eunis_l3": "EUNIS Level 3 (Exact)",
+    }
+
     results = {}
     detailed_rows = []
 
@@ -858,13 +833,15 @@ def main():
         q_vectors_norm = q_vectors / q_norms
         db_vectors_norm = db_vectors / db_norms
 
-        results[rep_name] = {
-            "p@1": 0.0,
-            "p@5": 0.0,
-            "p@10": 0.0,
-            "map@10": 0.0,
-            "mrr@10": 0.0,
-        }
+        results[rep_name] = {}
+        for l_type in label_types:
+            results[rep_name][l_type] = {
+                "p@1": 0.0,
+                "p@5": 0.0,
+                "p@10": 0.0,
+                "map@10": 0.0,
+                "mrr@10": 0.0,
+            }
 
         # Compute all similarities in a single batched operation: (Q, D_dim) x (D_dim, DB) -> (Q, DB)
         sim_matrix = np.dot(q_vectors_norm, db_vectors_norm.T)
@@ -874,69 +851,79 @@ def main():
         # Query loop
         for q_idx in range(len(queries_meta)):
             q_item = queries_meta[q_idx]
-            q_label = q_item["eunis_class"]
             sorted_db_indices = top_indices[q_idx]
 
             retrieved_items = [database_meta[idx] for idx in sorted_db_indices[:10]]
-            retrieved_labels = [item["eunis_class"] for item in retrieved_items]
 
-            # P@1
-            p1 = compute_precision_at_k(retrieved_labels, q_label, k=1)
-            results[rep_name]["p@1"] += p1
+            for l_type in label_types:
+                q_label = q_item[l_type]
+                retrieved_labels = [item[l_type] for item in retrieved_items]
 
-            # P@5
-            p5 = compute_precision_at_k(retrieved_labels, q_label, k=5)
-            results[rep_name]["p@5"] += p5
+                # P@1
+                p1 = compute_precision_at_k(retrieved_labels, q_label, k=1)
+                results[rep_name][l_type]["p@1"] += p1
 
-            # P@10
-            p10 = compute_precision_at_k(retrieved_labels, q_label, k=10)
-            results[rep_name]["p@10"] += p10
+                # P@5
+                p5 = compute_precision_at_k(retrieved_labels, q_label, k=5)
+                results[rep_name][l_type]["p@5"] += p5
 
-            # mAP@10
-            ap = compute_ap(retrieved_labels, q_label, k=10)
-            results[rep_name]["map@10"] += ap
+                # P@10
+                p10 = compute_precision_at_k(retrieved_labels, q_label, k=10)
+                results[rep_name][l_type]["p@10"] += p10
 
-            # MRR@10
-            rr = compute_rr(retrieved_labels, q_label, k=10)
-            results[rep_name]["mrr@10"] += rr
+                # mAP@10
+                ap = compute_ap(retrieved_labels, q_label, k=10)
+                results[rep_name][l_type]["map@10"] += ap
 
-            q_id = (
-                f"{q_item.get('platform', 'unknown')}_{q_item.get('photo_id', '')}"
-                if q_item.get("photo_id")
-                else q_item["url"]
-            )
-            r_id = (
-                f"{retrieved_items[0].get('platform', 'unknown')}_{retrieved_items[0].get('photo_id', '')}"
-                if retrieved_items[0].get("photo_id")
-                else retrieved_items[0]["url"]
-            )
+                # MRR@10
+                rr = compute_rr(retrieved_labels, q_label, k=10)
+                results[rep_name][l_type]["mrr@10"] += rr
 
-            detailed_rows.append(
-                {
-                    "Query_Image": q_id,
-                    "Representation": rep_name,
-                    "Ground_Truth": q_label,
-                    "Top_1_Retrieved": r_id,
-                    "Top_1_Label": retrieved_labels[0],
-                    "P@1": p1,
-                    "P@5": p5,
-                    "P@10": p10,
-                    "AP@10": ap,
-                    "RR@10": rr,
-                }
-            )
+                # Detailed logging is only done for Level 3
+                if l_type == "eunis_l3":
+                    q_id = (
+                        f"{q_item.get('platform', 'unknown')}_{q_item.get('photo_id', '')}"
+                        if q_item.get("photo_id")
+                        else q_item["url"]
+                    )
+                    r_id = (
+                        f"{retrieved_items[0].get('platform', 'unknown')}_{retrieved_items[0].get('photo_id', '')}"
+                        if retrieved_items[0].get("photo_id")
+                        else retrieved_items[0]["url"]
+                    )
+                    detailed_rows.append(
+                        {
+                            "Query_Image": q_id,
+                            "Representation": rep_name,
+                            "Ground_Truth": q_label,
+                            "Top_1_Retrieved": r_id,
+                            "Top_1_Label": retrieved_labels[0],
+                            "P@1": p1,
+                            "P@5": p5,
+                            "P@10": p10,
+                            "AP@10": ap,
+                            "RR@10": rr,
+                        }
+                    )
 
         # Normalize metrics by query count
         valid_queries = len(queries_meta)
-        results[rep_name]["p@1"] = (results[rep_name]["p@1"] / valid_queries) * 100.0
-        results[rep_name]["p@5"] = (results[rep_name]["p@5"] / valid_queries) * 100.0
-        results[rep_name]["p@10"] = (results[rep_name]["p@10"] / valid_queries) * 100.0
-        results[rep_name]["map@10"] = (
-            results[rep_name]["map@10"] / valid_queries
-        ) * 100.0
-        results[rep_name]["mrr@10"] = (
-            results[rep_name]["mrr@10"] / valid_queries
-        ) * 100.0
+        for l_type in label_types:
+            results[rep_name][l_type]["p@1"] = (
+                results[rep_name][l_type]["p@1"] / valid_queries
+            ) * 100.0
+            results[rep_name][l_type]["p@5"] = (
+                results[rep_name][l_type]["p@5"] / valid_queries
+            ) * 100.0
+            results[rep_name][l_type]["p@10"] = (
+                results[rep_name][l_type]["p@10"] / valid_queries
+            ) * 100.0
+            results[rep_name][l_type]["map@10"] = (
+                results[rep_name][l_type]["map@10"] / valid_queries
+            ) * 100.0
+            results[rep_name][l_type]["mrr@10"] = (
+                results[rep_name][l_type]["mrr@10"] / valid_queries
+            ) * 100.0
 
     # 5. Compile and Print Report
     report_lines = []
@@ -947,34 +934,37 @@ def main():
     report_lines.append(f"- Database count: {len(database_meta)} images")
     report_lines.append("")
 
-    print("\n" + "=" * 95)
-    print("                    EUNIS ECOSYSTEM MAP SEMANTIC RETRIEVAL REPORT")
-    print("=" * 95)
-
     row_format = "{:<24} | {:<12} | {:<12} | {:<12} | {:<12} | {:<12}"
     header = row_format.format(
         "Representation", "P@1 (%)", "P@5 (%)", "P@10 (%)", "mAP@10 (%)", "MRR@10 (%)"
     )
-    print(header)
-    print("-" * 90)
 
-    report_lines.append(header)
-    report_lines.append("-" * 90)
+    for l_type in label_types:
+        print("\n" + "=" * 95)
+        print(f"                    {label_names[l_type].upper()} EVALUATION")
+        print("=" * 95)
+        print(header)
+        print("-" * 90)
 
-    for rep_name in results.keys():
-        metrics = results[rep_name]
-        row_str = row_format.format(
-            rep_name,
-            f"{metrics['p@1']:.1f}%",
-            f"{metrics['p@5']:.1f}%",
-            f"{metrics['p@10']:.1f}%",
-            f"{metrics['map@10']:.1f}%",
-            f"{metrics['mrr@10']:.1f}%",
-        )
-        print(row_str)
-        report_lines.append(row_str)
+        report_lines.append(f"--- {label_names[l_type]} Evaluation ---")
+        report_lines.append(header)
+        report_lines.append("-" * 90)
 
-    print("=" * 95)
+        for rep_name in results.keys():
+            metrics = results[rep_name][l_type]
+            row_str = row_format.format(
+                rep_name,
+                f"{metrics['p@1']:.1f}%",
+                f"{metrics['p@5']:.1f}%",
+                f"{metrics['p@10']:.1f}%",
+                f"{metrics['map@10']:.1f}%",
+                f"{metrics['mrr@10']:.1f}%",
+            )
+            print(row_str)
+            report_lines.append(row_str)
+
+        print("=" * 95)
+        report_lines.append("")
 
     # Save TXT report summary
     os.makedirs(os.path.dirname(args.output_report), exist_ok=True)
