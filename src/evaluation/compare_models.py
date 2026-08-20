@@ -78,7 +78,8 @@ def parse_report_file(report_path, model_name):
                     rep = parts[0]
                     # Strip model name or clean version from representation name
                     model_clean = model_name.replace("/", "_")
-                    for prefix in [model_name, model_clean]:
+                    model_base = model_name.split("/")[-1]
+                    for prefix in [model_name, model_clean, model_base]:
                         if rep.startswith(prefix):
                             rep = rep[len(prefix) :].strip()
                     # Strip leading spaces/hyphens/underscores
