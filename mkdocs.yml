@@ -1,0 +1,28 @@
+site_name: Geo-RAG
+theme:
+  name: material
+  palette:
+    primary: teal
+    accent: indigo
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - search.highlight
+
+nav:
+  - Home: index.md
+  - Dataset Guide: dataset.md
+  - Pipeline Architecture:
+      - Overview: pipeline.md
+      - 1. Ingestion & Scraping: pipeline/01_ingestion_scraping.md
+      - 2. Spatial Deduplication: pipeline/02_spatial_deduplication.md
+      - 3. Timestamp Standardization: pipeline/03_timestamp_standardization.md
+      - 4. Coordinate Cleanup: pipeline/04_coordinate_cleanup.md
+      - 5. Optimal K Estimation: pipeline/05_optimal_k_estimation.md
+      - 6. Clustering & Drift: pipeline/06_clustering_dynamic_drift.md
+      - 7. MLLM Labeling: pipeline/07_mllm_labeling.md
+      - 8. Spatial-Semantic Indexing: pipeline/08_spatial_semantic_indexing.md
+      - 9. Dashboards: pipeline/09_visualization_dashboards.md
+  - Evaluation: evaluation.md
+  - Metrics: metrics.md
+  - Changelog: changelog.md
