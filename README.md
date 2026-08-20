@@ -141,6 +141,10 @@ cd geo-rag
 
 # Install core packages and register local package
 pip install -e .
+
+# (Optional) Install developer packages and configure Git pre-commit hooks
+pip install -e ".[dev]"
+pre-commit install
 ```
 
 ### 3. Install PyTorch & FAISS
