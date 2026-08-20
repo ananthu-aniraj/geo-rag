@@ -13,7 +13,12 @@ BENCHMARKS = {
         "yaml_key": "lucas",
         "yaml_file": "config/evaluation/params_offline.yaml",
         "report_prefix": "lucas_report",
-        "extra_args": [("--csv", "csv"), ("--img_dir", "img_dir")],
+        "extra_args": [
+            ("--csv", "csv"),
+            ("--img_dir", "img_dir"),
+            ("--eunis_raster", "eunis_raster"),
+            ("--env_zones_raster", "env_zones_raster"),
+        ],
     },
     "places": {
         "module": "src.evaluation.benchmark_places",

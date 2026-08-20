@@ -54,9 +54,9 @@ if [ ! -d "$PLACES_IMG_DIR" ]; then
     echo "Warning: Places365 validation image directory not found at '$PLACES_IMG_DIR'."
 fi
 
-# Optional raster parameters for spatial overlay in LUCAS benchmark (loaded from config/evaluation/params_online.yaml)
-ENV_RASTER=$(python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml'))['environmental_zones']['raster'])")
-EUNIS_RASTER=$(python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml'))['eunis']['raster'])")
+# Optional raster parameters for spatial overlay in LUCAS benchmark (loaded from config/evaluation/params_offline.yaml)
+ENV_RASTER=$(get_param "lucas" "env_zones_raster")
+EUNIS_RASTER=$(get_param "lucas" "eunis_raster")
 
 LUCAS_SEG_FLAG=""
 if [ "$LUCAS_USE_SEG" = "false" ] || [ "$LUCAS_USE_SEG" = "False" ]; then

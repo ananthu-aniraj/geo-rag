@@ -4,6 +4,8 @@ lucas:
   model_name: "vit_base_patch16_dinov3.lvd1689m"
   csv: "/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"
   img_dir: "/home/ananthu/DATA/data_ananthu/LUCAS2018"
+  eunis_raster: "/home/ananthu/Projects/data/eunis_updated_dataset/eunis_dominant.tif"
+  env_zones_raster: "/home/ananthu/DATA/data_ananthu/environmental_zones/eea_r_3035_100_m_EnvZ-Metzger_2025_v1_r00.tif"
   num_queries: 3000
   num_database: 0
   batch_size: 128
