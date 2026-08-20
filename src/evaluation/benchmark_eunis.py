@@ -185,6 +185,13 @@ def main():
     )
     args = parser.parse_args()
 
+    # Format output names by appending seed and query size
+    report_base, report_ext = os.path.splitext(args.output_report)
+    args.output_report = f"{report_base}_s{args.seed}_q{args.num_queries}{report_ext}"
+
+    csv_base, csv_ext = os.path.splitext(args.output_csv)
+    args.output_csv = f"{csv_base}_s{args.seed}_q{args.num_queries}{csv_ext}"
+
     # Dynamic override of Mapillary Token in shared utils module without altering source file
     m_token = args.mapillary_token
 

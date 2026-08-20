@@ -34,7 +34,13 @@ def main():
         "--max_per_cell",
         type=int,
         default=1,
-        help="Maximum number of images to sample per H3 cell.",
+        help="Maximum number of images to sample per H3 cell. Ignored if --target_size is specified.",
+    )
+    parser.add_argument(
+        "--target_size",
+        type=int,
+        default=None,
+        help="Target total dataset size. If set, dynamically computes the optimal max_per_cell cap via binary search.",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for sampling reproducibility."
@@ -103,19 +109,76 @@ def main():
     )
 
     # 3. Perform stratified sampling per cell
-    print(f"Applying spatial stratified sampling (max_per_cell={args.max_per_cell})...")
+    if args.target_size is not None:
+        if args.target_size >= len(df):
+            print(
+                f"[WARNING] Target size {args.target_size:,} is greater than or equal to available dataset ({len(df):,}). Returning entire dataset."
+            )
+            sampled_df = df
+        else:
+            print(f"Finding optimal H3 cap for target size {args.target_size:,}...")
+            cell_counts = df["h3_cell"].value_counts().to_numpy()
 
-    # Custom sampling function per group
-    def sample_group(group):
-        if len(group) <= args.max_per_cell:
-            return group
-        return group.sample(n=args.max_per_cell, random_state=args.seed)
+            # Binary search for optimal cap
+            low = 1
+            high = int(max(cell_counts))
+            best_cap = low
+            best_diff = float("inf")
 
-    sampled_df = (
-        df.groupby("h3_cell", group_keys=False)
-        .apply(sample_group)
-        .reset_index(drop=True)
-    )
+            while low <= high:
+                mid = (low + high) // 2
+                current_size = sum(min(mid, count) for count in cell_counts)
+                diff = current_size - args.target_size
+
+                if abs(diff) < best_diff:
+                    best_diff = abs(diff)
+                    best_cap = mid
+
+                if diff == 0:
+                    break
+                elif diff < 0:
+                    low = mid + 1
+                else:
+                    high = mid - 1
+
+            print(
+                f"Optimal cap per cell resolved: {best_cap} (resulting size close to target)"
+            )
+
+            def sample_group(group):
+                if len(group) <= best_cap:
+                    return group
+                return group.sample(n=best_cap, random_state=args.seed)
+
+            sampled_df = (
+                df.groupby("h3_cell", group_keys=False)
+                .apply(sample_group)
+                .reset_index(drop=True)
+            )
+
+            # Trim down exactly to target_size if we are slightly over due to integer steps
+            if len(sampled_df) > args.target_size:
+                print(
+                    f"Trimming dataset from {len(sampled_df):,} to exact target size {args.target_size:,}..."
+                )
+                sampled_df = sampled_df.sample(
+                    n=args.target_size, random_state=args.seed
+                ).reset_index(drop=True)
+    else:
+        print(
+            f"Applying spatial stratified sampling (max_per_cell={args.max_per_cell})..."
+        )
+
+        def sample_group(group):
+            if len(group) <= args.max_per_cell:
+                return group
+            return group.sample(n=args.max_per_cell, random_state=args.seed)
+
+        sampled_df = (
+            df.groupby("h3_cell", group_keys=False)
+            .apply(sample_group)
+            .reset_index(drop=True)
+        )
 
     # Drop temporary column if desired, or keep for transparency
     # Let's keep it so user knows which cell it belonged to
