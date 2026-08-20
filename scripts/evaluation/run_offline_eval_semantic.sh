@@ -9,6 +9,11 @@ cd "$PROJECT_ROOT" || exit 1
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Source the .env file if it exists to load keys into environment variables
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
 echo "================================================================================"
 echo "      Starting Semantic Representation Evaluation (LUCAS & Places365)           "
 echo "================================================================================"
