@@ -37,7 +37,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff"
+    "ruff",
+    "pre-commit"
 ]
 
 [tool.setuptools]
