@@ -12,6 +12,9 @@ theme:
 docs_dir: '../../docs'
 site_dir: '../../site'
 
+hooks:
+  - hooks.py
+
 extra_javascript:
   - assets/js/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
