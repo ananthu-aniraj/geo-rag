@@ -2,4 +2,7 @@
 models:
   - "google/tipsv2-b14"
   - "vit_base_patch14_dinov2.lvd142m"
-  - "resnet50"
+  - "resnet50.a1_in1k"
+  - "convnext_base.dinov3_lvd1689m"
+  - "vit_base_patch16_dinov3_qkvb.lvd1689m"
+  - "vit_base_patch16_dinov3.lvd1689m"
