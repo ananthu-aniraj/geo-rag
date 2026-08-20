@@ -14,8 +14,8 @@ from shapely.ops import unary_union
 from tqdm import tqdm
 
 # --- API Rate Limit Calculations ---
-# Wikimedia Commons & KartaView both recommend keeping anonymous/public requests 
-# below 1 request per second to prevent temporary IP bans. 
+# Wikimedia Commons & KartaView both recommend keeping anonymous/public requests
+# below 1 request per second to prevent temporary IP bans.
 # Mathematically: 3600 seconds / 3600 max requests/hour = 1.0 second minimum delay.
 # We pad this to 1.2s for safety.
 DEFAULT_DELAY = 1.2
@@ -23,7 +23,9 @@ DEFAULT_DELAY = 1.2
 USER_AGENT = "Geo-RAG-OSM-Scraper/1.0 (contact: aaniraj@example.com)"
 
 
-def make_request_with_backoff(url, params=None, headers=None, max_retries=5, initial_delay=1.5):
+def make_request_with_backoff(
+    url, params=None, headers=None, max_retries=5, initial_delay=1.5
+):
     """Executes a request with exponential backoff for HTTP 429 or connection issues."""
     delay = initial_delay
     for attempt in range(max_retries):
@@ -37,14 +39,19 @@ def make_request_with_backoff(url, params=None, headers=None, max_retries=5, ini
                 delay *= 2.0
             elif response.status_code == 400:
                 print(
-                    f"\n[HTTP 400] Bad Request: The server rejected the request. Response details: {response.text[:300]}")
+                    f"\n[HTTP 400] Bad Request: The server rejected the request. Response details: {response.text[:300]}"
+                )
                 print(f"Requested URL: {url} | Params: {params}")
                 return None
             elif response.status_code == 403:
-                print("\n[HTTP 403] Forbidden: Access blocked. Your IP or User-Agent might be blocked by the server.")
+                print(
+                    "\n[HTTP 403] Forbidden: Access blocked. Your IP or User-Agent might be blocked by the server."
+                )
                 return None
             else:
-                print(f"\n[HTTP {response.status_code}] Warning: {response.text[:200]}. Retrying in {delay:.1f}s...")
+                print(
+                    f"\n[HTTP {response.status_code}] Warning: {response.text[:200]}. Retrying in {delay:.1f}s..."
+                )
                 time.sleep(delay)
                 delay *= 2.0
         except Exception as e:
@@ -54,7 +61,9 @@ def make_request_with_backoff(url, params=None, headers=None, max_retries=5, ini
     return None
 
 
-def fetch_boundary_from_local_countries(query_str, shapefile_path="shapefiles/ne_10m_admin_0_countries.shp"):
+def fetch_boundary_from_local_countries(
+    query_str, shapefile_path="shapefiles/ne_10m_admin_0_countries.shp"
+):
     """Attempts to find the boundary of a country or continent in the local shapefile."""
     if not os.path.exists(shapefile_path):
         return None
@@ -64,16 +73,18 @@ def fetch_boundary_from_local_countries(query_str, shapefile_path="shapefiles/ne
         gdf = gpd.read_file(shapefile_path)
 
         # Try matching country columns case-insensitively
-        for col in ['NAME', 'SOVEREIGNT', 'ADMIN', 'NAME_LONG']:
+        for col in ["NAME", "SOVEREIGNT", "ADMIN", "NAME_LONG"]:
             if col in gdf.columns:
                 matches = gdf[gdf[col].astype(str).str.lower() == query_str.lower()]
                 if not matches.empty:
-                    print(f"Matched country '{query_str}' under column '{col}' in local shapefile.")
+                    print(
+                        f"Matched country '{query_str}' under column '{col}' in local shapefile."
+                    )
                     return unary_union(matches.geometry)
 
         # Check continent match
-        if 'CONTINENT' in gdf.columns:
-            matches = gdf[gdf['CONTINENT'].astype(str).str.lower() == query_str.lower()]
+        if "CONTINENT" in gdf.columns:
+            matches = gdf[gdf["CONTINENT"].astype(str).str.lower() == query_str.lower()]
             if not matches.empty:
                 print(f"Matched continent '{query_str}' in local shapefile.")
                 return unary_union(matches.geometry)
@@ -84,7 +95,9 @@ def fetch_boundary_from_local_countries(query_str, shapefile_path="shapefiles/ne
     return None
 
 
-def fetch_boundary_by_query(query_str, shapefile_path="shapefiles/ne_10m_admin_0_countries.shp"):
+def fetch_boundary_by_query(
+    query_str, shapefile_path="shapefiles/ne_10m_admin_0_countries.shp"
+):
     """Fetches a boundary polygon using local country shapefile query or falls back to Nominatim."""
     local_poly = fetch_boundary_from_local_countries(query_str, shapefile_path)
     if local_poly is not None:
@@ -92,12 +105,7 @@ def fetch_boundary_by_query(query_str, shapefile_path="shapefiles/ne_10m_admin_0
 
     print(f"Searching Nominatim for query: '{query_str}'...")
     url = "https://nominatim.openstreetmap.org/search"
-    params = {
-        "q": query_str,
-        "format": "json",
-        "polygon_geojson": 1,
-        "limit": 1
-    }
+    params = {"q": query_str, "format": "json", "polygon_geojson": 1, "limit": 1}
     headers = {"User-Agent": USER_AGENT}
 
     response = make_request_with_backoff(url, params=params, headers=headers)
@@ -125,11 +133,7 @@ def fetch_boundary_by_relation(relation_id):
     """Fetches a boundary polygon from Nominatim using an OSM Relation ID."""
     print(f"Fetching boundary for OSM Relation: R{relation_id}...")
     url = "https://nominatim.openstreetmap.org/lookup"
-    params = {
-        "osm_ids": f"R{relation_id}",
-        "format": "json",
-        "polygon_geojson": 1
-    }
+    params = {"osm_ids": f"R{relation_id}", "format": "json", "polygon_geojson": 1}
     headers = {"User-Agent": USER_AGENT}
 
     response = make_request_with_backoff(url, params=params, headers=headers)
@@ -170,10 +174,11 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
             (min_lon, min_lat, mid_lon, mid_lat),  # Bottom-left
             (mid_lon, min_lat, max_lon, mid_lat),  # Bottom-right
             (min_lon, mid_lat, mid_lon, max_lat),  # Top-left
-            (mid_lon, mid_lat, max_lon, max_lat)  # Top-right
+            (mid_lon, mid_lat, max_lon, max_lat),  # Top-right
         ]
 
         from shapely.geometry import box as shapely_box
+
         combined_results = []
         for s_box in sub_boxes:
             # Check if the sub-box actually intersects the target polygon before querying
@@ -182,11 +187,11 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
                 continue
 
             res = fetch_kartaview_batch(s_box, polygon, max_images, delay, page)
-            if res['stat'] == 'ok':
-                combined_results.extend(res['data'])
+            if res["stat"] == "ok":
+                combined_results.extend(res["data"])
             if len(combined_results) >= max_images:
                 break
-        return {'stat': 'ok', 'data': combined_results[:max_images]}
+        return {"stat": "ok", "data": combined_results[:max_images]}
 
     url = "https://api.openstreetcam.org/2.0/photo/"
 
@@ -196,13 +201,13 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
         "seLat": min_lat,
         "seLng": max_lon,
         "itemsPerPage": 150,
-        "page": page
+        "page": page,
     }
 
     time.sleep(delay)
     response = make_request_with_backoff(url, params=params)
     if response is None:
-        return {'stat': 'fail', 'data': []}
+        return {"stat": "fail", "data": []}
 
     try:
         data = response.json()
@@ -213,7 +218,9 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
             photo_id = photo.get("id")
             lat = photo.get("latitude") or photo.get("lat")
             lon = photo.get("longitude") or photo.get("lng")
-            img_url = photo.get("fileurl") or photo.get("fileurlLd") or photo.get("thumbnail")
+            img_url = (
+                photo.get("fileurl") or photo.get("fileurlLd") or photo.get("thumbnail")
+            )
             captured_at = photo.get("shotDate") or photo.get("dateAdded") or ""
 
             if lat is not None and lon is not None and img_url:
@@ -221,18 +228,20 @@ def fetch_kartaview_batch(grid_box, polygon, max_images, delay, page=1):
                 lon_f = float(lon)
                 pt = Point(lon_f, lat_f)
                 if polygon.contains(pt):
-                    results.append({
-                        "Photo_ID": photo_id,
-                        "Platform": "KartaView",
-                        "Latitude": lat_f,
-                        "Longitude": lon_f,
-                        "Image_URL": img_url,
-                        "Captured_At": captured_at,
-                        "License": "CC BY-SA 4.0"  # Platform standard
-                    })
-        return {'stat': 'ok', 'data': results}
+                    results.append(
+                        {
+                            "Photo_ID": photo_id,
+                            "Platform": "KartaView",
+                            "Latitude": lat_f,
+                            "Longitude": lon_f,
+                            "Image_URL": img_url,
+                            "Captured_At": captured_at,
+                            "License": "CC BY-SA 4.0",  # Platform standard
+                        }
+                    )
+        return {"stat": "ok", "data": results}
     except Exception as e:
-        return {'stat': 'fail', 'data': [], 'message': str(e)}
+        return {"stat": "fail", "data": [], "message": str(e)}
 
 
 def is_in_uncovered_area(bbox_coords, uncovered_gdf):
@@ -241,7 +250,9 @@ def is_in_uncovered_area(bbox_coords, uncovered_gdf):
     bbox_polygon = box(min_lon, min_lat, max_lon, max_lat)
 
     # Use spatial indexing for fast lookups
-    possible_matches_index = list(uncovered_gdf.sindex.intersection(bbox_polygon.bounds))
+    possible_matches_index = list(
+        uncovered_gdf.sindex.intersection(bbox_polygon.bounds)
+    )
 
     if len(possible_matches_index) == 0:
         return False
@@ -251,32 +262,81 @@ def is_in_uncovered_area(bbox_coords, uncovered_gdf):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Grid-based OpenStreetMap Polygon Scraper.")
-    parser.add_argument("--osm_relation", type=int, help="OSM Relation ID (e.g. 74263 for Paris).")
-    parser.add_argument("--osm_query", type=str, help="Free-text search query (e.g. 'Central Park, New York').")
-    parser.add_argument("--geojson", type=str, help="Path to local GeoJSON/Shapefile containing target boundary.")
-    parser.add_argument("--global_search", action="store_true",
-                        help="Enable global grid search mode spanning the entire Earth.")
+    parser = argparse.ArgumentParser(
+        description="Grid-based OpenStreetMap Polygon Scraper."
+    )
+    parser.add_argument(
+        "--osm_relation", type=int, help="OSM Relation ID (e.g. 74263 for Paris)."
+    )
+    parser.add_argument(
+        "--osm_query",
+        type=str,
+        help="Free-text search query (e.g. 'Central Park, New York').",
+    )
+    parser.add_argument(
+        "--geojson",
+        type=str,
+        help="Path to local GeoJSON/Shapefile containing target boundary.",
+    )
+    parser.add_argument(
+        "--global_search",
+        action="store_true",
+        help="Enable global grid search mode spanning the entire Earth.",
+    )
 
     # Grid sampling & Chunking properties (matches flickr_5km_grid_search)
-    parser.add_argument("--chunk", type=int, default=0, help="Which chunk of the grid to process.")
-    parser.add_argument("--total_chunks", type=int, default=1, help="Total chunks to split the grid into.")
-    parser.add_argument("--base_dir", type=str, default=".", help="Base directory for output files.")
+    parser.add_argument(
+        "--chunk", type=int, default=0, help="Which chunk of the grid to process."
+    )
+    parser.add_argument(
+        "--total_chunks",
+        type=int,
+        default=1,
+        help="Total chunks to split the grid into.",
+    )
+    parser.add_argument(
+        "--base_dir", type=str, default=".", help="Base directory for output files."
+    )
 
-    parser.add_argument("--platforms", type=str, default="kartaview", choices=["kartaview"],
-                        help="Which platforms to scrape.")
-    parser.add_argument("--max_images_per_box", type=int, default=100, help="Max images to retrieve per grid box.")
-    parser.add_argument("--countries_shp", type=str, default="shapefiles/ne_10m_admin_0_countries.shp",
-                        help="Path to local countries shapefile.")
-    parser.add_argument("--uncovered_shp", type=str, default="shapefiles/uncovered_land_areas_test.shp",
-                        help="Path to local uncovered land areas shapefile.")
-    parser.add_argument("--delay", type=float, default=DEFAULT_DELAY, help="Delay in seconds between API requests.")
+    parser.add_argument(
+        "--platforms",
+        type=str,
+        default="kartaview",
+        choices=["kartaview"],
+        help="Which platforms to scrape.",
+    )
+    parser.add_argument(
+        "--max_images_per_box",
+        type=int,
+        default=100,
+        help="Max images to retrieve per grid box.",
+    )
+    parser.add_argument(
+        "--countries_shp",
+        type=str,
+        default="shapefiles/ne_10m_admin_0_countries.shp",
+        help="Path to local countries shapefile.",
+    )
+    parser.add_argument(
+        "--uncovered_shp",
+        type=str,
+        default="shapefiles/uncovered_land_areas_test.shp",
+        help="Path to local uncovered land areas shapefile.",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=DEFAULT_DELAY,
+        help="Delay in seconds between API requests.",
+    )
     args = parser.parse_args()
 
     # Create target directory
     Path(args.base_dir).mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE = os.path.join(args.base_dir, f"osm_data_chunk_{args.chunk}.csv")
-    LOG_FILE = os.path.join(args.base_dir, f"osm_completed_boxes_chunk_{args.chunk}.txt")
+    LOG_FILE = os.path.join(
+        args.base_dir, f"osm_completed_boxes_chunk_{args.chunk}.txt"
+    )
 
     # Load polygon boundary (checking local base_dir cache first)
     polygon = None
@@ -291,7 +351,9 @@ def main():
             gdf = gpd.read_file(local_geojson_path)
             polygon = unary_union(gdf.geometry)
         except Exception as e:
-            print(f"Warning: Failed to load cached boundary from {local_geojson_path}: {e}. Re-fetching...")
+            print(
+                f"Warning: Failed to load cached boundary from {local_geojson_path}: {e}. Re-fetching..."
+            )
             polygon = None
 
     if polygon is None or polygon.is_empty:
@@ -307,13 +369,17 @@ def main():
             gdf = gpd.read_file(args.geojson)
             polygon = unary_union(gdf.geometry)
         else:
-            print("Error: You must provide one of: --osm_relation, --osm_query, --geojson, or --global_search.")
+            print(
+                "Error: You must provide one of: --osm_relation, --osm_query, --geojson, or --global_search."
+            )
             sys.exit(1)
 
         if polygon is not None and not polygon.is_empty:
             try:
                 print(f"Caching resolved boundary polygon to: {local_geojson_path}...")
-                gpd.GeoDataFrame(geometry=[polygon], crs="EPSG:4326").to_file(local_geojson_path, driver="GeoJSON")
+                gpd.GeoDataFrame(geometry=[polygon], crs="EPSG:4326").to_file(
+                    local_geojson_path, driver="GeoJSON"
+                )
             except Exception as e:
                 print(f"Warning: Failed to cache boundary polygon: {e}")
 
@@ -324,7 +390,7 @@ def main():
     # 1. Load Completed Box Logs
     completed_boxes = set()
     if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, 'r') as f:
+        with open(LOG_FILE, "r") as f:
             completed_boxes = set(line.strip() for line in f)
 
     # Load Uncovered Land Areas shapefile if it exists
@@ -332,7 +398,7 @@ def main():
     if args.uncovered_shp and os.path.exists(args.uncovered_shp):
         print(f"Loading Uncovered Land Areas map: {args.uncovered_shp}...")
         try:
-            uncovered_gdf = gpd.read_file(args.uncovered_shp, engine='pyogrio')
+            uncovered_gdf = gpd.read_file(args.uncovered_shp, engine="pyogrio")
         except Exception:
             try:
                 uncovered_gdf = gpd.read_file(args.uncovered_shp)
@@ -357,13 +423,32 @@ def main():
         while current_lon < max_lon:
             if is_global:
                 if idx % args.total_chunks == args.chunk:
-                    my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+                    my_boxes.append(
+                        (
+                            current_lon,
+                            current_lat,
+                            current_lon + lon_step,
+                            current_lat + lat_step,
+                        )
+                    )
                 idx += 1
             else:
-                grid_box = box(current_lon, current_lat, current_lon + lon_step, current_lat + lat_step)
+                grid_box = box(
+                    current_lon,
+                    current_lat,
+                    current_lon + lon_step,
+                    current_lat + lat_step,
+                )
                 if grid_box.intersects(polygon):
                     if idx % args.total_chunks == args.chunk:
-                        my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+                        my_boxes.append(
+                            (
+                                current_lon,
+                                current_lat,
+                                current_lon + lon_step,
+                                current_lat + lat_step,
+                            )
+                        )
                     idx += 1
             current_lon += lon_step
         current_lat += lat_step
@@ -381,10 +466,20 @@ def main():
 
     # 4. Main Scraping Loop
     file_exists = os.path.exists(OUTPUT_FILE)
-    with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
+    with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         if not file_exists:
-            writer.writerow(['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License'])
+            writer.writerow(
+                [
+                    "Photo_ID",
+                    "Platform",
+                    "Latitude",
+                    "Longitude",
+                    "Image_URL",
+                    "Captured_At",
+                    "License",
+                ]
+            )
 
         for grid_box in tqdm(my_boxes, desc=f"Processing Chunk {args.chunk}"):
             box_id = f"{grid_box[0]:.4f},{grid_box[1]:.4f},{grid_box[2]:.4f},{grid_box[3]:.4f}"
@@ -395,42 +490,49 @@ def main():
             # Check Uncovered Mask: Skip if it does NOT intersect an uncovered land area
             if uncovered_gdf is not None:
                 if not is_in_uncovered_area(grid_box, uncovered_gdf):
-                    with open(LOG_FILE, 'a') as log:
-                        log.write(box_id + '\n')
+                    with open(LOG_FILE, "a") as log:
+                        log.write(box_id + "\n")
                     completed_boxes.add(box_id)
                     continue
 
             saved_count = 0
 
             # B. KartaView geosearch
-            if args.platforms in ["all", "kartaview"] and saved_count < args.max_images_per_box:
+            if (
+                args.platforms in ["all", "kartaview"]
+                and saved_count < args.max_images_per_box
+            ):
                 page = 1
                 while saved_count < args.max_images_per_box:
-                    res = fetch_kartaview_batch(grid_box, polygon, args.max_images_per_box, args.delay, page)
-                    if res['stat'] == 'ok':
-                        photos = res['data']
+                    res = fetch_kartaview_batch(
+                        grid_box, polygon, args.max_images_per_box, args.delay, page
+                    )
+                    if res["stat"] == "ok":
+                        photos = res["data"]
                         if not photos:
                             break
                         for item in photos:
                             if saved_count >= args.max_images_per_box:
                                 break
-                            writer.writerow([
-                                item["Photo_ID"],
-                                item["Platform"],
-                                item["Latitude"],
-                                item["Longitude"],
-                                item["Image_URL"],
-                                item["Captured_At"],
-                                item["License"]
-                            ])
+                            writer.writerow(
+                                [
+                                    item["Photo_ID"],
+                                    item["Platform"],
+                                    item["Latitude"],
+                                    item["Longitude"],
+                                    item["Image_URL"],
+                                    item["Captured_At"],
+                                    item["License"],
+                                ]
+                            )
                             saved_count += 1
                         page += 1
                     else:
                         break
 
             # Log completion of this grid box
-            with open(LOG_FILE, 'a') as log:
-                log.write(box_id + '\n')
+            with open(LOG_FILE, "a") as log:
+                log.write(box_id + "\n")
             completed_boxes.add(box_id)
 
     print(f"\nChunk {args.chunk} finished successfully!")

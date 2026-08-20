@@ -1,6 +1,6 @@
 # Geo-RAG Evaluation Metrics Methodology
 
-This document provides a mathematical and conceptual breakdown of the evaluation and retrieval benchmarking metrics used across the Geo-RAG suites. 
+This document provides a mathematical and conceptual breakdown of the evaluation and retrieval benchmarking metrics used across the Geo-RAG suites.
 
 ---
 

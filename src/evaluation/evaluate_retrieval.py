@@ -20,13 +20,13 @@ def dict_to_string(data):
 
 def compute_metrics(sim_matrix, query_indices=None):
     """Computes Top-1, Top-5, and MRR from a similarity matrix.
-    
-    If query_indices is provided, only those queries (rows) are evaluated, 
+
+    If query_indices is provided, only those queries (rows) are evaluated,
     but they are searched against the FULL gallery (all columns).
     """
     if query_indices is None:
         query_indices = np.arange(sim_matrix.shape[0])
-    
+
     num_eval = len(query_indices)
     if num_eval == 0:
         return {"top1": 0.0, "top5": 0.0, "mrr": 0.0}
@@ -53,13 +53,13 @@ def compute_metrics(sim_matrix, query_indices=None):
     return {
         "top1": (top1_hits / num_eval) * 100,
         "top5": (top5_hits / num_eval) * 100,
-        "mrr": mrr_sum / num_eval
+        "mrr": mrr_sum / num_eval,
     }
 
 
 def evaluate_retrieval(pickle_path, use_tips_embeddings=False, use_prefix=False):
     print(f"Loading retrieval data from {pickle_path}...")
-    with open(pickle_path, 'rb') as f:
+    with open(pickle_path, "rb") as f:
         data = pickle.load(f)
 
     if not data:
@@ -73,29 +73,52 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False, use_prefix=False)
 
     print("Loading CLIP model for text encoding...")
     # Using the same CLIP model as the capture script to ensure embedding space alignment
-    model = SentenceTransformer('clip-ViT-B-32')
+    model = SentenceTransformer("clip-ViT-B-32")
 
     # Prepare data
-    images = [item['image'] for item in data]
-    
+    images = [item["image"] for item in data]
+
     # Dynamically extract all available component keys from the data dictionary
-    base_keys = ['combined_caption', 'visible_evidence', 'human_activities', 'land_cover_usage', 'type_of_vegetation']
+    base_keys = [
+        "combined_caption",
+        "visible_evidence",
+        "human_activities",
+        "land_cover_usage",
+        "type_of_vegetation",
+    ]
     component_keys = [k for k in base_keys if k in data[0]]
-    
+
     exclude_keys = {
-        'image', 'point_id', 'direction', 'gt_lc', 'gt_lu', 'gt_eunis', 
-        'pred_lc', 'pred_lu', 'pred_eunis', 'sim_lc', 'sim_lu', 'sim_eunis', 
-        'exact_lc', 'exact_lu', 'exact_eunis', 'clip_similarity', 'tips_similarity', 
-        'image_embedding', 'tips_image_embedding', 'prompt_version', 'ground_truth_macro'
+        "image",
+        "point_id",
+        "direction",
+        "gt_lc",
+        "gt_lu",
+        "gt_eunis",
+        "pred_lc",
+        "pred_lu",
+        "pred_eunis",
+        "sim_lc",
+        "sim_lu",
+        "sim_eunis",
+        "exact_lc",
+        "exact_lu",
+        "exact_eunis",
+        "clip_similarity",
+        "tips_similarity",
+        "image_embedding",
+        "tips_image_embedding",
+        "prompt_version",
+        "ground_truth_macro",
     }
-    
+
     for k in data[0].keys():
         if k not in exclude_keys and k not in component_keys:
             component_keys.append(k)
 
     # Ensure image embeddings are numpy arrays
     if use_tips_embeddings:
-        image_embeddings = np.array([item['tips_image_embedding'] for item in data])
+        image_embeddings = np.array([item["tips_image_embedding"] for item in data])
     else:
         image_embeddings = np.array([item["image_embedding"] for item in data])
 
@@ -103,37 +126,45 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False, use_prefix=False)
     print(f"Components to evaluate: {component_keys}")
 
     # Identify macro-category indices
-    indoor_indices = [i for i, item in enumerate(data) if item.get('ground_truth_macro') == 'indoor']
-    outdoor_indices = [i for i, item in enumerate(data) if str(item.get('ground_truth_macro', '')).startswith('outdoor')]
-    
+    indoor_indices = [
+        i for i, item in enumerate(data) if item.get("ground_truth_macro") == "indoor"
+    ]
+    outdoor_indices = [
+        i
+        for i, item in enumerate(data)
+        if str(item.get("ground_truth_macro", "")).startswith("outdoor")
+    ]
+
     groups = [("Overall", None)]
     if indoor_indices:
         groups.append(("Indoor", np.array(indoor_indices)))
     if outdoor_indices:
         groups.append(("Outdoor", np.array(outdoor_indices)))
-    
+
     all_results = {}
 
     for key in component_keys:
         print(f"\n--- Evaluating Component: {key} ---")
         # Handle cases where value might be empty or missing
         raw_captions = [dict_to_string(item.get(key, "")) for item in data]
-        
+
         # Format captions based on prefix preference
         formatted_captions = []
-        category_label = key.replace('_', ' ').capitalize()
-        
+        category_label = key.replace("_", " ").capitalize()
+
         for c in raw_captions:
             val = c.strip() if c.strip() else "none"
             # Prefix category name if enabled and not the combined caption
-            if use_prefix and key != 'combined_caption':
+            if use_prefix and key != "combined_caption":
                 formatted_captions.append(f"{category_label}: {val}")
             else:
                 formatted_captions.append(val)
-        
+
         print(f"Encoding '{key}'...")
         if use_tips_embeddings:
-            text_embeddings = tips_model.encode_text(formatted_captions).detach().cpu().numpy()
+            text_embeddings = (
+                tips_model.encode_text(formatted_captions).detach().cpu().numpy()
+            )
         else:
             text_embeddings = model.encode(formatted_captions, show_progress_bar=True)
 
@@ -146,36 +177,50 @@ def evaluate_retrieval(pickle_path, use_tips_embeddings=False, use_prefix=False)
             print(f"Evaluating {group_name} retrieval for {key}...")
             t2i_metrics = compute_metrics(sim_matrix, group_indices)
             i2t_metrics = compute_metrics(sim_matrix.T, group_indices)
-            
-            all_results[key][group_name] = {
-                "t2i": t2i_metrics,
-                "i2t": i2t_metrics
-            }
+
+            all_results[key][group_name] = {"t2i": t2i_metrics, "i2t": i2t_metrics}
 
     # Final Comparison Tables
     for group_name, _ in groups:
         print("\n" + "=" * 115)
         print(f"RETRIEVAL PERFORMANCE: {group_name.upper()}")
         print("=" * 115)
-        print(f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'T2I MRR':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10} | {'I2T MRR':<10}")
+        print(
+            f"{'COMPONENT':<25} | {'T2I Top-1':<10} | {'T2I Top-5':<10} | {'T2I MRR':<10} | {'I2T Top-1':<10} | {'I2T Top-5':<10} | {'I2T MRR':<10}"
+        )
         print("-" * 115)
         for key in component_keys:
             res = all_results[key][group_name]
-            print(f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['t2i']['mrr']:>10.3f} | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}% | {res['i2t']['mrr']:>10.3f}")
+            print(
+                f"{key:<25} | {res['t2i']['top1']:>9.2f}% | {res['t2i']['top5']:>9.2f}% | {res['t2i']['mrr']:>10.3f} | {res['i2t']['top1']:>9.2f}% | {res['i2t']['top5']:>9.2f}% | {res['i2t']['mrr']:>10.3f}"
+            )
         print("=" * 115)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate Image Retrieval performance from VLM captions.")
-    parser.add_argument("--pickle_file", type=str, required=True, help="Path to the .pkl file generated by caption_test.py")
-    parser.add_argument("--use_tips_embeddings", action="store_true",
-                        help="Whether to use TIPS image embeddings for evaluation")
-    parser.add_argument("--use_prefix", action="store_true",
-                        help="Prefix captions with key name (e.g. 'Human evidence: ...')")
+    parser = argparse.ArgumentParser(
+        description="Evaluate Image Retrieval performance from VLM captions."
+    )
+    parser.add_argument(
+        "--pickle_file",
+        type=str,
+        required=True,
+        help="Path to the .pkl file generated by caption_test.py",
+    )
+    parser.add_argument(
+        "--use_tips_embeddings",
+        action="store_true",
+        help="Whether to use TIPS image embeddings for evaluation",
+    )
+    parser.add_argument(
+        "--use_prefix",
+        action="store_true",
+        help="Prefix captions with key name (e.g. 'Human evidence: ...')",
+    )
     args = parser.parse_args()
 
     evaluate_retrieval(
-        args.pickle_file, 
-        use_tips_embeddings=args.use_tips_embeddings, 
-        use_prefix=args.use_prefix
+        args.pickle_file,
+        use_tips_embeddings=args.use_tips_embeddings,
+        use_prefix=args.use_prefix,
     )

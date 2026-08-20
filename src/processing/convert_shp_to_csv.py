@@ -25,9 +25,13 @@ def main():
     )
     args = parser.parse_args()
 
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
     print("🌍 SHAPEFILE TO GEORAG CSV CONVERTER")
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
 
     if not os.path.exists(args.input):
         print(f"Error: Shapefile not found at '{args.input}'")
@@ -57,7 +61,9 @@ def main():
             break
 
     if not id_col:
-        print(f"Error: Could not find an ID column in the shapefile. Available columns: {gdf.columns.tolist()}")
+        print(
+            f"Error: Could not find an ID column in the shapefile. Available columns: {gdf.columns.tolist()}"
+        )
         sys.exit(1)
 
     print(f" -> Mapping ID column: '{id_col}'")
@@ -69,7 +75,9 @@ def main():
 
     # Smart swap validation: If Y coordinate values exceed +/-90, swap X and Y
     if (lats.abs() > 90).any():
-        print(" [WARNING] Detected inverted (X=lat, Y=lon) coordinates in geometry. Auto-correcting...")
+        print(
+            " [WARNING] Detected inverted (X=lat, Y=lon) coordinates in geometry. Auto-correcting..."
+        )
         lats, lons = lons, lats
 
     # Surface type attribute
@@ -77,15 +85,18 @@ def main():
 
     # 4. Build standard pipeline DataFrame
     print(" -> Formatting columns to Geo-RAG schema...")
-    df = pd.DataFrame({
-        "Photo_ID": gdf[id_col].astype(str),
-        "Platform": "Mapillary",
-        "Latitude": lats,
-        "Longitude": lons,
-        "Image_URL": "https://www.mapillary.com/app/?pKey=" + gdf[id_col].astype(str),
-        "Captured_At": None,
-        "Surface_Type": surface_val
-    })
+    df = pd.DataFrame(
+        {
+            "Photo_ID": gdf[id_col].astype(str),
+            "Platform": "Mapillary",
+            "Latitude": lats,
+            "Longitude": lons,
+            "Image_URL": "https://www.mapillary.com/app/?pKey="
+            + gdf[id_col].astype(str),
+            "Captured_At": None,
+            "Surface_Type": surface_val,
+        }
+    )
 
     # 3. Save
     print(f"Saving output to: {args.out}...")
@@ -94,9 +105,13 @@ def main():
         os.makedirs(out_dir, exist_ok=True)
 
     df.to_csv(args.out, index=False)
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
     print(f"🎉 Conversion complete! Standardized CSV saved with {len(df):,} rows.")
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
 
 
 if __name__ == "__main__":

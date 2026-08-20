@@ -23,7 +23,7 @@ def get_core_base_name(base_name):
         changed = False
         for suffix in suffixes:
             if base_name.endswith(suffix):
-                base_name = base_name[:-len(suffix)]
+                base_name = base_name[: -len(suffix)]
                 changed = True
     return base_name
 
@@ -37,20 +37,22 @@ def load_dataframe(file_path, **kwargs):
 
     ext = os.path.splitext(file_path)[1].lower()
 
-    if ext == '.parquet':
+    if ext == ".parquet":
         return pd.read_parquet(file_path, **kwargs)
-    elif ext == '.csv':
+    elif ext == ".csv":
         # Default low_memory=False for safety on mixed-type data
-        if 'low_memory' not in kwargs:
-            kwargs['low_memory'] = False
+        if "low_memory" not in kwargs:
+            kwargs["low_memory"] = False
         return pd.read_csv(file_path, **kwargs)
-    elif ext in ('.pkl', '.pickle'):
+    elif ext in (".pkl", ".pickle"):
         return pd.read_pickle(file_path, **kwargs)
     else:
         raise ValueError(f"Unsupported file format '{ext}' for loading dataframe.")
 
 
-def save_dataframe(df, file_path, index=False, representation_type=None, precision=None, **kwargs):
+def save_dataframe(
+    df, file_path, index=False, representation_type=None, precision=None, **kwargs
+):
     """
     Saves a dataframe to CSV, Parquet, or Pickle with optimal compression default (Zstd for Parquet).
     Automatically decouples embeddings into a companion .npy file if the column is present.
@@ -61,32 +63,36 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
         os.makedirs(output_dir, exist_ok=True)
 
     ext = os.path.splitext(file_path)[1].lower()
-    if ext == '.tmp':
+    if ext == ".tmp":
         # Split again to find the actual format extension, e.g. .parquet from .parquet.tmp
         base_without_tmp = os.path.splitext(file_path)[0]
         ext = os.path.splitext(base_without_tmp)[1].lower()
         if not ext:
-            ext = '.parquet' # Default fallback if only .tmp was provided
+            ext = ".parquet"  # Default fallback if only .tmp was provided
 
-    if ext == '.parquet':
+    if ext == ".parquet":
         # Default to high-performance zstd compression
-        if 'compression' not in kwargs:
-            kwargs['compression'] = 'zstd'
+        if "compression" not in kwargs:
+            kwargs["compression"] = "zstd"
 
         df_to_save = df.copy()
         # Generate stable photo_key using Platform and Photo_ID for all parquet files
-        if 'Platform' in df_to_save.columns and 'Photo_ID' in df_to_save.columns:
-            if 'photo_key' not in df_to_save.columns:
-                df_to_save['photo_key'] = df_to_save['Platform'].astype(str) + "_" + df_to_save['Photo_ID'].astype(str)
+        if "Platform" in df_to_save.columns and "Photo_ID" in df_to_save.columns:
+            if "photo_key" not in df_to_save.columns:
+                df_to_save["photo_key"] = (
+                    df_to_save["Platform"].astype(str)
+                    + "_"
+                    + df_to_save["Photo_ID"].astype(str)
+                )
 
-        if 'embedding' in df.columns:
+        if "embedding" in df.columns:
             db_dir = os.path.dirname(os.path.abspath(file_path))
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
             core_name = get_core_base_name(base_name)
 
-            embs = np.vstack(df['embedding'].values)
+            embs = np.vstack(df["embedding"].values)
             dim = embs.shape[1]
 
             # 1. Resolve representation suffix
@@ -103,33 +109,41 @@ def save_dataframe(df, file_path, index=False, representation_type=None, precisi
 
             # 2. Resolve precision dtype
             dtype = np.float32
-            if precision == 'float16':
+            if precision == "float16":
                 dtype = np.float16
-            elif precision == 'float32':
+            elif precision == "float32":
                 dtype = np.float32
             else:
                 dtype = embs.dtype
 
-            print(f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={dtype.__name__})")
+            print(
+                f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={dtype.__name__})"
+            )
             np.save(npy_path, embs.astype(dtype))
 
-            if 'photo_key' not in df_to_save.columns:
-                df_to_save['photo_key'] = "idx_" + np.arange(len(df_to_save)).astype(str)
+            if "photo_key" not in df_to_save.columns:
+                df_to_save["photo_key"] = "idx_" + np.arange(len(df_to_save)).astype(
+                    str
+                )
 
             # Save the companion keys file
-            keys_df = pd.DataFrame({'photo_key': df_to_save['photo_key']})
-            keys_path = os.path.join(db_dir, f"{core_name}_{rep_suffix}_embeddings.keys.parquet")
+            keys_df = pd.DataFrame({"photo_key": df_to_save["photo_key"]})
+            keys_path = os.path.join(
+                db_dir, f"{core_name}_{rep_suffix}_embeddings.keys.parquet"
+            )
             print(f" -> Saving companion keys file to: {keys_path}")
-            keys_df.to_parquet(keys_path, compression='zstd')
+            keys_df.to_parquet(keys_path, compression="zstd")
 
-            df_to_save = df_to_save.drop(columns=['embedding', 'embedding_idx'], errors='ignore')
+            df_to_save = df_to_save.drop(
+                columns=["embedding", "embedding_idx"], errors="ignore"
+            )
             df_to_save.to_parquet(file_path, index=index, **kwargs)
             return
 
         df_to_save.to_parquet(file_path, index=index, **kwargs)
-    elif ext == '.csv':
+    elif ext == ".csv":
         df.to_csv(file_path, index=index, **kwargs)
-    elif ext in ('.pkl', '.pickle'):
+    elif ext in (".pkl", ".pickle"):
         df.to_pickle(file_path, **kwargs)
     else:
         raise ValueError(f"Unsupported file format '{ext}' for saving dataframe.")
@@ -144,13 +158,15 @@ def get_parquet_writer(file_path, schema, **kwargs):
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
-    if 'compression' not in kwargs:
-        kwargs['compression'] = 'zstd'
+    if "compression" not in kwargs:
+        kwargs["compression"] = "zstd"
 
     return pq.ParquetWriter(file_path, schema, **kwargs)
 
 
-def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, representation_type=None, **kwargs):
+def load_dataset_with_clusters(
+    parquet_path, k_clusters=50000, columns=None, representation_type=None, **kwargs
+):
     """
     Backward-compatible loader that returns metadata and cluster assignments.
     Merges sidecars automatically if the base parquet does not contain cluster columns.
@@ -159,12 +175,12 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, rep
         raise FileNotFoundError(f"File not found: {parquet_path}")
 
     # Auto-detect k_clusters if the input filename contains it
-    match = re.search(r'_clustered_k_(\d+)', os.path.basename(parquet_path))
+    match = re.search(r"_clustered_k_(\d+)", os.path.basename(parquet_path))
     if match:
         k_clusters = int(match.group(1))
 
     # Auto-extract k_clusters from filename if it has _k_X suffix
-    match = re.search(r'_k_(\d+)', os.path.basename(parquet_path))
+    match = re.search(r"_k_(\d+)", os.path.basename(parquet_path))
     if match:
         k_clusters = int(match.group(1))
 
@@ -174,12 +190,16 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, rep
 
     # If it's a decoupled sidecar file (has cluster_id but lacks base columns like Latitude/Longitude),
     # resolve the path to the base metadata file instead.
-    if 'cluster_id' in schema_names and ('Latitude' not in schema_names or 'Longitude' not in schema_names):
+    if "cluster_id" in schema_names and (
+        "Latitude" not in schema_names or "Longitude" not in schema_names
+    ):
         db_dir = os.path.dirname(os.path.abspath(parquet_path))
         base_name = os.path.splitext(os.path.basename(parquet_path))[0]
         core_name = get_core_base_name(base_name)
         for fallback in [
-            f"{core_name}_cleaned.parquet", f"{core_name}_deduplicated.parquet", f"{core_name}.parquet"
+            f"{core_name}_cleaned.parquet",
+            f"{core_name}_deduplicated.parquet",
+            f"{core_name}.parquet",
         ]:
             fallback_path = os.path.join(db_dir, fallback)
             if os.path.exists(fallback_path):
@@ -189,9 +209,14 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, rep
                 break
 
     cluster_cols = [
-        'cluster_id', 'cluster_label', 'cluster_description',
-        'parent_cluster_id', 'parent_cluster_label', 'parent_cluster_description',
-        'visual_description', 'parent_visual_description'
+        "cluster_id",
+        "cluster_label",
+        "cluster_description",
+        "parent_cluster_id",
+        "parent_cluster_label",
+        "parent_cluster_description",
+        "visual_description",
+        "parent_visual_description",
     ]
 
     # Filter which columns belong to cluster variables vs base metadata
@@ -201,10 +226,14 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, rep
         requested_cols = columns
 
     req_cluster_cols = [c for c in requested_cols if c in cluster_cols]
-    req_meta_cols = [c for c in requested_cols if c not in cluster_cols or c in ['Platform', 'Photo_ID']]
+    req_meta_cols = [
+        c
+        for c in requested_cols
+        if c not in cluster_cols or c in ["Platform", "Photo_ID"]
+    ]
 
     # Case A: Old format contains cluster columns directly (or we failed to fallback to base)
-    if 'cluster_id' in schema_names and 'Latitude' in schema_names:
+    if "cluster_id" in schema_names and "Latitude" in schema_names:
         return load_dataframe(parquet_path, columns=columns, **kwargs)
 
     # Case B: Decoupled format
@@ -223,22 +252,24 @@ def load_dataset_with_clusters(parquet_path, k_clusters=50000, columns=None, rep
     # Try finding sidecar with full base_name or core_name
     sidecar_path = os.path.join(db_dir, f"{base_name}_clustered_k_{k_clusters}.parquet")
     if not os.path.exists(sidecar_path):
-        sidecar_path = os.path.join(db_dir, f"{core_name}_clustered_k_{k_clusters}.parquet")
+        sidecar_path = os.path.join(
+            db_dir, f"{core_name}_clustered_k_{k_clusters}.parquet"
+        )
 
     if os.path.exists(sidecar_path) and req_cluster_cols:
         # We need Platform and Photo_ID in both dataframes for merging
-        sidecar_cols = list(set(['Platform', 'Photo_ID'] + req_cluster_cols))
+        sidecar_cols = list(set(["Platform", "Photo_ID"] + req_cluster_cols))
         # Ensure we only load available columns from the sidecar
         pf_side = pq.ParquetFile(sidecar_path)
         side_avail_cols = [c for c in sidecar_cols if c in pf_side.schema_arrow.names]
 
         df_sidecar = load_dataframe(sidecar_path, columns=side_avail_cols, **kwargs)
-        df_meta = df_meta.merge(df_sidecar, on=['Platform', 'Photo_ID'], how='left')
+        df_meta = df_meta.merge(df_sidecar, on=["Platform", "Photo_ID"], how="left")
 
     return df_meta
 
 
-def load_embeddings(parquet_path, column='embedding', representation_type='cls'):
+def load_embeddings(parquet_path, column="embedding", representation_type="cls"):
     """
     Backward-compatible loader that returns memory-mapped or raw embedding matrices.
     Supports dynamic mapping lookup via 'embedding_idx' to load from a shared base file.
@@ -260,7 +291,9 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
         for chunk in chunked_arr.chunks:
             chunk_len = len(chunk)
             flat_chunk = chunk.flatten().to_numpy()
-            emb_matrix[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+            emb_matrix[current_row : current_row + chunk_len] = flat_chunk.reshape(
+                chunk_len, dim
+            )
             current_row += chunk_len
         return emb_matrix
 
@@ -273,10 +306,10 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
         base_name = base_name.split("_clustered_k_")[0]
 
     # First, try to load using the base name directly (e.g. geo_space_cleaned_cls_embeddings.npy)
-    if column == 'embedding':
+    if column == "embedding":
         suffix = representation_type
         npy_name = f"{base_name}_{suffix}_embeddings.npy"
-    elif column == 'patch_embedding':
+    elif column == "patch_embedding":
         npy_name = f"{base_name}_patch_embeddings.npy"
     else:
         npy_name = f"{base_name}_{column}_embeddings.npy"
@@ -285,24 +318,24 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
     # Fallback to stripped core_name if base file is cleaned/filtered and has no dedicated npy
     if not os.path.exists(npy_path):
         core_name = get_core_base_name(base_name)
-        if column == 'embedding':
+        if column == "embedding":
             npy_name = f"{core_name}_{suffix}_embeddings.npy"
-        elif column == 'patch_embedding':
+        elif column == "patch_embedding":
             npy_name = f"{core_name}_patch_embeddings.npy"
         else:
             npy_name = f"{core_name}_{column}_embeddings.npy"
         npy_path = os.path.join(db_dir, npy_name)
 
     def suffix_matches(filename, req_rep):
-        has_cls_avg = 'cls_avg_patch' in filename
-        has_avg = 'avg_patch' in filename and not has_cls_avg
-        has_cls = 'cls' in filename and not has_cls_avg
+        has_cls_avg = "cls_avg_patch" in filename
+        has_avg = "avg_patch" in filename and not has_cls_avg
+        has_cls = "cls" in filename and not has_cls_avg
 
-        if req_rep == 'cls_avg_patch':
+        if req_rep == "cls_avg_patch":
             return has_cls_avg
-        elif req_rep == 'avg_patch':
+        elif req_rep == "avg_patch":
             return has_avg
-        elif req_rep == 'cls':
+        elif req_rep == "cls":
             # Allow fallback if the filename doesn't contain any known suffix
             if not has_cls_avg and not has_avg:
                 return True
@@ -312,7 +345,11 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
     # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet
     if not os.path.exists(npy_path) and "cleaned" in base_name:
         fallback_base = base_name.replace("cleaned", "deduplicated")
-        fallback_name = f"{fallback_base}.npy" if column == 'embedding' else f"{fallback_base}_{column}.npy"
+        fallback_name = (
+            f"{fallback_base}.npy"
+            if column == "embedding"
+            else f"{fallback_base}_{column}.npy"
+        )
         npy_path = os.path.join(db_dir, fallback_name)
 
     # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
@@ -327,8 +364,12 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
             matches = glob.glob(pattern)
             if matches:
                 # Filter matches by representation type if default 'embedding' column is requested
-                if column == 'embedding' and representation_type:
-                    matches = [m for m in matches if suffix_matches(os.path.basename(m), representation_type)]
+                if column == "embedding" and representation_type:
+                    matches = [
+                        m
+                        for m in matches
+                        if suffix_matches(os.path.basename(m), representation_type)
+                    ]
                 if not matches:
                     continue
 
@@ -338,9 +379,13 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
                     npy_path = col_match[0]
                     break
                 # Otherwise, if default 'embedding' was requested, try finding cls_embeddings or similar
-                if column == 'embedding':
-                    preferred = [m for m in matches if
-                                 'cls_embeddings' in os.path.basename(m) or 'embedding' in os.path.basename(m)]
+                if column == "embedding":
+                    preferred = [
+                        m
+                        for m in matches
+                        if "cls_embeddings" in os.path.basename(m)
+                        or "embedding" in os.path.basename(m)
+                    ]
                     if preferred:
                         npy_path = preferred[0]
                         break
@@ -350,28 +395,38 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
 
     if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")
-        
+
         # If stable photo_key or platform/ID is available, and companion keys file exists, use it
         keys_path = npy_path.replace(".npy", ".keys.parquet")
-        has_photo_key = 'photo_key' in pf.schema_arrow.names
-        has_platform_and_id = 'Platform' in pf.schema_arrow.names and 'Photo_ID' in pf.schema_arrow.names
+        has_photo_key = "photo_key" in pf.schema_arrow.names
+        has_platform_and_id = (
+            "Platform" in pf.schema_arrow.names and "Photo_ID" in pf.schema_arrow.names
+        )
 
         if (has_photo_key or has_platform_and_id) and os.path.exists(keys_path):
             print(f" -> Resolving embeddings via companion keys index: {keys_path}")
             if has_photo_key:
-                meta_keys_table = pf.read(columns=['photo_key'])
-                meta_keys = meta_keys_table['photo_key'].to_pandas().values
+                meta_keys_table = pf.read(columns=["photo_key"])
+                meta_keys = meta_keys_table["photo_key"].to_pandas().values
             else:
-                meta_keys_table = pf.read(columns=['Platform', 'Photo_ID'])
+                meta_keys_table = pf.read(columns=["Platform", "Photo_ID"])
                 df_temp = meta_keys_table.to_pandas()
-                meta_keys = (df_temp['Platform'].astype(str) + "_" + df_temp['Photo_ID'].astype(str)).values
+                meta_keys = (
+                    df_temp["Platform"].astype(str)
+                    + "_"
+                    + df_temp["Photo_ID"].astype(str)
+                ).values
 
-            master_keys = pd.Index(pd.read_parquet(keys_path, columns=['photo_key'])['photo_key'])
+            master_keys = pd.Index(
+                pd.read_parquet(keys_path, columns=["photo_key"])["photo_key"]
+            )
             indices = master_keys.get_indexer(meta_keys)
 
             valid_mask = indices >= 0
             if not valid_mask.all():
-                print(f"Warning: Found {np.sum(~valid_mask):,} missing keys in embeddings keys index. Zero-filling...")
+                print(
+                    f"Warning: Found {np.sum(~valid_mask):,} missing keys in embeddings keys index. Zero-filling..."
+                )
                 safe_indices = np.clip(indices, 0, len(emb) - 1)
                 sliced_emb = emb[safe_indices].astype(np.float32)
                 sliced_emb[~valid_mask] = 0.0
@@ -380,33 +435,38 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
             return emb[indices].astype(np.float32)
 
         # Fallback to older embedding_idx mapping logic
-        has_embedding_idx = 'embedding_idx' in pf.schema_arrow.names
+        has_embedding_idx = "embedding_idx" in pf.schema_arrow.names
         pf_for_idx = pf
 
-        if not has_embedding_idx and 'Latitude' not in pf.schema_arrow.names:
+        if not has_embedding_idx and "Latitude" not in pf.schema_arrow.names:
             # Resolve to base metadata file if this is a sidecar file
             core_name = get_core_base_name(base_name)
             for fallback in [
-                f"{base_name}_cleaned.parquet", f"{core_name}_cleaned.parquet",
-                f"{base_name}_deduplicated.parquet", f"{core_name}_deduplicated.parquet",
-                f"{base_name}.parquet", f"{core_name}.parquet"
+                f"{base_name}_cleaned.parquet",
+                f"{core_name}_cleaned.parquet",
+                f"{base_name}_deduplicated.parquet",
+                f"{core_name}_deduplicated.parquet",
+                f"{base_name}.parquet",
+                f"{core_name}.parquet",
             ]:
                 fallback_path = os.path.join(db_dir, fallback)
                 if os.path.exists(fallback_path):
                     pf_base = pq.ParquetFile(fallback_path)
-                    if 'embedding_idx' in pf_base.schema_arrow.names:
+                    if "embedding_idx" in pf_base.schema_arrow.names:
                         has_embedding_idx = True
                         pf_for_idx = pf_base
                     break
 
         if has_embedding_idx:
-            idx_table = pf_for_idx.read(columns=['embedding_idx'])
-            indices = idx_table['embedding_idx'].to_numpy()
+            idx_table = pf_for_idx.read(columns=["embedding_idx"])
+            indices = idx_table["embedding_idx"].to_numpy()
 
             # Check bounds safety against the actual loaded matrix
             valid_mask = (indices >= 0) & (indices < len(emb))
             if not valid_mask.all():
-                print(f"Warning: Found {np.sum(~valid_mask):,} out-of-bounds indices in embedding_idx. Clamping and zero-filling...")
+                print(
+                    f"Warning: Found {np.sum(~valid_mask):,} out-of-bounds indices in embedding_idx. Clamping and zero-filling..."
+                )
                 safe_indices = np.clip(indices, 0, len(emb) - 1)
                 sliced_emb = emb[safe_indices].astype(np.float32)
                 sliced_emb[~valid_mask] = 0.0
@@ -416,12 +476,14 @@ def load_embeddings(parquet_path, column='embedding', representation_type='cls')
 
         return emb.astype(np.float32)
 
-    raise FileNotFoundError(f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'")
+    raise FileNotFoundError(
+        f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'"
+    )
 
 
 def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=None):
     """
-    Resolves an image URL/ID to a local path on disk by checking flat files, 
+    Resolves an image URL/ID to a local path on disk by checking flat files,
     train/ folders, and nested GLDv2 directory structures.
     Returns the absolute path if found, otherwise None.
     """
@@ -441,9 +503,9 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
         # A. Try direct lookup using Photo_ID (flat file, train/ folder, or nested)
         if photo_id:
             photo_str = str(photo_id).strip()
-            if photo_str.endswith('.0'):
+            if photo_str.endswith(".0"):
                 photo_str = photo_str[:-2]
-            for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG']:
+            for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
                 # 1. Platform-specific subfolder lookup (e.g. d/platform/photo_id.jpg)
                 if platform:
                     plat_str = str(platform).strip().lower()
@@ -463,11 +525,19 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
 
                 # 3. Nested GLDv2 lookup (e.g. d/a/b/c/id.jpg)
                 if len(photo_str) == 16:
-                    p_nested = os.path.join(d, photo_str[0], photo_str[1], photo_str[2], f"{photo_str}{ext}")
+                    p_nested = os.path.join(
+                        d, photo_str[0], photo_str[1], photo_str[2], f"{photo_str}{ext}"
+                    )
                     if os.path.exists(p_nested):
                         return os.path.abspath(p_nested)
-                    p_nested_train = os.path.join(d, "train", photo_str[0], photo_str[1], photo_str[2],
-                                                  f"{photo_str}{ext}")
+                    p_nested_train = os.path.join(
+                        d,
+                        "train",
+                        photo_str[0],
+                        photo_str[1],
+                        photo_str[2],
+                        f"{photo_str}{ext}",
+                    )
                     if os.path.exists(p_nested_train):
                         return os.path.abspath(p_nested_train)
 
@@ -479,8 +549,13 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
         basename = os.path.basename(clean_url)
 
         basenames = [basename]
-        if '.' not in basename:
-            basenames.extend([f"{basename}{ext}" for ext in ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG']])
+        if "." not in basename:
+            basenames.extend(
+                [
+                    f"{basename}{ext}"
+                    for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]
+                ]
+            )
 
         for b in basenames:
             p_base = os.path.join(d, b)
@@ -495,7 +570,7 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
 
 # Thread-safe global session for download adapters
 _http_session = None
-_MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+_MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
 
 
 def _get_http_session():
@@ -505,14 +580,24 @@ def _get_http_session():
         adapter = HTTPAdapter(
             pool_connections=64,
             pool_maxsize=64,
-            max_retries=Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+            max_retries=Retry(
+                total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504]
+            ),
         )
         _http_session.mount("https://", adapter)
         _http_session.mount("http://", adapter)
     return _http_session
 
 
-def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_size=448, max_retries=3, mapillary_token=_MAPILLARY_TOKEN):
+def download_image(
+    url,
+    photo_id=None,
+    platform=None,
+    offline_dirs=None,
+    image_size=448,
+    max_retries=3,
+    mapillary_token=_MAPILLARY_TOKEN,
+):
     """Loads an image locally if it's part of an offline dataset, or downloads it via connection pool with retries and fallbacks."""
     for attempt in range(max_retries):
         try:
@@ -525,7 +610,9 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_s
             # 2. Try resolving via offline directories
             dirs_to_use = offline_dirs if offline_dirs is not None else []
             if dirs_to_use and url:
-                resolved = resolve_offline_image_path(url, dirs_to_use, photo_id, platform)
+                resolved = resolve_offline_image_path(
+                    url, dirs_to_use, photo_id, platform
+                )
                 if resolved and os.path.exists(resolved):
                     img = Image.open(resolved).convert("RGB")
                     img_resized = img.resize((image_size, image_size))
@@ -537,7 +624,9 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_s
                 # Mapillary schema resolution
                 if url.startswith("mapillary://") or (photo_id and "fbcdn.net" in url):
                     orig_id = str(photo_id) if photo_id else url.split("://")[1]
-                    api_url = f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
+                    api_url = (
+                        f"https://graph.mapillary.com/{orig_id}?fields=thumb_1024_url"
+                    )
                     headers = {"Authorization": f"OAuth {mapillary_token}"}
                     res = session.get(api_url, headers=headers, timeout=10)
                     if res.status_code == 200:
@@ -549,7 +638,11 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_s
                     res = session.get(api_url, timeout=10)
                     if res.status_code == 200:
                         data = res.json().get("result", {}).get("data", {})
-                        url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
+                        url = (
+                            data.get("fileurlLTh")
+                            or data.get("fileurlTh")
+                            or data.get("fileurl")
+                        )
 
                 if url:
                     res = session.get(url, timeout=10)
@@ -565,9 +658,17 @@ def download_image(url, photo_id=None, platform=None, offline_dirs=None, image_s
             time.sleep(1.0 * (attempt + 1))
             if platform:
                 plat_lower = platform.lower()
-                if plat_lower == 'mapillary' and url and not url.startswith('mapillary://'):
+                if (
+                    plat_lower == "mapillary"
+                    and url
+                    and not url.startswith("mapillary://")
+                ):
                     url = f"mapillary://{photo_id}"
-                elif plat_lower == 'kartaview' and url and not url.startswith('kartaview://'):
+                elif (
+                    plat_lower == "kartaview"
+                    and url
+                    and not url.startswith("kartaview://")
+                ):
                     url = f"kartaview://{photo_id}"
 
     return None

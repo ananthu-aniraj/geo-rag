@@ -18,14 +18,14 @@ def rename_in_csv(file_path, old_name, new_name):
     try:
         reader = pd.read_csv(file_path, chunksize=chunksize, low_memory=False)
         for chunk in reader:
-            if 'Platform' in chunk.columns:
-                chunk['Platform'] = chunk['Platform'].replace(old_name, new_name)
+            if "Platform" in chunk.columns:
+                chunk["Platform"] = chunk["Platform"].replace(old_name, new_name)
 
             if first_chunk:
-                chunk.to_csv(temp_path, index=False, mode='w')
+                chunk.to_csv(temp_path, index=False, mode="w")
                 first_chunk = False
             else:
-                chunk.to_csv(temp_path, index=False, mode='a', header=False)
+                chunk.to_csv(temp_path, index=False, mode="a", header=False)
 
         os.replace(temp_path, file_path)
         print(f"Successfully updated CSV: {file_path}")
@@ -44,8 +44,10 @@ def rename_in_parquet(file_path, old_name, new_name):
         schema = reader.schema_arrow
 
         # Check if 'Platform' exists in schema before processing
-        if 'Platform' not in schema.names:
-            print(f"Skipping Parquet {file_path}: 'Platform' column not found in schema.")
+        if "Platform" not in schema.names:
+            print(
+                f"Skipping Parquet {file_path}: 'Platform' column not found in schema."
+            )
             return
 
         writer = None
@@ -55,8 +57,8 @@ def rename_in_parquet(file_path, old_name, new_name):
             table = reader.read_row_group(i)
             df = table.to_pandas()
 
-            if 'Platform' in df.columns:
-                df['Platform'] = df['Platform'].replace(old_name, new_name)
+            if "Platform" in df.columns:
+                df["Platform"] = df["Platform"].replace(old_name, new_name)
 
             # Convert back to PyArrow table
             new_table = pa.Table.from_pandas(df, schema=schema)
@@ -78,15 +80,33 @@ def rename_in_parquet(file_path, old_name, new_name):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Rename Platform names in dataset files.")
+    parser = argparse.ArgumentParser(
+        description="Rename Platform names in dataset files."
+    )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--file_path", type=str, help="Path to a single CSV or Parquet file.")
-    group.add_argument("--dir_path", type=str, help="Path to a directory containing CSV and Parquet files.")
+    group.add_argument(
+        "--file_path", type=str, help="Path to a single CSV or Parquet file."
+    )
+    group.add_argument(
+        "--dir_path",
+        type=str,
+        help="Path to a directory containing CSV and Parquet files.",
+    )
 
-    parser.add_argument("--old_name", type=str, default="GoogleLandmarks", help="Platform name to replace.")
-    parser.add_argument("--new_name", type=str, default="Wikimedia", help="New platform name.")
-    parser.add_argument("--recursive", action="store_true",
-                        help="Recursively scan subdirectories when --dir_path is used.")
+    parser.add_argument(
+        "--old_name",
+        type=str,
+        default="GoogleLandmarks",
+        help="Platform name to replace.",
+    )
+    parser.add_argument(
+        "--new_name", type=str, default="Wikimedia", help="New platform name."
+    )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories when --dir_path is used.",
+    )
     args = parser.parse_args()
 
     files_to_process = []
@@ -105,11 +125,13 @@ def main():
         if args.recursive:
             for root, _, files in os.walk(args.dir_path):
                 for filename in files:
-                    if filename.lower().endswith(('.csv', '.parquet')):
+                    if filename.lower().endswith((".csv", ".parquet")):
                         files_to_process.append(os.path.join(root, filename))
         else:
             for entry in os.scandir(args.dir_path):
-                if entry.is_file() and entry.name.lower().endswith(('.csv', '.parquet')):
+                if entry.is_file() and entry.name.lower().endswith(
+                    (".csv", ".parquet")
+                ):
                     files_to_process.append(entry.path)
 
     if not files_to_process:
@@ -120,9 +142,9 @@ def main():
     for file_path in files_to_process:
         file_ext = os.path.splitext(file_path)[1].lower()
         print("\n" + "=" * 50)
-        if file_ext == '.csv':
+        if file_ext == ".csv":
             rename_in_csv(file_path, args.old_name, args.new_name)
-        elif file_ext == '.parquet':
+        elif file_ext == ".parquet":
             rename_in_parquet(file_path, args.old_name, args.new_name)
         print("=" * 50)
 

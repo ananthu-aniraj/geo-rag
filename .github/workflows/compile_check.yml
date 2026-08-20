@@ -28,7 +28,7 @@ jobs:
     - name: Run JavaScript & HTML Template syntax check
       run: |
         echo "Running syntax validation on JavaScript & HTML template files..."
-        
+
         # 1. Check standalone JS files (compile check)
         for f in templates/*.js; do
           if [ -f "$f" ]; then
@@ -37,7 +37,7 @@ jobs:
             echo "  -> $f syntax OK"
           fi
         done
-        
+
         # 2. Check HTML files with inline JS script blocks (compile check)
         for f in templates/*.html; do
           if [ -f "$f" ]; then

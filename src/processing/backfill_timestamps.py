@@ -13,8 +13,8 @@ from tqdm import tqdm
 
 from src.utils.io import get_core_base_name, load_dataframe, save_dataframe
 
-MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
-FLICKR_API_KEY = 'FLICKR_API_KEY_PLACEHOLDER'
+MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
+FLICKR_API_KEY = "FLICKR_API_KEY_PLACEHOLDER"
 FLICKR_DELAY = 1.1
 
 
@@ -24,7 +24,9 @@ def fetch_mapillary_timestamps(photo_ids):
     if not photo_ids:
         return {}
 
-    url = f"https://graph.mapillary.com/?ids={','.join(photo_ids)}&fields=id,captured_at"
+    url = (
+        f"https://graph.mapillary.com/?ids={','.join(photo_ids)}&fields=id,captured_at"
+    )
     headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
     results = {}
 
@@ -33,10 +35,11 @@ def fetch_mapillary_timestamps(photo_ids):
         if res.status_code == 200:
             data = res.json()
             for pid, item in data.items():
-                cap_ms = item.get('captured_at')
+                cap_ms = item.get("captured_at")
                 if cap_ms:
-                    results[str(pid)] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
-                        '%Y-%m-%dT%H:%M:%SZ')
+                    results[str(pid)] = datetime.datetime.fromtimestamp(
+                        cap_ms / 1000.0, datetime.timezone.utc
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
         elif len(photo_ids) > 1:
             # Batch query failed (likely due to a deleted/invalid ID in the batch).
             # Fall back to individual queries for this specific batch
@@ -46,10 +49,11 @@ def fetch_mapillary_timestamps(photo_ids):
                     s_res = requests.get(single_url, headers=headers, timeout=5)
                     if s_res.status_code == 200:
                         s_data = s_res.json()
-                        cap_ms = s_data.get('captured_at')
+                        cap_ms = s_data.get("captured_at")
                         if cap_ms:
-                            results[str(pid)] = datetime.datetime.fromtimestamp(cap_ms / 1000.0, datetime.timezone.utc).strftime(
-                                '%Y-%m-%dT%H:%M:%SZ')
+                            results[str(pid)] = datetime.datetime.fromtimestamp(
+                                cap_ms / 1000.0, datetime.timezone.utc
+                            ).strftime("%Y-%m-%dT%H:%M:%SZ")
                 except Exception:
                     pass
     except Exception:
@@ -84,18 +88,18 @@ def fetch_flickr_bbox_timestamps(bbox_str):
                 res = requests.get(url, timeout=10)
                 if res.status_code == 200:
                     data = res.json()
-                    if data.get('stat') == 'ok':
+                    if data.get("stat") == "ok":
                         # Since the scraper capped photos at 100, and per_page is 250,
                         # all scraped photos are guaranteed to be on Page 1.
                         total_pages = 1
 
-                        photos = data.get('photos', {}).get('photo', [])
+                        photos = data.get("photos", {}).get("photo", [])
                         if not photos:
                             break
 
                         for p in photos:
-                            pid = str(p.get('id'))
-                            taken = p.get('datetaken', '')
+                            pid = str(p.get("id"))
+                            taken = p.get("datetaken", "")
                             if taken:
                                 results[pid] = taken.replace(" ", "T")
 
@@ -124,8 +128,8 @@ def fetch_flickr_individual_timestamp(photo_id):
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
             data = res.json()
-            if data.get('stat') == 'ok':
-                taken = data.get('photo', {}).get('dates', {}).get('taken', '')
+            if data.get("stat") == "ok":
+                taken = data.get("photo", {}).get("dates", {}).get("taken", "")
                 if taken:
                     return photo_id, taken.replace(" ", "T")
     except Exception:
@@ -143,8 +147,8 @@ def fetch_kartaview_timestamp(photo_id):
             data = res.json().get("result", {}).get("data", {})
             shot_date = data.get("shotDate")
             if shot_date:
-                if '.' in shot_date:
-                    shot_date = shot_date.split('.')[0]
+                if "." in shot_date:
+                    shot_date = shot_date.split(".")[0]
                 return photo_id, shot_date.replace(" ", "T")
     except Exception:
         pass
@@ -152,21 +156,45 @@ def fetch_kartaview_timestamp(photo_id):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Consolidated Backfill of Captured_At timestamps.")
-    parser.add_argument("--file_path", type=str, required=True, help="Path to geo_embedding_space.parquet or .csv, or a directory containing them.")
-    parser.add_argument("--save_path", type=str, default=None,
-                        help="Where to save the enriched output (defaults to overwriting in-place; if input is a directory, this must be a directory path or left None).")
-    parser.add_argument("--log_dirs", nargs="+", default=None,
-                        help="Optional list of folders containing the completed_boxes log files (enables 250x faster bulk search backfill for Flickr).")
-    parser.add_argument("--platform", type=str, choices=['flickr', 'mapillary', 'kartaview'], default=None,
-                        help="Only backfill timestamps for a specific platform to save time.")
+    parser = argparse.ArgumentParser(
+        description="Consolidated Backfill of Captured_At timestamps."
+    )
+    parser.add_argument(
+        "--file_path",
+        type=str,
+        required=True,
+        help="Path to geo_embedding_space.parquet or .csv, or a directory containing them.",
+    )
+    parser.add_argument(
+        "--save_path",
+        type=str,
+        default=None,
+        help="Where to save the enriched output (defaults to overwriting in-place; if input is a directory, this must be a directory path or left None).",
+    )
+    parser.add_argument(
+        "--log_dirs",
+        nargs="+",
+        default=None,
+        help="Optional list of folders containing the completed_boxes log files (enables 250x faster bulk search backfill for Flickr).",
+    )
+    parser.add_argument(
+        "--platform",
+        type=str,
+        choices=["flickr", "mapillary", "kartaview"],
+        default=None,
+        help="Only backfill timestamps for a specific platform to save time.",
+    )
     args = parser.parse_args()
 
     # 1. Gather files to process
     files_to_process = []
     if os.path.isdir(args.file_path):
-        files_to_process = glob.glob(os.path.join(args.file_path, "*.csv")) + glob.glob(os.path.join(args.file_path, "*.parquet"))
-        print(f"Discovered {len(files_to_process)} CSV/Parquet files in directory: {args.file_path}")
+        files_to_process = glob.glob(os.path.join(args.file_path, "*.csv")) + glob.glob(
+            os.path.join(args.file_path, "*.parquet")
+        )
+        print(
+            f"Discovered {len(files_to_process)} CSV/Parquet files in directory: {args.file_path}"
+        )
     else:
         files_to_process = [args.file_path]
 
@@ -186,44 +214,54 @@ def main():
         if args.save_path:
             if os.path.isdir(args.save_path) or not os.path.splitext(args.save_path)[1]:
                 os.makedirs(args.save_path, exist_ok=True)
-                current_save_path = os.path.join(args.save_path, os.path.basename(current_file))
+                current_save_path = os.path.join(
+                    args.save_path, os.path.basename(current_file)
+                )
             else:
                 if len(files_to_process) > 1:
                     save_dir = os.path.dirname(args.save_path) or "."
                     os.makedirs(save_dir, exist_ok=True)
-                    current_save_path = os.path.join(save_dir, f"enriched_{os.path.basename(current_file)}")
+                    current_save_path = os.path.join(
+                        save_dir, f"enriched_{os.path.basename(current_file)}"
+                    )
                 else:
                     current_save_path = args.save_path
         else:
             current_save_path = current_file
 
         resolved_input = current_file
-        if os.path.exists(current_file) and current_file.endswith('.parquet'):
+        if os.path.exists(current_file) and current_file.endswith(".parquet"):
             pf = pq.ParquetFile(current_file)
             schema_names = pf.schema_arrow.names
-            if 'cluster_id' in schema_names and ('Latitude' not in schema_names or 'Longitude' not in schema_names):
+            if "cluster_id" in schema_names and (
+                "Latitude" not in schema_names or "Longitude" not in schema_names
+            ):
                 db_dir = os.path.dirname(os.path.abspath(current_file))
                 base_name = os.path.splitext(os.path.basename(current_file))[0]
                 core_name = get_core_base_name(base_name)
                 for fallback in [
-                    f"{core_name}_cleaned.parquet", f"{core_name}_deduplicated.parquet", f"{core_name}.parquet"
+                    f"{core_name}_cleaned.parquet",
+                    f"{core_name}_deduplicated.parquet",
+                    f"{core_name}.parquet",
                 ]:
                     fallback_path = os.path.join(db_dir, fallback)
                     if os.path.exists(fallback_path):
                         resolved_input = fallback_path
-                        print(f" -> Input is a decoupled sidecar. Resolving base metadata to: {resolved_input}")
+                        print(
+                            f" -> Input is a decoupled sidecar. Resolving base metadata to: {resolved_input}"
+                        )
                         if not args.save_path:
                             current_save_path = resolved_input
                         break
 
         # Load Dataset
-        df = load_dataframe(resolved_input, dtype={'Platform': str, 'Photo_ID': str})
+        df = load_dataframe(resolved_input, dtype={"Platform": str, "Photo_ID": str})
 
-        if 'Captured_At' not in df.columns:
-            df['Captured_At'] = None
-        df['Photo_ID'] = df['Photo_ID'].astype(str)
+        if "Captured_At" not in df.columns:
+            df["Captured_At"] = None
+        df["Photo_ID"] = df["Photo_ID"].astype(str)
 
-        missing_mask = df['Captured_At'].isna() | (df['Captured_At'] == "")
+        missing_mask = df["Captured_At"].isna() | (df["Captured_At"] == "")
         df_missing = df[missing_mask]
 
         print(f"Total rows: {len(df)}. Missing timestamps: {len(df_missing)}.")
@@ -233,23 +271,29 @@ def main():
 
         # Resolve what we can from the global cache immediately
         cached_count = 0
-        pids_missing_list = df_missing['Photo_ID'].tolist()
+        pids_missing_list = df_missing["Photo_ID"].tolist()
         for pid in pids_missing_list:
             if pid in global_timestamps_cache:
                 cached_count += 1
-        
+
         if cached_count > 0:
-            print(f"Resolving {cached_count} missing timestamps from global in-memory cache...")
+            print(
+                f"Resolving {cached_count} missing timestamps from global in-memory cache..."
+            )
+
             def merge_cached(row):
-                pid = row['Photo_ID']
+                pid = row["Photo_ID"]
                 if pid in global_timestamps_cache:
                     return global_timestamps_cache[pid]
-                return row['Captured_At']
-            df['Captured_At'] = df.apply(merge_cached, axis=1)
+                return row["Captured_At"]
+
+            df["Captured_At"] = df.apply(merge_cached, axis=1)
             # Recompute missing mask
-            missing_mask = df['Captured_At'].isna() | (df['Captured_At'] == "")
+            missing_mask = df["Captured_At"].isna() | (df["Captured_At"] == "")
             df_missing = df[missing_mask]
-            print(f"Remaining missing timestamps after cache lookup: {len(df_missing)}.")
+            print(
+                f"Remaining missing timestamps after cache lookup: {len(df_missing)}."
+            )
             if len(df_missing) == 0:
                 print("All missing timestamps resolved via cache. Saving file...")
                 save_dataframe(df, current_save_path)
@@ -257,10 +301,14 @@ def main():
 
         # --- 1. Flickr (Bulk Box Search or Fallback Individual Queries) ---
         flickr_ids = set()
-        if args.platform is None or args.platform == 'flickr':
-            flickr_ids = set(df_missing[df_missing['Platform'].str.lower() == 'flickr']['Photo_ID'].tolist())
+        if args.platform is None or args.platform == "flickr":
+            flickr_ids = set(
+                df_missing[df_missing["Platform"].str.lower() == "flickr"][
+                    "Photo_ID"
+                ].tolist()
+            )
         flickr_timestamps = {}
-        
+
         if flickr_ids:
             if args.log_dirs:
                 # Split any space-separated strings (shell-quoting issue helper)
@@ -271,17 +319,21 @@ def main():
                 # Optimized Bulk BBox Search
                 log_files = []
                 for folder in actual_dirs:
-                    log_files.extend(glob.glob(os.path.join(folder, "*completed_boxes*.txt")))
-                
-                print(f"Found {len(log_files)} Flickr completed boxes logs. Reading search coordinates...")
+                    log_files.extend(
+                        glob.glob(os.path.join(folder, "*completed_boxes*.txt"))
+                    )
+
+                print(
+                    f"Found {len(log_files)} Flickr completed boxes logs. Reading search coordinates..."
+                )
                 bboxes = set()
                 for f in log_files:
                     try:
-                        with open(f, 'r') as file:
+                        with open(f, "r") as file:
                             for line in file:
-                                box_id = line.replace('\x00', '').strip()
+                                box_id = line.replace("\x00", "").strip()
                                 if box_id:
-                                    parts = box_id.split(',')
+                                    parts = box_id.split(",")
                                     if len(parts) == 4:
                                         try:
                                             [float(x) for x in parts]
@@ -290,44 +342,65 @@ def main():
                                             continue
                     except Exception:
                         pass
-                
+
                 print(f"Discovered {len(bboxes)} unique bounding boxes.")
-                
+
                 # Filter bboxes using spatial join to only query those containing missing points
                 active_bboxes = []
                 try:
-
-                    
-                    print("Filtering boxes using spatial indexing to find boxes that contain our images...")
+                    print(
+                        "Filtering boxes using spatial indexing to find boxes that contain our images..."
+                    )
                     box_geoms = []
                     box_ids = []
                     for bbox_str in bboxes:
                         try:
-                            coords = [float(x) for x in bbox_str.split(',')]
-                            box_geoms.append(box(coords[0], coords[1], coords[2], coords[3]))
+                            coords = [float(x) for x in bbox_str.split(",")]
+                            box_geoms.append(
+                                box(coords[0], coords[1], coords[2], coords[3])
+                            )
                             box_ids.append(bbox_str)
                         except Exception:
                             pass
-                    
-                    gdf_boxes = gpd.GeoDataFrame({'bbox_str': box_ids}, geometry=box_geoms, crs="EPSG:4326")
-                    
-                    df_flickr_missing = df_missing[df_missing['Platform'].str.lower() == 'flickr']
+
+                    gdf_boxes = gpd.GeoDataFrame(
+                        {"bbox_str": box_ids}, geometry=box_geoms, crs="EPSG:4326"
+                    )
+
+                    df_flickr_missing = df_missing[
+                        df_missing["Platform"].str.lower() == "flickr"
+                    ]
                     gdf_points = gpd.GeoDataFrame(
                         df_flickr_missing,
-                        geometry=gpd.points_from_xy(df_flickr_missing['Longitude'], df_flickr_missing['Latitude']),
-                        crs="EPSG:4326"
+                        geometry=gpd.points_from_xy(
+                            df_flickr_missing["Longitude"],
+                            df_flickr_missing["Latitude"],
+                        ),
+                        crs="EPSG:4326",
                     )
-                    
-                    joined = gpd.sjoin(gdf_boxes, gdf_points, how="inner", predicate="intersects")
-                    box_to_photos = joined.groupby('bbox_str')['Photo_ID'].apply(set).to_dict()
-                    active_bboxes = sorted(box_to_photos.keys(), key=lambda b: len(box_to_photos[b]), reverse=True)
-                    print(f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images.")
+
+                    joined = gpd.sjoin(
+                        gdf_boxes, gdf_points, how="inner", predicate="intersects"
+                    )
+                    box_to_photos = (
+                        joined.groupby("bbox_str")["Photo_ID"].apply(set).to_dict()
+                    )
+                    active_bboxes = sorted(
+                        box_to_photos.keys(),
+                        key=lambda b: len(box_to_photos[b]),
+                        reverse=True,
+                    )
+                    print(
+                        f"Filtered and sorted to {len(active_bboxes)} active bounding boxes containing missing Flickr images."
+                    )
                 except Exception as se:
-                    print(f"Spatial join optimization failed or geopandas not available: {se}")
+                    print(
+                        f"Spatial join optimization failed or geopandas not available: {se}"
+                    )
                     print("Falling back to scanning all discovered bounding boxes...")
                     active_bboxes = list(bboxes)
                     box_to_photos = {}
-                
+
                 if active_bboxes:
                     print("Running optimized bulk search scan on active boxes...")
                     for bbox in tqdm(active_bboxes, desc="Bulk Scan Flickr BBoxes"):
@@ -336,125 +409,179 @@ def main():
                             needed_photos = box_photos - set(flickr_timestamps.keys())
                             if not needed_photos:
                                 continue
-                                
+
                         res_box = fetch_flickr_bbox_timestamps(bbox)
                         for pid, timestamp in res_box.items():
                             if pid in flickr_ids:
                                 flickr_timestamps[pid] = timestamp
-                                
+
                         if len(flickr_timestamps) >= len(flickr_ids):
-                            print("\nAll missing Flickr timestamps successfully backfilled! Terminating early...")
+                            print(
+                                "\nAll missing Flickr timestamps successfully backfilled! Terminating early..."
+                            )
                             break
-                            
-                print(f"Retrieved {len(flickr_timestamps)} Flickr timestamps using bulk search.")
+
+                print(
+                    f"Retrieved {len(flickr_timestamps)} Flickr timestamps using bulk search."
+                )
             else:
                 # Fallback Individual Queries
-                print(f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(flickr_ids)} photos.")
-                print(f"This will take approximately {len(flickr_ids) / 3600:.1f} hours due to Flickr's rate limit.")
-                print("Provide --log_dirs with your completed box text files to speed this up by 250x.")
-     
+                print(
+                    f"\n[WARNING] No --log_dirs provided. Querying Flickr API individually for {len(flickr_ids)} photos."
+                )
+                print(
+                    f"This will take approximately {len(flickr_ids) / 3600:.1f} hours due to Flickr's rate limit."
+                )
+                print(
+                    "Provide --log_dirs with your completed box text files to speed this up by 250x."
+                )
+
                 with ThreadPoolExecutor(max_workers=2) as executor:
-                    futures = {executor.submit(fetch_flickr_individual_timestamp, pid): pid for pid in flickr_ids}
-                    for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch Flickr (1-by-1)"):
+                    futures = {
+                        executor.submit(fetch_flickr_individual_timestamp, pid): pid
+                        for pid in flickr_ids
+                    }
+                    for future in tqdm(
+                        as_completed(futures),
+                        total=len(futures),
+                        desc="Fetch Flickr (1-by-1)",
+                    ):
                         pid, timestamp = future.result()
                         if timestamp:
                             flickr_timestamps[pid] = timestamp
 
         # --- 2. Mapillary (Batch ID Queries) ---
         mapillary_ids = []
-        if args.platform is None or args.platform == 'mapillary':
-            mapillary_ids = df_missing[df_missing['Platform'].str.lower() == 'mapillary']['Photo_ID'].tolist()
+        if args.platform is None or args.platform == "mapillary":
+            mapillary_ids = df_missing[
+                df_missing["Platform"].str.lower() == "mapillary"
+            ]["Photo_ID"].tolist()
         mapillary_timestamps = {}
         if mapillary_ids:
-            print(f"Found {len(mapillary_ids)} Mapillary images. Running batch queries...")
+            print(
+                f"Found {len(mapillary_ids)} Mapillary images. Running batch queries..."
+            )
             batch_size = 100
-            for i in tqdm(range(0, len(mapillary_ids), batch_size), desc="Bulk Fetch Mapillary"):
-                batch = mapillary_ids[i:i + batch_size]
+            for i in tqdm(
+                range(0, len(mapillary_ids), batch_size), desc="Bulk Fetch Mapillary"
+            ):
+                batch = mapillary_ids[i : i + batch_size]
                 res_batch = fetch_mapillary_timestamps(batch)
                 mapillary_timestamps.update(res_batch)
                 time.sleep(0.1)
 
         # --- 3. KartaView (Throttled Parallel Queries) ---
         kartaview_ids = []
-        if args.platform is None or args.platform == 'kartaview':
-            kartaview_ids = df_missing[df_missing['Platform'].str.lower().isin(['kartaview', 'openstreetcam'])]['Photo_ID'].tolist()
+        if args.platform is None or args.platform == "kartaview":
+            kartaview_ids = df_missing[
+                df_missing["Platform"].str.lower().isin(["kartaview", "openstreetcam"])
+            ]["Photo_ID"].tolist()
         kartaview_timestamps = {}
         if kartaview_ids:
-            print(f"Found {len(kartaview_ids)} KartaView images. Querying individual timestamps...")
+            print(
+                f"Found {len(kartaview_ids)} KartaView images. Querying individual timestamps..."
+            )
             with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = {executor.submit(fetch_kartaview_timestamp, pid): pid for pid in kartaview_ids}
-                for future in tqdm(as_completed(futures), total=len(futures), desc="Fetch KartaView"):
+                futures = {
+                    executor.submit(fetch_kartaview_timestamp, pid): pid
+                    for pid in kartaview_ids
+                }
+                for future in tqdm(
+                    as_completed(futures), total=len(futures), desc="Fetch KartaView"
+                ):
                     pid, timestamp = future.result()
                     if timestamp:
                         kartaview_timestamps[pid] = timestamp
 
         # --- Merge and Cache ---
-        all_fetched = {**mapillary_timestamps, **flickr_timestamps, **kartaview_timestamps}
+        all_fetched = {
+            **mapillary_timestamps,
+            **flickr_timestamps,
+            **kartaview_timestamps,
+        }
         # Update global cache
         global_timestamps_cache.update(all_fetched)
 
         def merge_timestamp(row):
-            pid = row['Photo_ID']
+            pid = row["Photo_ID"]
             if pid in all_fetched:
                 return all_fetched[pid]
-            return row['Captured_At']
+            return row["Captured_At"]
 
-        df['Captured_At'] = df.apply(merge_timestamp, axis=1)
+        df["Captured_At"] = df.apply(merge_timestamp, axis=1)
 
         print(f"Saving enriched dataset to {current_save_path}...")
         output_base, _ = os.path.splitext(current_save_path)
-        
-        if current_save_path.endswith('.parquet'):
+
+        if current_save_path.endswith(".parquet"):
             save_dataframe(df, current_save_path)
-            
+
             # Propagate to cleaned dataset if we just updated deduplicated
             if "_deduplicated.parquet" in current_save_path:
-                cleaned_path = current_save_path.replace("_deduplicated.parquet", "_cleaned.parquet")
+                cleaned_path = current_save_path.replace(
+                    "_deduplicated.parquet", "_cleaned.parquet"
+                )
                 if os.path.exists(cleaned_path):
-                    print(f" -> Propagating updated timestamps to cleaned dataset: {cleaned_path}")
+                    print(
+                        f" -> Propagating updated timestamps to cleaned dataset: {cleaned_path}"
+                    )
                     try:
                         df_cleaned = load_dataframe(cleaned_path)
-                        df_cleaned['__temp_idx'] = range(len(df_cleaned))
-                        df_cleaned = df_cleaned.drop(columns=['Captured_At'], errors='ignore')
-                        df_cleaned = df_cleaned.merge(df[['Platform', 'Photo_ID', 'Captured_At']], on=['Platform', 'Photo_ID'], how='left')
-                        df_cleaned = df_cleaned.sort_values('__temp_idx').drop(columns=['__temp_idx'])
+                        df_cleaned["__temp_idx"] = range(len(df_cleaned))
+                        df_cleaned = df_cleaned.drop(
+                            columns=["Captured_At"], errors="ignore"
+                        )
+                        df_cleaned = df_cleaned.merge(
+                            df[["Platform", "Photo_ID", "Captured_At"]],
+                            on=["Platform", "Photo_ID"],
+                            how="left",
+                        )
+                        df_cleaned = df_cleaned.sort_values("__temp_idx").drop(
+                            columns=["__temp_idx"]
+                        )
                         save_dataframe(df_cleaned, cleaned_path)
                         print(" -> Cleaned dataset updated successfully!")
                     except Exception as e:
                         print(f"Error propagating timestamps to cleaned dataset: {e}")
-            
+
             # Auto-discover and enrich corresponding CSV file
             csv_pair = output_base + ".csv"
             if os.path.exists(csv_pair):
-                print(f"Auto-discovered corresponding CSV file: {csv_pair}. Enriching it...")
+                print(
+                    f"Auto-discovered corresponding CSV file: {csv_pair}. Enriching it..."
+                )
                 try:
-                    df_csv = load_dataframe(csv_pair, dtype={'Platform': str, 'Photo_ID': str})
-                    df_csv['Photo_ID'] = df_csv['Photo_ID'].astype(str)
-                    if 'Captured_At' not in df_csv.columns:
-                        df_csv['Captured_At'] = None
-                    df_csv['Captured_At'] = df_csv.apply(merge_timestamp, axis=1)
+                    df_csv = load_dataframe(
+                        csv_pair, dtype={"Platform": str, "Photo_ID": str}
+                    )
+                    df_csv["Photo_ID"] = df_csv["Photo_ID"].astype(str)
+                    if "Captured_At" not in df_csv.columns:
+                        df_csv["Captured_At"] = None
+                    df_csv["Captured_At"] = df_csv.apply(merge_timestamp, axis=1)
                     save_dataframe(df_csv, csv_pair)
                     print("CSV file enriched successfully!")
                 except Exception as e:
                     print(f"Error enriching corresponding CSV file: {e}")
         else:
             save_dataframe(df, current_save_path)
-            
+
             # Auto-discover and enrich corresponding Parquet file
             parquet_pair = output_base + ".parquet"
             if os.path.exists(parquet_pair):
-                print(f"Auto-discovered corresponding Parquet file: {parquet_pair}. Enriching it...")
+                print(
+                    f"Auto-discovered corresponding Parquet file: {parquet_pair}. Enriching it..."
+                )
                 try:
                     df_pq = load_dataframe(parquet_pair)
-                    df_pq['Photo_ID'] = df_pq['Photo_ID'].astype(str)
-                    if 'Captured_At' not in df_pq.columns:
-                        df_pq['Captured_At'] = None
-                    df_pq['Captured_At'] = df_pq.apply(merge_timestamp, axis=1)
+                    df_pq["Photo_ID"] = df_pq["Photo_ID"].astype(str)
+                    if "Captured_At" not in df_pq.columns:
+                        df_pq["Captured_At"] = None
+                    df_pq["Captured_At"] = df_pq.apply(merge_timestamp, axis=1)
                     save_dataframe(df_pq, parquet_pair)
                     print("Parquet file enriched successfully!")
                 except Exception as e:
                     print(f"Error enriching corresponding Parquet file: {e}")
-                    
+
     print("\nBackfill complete!")
 
 

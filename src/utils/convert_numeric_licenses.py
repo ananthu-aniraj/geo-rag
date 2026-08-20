@@ -31,8 +31,7 @@ def convert_file(file_path, dry_run=False):
         unique_licenses = df["License"].dropna().unique()
         numeric_keys = ["11", "12", "13", "14", "15", "16"]
         numeric_found = [
-            l for l in unique_licenses
-            if str(l).split('.')[0].strip() in numeric_keys
+            l for l in unique_licenses if str(l).split(".")[0].strip() in numeric_keys
         ]
 
         if not numeric_found:
@@ -47,19 +46,19 @@ def convert_file(file_path, dry_run=False):
         def map_license(l):
             if pd.isna(l):
                 return l
-            l_str = str(l).split('.')[0].strip()
+            l_str = str(l).split(".")[0].strip()
             if l_str in FLICKR_LICENSE_MAP:
                 return FLICKR_LICENSE_MAP[l_str]
             return l
 
         df["License"] = df["License"].map(map_license)
-        
+
         # Save back
         if file_path.endswith(".parquet"):
             df.to_parquet(file_path, index=False, compression="zstd")
         else:
             df.to_csv(file_path, index=False)
-            
+
         print(f"Successfully converted and saved: {file_path}")
         return True
 
@@ -75,12 +74,12 @@ def main():
     parser.add_argument(
         "--path",
         type=str,
-        help="Path to a file or directory to scan for Parquet/CSV datasets."
+        help="Path to a file or directory to scan for Parquet/CSV datasets.",
     )
     parser.add_argument(
         "--dry_run",
         action="store_true",
-        help="Scan and show numeric licenses without modifying any files."
+        help="Scan and show numeric licenses without modifying any files.",
     )
     args = parser.parse_args()
 
@@ -88,25 +87,27 @@ def main():
         convert_file(args.path, dry_run=args.dry_run)
     elif os.path.isdir(args.path):
         print(f"Scanning directory: {args.path} for data files...")
-        
+
         # Gather all parquet and csv files recursively
         parquet_files = glob.glob(os.path.join(args.path, "*.parquet"))
         csv_files = glob.glob(os.path.join(args.path, "*.csv"))
-        
+
         all_files = sorted(list(set(parquet_files + csv_files)))
-        
+
         processed_count = 0
         converted_count = 0
         for f in all_files:
             # Exclude version control, IDE, env folders
             if any(x in f for x in [".git/", ".idea/", ".venv/", ".ruff_cache/"]):
                 continue
-            
+
             processed_count += 1
             if convert_file(f, dry_run=args.dry_run):
                 converted_count += 1
-                
-        print(f"\nScan complete. Scanned {processed_count} data files. Converted {converted_count} files.")
+
+        print(
+            f"\nScan complete. Scanned {processed_count} data files. Converted {converted_count} files."
+        )
     else:
         print(f"Error: Invalid path: {args.path}")
 

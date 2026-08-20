@@ -14,7 +14,6 @@ EUNIS_ECOSYSTEM_MAPPING = {
     8: "Rivers and lakes (Inland water)",
     9: "Marine / Sea",
     10: "Coastal / Dunes",
-
     # EUNIS Level 1 Alphabet codes
     "A": "Marine habitats",
     "B": "Coastal habitats",
@@ -25,7 +24,7 @@ EUNIS_ECOSYSTEM_MAPPING = {
     "G": "Woodland, forest and other wooded land",
     "H": "Inland habitats with very sparse or no vegetation",
     "I": "Cultivated agricultural, horticultural and domestic habitats",
-    "J": "Constructed, industrial and other artificial habitats"
+    "J": "Constructed, industrial and other artificial habitats",
 }
 
 # Environmental Zones 2025 (version 2.0 / Metzger 2025) Value Mapping (1-19)
@@ -48,5 +47,5 @@ ENV_ZONES_MAPPING = {
     16: "Eastern Anatolian (EAN)",
     17: "Southwest Anatolian transition region (SAN)",
     18: "Macaronesian (MAC)",
-    19: "Arctic (ARC)"
+    19: "Arctic (ARC)",
 }

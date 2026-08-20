@@ -131,7 +131,7 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 
 ## 🩹 Fallback Retry Safety (`relabel_failed_clusters.py`)
 
-Due to HTTP timeouts or server errors, certain clusters may fail MLLM processing (labeled as `"Error Labeling"` or `"Unlabeled"`). 
+Due to HTTP timeouts or server errors, certain clusters may fail MLLM processing (labeled as `"Error Labeling"` or `"Unlabeled"`).
 * The script scans the metadata database and identifies failed clusters.
 * For each failed cluster, it performs **depth retries (up to `--fallback_depth 20`)**, pulling sequentially further representative images in the cluster card and re-running the classification.
 * This guarantees $100\%$ labeling coverage of all visual nodes.

@@ -26,13 +26,24 @@ from src.models.vision_model_inference import (
     load_vision_model,
 )
 
-DISCARD_CLASSES = {2, 12, 20, 43, 80, 83, 102, 127}  # sky, person, car, sign, bus, truck, van, bike
+DISCARD_CLASSES = {
+    2,
+    12,
+    20,
+    43,
+    80,
+    83,
+    102,
+    127,
+}  # sky, person, car, sign, bus, truck, van, bike
 
 
 def load_places365_labels(filepath):
     """Loads the valid Places365 categories from the Excel file and returns a mapping to macro and sub-categories."""
     if not os.path.exists(filepath):
-        print(f"Warning: Labels file '{filepath}' not found. Continuing with directory names only.")
+        print(
+            f"Warning: Labels file '{filepath}' not found. Continuing with directory names only."
+        )
         return {}, [], []
 
     print(f"Loading labels from {filepath}...")
@@ -47,13 +58,13 @@ def load_places365_labels(filepath):
                 all_sub_cats.add(col[1])
 
         for _, row in df.iterrows():
-            raw_cat = row[('Unnamed: 0_level_0', 'category')]
+            raw_cat = row[("Unnamed: 0_level_0", "category")]
             if not isinstance(raw_cat, str):
                 continue
 
             clean_cat = raw_cat.strip("'").strip("/")
-            if '/' in clean_cat:
-                parts = clean_cat.split('/')
+            if "/" in clean_cat:
+                parts = clean_cat.split("/")
                 if len(parts[0]) == 1:
                     clean_cat = "/".join(parts[1:])
 
@@ -61,11 +72,11 @@ def load_places365_labels(filepath):
             all_types.append(clean_cat)
 
             macro = "unknown"
-            if row[('Level 1', 'indoor')] == 1:
+            if row[("Level 1", "indoor")] == 1:
                 macro = "indoor"
-            elif row[('Level 1', 'outdoor, natural')] == 1:
+            elif row[("Level 1", "outdoor, natural")] == 1:
                 macro = "outdoor natural"
-            elif row[('Level 1', 'outdoor, man-made')] == 1:
+            elif row[("Level 1", "outdoor, man-made")] == 1:
                 macro = "outdoor man-made"
 
             sub_cat = "unknown"
@@ -85,17 +96,19 @@ def load_places365_labels(filepath):
 def encode_image_value_attention(model_image, img):
     """Extracts spatial value features from model vision encoder using the MaskCLIP values trick."""
     B, _, H, W = img.shape
-    P = model_image.patch_size if hasattr(model_image, 'patch_size') else 14
+    P = model_image.patch_size if hasattr(model_image, "patch_size") else 14
     new_H = math.ceil(H / P) * P
     new_W = math.ceil(W / P) * P
 
     if (H, W) != (new_H, new_W):
-        img = F.interpolate(img, size=(new_H, new_W), mode='bicubic', align_corners=False)
+        img = F.interpolate(
+            img, size=(new_H, new_W), mode="bicubic", align_corners=False
+        )
 
     B, _, h_i, w_i = img.shape
     x = model_image.prepare_tokens_with_masks(img)
 
-    num_register = getattr(model_image, 'num_register_tokens', 1)
+    num_register = getattr(model_image, "num_register_tokens", 1)
     all_blocks = list(model_image.blocks)
     for i, blk in enumerate(all_blocks):
         if i < len(all_blocks) - 1:
@@ -105,7 +118,9 @@ def encode_image_value_attention(model_image, img):
             b_dim, n_dim, c_dim = x_normed.shape
             qkv = (
                 blk.attn.qkv(x_normed)
-                .reshape(b_dim, n_dim, 3, blk.attn.num_heads, c_dim // blk.attn.num_heads)
+                .reshape(
+                    b_dim, n_dim, 3, blk.attn.num_heads, c_dim // blk.attn.num_heads
+                )
                 .permute(2, 0, 3, 1, 4)
             )
             v = qkv[2]
@@ -119,37 +134,97 @@ def encode_image_value_attention(model_image, img):
             x_val = x_val + y_val
 
     x_val = model_image.norm(x_val)
-    patch_tokens = x_val[:, 1 + num_register:, :]
+    patch_tokens = x_val[:, 1 + num_register :, :]
     blocks_patches = patch_tokens.reshape(B, h_i // P, w_i // P, -1).contiguous()
     return blocks_patches
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Places365 Representation Semantic Retrieval Benchmarking Suite.")
-    parser.add_argument("--labels", type=str,
-                        default="/user/aaniraj/home/Documents/Projects/data/places365/versions/1/Scene_hierarchy.xlsx",
-                        help="Path to the Scene_hierarchy.xlsx file.")
-    parser.add_argument("--img_dir", type=str, required=True, help="Path to the directory containing Places365 images.")
-    parser.add_argument("--num_queries", type=int, default=100, help="Number of query evaluations to run.")
-    parser.add_argument("--num_database", type=int, default=500,
-                        help="Number of database images to search against (0 for all remaining).")
-    parser.add_argument("--batch_size", type=int, default=16, help="GPU batch size for feature extraction.")
+    parser = argparse.ArgumentParser(
+        description="Places365 Representation Semantic Retrieval Benchmarking Suite."
+    )
+    parser.add_argument(
+        "--labels",
+        type=str,
+        default="/user/aaniraj/home/Documents/Projects/data/places365/versions/1/Scene_hierarchy.xlsx",
+        help="Path to the Scene_hierarchy.xlsx file.",
+    )
+    parser.add_argument(
+        "--img_dir",
+        type=str,
+        required=True,
+        help="Path to the directory containing Places365 images.",
+    )
+    parser.add_argument(
+        "--num_queries",
+        type=int,
+        default=100,
+        help="Number of query evaluations to run.",
+    )
+    parser.add_argument(
+        "--num_database",
+        type=int,
+        default=500,
+        help="Number of database images to search against (0 for all remaining).",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=16,
+        help="GPU batch size for feature extraction.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
-    parser.add_argument("--tips_model_path", type=str, default=None,
-                        help="Path to the official TIPSv2 model checkpoint (.npz). If None, uses --model_name.")
-    parser.add_argument("--model_name", type=str, default="google/tipsv2-b14",
-                        help="Hugging Face model identifier or timm model name.")
-    parser.add_argument("--tips_model_variant", type=str, default="B", choices=["S", "B", "L", "So400m", "g"],
-                        help="Variant of the official TIPSv2 model.")
-    parser.add_argument("--tips_low_res", action="store_true", help="Set image resolution to 224px instead of 448px.")
-    parser.add_argument("--no_segformer", action="store_true", help="Skip SegFormer background segmentation.")
-    parser.add_argument("--compare_clip", action="store_true", help="Include standard CLIP model in the comparison.")
-    parser.add_argument("--compare_hf_tips", action="store_true",
-                        help="Include Hugging Face google/model-b14 model in the comparison.")
-    parser.add_argument("--output_report", type=str, default="./benchmark_results/places_report.txt",
-                        help="Path to write the report summary.")
-    parser.add_argument("--output_csv", type=str, default="./benchmark_results/places_results.csv",
-                        help="Path to write detailed query CSV results.")
+    parser.add_argument(
+        "--tips_model_path",
+        type=str,
+        default=None,
+        help="Path to the official TIPSv2 model checkpoint (.npz). If None, uses --model_name.",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="google/tipsv2-b14",
+        help="Hugging Face model identifier or timm model name.",
+    )
+    parser.add_argument(
+        "--tips_model_variant",
+        type=str,
+        default="B",
+        choices=["S", "B", "L", "So400m", "g"],
+        help="Variant of the official TIPSv2 model.",
+    )
+    parser.add_argument(
+        "--tips_low_res",
+        action="store_true",
+        help="Set image resolution to 224px instead of 448px.",
+    )
+    parser.add_argument(
+        "--no_segformer",
+        action="store_true",
+        help="Skip SegFormer background segmentation.",
+    )
+    parser.add_argument(
+        "--compare_clip",
+        action="store_true",
+        help="Include standard CLIP model in the comparison.",
+    )
+    parser.add_argument(
+        "--compare_hf_tips",
+        action="store_true",
+        help="Include Hugging Face google/model-b14 model in the comparison.",
+    )
+    parser.add_argument(
+        "--output_report",
+        type=str,
+        default="./benchmark_results/places_report.txt",
+        help="Path to write the report summary.",
+    )
+    parser.add_argument(
+        "--output_csv",
+        type=str,
+        default="./benchmark_results/places_results.csv",
+        help="Path to write detailed query CSV results.",
+    )
     args = parser.parse_args()
 
     # Format output paths dynamically by appending seed and num_queries
@@ -164,14 +239,16 @@ def main():
     random.seed(args.seed)
 
     # 1. Load labels mapping
-    labels_mapping, sub_categories_list, type_of_places_list = load_places365_labels(args.labels)
+    labels_mapping, sub_categories_list, type_of_places_list = load_places365_labels(
+        args.labels
+    )
 
     # Scan directory for images
     print(f"Scanning directory structure in {args.img_dir}...")
     images_by_class = {}
     for root, _, files in os.walk(args.img_dir):
         for filename in files:
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            if filename.lower().endswith((".png", ".jpg", ".jpeg")):
                 image_path = os.path.join(root, filename)
                 class_folder_name = os.path.basename(root)
                 ground_truth_label = class_folder_name
@@ -187,13 +264,15 @@ def main():
 
                 if ground_truth_label not in images_by_class:
                     images_by_class[ground_truth_label] = []
-                images_by_class[ground_truth_label].append({
-                    'path': image_path,
-                    'filename': filename,
-                    'place_label': clean_class,
-                    'macro_label': macro,
-                    'sub_label': sub_category
-                })
+                images_by_class[ground_truth_label].append(
+                    {
+                        "path": image_path,
+                        "filename": filename,
+                        "place_label": clean_class,
+                        "macro_label": macro,
+                        "sub_label": sub_category,
+                    }
+                )
 
     if not images_by_class:
         print("Error: No images found in the provided directory.")
@@ -202,7 +281,7 @@ def main():
     # Sort classes and images within each class for determinism
     sorted_classes = sorted(images_by_class.keys())
     for cls in sorted_classes:
-        images_by_class[cls].sort(key=lambda x: x['path'])
+        images_by_class[cls].sort(key=lambda x: x["path"])
         random.shuffle(images_by_class[cls])
 
     # Interleave images to maximize class coverage
@@ -216,18 +295,25 @@ def main():
 
     # Determine subset counts
     total_needed = args.num_queries + (
-        args.num_database if args.num_database > 0 else (len(selected_images) - args.num_queries))
+        args.num_database
+        if args.num_database > 0
+        else (len(selected_images) - args.num_queries)
+    )
     if len(selected_images) < total_needed:
-        print(f"Warning: Only {len(selected_images)} matched images available. Adjusting query/database split.")
+        print(
+            f"Warning: Only {len(selected_images)} matched images available. Adjusting query/database split."
+        )
         total_needed = len(selected_images)
 
     selected_images = selected_images[:total_needed]
 
     # Split into Queries and Database
-    queries_meta = selected_images[:args.num_queries]
-    database_meta = selected_images[args.num_queries:]
+    queries_meta = selected_images[: args.num_queries]
+    database_meta = selected_images[args.num_queries :]
 
-    print(f"Split data into: {len(queries_meta)} Queries and {len(database_meta)} Database images.")
+    print(
+        f"Split data into: {len(queries_meta)} Queries and {len(database_meta)} Database images."
+    )
     if len(queries_meta) == 0 or len(database_meta) == 0:
         print("Error: Empty query or database split. Adjust your parameters.")
         return
@@ -245,21 +331,25 @@ def main():
     hf_tipsv2 = None
     if args.compare_hf_tips and args.tips_model_path:
         print("Loading Hugging Face google/model-b14 model as baseline...")
-        hf_tipsv2 = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True).eval().to(device)
+        hf_tipsv2 = (
+            AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
+            .eval()
+            .to(device)
+        )
 
     # Load TIPSv2 Model (either official checkpoint or Hugging Face)
     if args.tips_model_path:
         print(f"Loading official TIPSv2 checkpoint from: {args.tips_model_path}...")
 
         model_def = {
-            'S': image_encoder.vit_small,
-            'B': image_encoder.vit_base,
-            'L': image_encoder.vit_large,
-            'So400m': image_encoder.vit_so400m,
-            'g': image_encoder.vit_giant2,
+            "S": image_encoder.vit_small,
+            "B": image_encoder.vit_base,
+            "L": image_encoder.vit_large,
+            "So400m": image_encoder.vit_so400m,
+            "g": image_encoder.vit_giant2,
         }[args.tips_model_variant]
 
-        ffn_layer = 'swiglu' if args.tips_model_variant == 'g' else 'mlp'
+        ffn_layer = "swiglu" if args.tips_model_variant == "g" else "mlp"
 
         checkpoint = dict(np.load(args.tips_model_path, allow_pickle=False))
         for key in checkpoint:
@@ -284,9 +374,16 @@ def main():
     seg_model = None
     if not args.no_segformer:
         print("Loading SegFormer model...")
-        seg_processor = SegformerImageProcessor.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
-        seg_model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512").eval().to(
-            device)
+        seg_processor = SegformerImageProcessor.from_pretrained(
+            "nvidia/segformer-b0-finetuned-ade-512-512"
+        )
+        seg_model = (
+            SegformerForSemanticSegmentation.from_pretrained(
+                "nvidia/segformer-b0-finetuned-ade-512-512"
+            )
+            .eval()
+            .to(device)
+        )
 
     # 3. Setup representations dynamically
     representations = {}
@@ -295,22 +392,30 @@ def main():
     if hf_tipsv2 is not None:
         representations["TIPSv2 HF CLS"] = {"query": [], "db": []}
 
-    model_label = "TIPSv2" if (args.tips_model_path or "model" in args.model_name.lower()) else os.path.basename(args.model_name)
+    model_label = (
+        "TIPSv2"
+        if (args.tips_model_path or "model" in args.model_name.lower())
+        else os.path.basename(args.model_name)
+    )
     if args.tips_model_path:
-        representations.update({
-            f"{model_label} 1st CLS": {"query": [], "db": []},
-            f"{model_label} 2nd CLS": {"query": [], "db": []},
-            f"{model_label} Average Patch": {"query": [], "db": []},
-            f"{model_label} 1st CLS + Avg Patch": {"query": [], "db": []}
-        })
+        representations.update(
+            {
+                f"{model_label} 1st CLS": {"query": [], "db": []},
+                f"{model_label} 2nd CLS": {"query": [], "db": []},
+                f"{model_label} Average Patch": {"query": [], "db": []},
+                f"{model_label} 1st CLS + Avg Patch": {"query": [], "db": []},
+            }
+        )
         if not args.no_segformer:
             representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
     else:
-        representations.update({
-            f"{model_label} CLS": {"query": [], "db": []},
-            f"{model_label} Average Patch": {"query": [], "db": []},
-            f"{model_label} CLS + Avg Patch": {"query": [], "db": []}
-        })
+        representations.update(
+            {
+                f"{model_label} CLS": {"query": [], "db": []},
+                f"{model_label} Average Patch": {"query": [], "db": []},
+                f"{model_label} CLS + Avg Patch": {"query": [], "db": []},
+            }
+        )
         if not args.no_segformer:
             representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
 
@@ -319,15 +424,22 @@ def main():
     num_patches = grid_size * grid_size
 
     def extract_features_batch(metadata_list, split_key):
-        print(f"Extracting features for {len(metadata_list)} images ({split_key} split)...")
-        for i in tqdm(range(0, len(metadata_list), args.batch_size), desc=f"Extraction ({split_key})"):
-            batch_meta = metadata_list[i: i + args.batch_size]
+        print(
+            f"Extracting features for {len(metadata_list)} images ({split_key} split)..."
+        )
+        for i in tqdm(
+            range(0, len(metadata_list), args.batch_size),
+            desc=f"Extraction ({split_key})",
+        ):
+            batch_meta = metadata_list[i : i + args.batch_size]
             batch_imgs = []
 
             for item in batch_meta:
                 try:
-                    with Image.open(item['path']) as img:
-                        img_resized = img.resize((image_size, image_size)).convert("RGB")
+                    with Image.open(item["path"]) as img:
+                        img_resized = img.resize((image_size, image_size)).convert(
+                            "RGB"
+                        )
                         batch_imgs.append(img_resized)
                 except Exception as e:
                     print(f"Warning: Failed to load image '{item['path']}': {e}")
@@ -338,13 +450,19 @@ def main():
             # A. SegFormer segmentation masks
             pred_masks = None
             if not args.no_segformer:
-                inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
+                inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(
+                    device
+                )
                 with torch.no_grad():
                     outputs = seg_model(**inputs)
-                logits = torch.nn.functional.interpolate(outputs.logits, size=(image_size, image_size), mode="bilinear",
-                                                         align_corners=False)
+                logits = torch.nn.functional.interpolate(
+                    outputs.logits,
+                    size=(image_size, image_size),
+                    mode="bilinear",
+                    align_corners=False,
+                )
                 pred_masks = logits.argmax(dim=1).cpu().numpy()
-                
+
                 # Free SegFormer GPU memory
                 del inputs, outputs, logits
 
@@ -357,8 +475,14 @@ def main():
             # C. Hugging Face TIPSv2 feature extraction (optional)
             hf_imgs = None
             if hf_tipsv2 is not None:
-                hf_imgs = [img.resize((448, 448)) for img in batch_imgs] if image_size != 448 else batch_imgs
-                img_tensors_hf = torch.stack([transform(img) for img in hf_imgs]).to(device)
+                hf_imgs = (
+                    [img.resize((448, 448)) for img in batch_imgs]
+                    if image_size != 448
+                    else batch_imgs
+                )
+                img_tensors_hf = torch.stack([transform(img) for img in hf_imgs]).to(
+                    device
+                )
                 with torch.no_grad():
                     out_hf = hf_tipsv2.encode_image(img_tensors_hf)
                     cls_hf = out_hf.cls_token.cpu().numpy()
@@ -371,16 +495,24 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(model, img_tensors, is_local=is_local)
-                patch_tokens_vals = patch_tokens_vals.reshape(len(batch_imgs), -1, patch_tokens_vals.shape[-1])
+                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(
+                    model, img_tensors, is_local=is_local
+                )
+                patch_tokens_vals = patch_tokens_vals.reshape(
+                    len(batch_imgs), -1, patch_tokens_vals.shape[-1]
+                )
                 curr_num_patches = patch_tokens_vals.shape[1]
                 curr_grid_size = int(math.sqrt(curr_num_patches))
                 curr_patch_size = image_size // curr_grid_size
 
                 if is_local:
                     first_cls, second_cls = cls_out
-                    representations[f"{model_label} 1st CLS"][split_key].extend(first_cls)
-                    representations[f"{model_label} 2nd CLS"][split_key].extend(second_cls)
+                    representations[f"{model_label} 1st CLS"][split_key].extend(
+                        first_cls
+                    )
+                    representations[f"{model_label} 2nd CLS"][split_key].extend(
+                        second_cls
+                    )
                 else:
                     cls_tokens = cls_out
                     representations[f"{model_label} CLS"][split_key].extend(cls_tokens)
@@ -392,15 +524,21 @@ def main():
 
                 # Average Patch
                 avg_patch = np.mean(patch_tokens, axis=0)
-                representations[f"{model_label} Average Patch"][split_key].append(avg_patch)
+                representations[f"{model_label} Average Patch"][split_key].append(
+                    avg_patch
+                )
 
                 # CLS + Average Patch Concatenation
                 if args.tips_model_path:
                     cls_val = first_cls[idx]
-                    representations[f"{model_label} 1st CLS + Avg Patch"][split_key].append(np.concatenate([cls_val, avg_patch]))
+                    representations[f"{model_label} 1st CLS + Avg Patch"][
+                        split_key
+                    ].append(np.concatenate([cls_val, avg_patch]))
                 else:
                     cls_val = cls_tokens[idx]
-                    representations[f"{model_label} CLS + Avg Patch"][split_key].append(np.concatenate([cls_val, avg_patch]))
+                    representations[f"{model_label} CLS + Avg Patch"][split_key].append(
+                        np.concatenate([cls_val, avg_patch])
+                    )
 
                 # Seg-Masked
                 if not args.no_segformer:
@@ -413,17 +551,28 @@ def main():
                     patch_weights = np.zeros((curr_grid_size, curr_grid_size))
                     for r in range(curr_grid_size):
                         for c in range(curr_grid_size):
-                            patch_weights[r, c] = np.mean(keep_mask[r * curr_patch_size:(r + 1) * curr_patch_size, c * curr_patch_size:(c + 1) * curr_patch_size])
-                    patch_weights_flat = patch_weights.flatten()[:, np.newaxis]  # (num_patches, 1)
+                            patch_weights[r, c] = np.mean(
+                                keep_mask[
+                                    r * curr_patch_size : (r + 1) * curr_patch_size,
+                                    c * curr_patch_size : (c + 1) * curr_patch_size,
+                                ]
+                            )
+                    patch_weights_flat = patch_weights.flatten()[
+                        :, np.newaxis
+                    ]  # (num_patches, 1)
 
                     masked_patch_sum = np.sum(patch_tokens * patch_weights_flat, axis=0)
                     masked_patch_weight_sum = np.sum(patch_weights_flat)
                     if masked_patch_weight_sum > 0:
-                        masked_avg_embed = (masked_patch_sum / (masked_patch_weight_sum + 1e-9))
+                        masked_avg_embed = masked_patch_sum / (
+                            masked_patch_weight_sum + 1e-9
+                        )
                     else:
                         masked_avg_embed = avg_patch
 
-                    representations[f"{model_label} Seg-Masked"][split_key].append(masked_avg_embed)
+                    representations[f"{model_label} Seg-Masked"][split_key].append(
+                        masked_avg_embed
+                    )
 
             # Explicitly release image and GPU memory to keep RAM/VRAM flat
             for img in batch_imgs:
@@ -441,17 +590,21 @@ def main():
     expanded_representations = {}
     for rep_name, splits in list(representations.items()):
         expanded_representations[f"{rep_name} (FP32)"] = splits
-        
+
         q_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["query"]]
         db_fp16 = [v.astype(np.float16).astype(np.float32) for v in splits["db"]]
         expanded_representations[f"{rep_name} (FP16)"] = {
             "query": q_fp16,
-            "db": db_fp16
+            "db": db_fp16,
         }
     representations = expanded_representations
 
     label_types = ["place_label", "sub_label", "macro_label"]
-    label_names = {"place_label": "Exact Place", "sub_label": "Sub-Category", "macro_label": "Macro Category"}
+    label_names = {
+        "place_label": "Exact Place",
+        "sub_label": "Sub-Category",
+        "macro_label": "Macro Category",
+    }
 
     results = {}
     detailed_rows = []
@@ -477,7 +630,7 @@ def main():
                 "p@5": 0.0,
                 "p@10": 0.0,
                 "map@10": 0.0,
-                "mrr@10": 0.0
+                "mrr@10": 0.0,
             }
 
         # Compute all similarities in a single batched operation: (Q, D_dim) x (D_dim, DB) -> (Q, DB)
@@ -492,7 +645,7 @@ def main():
 
             for l_type in label_types:
                 q_label = q_item[l_type]
-                if pd.isna(q_label) or q_label == '' or q_label == 'unknown':
+                if pd.isna(q_label) or q_label == "" or q_label == "unknown":
                     continue
 
                 retrieved_items = [database_meta[idx] for idx in sorted_db_indices[:10]]
@@ -518,30 +671,45 @@ def main():
                 rr = compute_rr(retrieved_labels, q_label, k=10)
                 results[rep_name][l_type]["mrr@10"] += rr
 
-                detailed_rows.append({
-                    "Query_Image": q_item["filename"],
-                    "Representation": rep_name,
-                    "Label_Type": l_type,
-                    "Ground_Truth": q_label,
-                    "Top_1_Retrieved": retrieved_items[0]["filename"],
-                    "Top_1_Label": retrieved_labels[0],
-                    "P@1": p1,
-                    "P@5": p5,
-                    "P@10": p10,
-                    "AP@10": ap,
-                    "RR@10": rr
-                })
+                detailed_rows.append(
+                    {
+                        "Query_Image": q_item["filename"],
+                        "Representation": rep_name,
+                        "Label_Type": l_type,
+                        "Ground_Truth": q_label,
+                        "Top_1_Retrieved": retrieved_items[0]["filename"],
+                        "Top_1_Label": retrieved_labels[0],
+                        "P@1": p1,
+                        "P@5": p5,
+                        "P@10": p10,
+                        "AP@10": ap,
+                        "RR@10": rr,
+                    }
+                )
 
         # Normalize metrics by valid query count
         for l_type in label_types:
             valid_queries = sum(
-                1 for q in queries_meta if pd.notna(q[l_type]) and q[l_type] != '' and q[l_type] != 'unknown')
+                1
+                for q in queries_meta
+                if pd.notna(q[l_type]) and q[l_type] != "" and q[l_type] != "unknown"
+            )
             if valid_queries > 0:
-                results[rep_name][l_type]["p@1"] = (results[rep_name][l_type]["p@1"] / valid_queries) * 100.0
-                results[rep_name][l_type]["p@5"] = (results[rep_name][l_type]["p@5"] / valid_queries) * 100.0
-                results[rep_name][l_type]["p@10"] = (results[rep_name][l_type]["p@10"] / valid_queries) * 100.0
-                results[rep_name][l_type]["map@10"] = (results[rep_name][l_type]["map@10"] / valid_queries) * 100.0
-                results[rep_name][l_type]["mrr@10"] = (results[rep_name][l_type]["mrr@10"] / valid_queries) * 100.0
+                results[rep_name][l_type]["p@1"] = (
+                    results[rep_name][l_type]["p@1"] / valid_queries
+                ) * 100.0
+                results[rep_name][l_type]["p@5"] = (
+                    results[rep_name][l_type]["p@5"] / valid_queries
+                ) * 100.0
+                results[rep_name][l_type]["p@10"] = (
+                    results[rep_name][l_type]["p@10"] / valid_queries
+                ) * 100.0
+                results[rep_name][l_type]["map@10"] = (
+                    results[rep_name][l_type]["map@10"] / valid_queries
+                ) * 100.0
+                results[rep_name][l_type]["mrr@10"] = (
+                    results[rep_name][l_type]["mrr@10"] / valid_queries
+                ) * 100.0
 
     # 5. Compile and Print Report
     report_lines = []
@@ -560,7 +728,14 @@ def main():
         print(f"\n{label_names[l_type]} Evaluation:")
 
         row_format = "{:<24} | {:<12} | {:<12} | {:<12} | {:<12} | {:<12}"
-        header = row_format.format("Representation", "P@1 (%)", "P@5 (%)", "P@10 (%)", "mAP@10 (%)", "MRR@10 (%)")
+        header = row_format.format(
+            "Representation",
+            "P@1 (%)",
+            "P@5 (%)",
+            "P@10 (%)",
+            "mAP@10 (%)",
+            "MRR@10 (%)",
+        )
         print("-" * 90)
         print(header)
         print("-" * 90)
@@ -577,7 +752,7 @@ def main():
                 f"{metrics['p@5']:.1f}%",
                 f"{metrics['p@10']:.1f}%",
                 f"{metrics['map@10']:.1f}%",
-                f"{metrics['mrr@10']:.1f}%"
+                f"{metrics['mrr@10']:.1f}%",
             )
             print(row_str)
             report_lines.append(row_str)
@@ -589,9 +764,11 @@ def main():
 
     # Save TXT report summary
     os.makedirs(os.path.dirname(args.output_report), exist_ok=True)
-    with open(args.output_report, 'w', encoding='utf-8') as f:
+    with open(args.output_report, "w", encoding="utf-8") as f:
         f.write("\n".join(report_lines))
-    print(f"\nBenchmark report saved successfully to: {os.path.abspath(args.output_report)}")
+    print(
+        f"\nBenchmark report saved successfully to: {os.path.abspath(args.output_report)}"
+    )
 
     # Save detailed CSV results
     if detailed_rows:

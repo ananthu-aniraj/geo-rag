@@ -72,7 +72,7 @@ for MODEL in "${MODELS[@]}"; do
             echo "✅ [SUCCESS] Completed $MODEL with $VERSION"
         else
             echo "❌ [ERROR] An error occurred while evaluating $MODEL with $VERSION"
-            # Optional: exit 1 
+            # Optional: exit 1
         fi
         echo "-----------------------------------------------------"
     done

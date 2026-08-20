@@ -14,10 +14,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 from torchvision import transforms
 from transformers import AutoModel
 
-tips_transform = transforms.Compose([
-    transforms.Resize((448, 448)),
-    transforms.ToTensor(),
-])
+tips_transform = transforms.Compose(
+    [
+        transforms.Resize((448, 448)),
+        transforms.ToTensor(),
+    ]
+)
 
 
 # Prompts are now loaded from an external prompts.json file
@@ -45,14 +47,15 @@ def load_places365_labels(filepath):
 
         for _, row in df.iterrows():
             # Extract category name and normalize it (e.g., '/a/airfield' -> 'airfield')
-            raw_cat = row[('Unnamed: 0_level_0', 'category')]
-            if not isinstance(raw_cat, str): continue
+            raw_cat = row[("Unnamed: 0_level_0", "category")]
+            if not isinstance(raw_cat, str):
+                continue
 
             # Clean category name: remove quotes and slashes
             clean_cat = raw_cat.strip("'").strip("/")
             # Remove single-letter prefix directory (e.g., 'a/', 'i/')
-            if '/' in clean_cat:
-                parts = clean_cat.split('/')
+            if "/" in clean_cat:
+                parts = clean_cat.split("/")
                 if len(parts[0]) == 1:
                     clean_cat = "/".join(parts[1:])
 
@@ -63,11 +66,11 @@ def load_places365_labels(filepath):
 
             # Identify macro-category
             macro = "unknown"
-            if row[('Level 1', 'indoor')] == 1:
+            if row[("Level 1", "indoor")] == 1:
                 macro = "indoor"
-            elif row[('Level 1', 'outdoor, natural')] == 1:
+            elif row[("Level 1", "outdoor, natural")] == 1:
                 macro = "outdoor natural"
-            elif row[('Level 1', 'outdoor, man-made')] == 1:
+            elif row[("Level 1", "outdoor, man-made")] == 1:
                 macro = "outdoor man-made"
 
             # Identify sub-category (Level 2)
@@ -91,13 +94,13 @@ def extract_json_from_response(response_text):
         return None
 
     # 1. Greedy search for the outermost braces
-    start_idx = response_text.find('{')
-    end_idx = response_text.rfind('}')
+    start_idx = response_text.find("{")
+    end_idx = response_text.rfind("}")
 
     if start_idx == -1 or end_idx == -1:
         return None
 
-    json_str = response_text[start_idx:end_idx + 1]
+    json_str = response_text[start_idx : end_idx + 1]
 
     # --- ATTEMPT 1: Direct Parse ---
     # If the model output valid JSON, we return it immediately without touching it.
@@ -108,9 +111,9 @@ def extract_json_from_response(response_text):
 
     # --- ATTEMPT 2: Basic Cleanup (Backslashes & Commas) ---
     # These are safe repairs that shouldn't break valid JSON.
-    temp_json = json_str.replace('\\_', '_').replace('\\-', '-')
+    temp_json = json_str.replace("\\_", "_").replace("\\-", "-")
     # Fix trailing commas
-    temp_json = re.sub(r',\s*([\]}])', r'\1', temp_json)
+    temp_json = re.sub(r",\s*([\]}])", r"\1", temp_json)
     # Fix "Set" mistake only if it looks like a stand-alone value: {"none"} -> ["none"]
     # We use a more specific pattern to avoid matching the whole object
     temp_json = re.sub(r':\s*\{\s*"([^"]*)"\s*\}', r': ["\1"]', temp_json)
@@ -131,8 +134,8 @@ def extract_json_from_response(response_text):
         # Fix values in arrays: ['a', 'b']
         temp_json = re.sub(r"'\s*([^']*)\s*'\s*([,\]])", r'"\1"\2', temp_json)
         # Final cleanup for this attempt
-        temp_json = temp_json.replace('\\_', '_').replace('\\-', '-')
-        temp_json = re.sub(r',\s*([\]}])', r'\1', temp_json)
+        temp_json = temp_json.replace("\\_", "_").replace("\\-", "-")
+        temp_json = re.sub(r",\s*([\]}])", r"\1", temp_json)
 
         try:
             return json.loads(temp_json, strict=False)
@@ -141,7 +144,7 @@ def extract_json_from_response(response_text):
 
     # --- FINAL FALLBACK: Strip Markdown ---
     try:
-        clean_json = re.sub(r'```(?:json)?|```', '', json_str).strip()
+        clean_json = re.sub(r"```(?:json)?|```", "", json_str).strip()
         return json.loads(clean_json, strict=False)
     except:
         pass
@@ -173,16 +176,46 @@ def clean_macro_category(raw_string):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate local VLMs against Places365 using Ollama or sglang.")
-    parser.add_argument("--backend", type=str, choices=["ollama", "sglang"], default="ollama", help="The inference backend to use.")
-    parser.add_argument("--model", type=str, default="llava:13b", help="The name of the model (Ollama tag or sglang model path).")
-    parser.add_argument("--sgl_mem_fraction", type=float, default=0.8, help="Memory fraction for sglang (0.0 to 1.0).")
-    parser.add_argument("--labels", type=str,
-                        help="Path to the Places365 Scene hierarchy.xlsx file.")
-    parser.add_argument("--img_dir", type=str, required=True, help="Path to the split directory.")
-    parser.add_argument("--max_images", type=int, default=100,
-                        help="Maximum number of images to evaluate. Set to 0 for unlimited.")
-    parser.add_argument("--prompt_version", type=str, default="v1", help="The version of the prompt to use (folder name in prompts/).")
+    parser = argparse.ArgumentParser(
+        description="Evaluate local VLMs against Places365 using Ollama or sglang."
+    )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["ollama", "sglang"],
+        default="ollama",
+        help="The inference backend to use.",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="llava:13b",
+        help="The name of the model (Ollama tag or sglang model path).",
+    )
+    parser.add_argument(
+        "--sgl_mem_fraction",
+        type=float,
+        default=0.8,
+        help="Memory fraction for sglang (0.0 to 1.0).",
+    )
+    parser.add_argument(
+        "--labels", type=str, help="Path to the Places365 Scene hierarchy.xlsx file."
+    )
+    parser.add_argument(
+        "--img_dir", type=str, required=True, help="Path to the split directory."
+    )
+    parser.add_argument(
+        "--max_images",
+        type=int,
+        default=100,
+        help="Maximum number of images to evaluate. Set to 0 for unlimited.",
+    )
+    parser.add_argument(
+        "--prompt_version",
+        type=str,
+        default="v1",
+        help="The version of the prompt to use (folder name in prompts/).",
+    )
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -193,17 +226,17 @@ def main():
     if not os.path.exists(prompt_version_dir):
         print(f"Error: Prompt version directory '{prompt_version_dir}' not found.")
         return
-    
+
     step1_path = os.path.join(prompt_version_dir, "step1.txt")
     step2_path = os.path.join(prompt_version_dir, "step2.txt")
-    
+
     if not os.path.exists(step1_path) or not os.path.exists(step2_path):
         print(f"Error: step1.txt or step2.txt missing in {prompt_version_dir}")
         return
 
-    with open(step1_path, 'r') as f:
+    with open(step1_path, "r") as f:
         prompt_step1 = f.read().strip()
-    with open(step2_path, 'r') as f:
+    with open(step2_path, "r") as f:
         prompt_step2 = f.read().strip()
 
     print(f"Using prompt version: {args.prompt_version}")
@@ -214,14 +247,16 @@ def main():
         print(f"Initializing sglang runtime with model: {args.model}")
         try:
             import sglang as sgl
+
             # Initialize runtime with memory constraints
             sgl_runtime = sgl.Runtime(
-                model_path=args.model,
-                mem_fraction_static=args.sgl_mem_fraction
+                model_path=args.model, mem_fraction_static=args.sgl_mem_fraction
             )
             sgl.set_default_backend(sgl_runtime)
         except ImportError:
-            print("Error: sglang library not found. Please install it to use the sglang backend.")
+            print(
+                "Error: sglang library not found. Please install it to use the sglang backend."
+            )
             return
         except Exception as e:
             print(f"Error initializing sglang: {e}")
@@ -240,23 +275,33 @@ def main():
     clip_model = SentenceTransformer("clip-ViT-B-32")
 
     # Attempt to load labels, but script will proceed even if it fails (using folder names as ground truth)
-    labels_mapping, sub_categories_list, type_of_places_list = load_places365_labels(args.labels)
+    labels_mapping, sub_categories_list, type_of_places_list = load_places365_labels(
+        args.labels
+    )
 
-    sub_cats_str = "\n".join([f"- {c}" for c in sub_categories_list]) if sub_categories_list else "None"
-    type_of_places_str = ", ".join(type_of_places_list) if type_of_places_list else "None"
+    sub_cats_str = (
+        "\n".join([f"- {c}" for c in sub_categories_list])
+        if sub_categories_list
+        else "None"
+    )
+    type_of_places_str = (
+        ", ".join(type_of_places_list) if type_of_places_list else "None"
+    )
 
     print(f"Scanning directory structure in {args.img_dir}...")
     images_by_class = {}
 
     for root, _, files in os.walk(args.img_dir):
         for filename in files:
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            if filename.lower().endswith((".png", ".jpg", ".jpeg")):
                 image_path = os.path.join(root, filename)
                 class_folder_name = os.path.basename(root)
                 ground_truth_label = class_folder_name
                 if ground_truth_label not in images_by_class:
                     images_by_class[ground_truth_label] = []
-                images_by_class[ground_truth_label].append((image_path, filename, ground_truth_label))
+                images_by_class[ground_truth_label].append(
+                    (image_path, filename, ground_truth_label)
+                )
 
     if not images_by_class:
         print("No images found in the provided directory.")
@@ -283,9 +328,11 @@ def main():
 
     total_found = len(all_images)
     if args.max_images > 0:
-        all_images = all_images[:args.max_images]
+        all_images = all_images[: args.max_images]
         print(f"Found {total_found} images across {len(sorted_classes)} classes.")
-        print(f"Limiting evaluation to {args.max_images} images with maximized class coverage.")
+        print(
+            f"Limiting evaluation to {args.max_images} images with maximized class coverage."
+        )
 
     results = []
     total_class_score = 0.0
@@ -301,7 +348,9 @@ def main():
         print(f"Ground Truth Class: {ground_truth_label}")
 
         # Determine Ground Truth Hierarchy
-        gt_info = labels_mapping.get(ground_truth_label, {"macro": "unknown", "sub_category": "unknown"})
+        gt_info = labels_mapping.get(
+            ground_truth_label, {"macro": "unknown", "sub_category": "unknown"}
+        )
         gt_macro = gt_info["macro"]
         gt_sub = gt_info["sub_category"]
 
@@ -314,19 +363,18 @@ def main():
             # Step 1: Extract Human Activities and Land Cover from Image
             if args.backend == "ollama":
                 response1 = ollama.generate(
-                    model=args.model,
-                    prompt=prompt_step1,
-                    images=[image_path]
+                    model=args.model, prompt=prompt_step1, images=[image_path]
                 )
-                vlm_text1 = response1.get('response', '')
+                vlm_text1 = response1.get("response", "")
             else:
                 # sglang inference
                 import sglang as sgl
+
                 @sgl.function
                 def step1_fn(s, image_path, prompt):
                     s += s.image(image_path)
                     s += prompt + s.gen("response")
-                
+
                 res1 = step1_fn.run(image_path=image_path, prompt=prompt_step1)
                 vlm_text1 = res1["response"]
 
@@ -337,32 +385,32 @@ def main():
                 print(f"  -> Raw Output: {vlm_text1}")
                 continue
 
-            visible_evidence = parsed_data1.get('visible_evidence', '')
-            human_activities = parsed_data1.get('human_activities', '')
-            land_cover_usage = parsed_data1.get('land_cover_usage', '')
-            type_of_vegetation = parsed_data1.get('type_of_vegetation', '')
+            visible_evidence = parsed_data1.get("visible_evidence", "")
+            human_activities = parsed_data1.get("human_activities", "")
+            land_cover_usage = parsed_data1.get("land_cover_usage", "")
+            type_of_vegetation = parsed_data1.get("type_of_vegetation", "")
 
             # Step 2: Derive Categories from Text
-            step2_prompt = prompt_step2.replace("{visible_evidence}", str(visible_evidence)) \
-                .replace("{human_activities}", str(human_activities)) \
-                .replace("{land_cover_usage}", str(land_cover_usage)) \
-                .replace("{type_of_vegetation}", str(type_of_vegetation)) \
-                .replace("{sub_categories_list}", sub_cats_str) \
+            step2_prompt = (
+                prompt_step2.replace("{visible_evidence}", str(visible_evidence))
+                .replace("{human_activities}", str(human_activities))
+                .replace("{land_cover_usage}", str(land_cover_usage))
+                .replace("{type_of_vegetation}", str(type_of_vegetation))
+                .replace("{sub_categories_list}", sub_cats_str)
                 .replace("{type_of_places_list}", type_of_places_str)
-            
+            )
+
             if args.backend == "ollama":
-                response2 = ollama.generate(
-                    model=args.model,
-                    prompt=step2_prompt
-                )
-                vlm_text2 = response2.get('response', '')
+                response2 = ollama.generate(model=args.model, prompt=step2_prompt)
+                vlm_text2 = response2.get("response", "")
             else:
                 # sglang inference (text only)
                 import sglang as sgl
+
                 @sgl.function
                 def step2_fn(s, prompt):
                     s += prompt + s.gen("response")
-                
+
                 res2 = step2_fn.run(prompt=step2_prompt)
                 vlm_text2 = res2["response"]
 
@@ -377,14 +425,21 @@ def main():
             parsed_data = {**parsed_data1, **parsed_data2}
 
             # CLIP Similarity Calculation
-            img = Image.open(image_path).convert('RGB')
+            img = Image.open(image_path).convert("RGB")
             combined_caption = f"{visible_evidence}. {human_activities}. {land_cover_usage}. {type_of_vegetation}".replace(
-                "..", ".")
+                "..", "."
+            )
 
             # TIPSv2 similarity
-            img_transformed = tips_transform(img).unsqueeze(0).to(device)  # Add batch dimension
-            tips_img_features = tips_model.encode_image(img_transformed).cls_token.detach().cpu()
-            tips_text_features = tips_model.encode_text([combined_caption]).detach().cpu()
+            img_transformed = (
+                tips_transform(img).unsqueeze(0).to(device)
+            )  # Add batch dimension
+            tips_img_features = (
+                tips_model.encode_image(img_transformed).cls_token.detach().cpu()
+            )
+            tips_text_features = (
+                tips_model.encode_text([combined_caption]).detach().cpu()
+            )
 
             # Get embeddings (passing as list ensures 2D output)
             img_emb = clip_model.encode([img])
@@ -394,26 +449,37 @@ def main():
             clip_similarity = float(cosine_similarity(img_emb, text_emb)[0][0])
             print(f"  -> CLIP Similarity: {clip_similarity:.4f}")
 
-            tips_similarity = float(cosine_similarity(tips_img_features[0], tips_text_features)[0][0])
+            tips_similarity = float(
+                cosine_similarity(tips_img_features[0], tips_text_features)[0][0]
+            )
             print(f"  -> TIPSv2 Similarity: {tips_similarity:.4f}")
 
             # 1. Evaluate the Class Name (Semantic Similarity)
-            predicted_place = parsed_data.get('type_of_place', '')
-            class_similarity = calculate_similarity(embedder, predicted_place, ground_truth_label)
+            predicted_place = parsed_data.get("type_of_place", "")
+            class_similarity = calculate_similarity(
+                embedder, predicted_place, ground_truth_label
+            )
 
             # 2. Extract and Evaluate the Macro Category
-            raw_macro = parsed_data.get('macro_category', '')
+            raw_macro = parsed_data.get("macro_category", "")
             cleaned_macro = clean_macro_category(raw_macro)
-            macro_correct = (cleaned_macro == gt_macro) if gt_macro != "unknown" else None
+            macro_correct = (
+                (cleaned_macro == gt_macro) if gt_macro != "unknown" else None
+            )
 
             # 3. Extract and Evaluate Sub Category (Semantic Similarity)
-            predicted_sub = parsed_data.get('sub_category', '')
-            sub_similarity = calculate_similarity(embedder, predicted_sub, gt_sub) if gt_sub != "unknown" else 0.0
+            predicted_sub = parsed_data.get("sub_category", "")
+            sub_similarity = (
+                calculate_similarity(embedder, predicted_sub, gt_sub)
+                if gt_sub != "unknown"
+                else 0.0
+            )
 
             print(f"  -> Predicted Macro Category: {cleaned_macro}")
             if macro_correct is not None:
                 print(f"  -> Macro Category Correct: {macro_correct}")
-                if macro_correct: macro_correct_count += 1
+                if macro_correct:
+                    macro_correct_count += 1
 
             print(f"  -> Predicted Sub Category: {predicted_sub}")
             if gt_sub != "unknown":
@@ -422,31 +488,35 @@ def main():
             print(f"  -> Predicted Place: {predicted_place}")
             print(f"  -> Class Similarity Score: {class_similarity:.4f}")
 
-            results.append({
-                'image': filename,
-                'ground_truth_class': ground_truth_label,
-                'ground_truth_macro': gt_macro,
-                'ground_truth_sub': gt_sub,
-                'predicted_macro_category': cleaned_macro,
-                'macro_correct': macro_correct,
-                'predicted_sub_category': predicted_sub,
-                'sub_category_similarity_score': sub_similarity,
-                'predicted_place': predicted_place,
-                'class_similarity_score': class_similarity,
-                'clip_similarity': clip_similarity,
-                'tips_similarity_score': tips_similarity,
-                'environment_landscape': parsed_data.get('environment_landscape', ''),
-                'visible_evidence': visible_evidence,
-                'human_activities': human_activities,
-                'land_cover_usage': land_cover_usage,
-                'type_of_vegetation': type_of_vegetation,
-                'image_embedding': img_emb[0],
-                'tips_image_embedding': tips_img_features[0][0],
-                'combined_caption': combined_caption,
-                'prompt_version': args.prompt_version,
-                'prompt_step1': prompt_step1,
-                'prompt_step2': prompt_step2
-            })
+            results.append(
+                {
+                    "image": filename,
+                    "ground_truth_class": ground_truth_label,
+                    "ground_truth_macro": gt_macro,
+                    "ground_truth_sub": gt_sub,
+                    "predicted_macro_category": cleaned_macro,
+                    "macro_correct": macro_correct,
+                    "predicted_sub_category": predicted_sub,
+                    "sub_category_similarity_score": sub_similarity,
+                    "predicted_place": predicted_place,
+                    "class_similarity_score": class_similarity,
+                    "clip_similarity": clip_similarity,
+                    "tips_similarity_score": tips_similarity,
+                    "environment_landscape": parsed_data.get(
+                        "environment_landscape", ""
+                    ),
+                    "visible_evidence": visible_evidence,
+                    "human_activities": human_activities,
+                    "land_cover_usage": land_cover_usage,
+                    "type_of_vegetation": type_of_vegetation,
+                    "image_embedding": img_emb[0],
+                    "tips_image_embedding": tips_img_features[0][0],
+                    "combined_caption": combined_caption,
+                    "prompt_version": args.prompt_version,
+                    "prompt_step1": prompt_step1,
+                    "prompt_step2": prompt_step2,
+                }
+            )
 
             total_class_score += class_similarity
             if gt_sub != "unknown":
@@ -461,70 +531,110 @@ def main():
     if valid_evaluations > 0:
         avg_class_score = total_class_score / valid_evaluations
         summary_report.append(f"Total Images Evaluated: {valid_evaluations}")
-        summary_report.append(f"Average Class (Place) Similarity: {avg_class_score:.4f}")
+        summary_report.append(
+            f"Average Class (Place) Similarity: {avg_class_score:.4f}"
+        )
 
         # Calculate scores for those with ground truth
         results_df = pd.DataFrame(results)
 
-        avg_clip_score = results_df['clip_similarity'].mean()
+        avg_clip_score = results_df["clip_similarity"].mean()
         summary_report.append(f"Average CLIP Similarity: {avg_clip_score:.4f}")
 
-        macro_evaluable = results_df[results_df['ground_truth_macro'] != 'unknown']
+        macro_evaluable = results_df[results_df["ground_truth_macro"] != "unknown"]
         if not macro_evaluable.empty:
-            macro_acc = (macro_evaluable['macro_correct'].sum() / len(macro_evaluable)) * 100
+            macro_acc = (
+                macro_evaluable["macro_correct"].sum() / len(macro_evaluable)
+            ) * 100
             summary_report.append(
-                f"Macro Category Accuracy: {macro_acc:.2f}% ({macro_evaluable['macro_correct'].sum()}/{len(macro_evaluable)})")
+                f"Macro Category Accuracy: {macro_acc:.2f}% ({macro_evaluable['macro_correct'].sum()}/{len(macro_evaluable)})"
+            )
 
-        sub_evaluable = results_df[results_df['ground_truth_sub'] != 'unknown']
+        sub_evaluable = results_df[results_df["ground_truth_sub"] != "unknown"]
         if not sub_evaluable.empty:
-            avg_sub_score = sub_evaluable['sub_category_similarity_score'].mean()
-            summary_report.append(f"Average Sub Category Similarity: {avg_sub_score:.4f}")
+            avg_sub_score = sub_evaluable["sub_category_similarity_score"].mean()
+            summary_report.append(
+                f"Average Sub Category Similarity: {avg_sub_score:.4f}"
+            )
 
         # Performance within macro-categories (Indoor vs Outdoor)
         for group_name, macro_filter in [
-            ("Indoor", results_df['ground_truth_macro'] == 'indoor'),
-            ("Outdoor", results_df['ground_truth_macro'].str.startswith('outdoor', na=False))
+            ("Indoor", results_df["ground_truth_macro"] == "indoor"),
+            (
+                "Outdoor",
+                results_df["ground_truth_macro"].str.startswith("outdoor", na=False),
+            ),
         ]:
             group_df = results_df[macro_filter]
             if not group_df.empty:
-                summary_report.append(f"\n--- {group_name} Performance ({len(group_df)} images) ---")
-                summary_report.append(f"Average Class Similarity: {group_df['class_similarity_score'].mean():.4f}")
-                summary_report.append(f"Average CLIP Similarity: {group_df['clip_similarity'].mean():.4f}")
-                
-                group_macro_eval = group_df[group_df['ground_truth_macro'] != 'unknown']
+                summary_report.append(
+                    f"\n--- {group_name} Performance ({len(group_df)} images) ---"
+                )
+                summary_report.append(
+                    f"Average Class Similarity: {group_df['class_similarity_score'].mean():.4f}"
+                )
+                summary_report.append(
+                    f"Average CLIP Similarity: {group_df['clip_similarity'].mean():.4f}"
+                )
+
+                group_macro_eval = group_df[group_df["ground_truth_macro"] != "unknown"]
                 if not group_macro_eval.empty:
-                    group_macro_acc = (group_macro_eval['macro_correct'].sum() / len(group_macro_eval)) * 100
-                    summary_report.append(f"Macro Category Accuracy: {group_macro_acc:.2f}%")
-                
-                group_sub_eval = group_df[group_df['ground_truth_sub'] != 'unknown']
+                    group_macro_acc = (
+                        group_macro_eval["macro_correct"].sum() / len(group_macro_eval)
+                    ) * 100
+                    summary_report.append(
+                        f"Macro Category Accuracy: {group_macro_acc:.2f}%"
+                    )
+
+                group_sub_eval = group_df[group_df["ground_truth_sub"] != "unknown"]
                 if not group_sub_eval.empty:
-                    summary_report.append(f"Average Sub Category Similarity: {group_sub_eval['sub_category_similarity_score'].mean():.4f}")
+                    summary_report.append(
+                        f"Average Sub Category Similarity: {group_sub_eval['sub_category_similarity_score'].mean():.4f}"
+                    )
 
         # Calculate how often the model picked each macro category
         summary_report.append("")
-        macro_counts = results_df['predicted_macro_category'].value_counts().to_dict()
+        macro_counts = results_df["predicted_macro_category"].value_counts().to_dict()
         summary_report.append(f"Model Macro Category Distribution: {macro_counts}")
 
         # Save to summary file
         summary_file = f"vlm_evaluation_summary_{args.model.replace(':', '_')}_{args.prompt_version}.txt"
-        with open(summary_file, 'w') as f:
+        with open(summary_file, "w") as f:
             f.write("\n".join(summary_report))
-        
+
         print("\n".join(summary_report))
         print(f"\nSummary metrics saved to: {summary_file}")
 
         output_csv = f"vlm_evaluation_results_{args.model.replace(':', '_')}_{args.prompt_version}.csv"
         # Drop the embedding and prompt columns before saving CSV to keep it readable and small
         # We keep prompt_version though
-        cols_to_drop = ['image_embedding', 'combined_caption', 'tips_image_embedding', 'prompt_step1', 'prompt_step2']
+        cols_to_drop = [
+            "image_embedding",
+            "combined_caption",
+            "tips_image_embedding",
+            "prompt_step1",
+            "prompt_step2",
+        ]
         results_df.drop(columns=cols_to_drop).to_csv(output_csv, index=False)
         print(f"\nDetailed results saved to: {output_csv}")
 
         # Save retrieval data (filename, caption, embedding) to a pickle file
         retrieval_file = f"vlm_retrieval_data_{args.model.replace(':', '_')}_{args.prompt_version}.pkl"
-        retrieval_data = results_df[['image', 'combined_caption', 'image_embedding', 'tips_image_embedding', 'prompt_version', 'visible_evidence', 'human_activities', 'land_cover_usage', 'type_of_vegetation', 'ground_truth_macro']].to_dict(
-            'records')
-        with open(retrieval_file, 'wb') as f:
+        retrieval_data = results_df[
+            [
+                "image",
+                "combined_caption",
+                "image_embedding",
+                "tips_image_embedding",
+                "prompt_version",
+                "visible_evidence",
+                "human_activities",
+                "land_cover_usage",
+                "type_of_vegetation",
+                "ground_truth_macro",
+            ]
+        ].to_dict("records")
+        with open(retrieval_file, "wb") as f:
             pickle.dump(retrieval_data, f)
         print(f"Retrieval data (embeddings + captions) saved to: {retrieval_file}")
     else:

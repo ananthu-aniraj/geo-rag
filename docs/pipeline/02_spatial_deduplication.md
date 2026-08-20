@@ -57,7 +57,7 @@ The deduplication pipeline has been upgraded to support seamless ingestion of pr
 
 ## 🏎️ Million-Row Streaming Optimization
 
-To process datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters, matches, and appends chunk-by-chunk. This streaming process is now **100% key-driven**, utilizing the unique `photo_key` strings and C-accelerated hash lookups to dynamically resolve embeddings. This makes updates completely immune to index-shift corruptions. 
+To process datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters, matches, and appends chunk-by-chunk. This streaming process is now **100% key-driven**, utilizing the unique `photo_key` strings and C-accelerated hash lookups to dynamically resolve embeddings. This makes updates completely immune to index-shift corruptions.
 
 ### Parallel Network Engine
 To optimize ingestion speed and minimize network bottlenecks:

@@ -12,6 +12,7 @@ from src.utils.io import load_dataframe, load_embeddings
 
 try:
     import faiss
+
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
@@ -52,7 +53,10 @@ def main():
         "--k_max", type=int, default=50000, help="Maximum cluster count to evaluate."
     )
     parser.add_argument(
-        "--k_step", type=int, default=10000, help="Step size for cluster count evaluation."
+        "--k_step",
+        type=int,
+        default=10000,
+        help="Step size for cluster count evaluation.",
     )
     parser.add_argument(
         "--val_ratio",
@@ -87,13 +91,17 @@ def main():
     parser.add_argument(
         "--update_params",
         action="store_true",
-        help="If set, mathematically calculates the elbow point and updates 'k_clusters' in params.yaml."
+        help="If set, mathematically calculates the elbow point and updates 'k_clusters' in params.yaml.",
     )
     args = parser.parse_args()
 
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
     print("🌍 GEOSPATIAL CLUSTER COUNT VALIDATION (FAISS GPU + SPATIAL BLOCK)")
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
 
     if not FAISS_AVAILABLE:
         print("Error: faiss-gpu (or faiss-cpu) library is required to run this script.")
@@ -108,6 +116,7 @@ def main():
     print(f"Loading H3 cells from '{args.input}'...")
     t0 = time.time()
     import pyarrow.parquet as pq
+
     pf = pq.ParquetFile(args.input)
     cols_to_load = ["H3_Cell"]
     if "embedding_idx" in pf.schema_arrow.names:
@@ -120,7 +129,9 @@ def main():
     t0_emb = time.time()
     embeddings_matrix = load_embeddings(args.input)
 
-    print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0_emb:.2f}s.")
+    print(
+        f" -> Successfully loaded raw embedding matrix in {time.time() - t0_emb:.2f}s."
+    )
 
     # 2. Downscale H3 cells to coarse block resolution (Res 4)
     print(f"Downscaling H3 cells to resolution {args.block_res} parent blocks...")
@@ -146,13 +157,17 @@ def main():
     val_df = df[df["block_h3"].isin(val_blocks)]
 
     print(f" -> Total spatial blocks: {len(unique_blocks)}")
-    print(f" -> Training blocks: {len(unique_blocks) - val_size} ({len(train_df):,} images)")
+    print(
+        f" -> Training blocks: {len(unique_blocks) - val_size} ({len(train_df):,} images)"
+    )
     print(f" -> Validation blocks: {val_size} ({len(val_df):,} images)")
 
     # 4. Stratified/Downsample for Speed (Only active if sample_limit > 0)
     if args.sample_limit > 0:
         if len(train_df) > args.sample_limit:
-            print(f"Downsampling training set to {args.sample_limit:,} images for evaluation speed...")
+            print(
+                f"Downsampling training set to {args.sample_limit:,} images for evaluation speed..."
+            )
             train_df = train_df.sample(n=args.sample_limit, random_state=42)
 
         val_limit = int(args.sample_limit * args.val_ratio)
@@ -209,38 +224,69 @@ def main():
 
     # 7. Print Summary Table
     df_results = pd.DataFrame(results)
-    print("\n================================================================================")
+    print(
+        "\n================================================================================"
+    )
     print("📊 EVALUATION RESULTS SUMMARY")
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
     print(df_results.to_string(index=False))
-    print("================================================================================")
+    print(
+        "================================================================================"
+    )
 
     # Find the optimal k using the elbow method on validation loss
-    optimal_k = find_elbow_point(df_results["k"].tolist(), df_results["val_loss"].tolist())
+    optimal_k = find_elbow_point(
+        df_results["k"].tolist(), df_results["val_loss"].tolist()
+    )
     print(f"\n💡 Mathematical Elbow Analysis suggests optimal k = {optimal_k}")
-    
+
     if args.update_params:
         params_path = "params.yaml"
         if os.path.exists(params_path):
             try:
                 import re
-                with open(params_path, 'r') as f:
+
+                with open(params_path, "r") as f:
                     content = f.read()
-                new_content = re.sub(r'(k_clusters:\s*)\d+', f'\\g<1>{optimal_k}', content)
-                with open(params_path, 'w') as f:
+                new_content = re.sub(
+                    r"(k_clusters:\s*)\d+", f"\\g<1>{optimal_k}", content
+                )
+                with open(params_path, "w") as f:
                     f.write(new_content)
-                print(f"✅ Successfully updated 'k_clusters' to {optimal_k} in {params_path}!")
+                print(
+                    f"✅ Successfully updated 'k_clusters' to {optimal_k} in {params_path}!"
+                )
             except Exception as e:
                 print(f"Warning: Failed to update params.yaml: {e}")
         else:
-            print("Warning: params.yaml not found at current directory. Skipping auto-update.")
+            print(
+                "Warning: params.yaml not found at current directory. Skipping auto-update."
+            )
 
     # 8. Generate & Save Plot
     print(f"Generating elbow plot and saving to '{args.output_plot}'...")
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(df_results["k"], df_results["train_loss"], "o-", color="teal", label="Train Loss")
-    ax.plot(df_results["k"], df_results["val_loss"], "s-", color="coral", label="Validation Loss")
-    ax.set_title("Cluster Count (k) vs. Spatial Reconstruction Loss", fontsize=12, fontweight="bold")
+    ax.plot(
+        df_results["k"],
+        df_results["train_loss"],
+        "o-",
+        color="teal",
+        label="Train Loss",
+    )
+    ax.plot(
+        df_results["k"],
+        df_results["val_loss"],
+        "s-",
+        color="coral",
+        label="Validation Loss",
+    )
+    ax.set_title(
+        "Cluster Count (k) vs. Spatial Reconstruction Loss",
+        fontsize=12,
+        fontweight="bold",
+    )
     ax.set_xlabel("Number of Clusters (k)", fontsize=10)
     ax.set_ylabel("Average Reconstruction Loss (MSE)", fontsize=10)
     ax.grid(True, linestyle="--", alpha=0.6)

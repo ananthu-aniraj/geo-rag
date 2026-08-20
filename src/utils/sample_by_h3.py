@@ -12,14 +12,33 @@ from src.utils.io import load_dataframe, save_dataframe
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Stratified Spatial Sampling of Geolocated Datasets using H3 Index.")
-    parser.add_argument("--csv_path", type=str, required=True, help="Path to input geolocated CSV file.")
-    parser.add_argument("--output_path", type=str, default=None,
-                        help="Path to save the sampled CSV. If not specified, appends resolution/max suffixes.")
-    parser.add_argument("--resolution", type=int, default=11,
-                        help="H3 spatial resolution for grid partitioning (0-15).")
-    parser.add_argument("--max_per_cell", type=int, default=1, help="Maximum number of images to sample per H3 cell.")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling reproducibility.")
+    parser = argparse.ArgumentParser(
+        description="Stratified Spatial Sampling of Geolocated Datasets using H3 Index."
+    )
+    parser.add_argument(
+        "--csv_path", type=str, required=True, help="Path to input geolocated CSV file."
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default=None,
+        help="Path to save the sampled CSV. If not specified, appends resolution/max suffixes.",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=int,
+        default=11,
+        help="H3 spatial resolution for grid partitioning (0-15).",
+    )
+    parser.add_argument(
+        "--max_per_cell",
+        type=int,
+        default=1,
+        help="Maximum number of images to sample per H3 cell.",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for sampling reproducibility."
+    )
     args = parser.parse_args()
 
     # Set random seeds
@@ -36,8 +55,12 @@ def main():
     print(f"Total rows in original dataset: {original_count:,}")
 
     # 1. Identify coordinate columns
-    lat_col = next((col for col in df.columns if col.lower() in ["latitude", "lat"]), None)
-    lon_col = next((col for col in df.columns if col.lower() in ["longitude", "lon", "lng"]), None)
+    lat_col = next(
+        (col for col in df.columns if col.lower() in ["latitude", "lat"]), None
+    )
+    lon_col = next(
+        (col for col in df.columns if col.lower() in ["longitude", "lon", "lng"]), None
+    )
 
     if not lat_col or not lon_col:
         print("Error: Could not locate Latitude/Longitude columns in the CSV.")
@@ -46,13 +69,15 @@ def main():
     print(f"Found coordinate columns: Lat='{lat_col}', Lon='{lon_col}'")
 
     # Drop rows with invalid coordinates
-    df[lat_col] = pd.to_numeric(df[lat_col], errors='coerce')
-    df[lon_col] = pd.to_numeric(df[lon_col], errors='coerce')
+    df[lat_col] = pd.to_numeric(df[lat_col], errors="coerce")
+    df[lon_col] = pd.to_numeric(df[lon_col], errors="coerce")
     df = df.dropna(subset=[lat_col, lon_col]).reset_index(drop=True)
     valid_coord_count = len(df)
 
     if valid_coord_count < original_count:
-        print(f"Dropped {original_count - valid_coord_count:,} rows with missing or invalid coordinates.")
+        print(
+            f"Dropped {original_count - valid_coord_count:,} rows with missing or invalid coordinates."
+        )
 
     if len(df) == 0:
         print("Error: No valid geolocated rows to sample.")
@@ -61,7 +86,9 @@ def main():
     # 2. Compute H3 cells
     print(f"Indexing coordinates into H3 grid at resolution {args.resolution}...")
     h3_cells = []
-    for lat, lon in tqdm(zip(df[lat_col], df[lon_col]), total=len(df), desc="H3 Hashing"):
+    for lat, lon in tqdm(
+        zip(df[lat_col], df[lon_col]), total=len(df), desc="H3 Hashing"
+    ):
         try:
             cell = h3.latlng_to_cell(lat, lon, args.resolution)
             h3_cells.append(cell)
@@ -71,7 +98,9 @@ def main():
     df["h3_cell"] = h3_cells
     df = df.dropna(subset=["h3_cell"]).reset_index(drop=True)
     unique_cells = df["h3_cell"].nunique()
-    print(f"Mapped rows to {unique_cells:,} unique H3 cells at resolution {args.resolution}.")
+    print(
+        f"Mapped rows to {unique_cells:,} unique H3 cells at resolution {args.resolution}."
+    )
 
     # 3. Perform stratified sampling per cell
     print(f"Applying spatial stratified sampling (max_per_cell={args.max_per_cell})...")
@@ -82,7 +111,11 @@ def main():
             return group
         return group.sample(n=args.max_per_cell, random_state=args.seed)
 
-    sampled_df = df.groupby("h3_cell", group_keys=False).apply(sample_group).reset_index(drop=True)
+    sampled_df = (
+        df.groupby("h3_cell", group_keys=False)
+        .apply(sample_group)
+        .reset_index(drop=True)
+    )
 
     # Drop temporary column if desired, or keep for transparency
     # Let's keep it so user knows which cell it belonged to
@@ -98,11 +131,15 @@ def main():
     # 4. Resolve output path
     if not args.output_path:
         base, ext = os.path.splitext(args.csv_path)
-        args.output_path = f"{base}_sampled_h3_res{args.resolution}_max{args.max_per_cell}{ext}"
+        args.output_path = (
+            f"{base}_sampled_h3_res{args.resolution}_max{args.max_per_cell}{ext}"
+        )
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_path)), exist_ok=True)
     save_dataframe(sampled_df, args.output_path)
-    print(f"\nSampled dataset saved successfully to: {os.path.abspath(args.output_path)}")
+    print(
+        f"\nSampled dataset saved successfully to: {os.path.abspath(args.output_path)}"
+    )
 
 
 if __name__ == "__main__":

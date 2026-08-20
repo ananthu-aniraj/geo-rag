@@ -99,9 +99,9 @@ python3 -m src.evaluation.evaluate_retrieval \
 > Use the `--use_tips` flag to toggle between evaluation of standard CLIP embeddings and TIPSv2 aligned visual representations.
 
 ## 📈 4. LUCAS Semantic Retrieval Benchmarking (`benchmark_lucas.py`)
- 
+
 This script benchmarks the semantic retrieval capability of different image representations (TIPSv2 CLS, average patch, and SegFormer-masked embeddings) on the **LUCAS 2018** dataset. It measures how well nearest-neighbor retrieval aligns with ground-truth land cover, land use, and habitat classes, as well as projected spatial-ecological zones.
- 
+
 ### 🔍 Methodology
 1. **LUCAS Metadata Ingestion & Sampling:** Loads the validation CSV coordinates, matches local images using point ID grouping, and shuffles them.
 2. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by primary land cover category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining strict geographic segregation and preventing point-level leakage (such as directional views of the same surveyor field coordinate being split between query and database).
@@ -113,7 +113,7 @@ This script benchmarks the semantic retrieval capability of different image repr
    * **EUNIS Class** (`eunis_class` from CSV metadata)
    * **EUNIS Ecosystem** (`eunis_raster_class` from raster overlay, optional)
    * **Environmental Zone** (`env_zone_class` from raster overlay, optional)
- 
+
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_lucas \
@@ -128,22 +128,22 @@ python3 -m src.evaluation.benchmark_lucas \
   --output_report benchmark_results/lucas_report.txt \
   --output_csv benchmark_results/lucas_results.csv
 ```
- 
+
 ### 📦 Outputs
 - `benchmark_results/lucas_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
 - `benchmark_results/lucas_results.csv`: A detailed CSV table containing the exact query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
- 
+
 ---
- 
+
 ## ⛰️ 5. Places365 Hierarchy Retrieval Benchmarking (`benchmark_places.py`)
- 
+
 This script benchmarks the semantic retrieval performance of different representations on the **Places365** dataset. It maps images to categories using the hierarchy defined in `Scene_hierarchy.xlsx` to measure how well retrieval preserves visual and scene categories.
- 
+
 ### 🔍 Methodology
 1. **Places Ingestion & Hierarchy Mapping:** Reads the test directory structure, matching each image to its folder name (exact place), mapping it to macro-category (indoor vs. outdoor) and sub-category.
 2. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading official checkpoints (via `--tips_model_path`) comparing `TIPSv2 1st CLS` and `TIPSv2 2nd CLS` representations. You can optionally include CLIP (`--compare_clip`) and Hugging Face's `google/tipsv2-b14` model (`--compare_hf_tips`) in the comparison.
 3. **Retrieval Evaluations:** Cosine similarity retrieves the Top-10 nearest neighbors from the database pool. Accuracy metrics (P@1, P@5, P@10, mAP@10, and MRR@10) are reported across three hierarchical levels: **Exact Place Category**, **Sub-Category**, and **Macro Category**.
- 
+
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_places \
@@ -158,25 +158,25 @@ python3 -m src.evaluation.benchmark_places \
   --output_report benchmark_results/places_report.txt \
   --output_csv benchmark_results/places_results.csv
 ```
- 
+
 ### 📦 Outputs
 Output filenames are formatted dynamically by appending the seed and query count (`_s[seed]_q[queries]`) to prevent overwriting results across experiments:
 - `benchmark_results/places_report_s42_q100.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
 - `benchmark_results/places_results_s42_q100.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding metrics.
- 
+
 ---
- 
+
 ## 🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (`benchmark_eunis.py`)
-  
+
 This script performs geobotanical representation benchmarking on arbitrary geolocated images in Europe (e.g. scraped Flickr/Mapillary datasets). It overlays WGS84 coordinates on a local **EUNIS Ecosystem GeoTIFF raster map** to extract the ecosystem type, evaluating whether nearest-neighbor retrieval aligns with European habitats.
- 
+
 ### 🔍 Methodology
 1. **EUNIS Raster Coordinate Lookup:** Reads your scraped CSV metadata, transforms coordinates into EPSG:3035 using `pyproj`, and queries the local EUNIS GeoTIFF.
 2. **Dynamic Label Parsing:** If the `.vat.dbf` database file is found next to the raster, the script parses it dynamically using Geopandas to map raster values to terrestrial labels (e.g., *Woodland*, *Cropland*).
 3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by EUNIS category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
 4. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
 5. **Retrieval Evaluations:** Reports P@1, P@5, P@10, mAP@10, and MRR@10 on geobotanical classifications.
- 
+
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_eunis \
@@ -188,24 +188,24 @@ python3 -m src.evaluation.benchmark_eunis \
   --output_report benchmark_results/eunis_report.txt \
   --output_csv benchmark_results/eunis_results.csv
 ```
- 
+
 ### 📦 Outputs
 - `benchmark_results/eunis_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations.
 - `benchmark_results/eunis_results.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
- 
+
 ---
- 
+
 ## 🌲 7. Environmental Zones of Europe Retrieval Benchmarking (`benchmark_environmental_zones.py`)
-  
+
 This script performs macro-scale biogeographical representation benchmarking on geolocated images in Europe. It overlays WGS84 coordinates on the **Environmental Zones of Europe (Metzger 2025)** GeoTIFF raster map to extract the climate/ecological zone class (1–19), evaluating whether representations capture continental-scale geographical and geobotanical stratification under retrieval.
- 
+
 ### 🔍 Methodology
 1. **Environmental Zone Raster Lookup:** Reads scraped image CSV coordinates, projects them to EPSG:3035, and queries the Metzger 2025 GeoTIFF using `rasterio`.
 2. **Category Extraction:** Maps the sampled value to one of the 19 Environmental Zones (e.g. *Boreal*, *Continental*, *Arctic*).
 3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by Environmental Zone category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
 4. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading custom checkpoints via `--tips_model_path` (evaluating both CLS tokens), defaulting to Hugging Face `google/tipsv2-b14` if omitted.
 5. **Retrieval Evaluations:** Reports Precision@1, Precision@5, Precision@10, mAP@10, and MRR@10 on European Environmental Zones.
- 
+
 ### 💻 Usage
 ```bash
 python3 -m src.evaluation.benchmark_environmental_zones \

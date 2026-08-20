@@ -10,10 +10,26 @@ from src.utils.io import load_dataframe, save_dataframe
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Decouple existing clustered Parquet database into memory-mapped NumPy arrays and lightweight sidecars.")
-    parser.add_argument("--input", type=str, required=True, help="Path to the existing clustered/cleaned Parquet database.")
-    parser.add_argument("--k_clusters", type=int, default=None, help="Number of clusters (k) for naming the output sidecar file. Auto-detected if not specified.")
-    parser.add_argument("--delete_csv", action="store_true", help="Delete the matching duplicate CSV file if it exists.")
+    parser = argparse.ArgumentParser(
+        description="Decouple existing clustered Parquet database into memory-mapped NumPy arrays and lightweight sidecars."
+    )
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Path to the existing clustered/cleaned Parquet database.",
+    )
+    parser.add_argument(
+        "--k_clusters",
+        type=int,
+        default=None,
+        help="Number of clusters (k) for naming the output sidecar file. Auto-detected if not specified.",
+    )
+    parser.add_argument(
+        "--delete_csv",
+        action="store_true",
+        help="Delete the matching duplicate CSV file if it exists.",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
@@ -22,27 +38,29 @@ def main():
 
     db_dir = os.path.dirname(os.path.abspath(args.input))
     base_file_name = os.path.basename(args.input)
-    
+
     # Auto-detect k_clusters if not provided
     k_clusters = args.k_clusters
     if k_clusters is None:
-        match = re.search(r'_k_(\d+)', base_file_name)
+        match = re.search(r"_k_(\d+)", base_file_name)
         if match:
             k_clusters = int(match.group(1))
             print(f"Auto-detected k_clusters = {k_clusters} from input filename.")
         else:
             k_clusters = 50000  # Default fallback
-    
+
     print(f"Reading input database: {base_file_name}...")
     t0 = pd.Timestamp.now()
-    
+
     # 1. Load schema to inspect columns without loading heavy embeddings first
     parquet_file = pq.ParquetFile(args.input)
     available_cols = parquet_file.schema_arrow.names
-    
-    embedding_cols = [c for c in ['embedding', 'patch_embedding'] if c in available_cols]
+
+    embedding_cols = [
+        c for c in ["embedding", "patch_embedding"] if c in available_cols
+    ]
     metadata_cols = [c for c in available_cols if c not in embedding_cols]
-    
+
     # 2. Load the metadata columns into pandas
     print("Loading metadata...")
     df_meta = load_dataframe(args.input, columns=metadata_cols)
@@ -63,53 +81,69 @@ def main():
         dedup_base = meta_name.replace("cleaned", "deduplicated")
         dedup_path = os.path.join(db_dir, f"{dedup_base}.parquet")
         if os.path.exists(dedup_path):
-            print(f"\nFound deduplicated metadata at: {dedup_path}. Cleaned database will share {dedup_base}.npy.")
+            print(
+                f"\nFound deduplicated metadata at: {dedup_path}. Cleaned database will share {dedup_base}.npy."
+            )
             skip_npy = True
 
     # Generate stable photo_key using Platform and Photo_ID for all output parquet files
-    if 'Platform' in df_meta.columns and 'Photo_ID' in df_meta.columns:
-        df_meta['photo_key'] = df_meta['Platform'].astype(str) + "_" + df_meta['Photo_ID'].astype(str)
+    if "Platform" in df_meta.columns and "Photo_ID" in df_meta.columns:
+        df_meta["photo_key"] = (
+            df_meta["Platform"].astype(str) + "_" + df_meta["Photo_ID"].astype(str)
+        )
         print(" -> Added stable photo_key column to metadata.")
 
     for col in embedding_cols:
         if skip_npy:
             continue
-        npy_path = os.path.join(db_dir, f"{meta_name}.npy" if col == "embedding" else f"{meta_name}_{col}.npy")
+        npy_path = os.path.join(
+            db_dir,
+            f"{meta_name}.npy" if col == "embedding" else f"{meta_name}_{col}.npy",
+        )
         print(f"Extracting and saving '{col}' to binary: {npy_path}...")
-        
+
         # Load raw embedding column table
         table = pq.read_table(args.input, columns=[col])
         chunked_arr = table[col]
         num_rows = len(table)
         dim = len(chunked_arr.chunk(0)[0].as_py())
-        
+
         # Allocate contiguous float32 numpy array
         emb_matrix = np.empty((num_rows, dim), dtype=np.float32)
         current_row = 0
         for chunk in chunked_arr.chunks:
             chunk_len = len(chunk)
             flat_chunk = chunk.flatten().to_numpy()
-            emb_matrix[current_row:current_row + chunk_len] = flat_chunk.reshape(chunk_len, dim)
+            emb_matrix[current_row : current_row + chunk_len] = flat_chunk.reshape(
+                chunk_len, dim
+            )
             current_row += chunk_len
-            
+
         np.save(npy_path, emb_matrix)
-        print(f" -> Saved {emb_matrix.shape} matrix ({os.path.getsize(npy_path)/1024**2:.1f} MB).")
-        
+        print(
+            f" -> Saved {emb_matrix.shape} matrix ({os.path.getsize(npy_path)/1024**2:.1f} MB)."
+        )
+
         # Save companion keys index
-        if 'photo_key' in df_meta.columns:
-            keys_df = pd.DataFrame({'photo_key': df_meta['photo_key']})
+        if "photo_key" in df_meta.columns:
+            keys_df = pd.DataFrame({"photo_key": df_meta["photo_key"]})
             keys_path = npy_path.replace(".npy", ".keys.parquet")
             print(f" -> Saving companion keys index file to: {keys_path}")
-            keys_df.to_parquet(keys_path, compression='zstd')
-            
+            keys_df.to_parquet(keys_path, compression="zstd")
+
         del emb_matrix
         del table
 
     # 4. Split and write the cluster sidecar file if cluster_id is present
     cluster_cols = [
-        'cluster_id', 'cluster_label', 'cluster_description', 
-        'parent_cluster_id', 'parent_cluster_label', 'parent_cluster_description',
-        'visual_description', 'parent_visual_description'
+        "cluster_id",
+        "cluster_label",
+        "cluster_description",
+        "parent_cluster_id",
+        "parent_cluster_label",
+        "parent_cluster_description",
+        "visual_description",
+        "parent_visual_description",
     ]
     active_cluster_cols = [c for c in cluster_cols if c in df_meta.columns]
 
@@ -117,12 +151,14 @@ def main():
         sidecar_name = f"{meta_name}_clustered_k_{k_clusters}.parquet"
         sidecar_path = os.path.join(db_dir, sidecar_name)
         print(f"\nDecoupling cluster columns into sidecar: {sidecar_name}...")
-        
+
         # Sidecar file only holds keys (Platform, Photo_ID) + cluster parameters
-        sidecar_df = df_meta[['Platform', 'Photo_ID'] + active_cluster_cols].copy()
+        sidecar_df = df_meta[["Platform", "Photo_ID"] + active_cluster_cols].copy()
         save_dataframe(sidecar_df, sidecar_path)
-        print(f" -> Saved sidecar database ({os.path.getsize(sidecar_path)/1024**2:.1f} MB).")
-        
+        print(
+            f" -> Saved sidecar database ({os.path.getsize(sidecar_path)/1024**2:.1f} MB)."
+        )
+
         # Drop the cluster columns from the base metadata df
         df_meta = df_meta.drop(columns=active_cluster_cols)
 
@@ -130,7 +166,9 @@ def main():
     base_parquet_path = os.path.join(db_dir, f"{meta_name}.parquet")
     print(f"\nSaving clean base metadata to: {meta_name}.parquet...")
     save_dataframe(df_meta, base_parquet_path)
-    print(f" -> Saved base metadata ({os.path.getsize(base_parquet_path)/1024**2:.1f} MB).")
+    print(
+        f" -> Saved base metadata ({os.path.getsize(base_parquet_path)/1024**2:.1f} MB)."
+    )
 
     # 6. Delete duplicate CSV file if requested
     if args.delete_csv:

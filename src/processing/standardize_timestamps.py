@@ -11,14 +11,32 @@ from src.utils.koppen_geiger import extract_koppen_geiger
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Standalone script to standardize the Captured_At timestamp column in Parquet, CSV, or Pickle databases.")
-    parser.add_argument("--input", type=str, required=True, help="Path to the input file (.parquet, .csv, or .pkl).")
-    parser.add_argument("--output", type=str, default=None,
-                        help="Path to save the standardized file (omitted to overwrite in-place).")
-    parser.add_argument("--koppen_tif", type=str, default=None,
-                        help="Path to the Köppen-Geiger GeoTIFF file (checks params.yaml if omitted).")
-    parser.add_argument("--land_shp", type=str, default=None,
-                        help="Path to the country shapefile for spatial region mapping.")
+        description="Standalone script to standardize the Captured_At timestamp column in Parquet, CSV, or Pickle databases."
+    )
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Path to the input file (.parquet, .csv, or .pkl).",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Path to save the standardized file (omitted to overwrite in-place).",
+    )
+    parser.add_argument(
+        "--koppen_tif",
+        type=str,
+        default=None,
+        help="Path to the Köppen-Geiger GeoTIFF file (checks params.yaml if omitted).",
+    )
+    parser.add_argument(
+        "--land_shp",
+        type=str,
+        default=None,
+        help="Path to the country shapefile for spatial region mapping.",
+    )
     args = parser.parse_args()
 
     # Load koppen_tif path from params.yaml if not explicitly passed
@@ -27,222 +45,264 @@ def main():
         params_path = "params.yaml"
         if os.path.exists(params_path):
             try:
-                with open(params_path, 'r') as f:
+                with open(params_path, "r") as f:
                     params = yaml.safe_load(f)
-                    koppen_tif = params.get('pipeline', {}).get('koppen_geiger_tif', None)
+                    koppen_tif = params.get("pipeline", {}).get(
+                        "koppen_geiger_tif", None
+                    )
             except Exception as e:
                 print(f"[WARNING] Could not parse params.yaml: {e}")
 
     out_path = args.output if args.output else args.input
 
     print(f"Loading dataset: {args.input}")
-    is_pkl = args.input.endswith('.pkl')
-    is_csv = args.input.endswith('.csv')
+    is_pkl = args.input.endswith(".pkl")
+    is_csv = args.input.endswith(".csv")
 
     if is_pkl:
-        with open(args.input, 'rb') as f:
+        with open(args.input, "rb") as f:
             data = pickle.load(f)
         df = pd.DataFrame(data)
     else:
         df = load_dataframe(args.input)
 
-    if 'Latitude' in df.columns:
-        df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
-    if 'Longitude' in df.columns:
-        df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+    if "Latitude" in df.columns:
+        df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
+    if "Longitude" in df.columns:
+        df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
 
     # 1. Normalise columns to Captured_At if present under other names
     col_map = {
-        'captured_at': 'Captured_At',
-        'Date_Observed': 'Captured_At',
-        'observed_on_string': 'Captured_At',
-        'datetime_local': 'Captured_At'
+        "captured_at": "Captured_At",
+        "Date_Observed": "Captured_At",
+        "observed_on_string": "Captured_At",
+        "datetime_local": "Captured_At",
     }
-    rename_dict = {k: v for k, v in col_map.items() if k in df.columns and 'Captured_At' not in df.columns}
+    rename_dict = {
+        k: v
+        for k, v in col_map.items()
+        if k in df.columns and "Captured_At" not in df.columns
+    }
     if rename_dict:
         print(f"Renaming timestamp columns to standard 'Captured_At': {rename_dict}")
         df = df.rename(columns=rename_dict)
 
-    if 'Captured_At' not in df.columns:
-        print("[WARNING] No timestamp column found. Creating an empty 'Captured_At' column.")
-        df['Captured_At'] = None
+    if "Captured_At" not in df.columns:
+        print(
+            "[WARNING] No timestamp column found. Creating an empty 'Captured_At' column."
+        )
+        df["Captured_At"] = None
 
     # 2. Standardize timestamps (Vectorized)
     print("Standardizing timestamps...")
-    initial_nulls = df['Captured_At'].isna().sum()
+    initial_nulls = df["Captured_At"].isna().sum()
 
-    ts_raw = df['Captured_At']
-    
+    ts_raw = df["Captured_At"]
+
     # Initialize output Series with None as default
     standardized = pd.Series([None] * len(df), index=df.index, dtype=object)
-    
+
     # Identify Unix epoch numeric timestamps vs. string representations
-    numeric_ts = pd.to_numeric(ts_raw, errors='coerce')
+    numeric_ts = pd.to_numeric(ts_raw, errors="coerce")
     is_numeric = numeric_ts.notna() & (numeric_ts > 1e8)
-    
+
     # Parse Unix numeric timestamps
     if is_numeric.any():
         is_ms_mask = is_numeric & (numeric_ts > 5e10)
         is_s_mask = is_numeric & ~is_ms_mask
-        
+
         if is_ms_mask.any():
-            parsed_ms = pd.to_datetime(numeric_ts[is_ms_mask], unit='ms', utc=True, errors='coerce')
+            parsed_ms = pd.to_datetime(
+                numeric_ts[is_ms_mask], unit="ms", utc=True, errors="coerce"
+            )
             try:
                 valid_ms = (parsed_ms.dt.year >= 1) & (parsed_ms.dt.year <= 9999)
             except Exception:
                 valid_ms = pd.Series(True, index=parsed_ms.index)
-            
-            formatted_ms = pd.Series([None] * len(parsed_ms), index=parsed_ms.index, dtype=object)
+
+            formatted_ms = pd.Series(
+                [None] * len(parsed_ms), index=parsed_ms.index, dtype=object
+            )
             if valid_ms.any():
-                formatted_ms[valid_ms] = parsed_ms[valid_ms].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                formatted_ms[valid_ms] = parsed_ms[valid_ms].dt.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
             standardized.loc[is_ms_mask] = formatted_ms
-            
+
         if is_s_mask.any():
-            parsed_s = pd.to_datetime(numeric_ts[is_s_mask], unit='s', utc=True, errors='coerce')
+            parsed_s = pd.to_datetime(
+                numeric_ts[is_s_mask], unit="s", utc=True, errors="coerce"
+            )
             try:
                 valid_s = (parsed_s.dt.year >= 1) & (parsed_s.dt.year <= 9999)
             except Exception:
                 valid_s = pd.Series(True, index=parsed_s.index)
-                
-            formatted_s = pd.Series([None] * len(parsed_s), index=parsed_s.index, dtype=object)
+
+            formatted_s = pd.Series(
+                [None] * len(parsed_s), index=parsed_s.index, dtype=object
+            )
             if valid_s.any():
-                formatted_s[valid_s] = parsed_s[valid_s].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                formatted_s[valid_s] = parsed_s[valid_s].dt.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
             standardized.loc[is_s_mask] = formatted_s
-            
+
     # Parse string representations
     is_string = ts_raw.notna() & ~is_numeric
     if is_string.any():
         str_vals = ts_raw[is_string].astype(str).str.strip()
-        has_colon_date = str_vals.str.match(r'^\d{4}:\d{2}:\d{2}')
+        has_colon_date = str_vals.str.match(r"^\d{4}:\d{2}:\d{2}")
         if has_colon_date.any():
-            str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(':', '-', n=2)
-            
-        parsed_str = pd.to_datetime(str_vals, errors='coerce', utc=True, format='mixed')
+            str_vals.loc[has_colon_date] = str_vals[has_colon_date].str.replace(
+                ":", "-", n=2
+            )
+
+        parsed_str = pd.to_datetime(str_vals, errors="coerce", utc=True, format="mixed")
         try:
             valid_str = (parsed_str.dt.year >= 1) & (parsed_str.dt.year <= 9999)
         except Exception:
             valid_str = pd.Series(True, index=parsed_str.index)
-            
-        formatted_str = pd.Series([None] * len(parsed_str), index=parsed_str.index, dtype=object)
+
+        formatted_str = pd.Series(
+            [None] * len(parsed_str), index=parsed_str.index, dtype=object
+        )
         if valid_str.any():
-            formatted_str[valid_str] = parsed_str[valid_str].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            formatted_str[valid_str] = parsed_str[valid_str].dt.strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
         standardized.loc[is_string] = formatted_str
 
     # Fallback to original strings if parsing failed but was not null/empty
     ts_series = ts_raw.astype(str).str.strip()
     is_parsed = standardized.notna()
-    invalid_mask = ~is_parsed & ts_raw.notna() & (ts_raw != '')
+    invalid_mask = ~is_parsed & ts_raw.notna() & (ts_raw != "")
     standardized[invalid_mask] = ts_series[invalid_mask]
 
-    df['Captured_At'] = standardized
-    final_nulls = df['Captured_At'].isna().sum()
-    print(f" -> Timestamp standardization complete. Null timestamps: {initial_nulls} -> {final_nulls}")
+    df["Captured_At"] = standardized
+    final_nulls = df["Captured_At"].isna().sum()
+    print(
+        f" -> Timestamp standardization complete. Null timestamps: {initial_nulls} -> {final_nulls}"
+    )
 
     # Extract Köppen-Geiger climate classification if available
     if koppen_tif:
-        print(f"Extracting Köppen-Geiger climate classification using TIF: {koppen_tif}")
+        print(
+            f"Extracting Köppen-Geiger climate classification using TIF: {koppen_tif}"
+        )
         df = extract_koppen_geiger(df, koppen_tif)
 
     # 3. Add dynamic season classification (Vectorized)
     print("Classifying local seasons...")
-    
+
     # Extract month from standardized ISO 8601 string (e.g. "YYYY-MM-DD...")
-    months = pd.to_numeric(standardized.str[5:7], errors='coerce')
-    lats = pd.to_numeric(df['Latitude'], errors='coerce')
-    
+    months = pd.to_numeric(standardized.str[5:7], errors="coerce")
+    lats = pd.to_numeric(df["Latitude"], errors="coerce")
+
     # Initialize Series
-    seasons = pd.Series(['Unknown'] * len(df), index=df.index, dtype=object)
+    seasons = pd.Series(["Unknown"] * len(df), index=df.index, dtype=object)
     valid_season_mask = months.notna() & lats.notna()
 
-    has_koppen = 'Koppen_Code' in df.columns and df['Koppen_Code'].notna().any()
+    has_koppen = "Koppen_Code" in df.columns and df["Koppen_Code"].notna().any()
 
     if has_koppen:
-        print(" -> Utilizing Köppen-Geiger climate classifications for precise season zoning...")
-        koppen_codes = df['Koppen_Code']
+        print(
+            " -> Utilizing Köppen-Geiger climate classifications for precise season zoning..."
+        )
+        koppen_codes = df["Koppen_Code"]
         is_northern = lats >= 0
 
         # Dry/Desert Climates (BWh, BWk): Dry Season year-round
-        is_desert = valid_season_mask & koppen_codes.isin(['BWh', 'BWk'])
-        seasons[is_desert] = 'Dry Season'
+        is_desert = valid_season_mask & koppen_codes.isin(["BWh", "BWk"])
+        seasons[is_desert] = "Dry Season"
 
         # Tropical Wet/Dry Savanna & Monsoon (Aw, Am)
-        is_trop_wet_dry = valid_season_mask & koppen_codes.isin(['Aw', 'Am'])
+        is_trop_wet_dry = valid_season_mask & koppen_codes.isin(["Aw", "Am"])
         # Northern Tropics: Wet season is June to September
-        seasons[is_trop_wet_dry & is_northern & months.isin([6, 7, 8, 9])] = 'Wet Season'
-        seasons[is_trop_wet_dry & is_northern & ~months.isin([6, 7, 8, 9])] = 'Dry Season'
+        seasons[is_trop_wet_dry & is_northern & months.isin([6, 7, 8, 9])] = (
+            "Wet Season"
+        )
+        seasons[is_trop_wet_dry & is_northern & ~months.isin([6, 7, 8, 9])] = (
+            "Dry Season"
+        )
         # Southern Tropics: Wet season is November to April
-        seasons[is_trop_wet_dry & ~is_northern & months.isin([11, 12, 1, 2, 3, 4])] = 'Wet Season'
-        seasons[is_trop_wet_dry & ~is_northern & ~months.isin([11, 12, 1, 2, 3, 4])] = 'Dry Season'
+        seasons[is_trop_wet_dry & ~is_northern & months.isin([11, 12, 1, 2, 3, 4])] = (
+            "Wet Season"
+        )
+        seasons[is_trop_wet_dry & ~is_northern & ~months.isin([11, 12, 1, 2, 3, 4])] = (
+            "Dry Season"
+        )
 
         # Temperate Dry Summer / Mediterranean Climates (Csa, Csb)
-        is_mediterranean = valid_season_mask & koppen_codes.isin(['Csa', 'Csb'])
+        is_mediterranean = valid_season_mask & koppen_codes.isin(["Csa", "Csb"])
         # Northern Hemisphere Mediterranean: Winter (Rainy/Wet) is Dec-Feb, Summer (Dry) is Jun-Aug
-        seasons[is_mediterranean & is_northern & months.isin([12, 1, 2])] = 'Wet Season'
-        seasons[is_mediterranean & is_northern & months.isin([6, 7, 8])] = 'Dry Season'
+        seasons[is_mediterranean & is_northern & months.isin([12, 1, 2])] = "Wet Season"
+        seasons[is_mediterranean & is_northern & months.isin([6, 7, 8])] = "Dry Season"
         # Southern Hemisphere Mediterranean: Winter (Rainy/Wet) is Jun-Aug, Summer (Dry) is Dec-Feb
-        seasons[is_mediterranean & ~is_northern & months.isin([6, 7, 8])] = 'Wet Season'
-        seasons[is_mediterranean & ~is_northern & months.isin([12, 1, 2])] = 'Dry Season'
+        seasons[is_mediterranean & ~is_northern & months.isin([6, 7, 8])] = "Wet Season"
+        seasons[is_mediterranean & ~is_northern & months.isin([12, 1, 2])] = (
+            "Dry Season"
+        )
 
         # Default fallbacks for remaining unassigned classifications
-        unassigned_mask = valid_season_mask & (seasons == 'Unknown')
-        
+        unassigned_mask = valid_season_mask & (seasons == "Unknown")
+
         # Tropical Zone fallback
         tropical = unassigned_mask & (lats >= -23.5) & (lats <= 23.5)
         wet_months = months.isin([6, 7, 8, 9])
-        seasons[tropical & wet_months] = 'Wet Season'
-        seasons[tropical & ~wet_months] = 'Dry Season'
+        seasons[tropical & wet_months] = "Wet Season"
+        seasons[tropical & ~wet_months] = "Dry Season"
 
         # Northern Temperate fallback
         north = unassigned_mask & (lats > 23.5)
-        seasons[north & months.isin([12, 1, 2])] = 'Winter'
-        seasons[north & months.isin([3, 4, 5])] = 'Spring'
-        seasons[north & months.isin([6, 7, 8])] = 'Summer'
-        seasons[north & months.isin([9, 10, 11])] = 'Autumn'
+        seasons[north & months.isin([12, 1, 2])] = "Winter"
+        seasons[north & months.isin([3, 4, 5])] = "Spring"
+        seasons[north & months.isin([6, 7, 8])] = "Summer"
+        seasons[north & months.isin([9, 10, 11])] = "Autumn"
 
         # Southern Temperate fallback
         south = unassigned_mask & (lats < -23.5)
-        seasons[south & months.isin([12, 1, 2])] = 'Summer'
-        seasons[south & months.isin([3, 4, 5])] = 'Autumn'
-        seasons[south & months.isin([6, 7, 8])] = 'Winter'
-        seasons[south & months.isin([9, 10, 11])] = 'Spring'
+        seasons[south & months.isin([12, 1, 2])] = "Summer"
+        seasons[south & months.isin([3, 4, 5])] = "Autumn"
+        seasons[south & months.isin([6, 7, 8])] = "Winter"
+        seasons[south & months.isin([9, 10, 11])] = "Spring"
     else:
         # Standard latitude-based fallback if Köppen-Geiger data is not present
         # Tropical Zone (-23.5 <= lat <= 23.5)
         tropical = valid_season_mask & (lats >= -23.5) & (lats <= 23.5)
         wet_months = months.isin([6, 7, 8, 9])
-        seasons[tropical & wet_months] = 'Wet Season'
-        seasons[tropical & ~wet_months] = 'Dry Season'
+        seasons[tropical & wet_months] = "Wet Season"
+        seasons[tropical & ~wet_months] = "Dry Season"
 
         # Northern Temperate/Polar (lat > 23.5)
         north = valid_season_mask & (lats > 23.5)
-        seasons[north & months.isin([12, 1, 2])] = 'Winter'
-        seasons[north & months.isin([3, 4, 5])] = 'Spring'
-        seasons[north & months.isin([6, 7, 8])] = 'Summer'
-        seasons[north & months.isin([9, 10, 11])] = 'Autumn'
+        seasons[north & months.isin([12, 1, 2])] = "Winter"
+        seasons[north & months.isin([3, 4, 5])] = "Spring"
+        seasons[north & months.isin([6, 7, 8])] = "Summer"
+        seasons[north & months.isin([9, 10, 11])] = "Autumn"
 
         # Southern Temperate/Polar (lat < -23.5)
         south = valid_season_mask & (lats < -23.5)
-        seasons[south & months.isin([12, 1, 2])] = 'Summer'
-        seasons[south & months.isin([3, 4, 5])] = 'Autumn'
-        seasons[south & months.isin([6, 7, 8])] = 'Winter'
-        seasons[south & months.isin([9, 10, 11])] = 'Spring'
+        seasons[south & months.isin([12, 1, 2])] = "Summer"
+        seasons[south & months.isin([3, 4, 5])] = "Autumn"
+        seasons[south & months.isin([6, 7, 8])] = "Winter"
+        seasons[south & months.isin([9, 10, 11])] = "Spring"
 
-    df['Season'] = seasons
+    df["Season"] = seasons
     print(" -> Local seasons classified. Column 'Season' added.")
 
     # 4. Add dynamic time of day classification (Vectorized)
     print("Classifying time of day based on hour...")
-    hours = pd.to_numeric(standardized.str[11:13], errors='coerce')
-    time_of_days = pd.Series(['Unknown'] * len(df), index=df.index, dtype=object)
+    hours = pd.to_numeric(standardized.str[11:13], errors="coerce")
+    time_of_days = pd.Series(["Unknown"] * len(df), index=df.index, dtype=object)
     valid_hour_mask = hours.notna()
 
-    time_of_days[valid_hour_mask & (hours >= 5) & (hours < 8)] = 'Dawn'
-    time_of_days[valid_hour_mask & (hours >= 8) & (hours < 12)] = 'Morning'
-    time_of_days[valid_hour_mask & (hours >= 12) & (hours < 17)] = 'Afternoon'
-    time_of_days[valid_hour_mask & (hours >= 17) & (hours < 20)] = 'Dusk'
-    time_of_days[valid_hour_mask & ((hours >= 20) | (hours < 5))] = 'Night'
+    time_of_days[valid_hour_mask & (hours >= 5) & (hours < 8)] = "Dawn"
+    time_of_days[valid_hour_mask & (hours >= 8) & (hours < 12)] = "Morning"
+    time_of_days[valid_hour_mask & (hours >= 12) & (hours < 17)] = "Afternoon"
+    time_of_days[valid_hour_mask & (hours >= 17) & (hours < 20)] = "Dusk"
+    time_of_days[valid_hour_mask & ((hours >= 20) | (hours < 5))] = "Night"
 
-    df['Time_Of_Day'] = time_of_days
+    df["Time_Of_Day"] = time_of_days
     print(" -> Time of day classified. Column 'Time_Of_Day' added.")
 
     # 4b. Map coordinates to regions (country and continent)
@@ -251,22 +311,25 @@ def main():
         try:
             print("Mapping coordinates to countries/continents...")
             from src.utils.dataset_statistics import map_coordinates_to_regions
+
             df = map_coordinates_to_regions(df, land_shp)
         except Exception as e:
             print(f"[WARNING] Region mapping failed: {e}")
-            df['continent'] = 'Unknown'
-            df['country'] = 'Unknown'
+            df["continent"] = "Unknown"
+            df["country"] = "Unknown"
     else:
-        print(f"[WARNING] Shapefile '{land_shp}' not found. Cannot map points to countries/continents.")
-        df['continent'] = 'Unknown'
-        df['country'] = 'Unknown'
+        print(
+            f"[WARNING] Shapefile '{land_shp}' not found. Cannot map points to countries/continents."
+        )
+        df["continent"] = "Unknown"
+        df["country"] = "Unknown"
 
     # 5. Save output
     print(f"Saving standardized dataset to: {out_path}")
-    if out_path.endswith('.pkl'):
+    if out_path.endswith(".pkl"):
         # Save as pickle list of dicts if original was a pickle
-        records = df.to_dict('records')
-        with open(out_path, 'wb') as f:
+        records = df.to_dict("records")
+        with open(out_path, "wb") as f:
             pickle.dump(records, f)
     else:
         save_dataframe(df, out_path)

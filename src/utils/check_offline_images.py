@@ -27,7 +27,9 @@ def main():
         offline_dirs_str = params.get("offline_dataset_dirs", "")
 
     if not offline_dirs_str:
-        print("No offline dataset directories configured in params.yaml (pipeline.offline_dataset_dirs).")
+        print(
+            "No offline dataset directories configured in params.yaml (pipeline.offline_dataset_dirs)."
+        )
         return
 
     offline_dirs = [d.strip() for d in offline_dirs_str.split() if d.strip()]
@@ -38,7 +40,9 @@ def main():
     for d in offline_dirs:
         if os.path.exists(d):
             found_csvs = glob.glob(os.path.join(d, "*.csv"))
-            print(f"Found {len(found_csvs)} metadata CSV files in directory '{d}': {found_csvs}")
+            print(
+                f"Found {len(found_csvs)} metadata CSV files in directory '{d}': {found_csvs}"
+            )
             csv_files.extend(found_csvs)
         else:
             print(f"Warning: Directory '{d}' does not exist on this machine.")
@@ -62,25 +66,42 @@ def main():
                 continue
 
             # Identify columns case-insensitively
-            photo_col = next((c for c in df.columns if c.lower() in ['photo_id', 'id']), None)
-            platform_col = next((c for c in df.columns if c.lower() == 'platform'), None)
-            url_col = next((c for c in df.columns if c.lower() in ['image_location', 'image_url', 'url']), None)
+            photo_col = next(
+                (c for c in df.columns if c.lower() in ["photo_id", "id"]), None
+            )
+            platform_col = next(
+                (c for c in df.columns if c.lower() == "platform"), None
+            )
+            url_col = next(
+                (
+                    c
+                    for c in df.columns
+                    if c.lower() in ["image_location", "image_url", "url"]
+                ),
+                None,
+            )
 
             if not photo_col or not url_col:
-                print("Error: Could not find Photo_ID or Image_Location/Image_URL columns in this CSV.")
+                print(
+                    "Error: Could not find Photo_ID or Image_Location/Image_URL columns in this CSV."
+                )
                 continue
 
             found_count = 0
             missing_samples = []
 
             # Check each image using our unified resolve function
-            for _, row in tqdm(df.iterrows(), total=total_rows, desc="Verifying local files"):
+            for _, row in tqdm(
+                df.iterrows(), total=total_rows, desc="Verifying local files"
+            ):
                 photo_id = row[photo_col]
                 platform = row[platform_col] if platform_col else None
                 url = row[url_col]
 
                 # Resolve path using the exact pipeline logic
-                resolved = resolve_offline_image_path(url, offline_dirs, photo_id, platform)
+                resolved = resolve_offline_image_path(
+                    url, offline_dirs, photo_id, platform
+                )
                 if resolved and os.path.exists(resolved):
                     found_count += 1
                 else:

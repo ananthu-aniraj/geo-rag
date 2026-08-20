@@ -25,11 +25,11 @@ pipeline:
   chunk_size: 64
   # Input directories passed as a space-separated string
   input_dirs: "/home/ananthu/Projects/data/flickr_scrape_rand_6 /home/ananthu/Projects/data/mapillary_scrape_rand_6 /home/ananthu/Projects/data/flickr_scrape_rand_7 /home/ananthu/Projects/data/mapillary_scrape_rand_7 /home/ananthu/Projects/data/osm_scrape_rand"
-  
+
   # Zero-shot filters for iNaturalist data (true/false)
   filter_macro: true
   filter_sky: true
-  
+
   # Optional local offline dataset directories (space-separated paths)
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
 

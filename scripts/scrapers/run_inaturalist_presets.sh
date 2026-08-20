@@ -41,30 +41,30 @@ echo "============================================================"
 
 for preset in "${PRESETS[@]}"; do
     out_file="$OUT_DIR/inaturalist_preset_${preset}.csv"
-    
+
     echo -e "\n------------------------------------------------------------"
     echo "Processing preset biome: $preset"
     echo "Saving to: $out_file"
     echo "------------------------------------------------------------"
-    
+
     # Build arguments dynamically
     ARGS=(
         "--preset" "$preset"
         "--limit" "$LIMIT"
         "--out" "$out_file"
     )
-    
+
     if [ "$EXCLUDE_FLYING" = true ]; then
         ARGS+=("--exclude_flying")
     fi
-    
+
     if [ "$SCRAPE_WIKI" = true ]; then
         ARGS+=("--scrape_wiki")
     fi
-    
+
     # Run the python script
     python3 -m src.scrapers.fetch_inaturalist_data "${ARGS[@]}"
-    
+
     # Sleep to be polite to iNaturalist API rate limits
     echo "Sleeping 5 seconds between requests..."
     sleep 5

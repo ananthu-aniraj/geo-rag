@@ -6,9 +6,9 @@ This document describes the design and methodology of `validate_cluster_count.py
 
 ## 🔬 Spatial Autocorrelation & The Generalization Gap
 
-In spatial datasets, adjacent data points are highly correlated due to **Tobler's First Law of Geography** [Tobler, 1970]: *"Everything is related to everything else, but near things are more related than distant things."* 
+In spatial datasets, adjacent data points are highly correlated due to **Tobler's First Law of Geography** [Tobler, 1970]: *"Everything is related to everything else, but near things are more related than distant things."*
 
-If we partition the training and validation sets randomly, nearby images (e.g., sequential streetscapes or photos of the same landmark) will appear in both sets. This causes **spatial data leakage**, artificially deflating the validation loss and hiding overfitting. 
+If we partition the training and validation sets randomly, nearby images (e.g., sequential streetscapes or photos of the same landmark) will appear in both sets. This causes **spatial data leakage**, artificially deflating the validation loss and hiding overfitting.
 
 To measure true generalization, we must partition the dataset geographically. We downscale the fine-grained H3 cell $c$ (resolution 11) to its coarse parent block $b$:
 
@@ -48,7 +48,7 @@ $$
 
 ## 📈 Optimal k Selection via the Elbow Method
 
-As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks. 
+As $k \to N$, the training loss $\text{MSE}_{\text{train}}(k) \to 0$. However, on the validation set, if $k$ is too high, the centroids will overfit to the specific geographic configurations of the training blocks.
 
 The optimal $k^*$ is determined using the **Elbow Method** [Thorndike, 1953] on $\text{MSE}_{\text{val}}(k)$—the point at which the rate of decrease in validation error slows down significantly, representing the maximum compression with optimal generalization:
 

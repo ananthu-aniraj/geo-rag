@@ -45,27 +45,40 @@ def extract_koppen_geiger(df, tif_path):
     Extracts Köppen-Geiger climate codes and descriptions for coordinates in a DataFrame.
     Expects 'Latitude' and 'Longitude' columns to be present in df.
     """
-    if 'Latitude' not in df.columns or 'Longitude' not in df.columns:
-        print("[WARNING] 'Latitude' and/or 'Longitude' columns missing. Skipping Köppen-Geiger extraction.")
-        df['Koppen_Code'] = None
-        df['Koppen_Desc'] = None
+    if "Latitude" not in df.columns or "Longitude" not in df.columns:
+        print(
+            "[WARNING] 'Latitude' and/or 'Longitude' columns missing. Skipping Köppen-Geiger extraction."
+        )
+        df["Koppen_Code"] = None
+        df["Koppen_Desc"] = None
         return df
 
     if not tif_path or not os.path.exists(tif_path):
-        print(f"[WARNING] Köppen-Geiger GeoTIFF file not found at '{tif_path}'. Skipping climate classification.")
-        df['Koppen_Code'] = None
-        df['Koppen_Desc'] = None
+        print(
+            f"[WARNING] Köppen-Geiger GeoTIFF file not found at '{tif_path}'. Skipping climate classification."
+        )
+        df["Koppen_Code"] = None
+        df["Koppen_Desc"] = None
         return df
 
     # Parse coordinates to numeric values safely
-    lons = pd.to_numeric(df['Longitude'], errors='coerce').values
-    lats = pd.to_numeric(df['Latitude'], errors='coerce').values
+    lons = pd.to_numeric(df["Longitude"], errors="coerce").values
+    lats = pd.to_numeric(df["Latitude"], errors="coerce").values
 
     valid_coords = []
     valid_indices = []
 
-    for idx, (lon, lat) in tqdm(enumerate(zip(lons, lats)), total=len(df), desc="Validating coordinates for Köppen-Geiger extraction"):
-        if not np.isnan(lon) and not np.isnan(lat) and -180 <= lon <= 180 and -90 <= lat <= 90:
+    for idx, (lon, lat) in tqdm(
+        enumerate(zip(lons, lats)),
+        total=len(df),
+        desc="Validating coordinates for Köppen-Geiger extraction",
+    ):
+        if (
+            not np.isnan(lon)
+            and not np.isnan(lat)
+            and -180 <= lon <= 180
+            and -90 <= lat <= 90
+        ):
             valid_coords.append((lon, lat))
             valid_indices.append(idx)
 
@@ -78,13 +91,19 @@ def extract_koppen_geiger(df, tif_path):
             with rasterio.open(tif_path) as src:
                 # Read the entire band into memory (extremely fast categorical map read)
                 band_data = src.read(1)
-                
+
                 # Perform vectorized coordinate to pixel row/col lookup
                 valid_lons = [c[0] for c in valid_coords]
                 valid_lats = [c[1] for c in valid_coords]
-                rows, cols = rasterio.transform.rowcol(src.transform, valid_lons, valid_lats)
-                
-                for orig_idx, row, col in tqdm(zip(valid_indices, rows, cols), total=len(valid_indices), desc="Extracting Köppen-Geiger codes"):
+                rows, cols = rasterio.transform.rowcol(
+                    src.transform, valid_lons, valid_lats
+                )
+
+                for orig_idx, row, col in tqdm(
+                    zip(valid_indices, rows, cols),
+                    total=len(valid_indices),
+                    desc="Extracting Köppen-Geiger codes",
+                ):
                     if 0 <= row < band_data.shape[0] and 0 <= col < band_data.shape[1]:
                         val_int = int(band_data[row, col])
                         if val_int in KOPPEN_LEGEND:
@@ -93,6 +112,6 @@ def extract_koppen_geiger(df, tif_path):
         except Exception as e:
             print(f"[ERROR] Failed to read Köppen-Geiger GeoTIFF: {e}")
 
-    df['Koppen_Code'] = codes
-    df['Koppen_Desc'] = descriptions
+    df["Koppen_Code"] = codes
+    df["Koppen_Desc"] = descriptions
     return df

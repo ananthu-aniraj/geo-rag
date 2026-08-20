@@ -22,18 +22,29 @@ def clean_id(x):
             return str(int(x))
         return str(x)
     s = str(x).strip()
-    if s.endswith('.0'):
+    if s.endswith(".0"):
         s = s[:-2]
     return s
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Prune offline datasets in-place to align with deduplicated database.")
-    parser.add_argument("--parquet", type=str, default="full_pipeline_output/geo_space_cleaned.parquet",
-                        help="Path to the deduplicated/cleaned parquet database.")
-    parser.add_argument("--dry_run", action="store_true", help="Print stats without making any changes.")
-    parser.add_argument("--no_delete_images", action="store_true",
-                        help="Only prune metadata CSVs; do not delete image files.")
+    parser = argparse.ArgumentParser(
+        description="Prune offline datasets in-place to align with deduplicated database."
+    )
+    parser.add_argument(
+        "--parquet",
+        type=str,
+        default="full_pipeline_output/geo_space_cleaned.parquet",
+        help="Path to the deduplicated/cleaned parquet database.",
+    )
+    parser.add_argument(
+        "--dry_run", action="store_true", help="Print stats without making any changes."
+    )
+    parser.add_argument(
+        "--no_delete_images",
+        action="store_true",
+        help="Only prune metadata CSVs; do not delete image files.",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.parquet):
@@ -53,13 +64,17 @@ def main():
 
     # Create a set of active (platform, photo_id) tuples via fast zip iteration
     active_keys = set()
-    for plat, pid in tqdm(zip(plats, pids), total=len(pids), desc="Indexing active database keys"):
+    for plat, pid in tqdm(
+        zip(plats, pids), total=len(pids), desc="Indexing active database keys"
+    ):
         plat_str = str(plat).strip().lower()
         pid_str = clean_id(pid)
         if pid_str:
             active_keys.add((plat_str, pid_str))
 
-    print(f"Found {len(active_keys):,} active unique (Platform, Photo_ID) entries in the deduplicated database.")
+    print(
+        f"Found {len(active_keys):,} active unique (Platform, Photo_ID) entries in the deduplicated database."
+    )
 
     # Read offline directories from params.yaml
     params_path = "params.yaml"
@@ -113,20 +128,39 @@ def main():
                 continue
 
             # Identify columns case-insensitively
-            photo_col = next((c for c in df.columns if c.lower() in ['photo_id', 'id']), None)
-            platform_col = next((c for c in df.columns if c.lower() == 'platform'), None)
-            url_col = next((c for c in df.columns if c.lower() in ['image_location', 'image_url', 'url']), None)
+            photo_col = next(
+                (c for c in df.columns if c.lower() in ["photo_id", "id"]), None
+            )
+            platform_col = next(
+                (c for c in df.columns if c.lower() == "platform"), None
+            )
+            url_col = next(
+                (
+                    c
+                    for c in df.columns
+                    if c.lower() in ["image_location", "image_url", "url"]
+                ),
+                None,
+            )
 
             if not photo_col or not url_col:
-                print("Error: Could not find ID/Photo_ID or Image URL column. Skipping.")
+                print(
+                    "Error: Could not find ID/Photo_ID or Image URL column. Skipping."
+                )
                 continue
 
             rows_to_keep = []
             removed_count = 0
 
-            for _, row in tqdm(df.iterrows(), total=total_rows, desc="Scanning metadata rows"):
+            for _, row in tqdm(
+                df.iterrows(), total=total_rows, desc="Scanning metadata rows"
+            ):
                 pid = clean_id(row[photo_col])
-                plat = str(row[platform_col]).strip().lower() if platform_col else "unknown"
+                plat = (
+                    str(row[platform_col]).strip().lower()
+                    if platform_col
+                    else "unknown"
+                )
                 url = row[url_col]
 
                 # Key check (allow loose match for platform strings like "inat" vs "inaturalist")
@@ -137,10 +171,17 @@ def main():
                         is_active = True
                     # Match relaxed platform
                     elif "inaturalist" in plat or plat == "inat":
-                        is_active = ("inaturalist", pid) in active_keys or ("inat", pid) in active_keys
+                        is_active = ("inaturalist", pid) in active_keys or (
+                            "inat",
+                            pid,
+                        ) in active_keys
 
-                resolved_path = resolve_offline_image_path(url, offline_dirs, row[photo_col],
-                                                           row[platform_col] if platform_col else None)
+                resolved_path = resolve_offline_image_path(
+                    url,
+                    offline_dirs,
+                    row[photo_col],
+                    row[platform_col] if platform_col else None,
+                )
 
                 if is_active:
                     rows_to_keep.append(row)
@@ -165,7 +206,9 @@ def main():
                     # If all rows are pruned, keep an empty CSV with matching headers
                     empty_df = df.iloc[0:0]
                     empty_df.to_csv(f_path, index=False)
-                    print(f"  -> Successfully emptied CSV (kept headers) in place: {f_path}")
+                    print(
+                        f"  -> Successfully emptied CSV (kept headers) in place: {f_path}"
+                    )
 
         except Exception as e:
             print(f"Error processing CSV {f_path}: {e}")
@@ -176,7 +219,9 @@ def main():
         print("Starting physical image file pruning...")
 
         # Unique list of paths to delete (ensuring we don't try to delete something we decided to keep)
-        paths_to_delete = list(set(p for p in delete_image_candidates if p not in keep_image_paths))
+        paths_to_delete = list(
+            set(p for p in delete_image_candidates if p not in keep_image_paths)
+        )
         print(f"Found {len(paths_to_delete):,} candidate image files to delete.")
 
         bytes_saved = 0
@@ -196,9 +241,13 @@ def main():
         mb_saved = bytes_saved / (1024 * 1024)
         print("\nPhysical Pruning Summary:")
         if args.dry_run:
-            print(f"  [DRY RUN] Would have deleted {deleted_count:,} files, saving {mb_saved:.2f} MB of disk space.")
+            print(
+                f"  [DRY RUN] Would have deleted {deleted_count:,} files, saving {mb_saved:.2f} MB of disk space."
+            )
         else:
-            print(f"  Successfully deleted {deleted_count:,} files, saving {mb_saved:.2f} MB of disk space.")
+            print(
+                f"  Successfully deleted {deleted_count:,} files, saving {mb_saved:.2f} MB of disk space."
+            )
 
         # Clean up empty subdirectories
         if not args.dry_run:
@@ -214,7 +263,9 @@ def main():
                             except Exception:
                                 pass
     else:
-        print("\nPhysical image pruning was skipped (either no candidates or --no_delete_images flag set).")
+        print(
+            "\nPhysical image pruning was skipped (either no candidates or --no_delete_images flag set)."
+        )
 
 
 if __name__ == "__main__":

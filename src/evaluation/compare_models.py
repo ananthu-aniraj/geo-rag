@@ -4,8 +4,8 @@ import os
 import re
 import subprocess
 import sys
-import yaml
 
+import yaml
 
 BENCHMARKS = {
     "lucas": {
@@ -13,29 +13,37 @@ BENCHMARKS = {
         "yaml_key": "lucas",
         "yaml_file": "config/evaluation/params_offline.yaml",
         "report_prefix": "lucas_report",
-        "extra_args": [("--csv", "csv"), ("--img_dir", "img_dir")]
+        "extra_args": [("--csv", "csv"), ("--img_dir", "img_dir")],
     },
     "places": {
         "module": "src.evaluation.benchmark_places",
         "yaml_key": "places",
         "yaml_file": "config/evaluation/params_offline.yaml",
         "report_prefix": "places_report",
-        "extra_args": [("--labels", "labels"), ("--img_dir", "img_dir")]
+        "extra_args": [("--labels", "labels"), ("--img_dir", "img_dir")],
     },
     "eunis": {
         "module": "src.evaluation.benchmark_eunis",
         "yaml_key": "eunis",
         "yaml_file": "config/evaluation/params_online.yaml",
         "report_prefix": "eunis_report",
-        "extra_args": [("--csv_path", "csv_path"), ("--raster", "raster"), ("--offline_dataset_dirs", "offline_dataset_dirs")]
+        "extra_args": [
+            ("--csv_path", "csv_path"),
+            ("--raster", "raster"),
+            ("--offline_dataset_dirs", "offline_dataset_dirs"),
+        ],
     },
     "env_zones": {
         "module": "src.evaluation.benchmark_environmental_zones",
         "yaml_key": "environmental_zones",
         "yaml_file": "config/evaluation/params_online.yaml",
         "report_prefix": "environmental_zones_report",
-        "extra_args": [("--csv_path", "csv_path"), ("--raster", "raster"), ("--offline_dataset_dirs", "offline_dataset_dirs")]
-    }
+        "extra_args": [
+            ("--csv_path", "csv_path"),
+            ("--raster", "raster"),
+            ("--offline_dataset_dirs", "offline_dataset_dirs"),
+        ],
+    },
 }
 
 
@@ -43,59 +51,78 @@ def parse_report_file(report_path, model_name):
     """Parses a generated text report file to extract representation metrics."""
     results = []
     current_evaluation = "Default"
-    
+
     if not os.path.exists(report_path):
         print(f"Warning: Report file not found: {report_path}")
         return results
-        
+
     with open(report_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            
+
             # Detect section evaluation type
             match_eval = re.search(r"--- (.*?) Evaluation ---", line)
             if match_eval:
                 current_evaluation = match_eval.group(1).strip()
                 continue
-                
+
             # Parse table rows containing metric data
-            if "|" in line and not line.startswith("Representation") and not "---" in line and not "===" in line:
+            if (
+                "|" in line
+                and not line.startswith("Representation")
+                and "---" not in line
+                and "===" not in line
+            ):
                 parts = [p.strip() for p in line.split("|")]
                 if len(parts) >= 6:
-                    results.append({
-                        "Model": model_name,
-                        "Evaluation": current_evaluation,
-                        "Representation": parts[0],
-                        "P@1": parts[1],
-                        "P@5": parts[2],
-                        "P@10": parts[3],
-                        "MAP@10": parts[4],
-                        "MRR@10": parts[5]
-                    })
+                    results.append(
+                        {
+                            "Model": model_name,
+                            "Evaluation": current_evaluation,
+                            "Representation": parts[0],
+                            "P@1": parts[1],
+                            "P@5": parts[2],
+                            "P@10": parts[3],
+                            "MAP@10": parts[4],
+                            "MRR@10": parts[5],
+                        }
+                    )
     return results
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Collate and compare multiple model representations on a specific dataset.")
-    parser.add_argument("--benchmark", type=str, required=True, choices=list(BENCHMARKS.keys()),
-                        help="The target benchmark script to run.")
-    parser.add_argument("--models", type=str, nargs="+", required=True,
-                        help="List of model names/identifiers to compare.")
+    parser = argparse.ArgumentParser(
+        description="Collate and compare multiple model representations on a specific dataset."
+    )
+    parser.add_argument(
+        "--benchmark",
+        type=str,
+        required=True,
+        choices=list(BENCHMARKS.keys()),
+        help="The target benchmark script to run.",
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        nargs="+",
+        required=True,
+        help="List of model names/identifiers to compare.",
+    )
     args = parser.parse_args()
 
     bench_config = BENCHMARKS[args.benchmark]
-    
+
     # Load configuration parameters from YAML
     yaml_path = bench_config["yaml_file"]
     if not os.path.exists(yaml_path):
         print(f"Error: YAML configuration file not found at: {yaml_path}")
         sys.exit(1)
-        
+
     with open(yaml_path, "r") as f:
         config_data = yaml.safe_load(f)
-    
+
     params = config_data.get(bench_config["yaml_key"], {})
-    
+
     print("=" * 90)
     print(f"Starting Collated Model Comparison for benchmark: {args.benchmark.upper()}")
     print(f"Config loaded from: {yaml_path}")
@@ -117,28 +144,39 @@ def main():
     # Run each model sequentially
     for idx, model in enumerate(args.models):
         print(f"\n[{idx+1}/{len(args.models)}] Evaluating model: {model}...")
-        
+
         # Prepare execution commands
         model_clean = model.replace("/", "_")
-        report_path = f"./benchmark_results/{bench_config['report_prefix']}_{model_clean}.txt"
+        report_path = (
+            f"./benchmark_results/{bench_config['report_prefix']}_{model_clean}.txt"
+        )
         csv_path = f"./benchmark_results/{bench_config['report_prefix'].replace('report', 'results')}_{model_clean}.csv"
-        
+
         cmd = [
-            "python3", "-m", bench_config["module"],
-            "--model_name", model,
-            "--num_queries", str(params.get("num_queries", 3000)),
-            "--num_database", str(params.get("num_database", 0)),
-            "--batch_size", str(params.get("batch_size", 32)),
-            "--seed", str(params.get("seed", 42)),
-            "--output_report", report_path,
-            "--output_csv", csv_path
+            "python3",
+            "-m",
+            bench_config["module"],
+            "--model_name",
+            model,
+            "--num_queries",
+            str(params.get("num_queries", 3000)),
+            "--num_database",
+            str(params.get("num_database", 0)),
+            "--batch_size",
+            str(params.get("batch_size", 32)),
+            "--seed",
+            str(params.get("seed", 42)),
+            "--output_report",
+            report_path,
+            "--output_csv",
+            csv_path,
         ]
-        
+
         # Add benchmark-specific path arguments
         for cli_flag, yaml_name in bench_config["extra_args"]:
             if yaml_name in params:
                 cmd.extend([cli_flag, str(params[yaml_name])])
-                
+
         # Optional flags
         if params.get("use_segformer") is False:
             cmd.append("--no_segformer")
@@ -164,21 +202,25 @@ def main():
     # Generate comparative Markdown table
     collate_path = f"./benchmark_results/comparison_{args.benchmark}.md"
     os.makedirs(os.path.dirname(collate_path), exist_ok=True)
-    
+
     with open(collate_path, "w", encoding="utf-8") as f:
         f.write(f"# Comparative Benchmark Report: {args.benchmark.upper()}\n")
-        f.write(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        
+        f.write(
+            f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        )
+
         # Group results by Evaluation category
         categories = sorted(list(set(r["Evaluation"] for r in all_results)))
         for category in categories:
             f.write(f"## {category} Comparison\n\n")
             f.write("| Model | Representation | P@1 | P@5 | P@10 | MAP@10 | MRR@10 |\n")
             f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
-            
+
             cat_results = [r for r in all_results if r["Evaluation"] == category]
             for r in cat_results:
-                f.write(f"| {r['Model']} | {r['Representation']} | {r['P@1']} | {r['P@5']} | {r['P@10']} | {r['MAP@10']} | {r['MRR@10']} |\n")
+                f.write(
+                    f"| {r['Model']} | {r['Representation']} | {r['P@1']} | {r['P@5']} | {r['P@10']} | {r['MAP@10']} | {r['MRR@10']} |\n"
+                )
             f.write("\n")
 
     print("\n" + "=" * 90)

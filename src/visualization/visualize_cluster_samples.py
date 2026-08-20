@@ -16,22 +16,29 @@ from tqdm import tqdm
 
 from src.utils.io import load_dataframe, load_dataset_with_clusters, load_embeddings
 
-MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
 
 
-def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, target_h3_res=5, representation_type=None):
+def create_sample_grid(
+    pkl_path,
+    output_html,
+    top_n=5,
+    image_root_dir=None,
+    target_h3_res=5,
+    representation_type=None,
+):
     print(f"Loading clustered data from {pkl_path}...")
 
-    if pkl_path.endswith('.pkl'):
-        with open(pkl_path, 'rb') as f:
+    if pkl_path.endswith(".pkl"):
+        with open(pkl_path, "rb") as f:
             data = pickle.load(f)
         df = pd.DataFrame(data)
         del data
-        embeddings = np.vstack(df['embedding'].values).astype(np.float32)
+        embeddings = np.vstack(df["embedding"].values).astype(np.float32)
     else:
         # Auto-extract k_clusters from filename
         k_clusters = 50000
-        match = re.search(r'_k_(\d+)', pkl_path)
+        match = re.search(r"_k_(\d+)", pkl_path)
         if match:
             k_clusters = int(match.group(1))
 
@@ -42,9 +49,11 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         t0 = time.time()
         embeddings = load_embeddings(pkl_path, representation_type=representation_type)
 
-        print(f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s.")
+        print(
+            f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s."
+        )
 
-    if len(df) == 0 or 'cluster_id' not in df.columns:
+    if len(df) == 0 or "cluster_id" not in df.columns:
         print("Error: Data is empty or not clustered.")
         return
 
@@ -60,56 +69,150 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         index_path = index_candidates[0]
         print(f"Loading pre-built H3 index from {index_path}...")
         try:
-            index_df = load_dataframe(index_path, columns=['resolution', 'cluster_id', 'query_cell'])
-            target_h3_res_df = index_df[index_df['resolution'] == target_h3_res].dropna(subset=['query_cell'])
-            target_h3_res_df = target_h3_res_df[['cluster_id', 'query_cell']].drop_duplicates()
-            cluster_h3_target_res = target_h3_res_df.groupby('cluster_id')['query_cell'].agg(list).to_dict()
-            print(f" -> Successfully loaded H3 res parent cells for clusters with resolution of {target_h3_res}")
+            index_df = load_dataframe(
+                index_path, columns=["resolution", "cluster_id", "query_cell"]
+            )
+            target_h3_res_df = index_df[index_df["resolution"] == target_h3_res].dropna(
+                subset=["query_cell"]
+            )
+            target_h3_res_df = target_h3_res_df[
+                ["cluster_id", "query_cell"]
+            ].drop_duplicates()
+            cluster_h3_target_res = (
+                target_h3_res_df.groupby("cluster_id")["query_cell"].agg(list).to_dict()
+            )
+            print(
+                f" -> Successfully loaded H3 res parent cells for clusters with resolution of {target_h3_res}"
+            )
         except Exception as e:
             print(f"Warning: Failed to load H3 index: {e}")
 
     # Group by cluster ID
-    cluster_to_indices = df.groupby('cluster_id').groups
+    cluster_to_indices = df.groupby("cluster_id").groups
     dashboard_data = []
     sorted_ids = sorted(cluster_to_indices.keys())
 
     # Pre-extract numpy arrays from DataFrame for fast O(1) indexing (eliminates df.iloc overhead)
     print("Start pre-extracting columns for fast access...")
-    col_photo_id = df['Photo_ID'].to_numpy() if 'Photo_ID' in df.columns else np.array([""] * len(df))
-    col_platform = df['Platform'].to_numpy() if 'Platform' in df.columns else np.array([""] * len(df))
-    col_lat = df['Latitude'].to_numpy() if 'Latitude' in df.columns else np.zeros(len(df))
-    col_lon = df['Longitude'].to_numpy() if 'Longitude' in df.columns else np.zeros(len(df))
-    col_url = df['Image_URL'].to_numpy() if 'Image_URL' in df.columns else np.array([""] * len(df))
-    col_captured_at = df['Captured_At'].to_numpy() if 'Captured_At' in df.columns else np.array([""] * len(df))
-    col_label = df['cluster_label'].to_numpy() if 'cluster_label' in df.columns else np.array([""] * len(df))
-    col_desc = df['cluster_description'].to_numpy() if 'cluster_description' in df.columns else np.array([""] * len(df))
-    col_parent_id = df['parent_cluster_id'].to_numpy() if 'parent_cluster_id' in df.columns else np.array([-1] * len(df))
-    col_parent_label = df['parent_cluster_label'].to_numpy() if 'parent_cluster_label' in df.columns else np.array([""] * len(df))
-    col_season = df['Season'].to_numpy() if 'Season' in df.columns else np.array(["Unknown"] * len(df))
-    col_tod = df['Time_Of_Day'].to_numpy() if 'Time_Of_Day' in df.columns else np.array(["Unknown"] * len(df))
-    col_h3 = df['H3_Cell'].to_numpy() if 'H3_Cell' in df.columns else np.array([""] * len(df))
-    col_koppen_code = df['Koppen_Code'].to_numpy() if 'Koppen_Code' in df.columns else np.array([""] * len(df))
-    col_koppen_desc = df['Koppen_Desc'].to_numpy() if 'Koppen_Desc' in df.columns else np.array([""] * len(df))
-    col_country = df['country'].to_numpy() if 'country' in df.columns else np.array(["Unknown"] * len(df))
-    col_continent = df['continent'].to_numpy() if 'continent' in df.columns else np.array(["Unknown"] * len(df))
-    col_visual_desc = df['visual_description'].to_numpy() if 'visual_description' in df.columns else np.array([""] * len(df))
-    col_license = df['License'].to_numpy() if 'License' in df.columns else np.array([""] * len(df))
+    col_photo_id = (
+        df["Photo_ID"].to_numpy()
+        if "Photo_ID" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_platform = (
+        df["Platform"].to_numpy()
+        if "Platform" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_lat = (
+        df["Latitude"].to_numpy() if "Latitude" in df.columns else np.zeros(len(df))
+    )
+    col_lon = (
+        df["Longitude"].to_numpy() if "Longitude" in df.columns else np.zeros(len(df))
+    )
+    col_url = (
+        df["Image_URL"].to_numpy()
+        if "Image_URL" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_captured_at = (
+        df["Captured_At"].to_numpy()
+        if "Captured_At" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_label = (
+        df["cluster_label"].to_numpy()
+        if "cluster_label" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_desc = (
+        df["cluster_description"].to_numpy()
+        if "cluster_description" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_parent_id = (
+        df["parent_cluster_id"].to_numpy()
+        if "parent_cluster_id" in df.columns
+        else np.array([-1] * len(df))
+    )
+    col_parent_label = (
+        df["parent_cluster_label"].to_numpy()
+        if "parent_cluster_label" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_season = (
+        df["Season"].to_numpy()
+        if "Season" in df.columns
+        else np.array(["Unknown"] * len(df))
+    )
+    col_tod = (
+        df["Time_Of_Day"].to_numpy()
+        if "Time_Of_Day" in df.columns
+        else np.array(["Unknown"] * len(df))
+    )
+    col_h3 = (
+        df["H3_Cell"].to_numpy()
+        if "H3_Cell" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_koppen_code = (
+        df["Koppen_Code"].to_numpy()
+        if "Koppen_Code" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_koppen_desc = (
+        df["Koppen_Desc"].to_numpy()
+        if "Koppen_Desc" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_country = (
+        df["country"].to_numpy()
+        if "country" in df.columns
+        else np.array(["Unknown"] * len(df))
+    )
+    col_continent = (
+        df["continent"].to_numpy()
+        if "continent" in df.columns
+        else np.array(["Unknown"] * len(df))
+    )
+    col_visual_desc = (
+        df["visual_description"].to_numpy()
+        if "visual_description" in df.columns
+        else np.array([""] * len(df))
+    )
+    col_license = (
+        df["License"].to_numpy()
+        if "License" in df.columns
+        else np.array([""] * len(df))
+    )
     print("Successfully pre-extracted columns for fast access.")
 
     def make_sample(global_idx, sim_score, is_outlier, rank_label):
         pid = col_photo_id[global_idx]
         if pid is not None and not (isinstance(pid, float) and np.isnan(pid)):
-            pid_str = str(int(pid)) if isinstance(pid, (float, int)) and not isinstance(pid, bool) else str(pid).strip()
-            if pid_str.endswith('.0'):
+            pid_str = (
+                str(int(pid))
+                if isinstance(pid, (float, int)) and not isinstance(pid, bool)
+                else str(pid).strip()
+            )
+            if pid_str.endswith(".0"):
                 pid_str = pid_str[:-2]
         else:
             pid_str = ""
 
         cap = col_captured_at[global_idx]
-        cap_str = str(cap) if cap is not None and not (isinstance(cap, float) and np.isnan(cap)) else ""
+        cap_str = (
+            str(cap)
+            if cap is not None and not (isinstance(cap, float) and np.isnan(cap))
+            else ""
+        )
 
         lic = col_license[global_idx]
-        lic_str = str(lic) if lic is not None and not (isinstance(lic, float) and np.isnan(lic)) else ""
+        lic_str = (
+            str(lic)
+            if lic is not None and not (isinstance(lic, float) and np.isnan(lic))
+            else ""
+        )
 
         return {
             "url": str(col_url[global_idx]),
@@ -117,17 +220,31 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             "sim": float(sim_score),
             "lat": float(col_lat[global_idx]) if pd.notna(col_lat[global_idx]) else 0.0,
             "lon": float(col_lon[global_idx]) if pd.notna(col_lon[global_idx]) else 0.0,
-            "platform": str(col_platform[global_idx]).strip() if pd.notna(col_platform[global_idx]) else "",
+            "platform": str(col_platform[global_idx]).strip()
+            if pd.notna(col_platform[global_idx])
+            else "",
             "captured_at": cap_str,
-            "season": str(col_season[global_idx]) if pd.notna(col_season[global_idx]) else "Unknown",
-            "time_of_day": str(col_tod[global_idx]) if pd.notna(col_tod[global_idx]) else "Unknown",
-            "koppen_code": str(col_koppen_code[global_idx]) if pd.notna(col_koppen_code[global_idx]) else "",
-            "koppen_desc": str(col_koppen_desc[global_idx]) if pd.notna(col_koppen_desc[global_idx]) else "",
-            "country": str(col_country[global_idx]) if pd.notna(col_country[global_idx]) else "Unknown",
-            "continent": str(col_continent[global_idx]) if pd.notna(col_continent[global_idx]) else "Unknown",
+            "season": str(col_season[global_idx])
+            if pd.notna(col_season[global_idx])
+            else "Unknown",
+            "time_of_day": str(col_tod[global_idx])
+            if pd.notna(col_tod[global_idx])
+            else "Unknown",
+            "koppen_code": str(col_koppen_code[global_idx])
+            if pd.notna(col_koppen_code[global_idx])
+            else "",
+            "koppen_desc": str(col_koppen_desc[global_idx])
+            if pd.notna(col_koppen_desc[global_idx])
+            else "",
+            "country": str(col_country[global_idx])
+            if pd.notna(col_country[global_idx])
+            else "Unknown",
+            "continent": str(col_continent[global_idx])
+            if pd.notna(col_continent[global_idx])
+            else "Unknown",
             "license": lic_str,
             "is_outlier": is_outlier,
-            "rank_label": rank_label
+            "rank_label": rank_label,
         }
 
     for c_id in tqdm(sorted_ids, desc="Processing clusters"):
@@ -143,25 +260,54 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         sorted_indices = np.argsort(sims)[::-1][:top_n]
 
         idx0 = indices[0]
-        first_label = str(col_label[idx0]) if pd.notna(col_label[idx0]) and str(col_label[idx0]) != "" else f"Cluster {c_id}"
-        first_parent_id = int(col_parent_id[idx0]) if pd.notna(col_parent_id[idx0]) else -1
-        first_parent_label = str(col_parent_label[idx0]) if pd.notna(col_parent_label[idx0]) and str(col_parent_label[idx0]) != "" else "Unlabeled Parent"
+        first_label = (
+            str(col_label[idx0])
+            if pd.notna(col_label[idx0]) and str(col_label[idx0]) != ""
+            else f"Cluster {c_id}"
+        )
+        first_parent_id = (
+            int(col_parent_id[idx0]) if pd.notna(col_parent_id[idx0]) else -1
+        )
+        first_parent_label = (
+            str(col_parent_label[idx0])
+            if pd.notna(col_parent_label[idx0]) and str(col_parent_label[idx0]) != ""
+            else "Unlabeled Parent"
+        )
 
         # Keep representative samples
         samples = []
         for rank, local_idx in enumerate(sorted_indices):
-            label_text = "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
-            samples.append(make_sample(indices[local_idx], float(sims[local_idx]), False, label_text))
+            label_text = (
+                "Centroid Image" if rank == 0 else f"Representative Sample {rank}"
+            )
+            samples.append(
+                make_sample(
+                    indices[local_idx], float(sims[local_idx]), False, label_text
+                )
+            )
 
         # Add outlier samples if cluster is larger than top_n
         if len(sims) > top_n:
-            lowest_indices = [idx for idx in np.argsort(sims)[:2] if idx not in sorted_indices]
+            lowest_indices = [
+                idx for idx in np.argsort(sims)[:2] if idx not in sorted_indices
+            ]
             for i, local_idx in enumerate(lowest_indices):
-                samples.append(make_sample(indices[local_idx], float(sims[local_idx]), True, f"Furthest Outlier {i + 1}"))
+                samples.append(
+                    make_sample(
+                        indices[local_idx],
+                        float(sims[local_idx]),
+                        True,
+                        f"Furthest Outlier {i + 1}",
+                    )
+                )
 
         # Centroid description (with fallback to search first non-empty description in cluster)
         centroid_g_idx = indices[sorted_indices[0]]
-        centroid_desc = str(col_desc[centroid_g_idx]).strip() if pd.notna(col_desc[centroid_g_idx]) else ""
+        centroid_desc = (
+            str(col_desc[centroid_g_idx]).strip()
+            if pd.notna(col_desc[centroid_g_idx])
+            else ""
+        )
         if not centroid_desc or centroid_desc.lower() == "nan":
             centroid_desc = ""
             for idx in indices:
@@ -171,12 +317,20 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
                     break
 
         # Centroid visual description (Step 1 objective description)
-        centroid_vis_desc = str(col_visual_desc[centroid_g_idx]).strip() if pd.notna(col_visual_desc[centroid_g_idx]) else ""
+        centroid_vis_desc = (
+            str(col_visual_desc[centroid_g_idx]).strip()
+            if pd.notna(col_visual_desc[centroid_g_idx])
+            else ""
+        )
         if not centroid_vis_desc or centroid_vis_desc.lower() == "nan":
             centroid_vis_desc = ""
             for idx in indices:
                 val = str(col_visual_desc[idx]).strip()
-                if pd.notna(col_visual_desc[idx]) and val != "" and val.lower() != "nan":
+                if (
+                    pd.notna(col_visual_desc[idx])
+                    and val != ""
+                    and val.lower() != "nan"
+                ):
                     centroid_vis_desc = val
                     break
 
@@ -208,7 +362,9 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
                 for cell, count in top_h3:
                     try:
                         h3_lat, h3_lon = h3.cell_to_latlon(cell)
-                        h3_centroids.append([float(h3_lat), float(h3_lon), int(count), cell])
+                        h3_centroids.append(
+                            [float(h3_lat), float(h3_lon), int(count), cell]
+                        )
                     except Exception:
                         continue
             except Exception:
@@ -218,24 +374,34 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         c_countries = list(set(col_country[indices]))
         c_continents = list(set(col_continent[indices]))
 
-        dashboard_data.append({
-            "id": int(c_id),
-            "label": first_label,
-            "parent_id": first_parent_id,
-            "parent_label": first_parent_label,
-            "size": len(indices),
-            "count": len(indices),
-            "description": centroid_desc,
-            "visual_description": centroid_vis_desc,
-            "unique_h3_count": unique_h3_count,
-            "center_lat": float(center_lat),
-            "center_lon": float(center_lon),
-            "h3_centroids": h3_centroids,
-            "h3_res_tgt": [str(x) for x in cluster_h3_target_res.get(c_id, [])],
-            "countries": [c for c in c_countries if c and pd.notna(c) and c != "Unknown" and c != "Ocean / Unknown"],
-            "continents": [c for c in c_continents if c and pd.notna(c) and c != "Unknown" and c != "Ocean / Unknown"],
-            "samples": samples
-        })
+        dashboard_data.append(
+            {
+                "id": int(c_id),
+                "label": first_label,
+                "parent_id": first_parent_id,
+                "parent_label": first_parent_label,
+                "size": len(indices),
+                "count": len(indices),
+                "description": centroid_desc,
+                "visual_description": centroid_vis_desc,
+                "unique_h3_count": unique_h3_count,
+                "center_lat": float(center_lat),
+                "center_lon": float(center_lon),
+                "h3_centroids": h3_centroids,
+                "h3_res_tgt": [str(x) for x in cluster_h3_target_res.get(c_id, [])],
+                "countries": [
+                    c
+                    for c in c_countries
+                    if c and pd.notna(c) and c != "Unknown" and c != "Ocean / Unknown"
+                ],
+                "continents": [
+                    c
+                    for c in c_continents
+                    if c and pd.notna(c) and c != "Unknown" and c != "Ocean / Unknown"
+                ],
+                "samples": samples,
+            }
+        )
     # Pre-resolve local image paths if image_root_dir is supplied or they already exist
     for item in tqdm(dashboard_data, desc="Resolving image paths"):
         for sample in item["samples"]:
@@ -243,7 +409,13 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
             resolved_path = None
             if image_root_dir:
                 from src.utils.io import resolve_offline_image_path
-                resolved_path = resolve_offline_image_path(url, image_root_dir, photo_id=sample.get("id"), platform=sample.get("platform"))
+
+                resolved_path = resolve_offline_image_path(
+                    url,
+                    image_root_dir,
+                    photo_id=sample.get("id"),
+                    platform=sample.get("platform"),
+                )
 
             if resolved_path:
                 sample["url"] = "file://" + os.path.abspath(resolved_path)
@@ -300,11 +472,17 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
 
         platform_lower = str(platform).strip().lower()
         photo_str = str(photo_id).strip()
-        if photo_str.endswith('.0'):
+        if photo_str.endswith(".0"):
             photo_str = photo_str[:-2]
 
-        is_mapillary = platform_lower == 'mapillary' or 'mapillary' in url or 'fbcdn.net' in url
-        is_kartaview = platform_lower == 'kartaview' or 'kartaview' in url or 'openstreetcam' in url
+        is_mapillary = (
+            platform_lower == "mapillary" or "mapillary" in url or "fbcdn.net" in url
+        )
+        is_kartaview = (
+            platform_lower == "kartaview"
+            or "kartaview" in url
+            or "openstreetcam" in url
+        )
 
         if not (is_mapillary or is_kartaview):
             return
@@ -312,7 +490,9 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
         # 2. Resolve expired Mapillary or Kartaview URLs dynamically
         try:
             if is_mapillary:
-                api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
+                api_url = (
+                    f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
+                )
                 headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
                 res = requests.get(api_url, headers=headers, timeout=timeout)
                 if res.status_code == 200:
@@ -324,25 +504,35 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
                 res = requests.get(api_url, timeout=timeout)
                 if res.status_code == 200:
                     data = res.json().get("result", {}).get("data", {})
-                    fresh_url = data.get("fileurlLTh") or data.get("fileurlTh") or data.get("fileurl")
+                    fresh_url = (
+                        data.get("fileurlLTh")
+                        or data.get("fileurlTh")
+                        or data.get("fileurl")
+                    )
                     if fresh_url:
                         sample["url"] = fresh_url
         except Exception:
             pass
 
-    print(f"Checking and resolving signatures for {len(samples_to_check)} critical cluster images in parallel...")
+    print(
+        f"Checking and resolving signatures for {len(samples_to_check)} critical cluster images in parallel..."
+    )
     max_workers = min(32, (len(samples_to_check) + 4) // 5 or 1)
 
     completed_count = 0
     total_count = len(samples_to_check)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(check_and_resolve_sample, sample): sample for sample in samples_to_check}
+        futures = {
+            executor.submit(check_and_resolve_sample, sample): sample
+            for sample in samples_to_check
+        }
         for future in concurrent.futures.as_completed(futures):
             completed_count += 1
             if completed_count % 50 == 0 or completed_count == total_count:
                 print(
-                    f"  Progress: {completed_count}/{total_count} images checked ({completed_count * 100 // total_count}%)...")
+                    f"  Progress: {completed_count}/{total_count} images checked ({completed_count * 100 // total_count}%)..."
+                )
 
     print("Signature check and resolution complete.")
 
@@ -350,10 +540,12 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
     json_data = json.dumps(dashboard_data)
 
     # Save data to an external JS file to prevent browser freezing on massive inline scripts
-    data_js_path = output_html.replace('.html', '_data.js')
+    data_js_path = output_html.replace(".html", "_data.js")
     print(f"Writing data payload to {data_js_path}...")
-    with open(data_js_path, 'w', encoding='utf-8') as f:
-        f.write(f"var CLUSTER_DATA = {json_data};\nvar TARGET_H3_RES = {target_h3_res};")
+    with open(data_js_path, "w", encoding="utf-8") as f:
+        f.write(
+            f"var CLUSTER_DATA = {json_data};\nvar TARGET_H3_RES = {target_h3_res};"
+        )
 
     data_js_filename = os.path.basename(data_js_path)
 
@@ -361,34 +553,72 @@ def create_sample_grid(pkl_path, output_html, top_n=5, image_root_dir=None, targ
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     template_path = os.path.join(root_dir, "templates", "cluster_dashboard.html")
     if not os.path.exists(template_path):
-        template_path = os.path.join(os.path.dirname(__file__), "templates", "cluster_dashboard.html")
+        template_path = os.path.join(
+            os.path.dirname(__file__), "templates", "cluster_dashboard.html"
+        )
     if not os.path.exists(template_path):
         template_path = "templates/cluster_dashboard.html"
 
-    with open(template_path, 'r', encoding='utf-8') as f:
+    with open(template_path, "r", encoding="utf-8") as f:
         html_template = f.read()
 
-    html_content = html_template.replace("{{DATA_JS_FILENAME}}", data_js_filename).replace("{{TOTAL_CLUSTERS}}", str(len(dashboard_data)))
+    html_content = html_template.replace(
+        "{{DATA_JS_FILENAME}}", data_js_filename
+    ).replace("{{TOTAL_CLUSTERS}}", str(len(dashboard_data)))
 
-    with open(output_html, 'w', encoding='utf-8') as f:
+    with open(output_html, "w", encoding="utf-8") as f:
         f.write(html_content)
 
     print(f"Scalable Dashboard saved to: {output_html}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Create an HTML grid of representative samples for each cluster.")
-    parser.add_argument("--pkl", type=str, required=True, help="Path to the clustered .pkl file.")
-    parser.add_argument("--out", type=str, default="cluster_samples.html", help="Output HTML file name.")
-    parser.add_argument("--top_n", type=int, default=6, help="Number of samples to show per cluster.")
-    parser.add_argument("--image_root_dir", type=str, nargs="+", default=None,
-                        help="Optional root directories containing local images (for offline datasets).")
-    parser.add_argument("--target_h3_res", type=int, default=8, help="Target H3 resolution for spatial aggregation (default: 8).")
-    parser.add_argument("--representation_type", type=str, default="cls", choices=["cls", "avg_patch", "cls_avg_patch"],
-                        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).")
-    parser.add_argument("--precision", type=str, default="float32", choices=["float32", "float16"],
-                        help="Stored precision of companion binary file (float32 or float16).")
+    parser = argparse.ArgumentParser(
+        description="Create an HTML grid of representative samples for each cluster."
+    )
+    parser.add_argument(
+        "--pkl", type=str, required=True, help="Path to the clustered .pkl file."
+    )
+    parser.add_argument(
+        "--out", type=str, default="cluster_samples.html", help="Output HTML file name."
+    )
+    parser.add_argument(
+        "--top_n", type=int, default=6, help="Number of samples to show per cluster."
+    )
+    parser.add_argument(
+        "--image_root_dir",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional root directories containing local images (for offline datasets).",
+    )
+    parser.add_argument(
+        "--target_h3_res",
+        type=int,
+        default=8,
+        help="Target H3 resolution for spatial aggregation (default: 8).",
+    )
+    parser.add_argument(
+        "--representation_type",
+        type=str,
+        default="cls",
+        choices=["cls", "avg_patch", "cls_avg_patch"],
+        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).",
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="float32",
+        choices=["float32", "float16"],
+        help="Stored precision of companion binary file (float32 or float16).",
+    )
     args = parser.parse_args()
 
-    create_sample_grid(args.pkl, args.out, args.top_n, args.image_root_dir, target_h3_res=args.target_h3_res,
-                       representation_type=args.representation_type)
+    create_sample_grid(
+        args.pkl,
+        args.out,
+        args.top_n,
+        args.image_root_dir,
+        target_h3_res=args.target_h3_res,
+        representation_type=args.representation_type,
+    )

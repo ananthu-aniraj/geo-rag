@@ -23,7 +23,7 @@ NATURAL_LULC_VOCAB = {
     "Lake / Pond": "Standing inland water bodies or reservoirs.",
     "Marine / Estuary": "Coastal saltwater, ocean surf, bays, or intertidal flats.",
     "Glacier / Permanent ice": "Glaciers, ice caps, or permanent snowfields.",
-    "Other natural land cover": "Any other natural land cover or landscape."
+    "Other natural land cover": "Any other natural land cover or landscape.",
 }
 
 # Exhaustive Man-made LULC Vocabulary
@@ -42,5 +42,5 @@ MAN_MADE_LULC_VOCAB = {
     "Mine / Quarry / Landfill": "Open-pit mines, gravel quarries, or landfill sites.",
     "Urban green space": "City parks, golf courses, botanical gardens, or sports fields.",
     "Historical / Cultural monument / Archaeological site": "Ancient ruins, monuments, pyramids, historic temples, stone circles, or archaeological landmarks (e.g. Giza Pyramids, Taj Mahal, Stonehenge).",
-    "Other man-made surface": "Any other artificial or managed land cover or surface."
+    "Other man-made surface": "Any other artificial or managed land cover or surface.",
 }

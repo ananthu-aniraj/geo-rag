@@ -20,19 +20,16 @@ preset_locs = {
     "Great Wall of China (Mutianyu)": (116.559, 40.426, 116.569, 40.436),
     "Giza Pyramids": (31.129, 29.974, 31.139, 29.984),
     "Dubai (Downtown)": (55.263, 25.179, 55.293, 25.209),
-
     # Famous Waterfalls (Continental Representation)
     "Victoria Falls (Africa)": (25.841, -17.939, 25.871, -17.909),
     "Iguazu Falls (South America)": (-54.465, -25.681, -54.435, -25.651),
     "Niagara Falls (North America)": (-79.086, 43.065, -79.056, 43.095),
     "Angel Falls (South America)": (-62.550, 5.952, -62.520, 5.982),
-
     # Special Natural Landmarks
     "Mount Everest": (86.910, 27.973, 86.940, 28.003),
     "Mount Fuji": (138.712, 35.345, 138.742, 35.375),
     "Salar de Uyuni": (-67.504, -20.148, -67.474, -20.118),
     "Grand Canyon (Mather Point)": (-112.152, 36.039, -112.122, 36.069),
-
     # Newly Added Visually Striking & Remote Landmarks
     "Easter Island (Moai)": (-109.365, -27.131, -109.335, -27.101),
     "Bora Bora Lagoon": (-151.748, -16.498, -151.718, -16.468),
@@ -46,7 +43,6 @@ preset_locs = {
     "Pamukkale Travertines": (29.101, 37.901, 29.132, 37.932),
     "Lake Louise (Banff)": (-116.232, 51.385, -116.201, 51.415),
     "Santorini Caldera": (25.401, 36.385, 25.432, 36.415),
-
     # Remote Sahara Desert & Polar/Subarctic Landmarks
     "Richat Structure (Eye of the Sahara)": (-11.409, 21.100, -11.379, 21.130),
     "Tassili n'Ajjer National Park (Sahara)": (8.985, 25.485, 9.015, 25.515),
@@ -56,7 +52,6 @@ preset_locs = {
     "Virginia Falls (Nahanni, Canada)": (-125.760, 61.592, -125.713, 61.622),
     "Olkhon Island (Lake Baikal, Russia)": (107.378, 53.135, 107.422, 53.165),
     "Lena Pillars (Siberia, Russia)": (127.561, 61.131, 127.608, 61.161),
-
     # Famous Man-made Landmarks (Continental Representation)
     "Eiffel Tower": (2.285, 48.852, 2.304, 48.864),
     "Leaning Tower of Pisa": (10.389, 43.717, 10.404, 43.729),
@@ -74,7 +69,6 @@ preset_locs = {
     "Mount Rushmore": (-103.469, 43.872, -103.449, 43.885),
     "Panama Canal (Miraflores Locks)": (-79.598, 8.985, -79.578, 8.998),
     "Great Mosque of Djenné (Mali)": (-4.565, 13.899, -4.545, 13.911),
-
     # Microstates / City-States (Fully covered in a single API query)
     "Singapore": (103.6000, 1.1500, 104.0500, 1.4800),
     "Monaco": (7.4000, 43.7300, 7.4400, 43.7500),
@@ -86,20 +80,20 @@ preset_locs = {
     "Delft": (4.3202, 51.9663, 4.4079, 52.0326),
     "Maastricht": (5.6389, 50.8038, 5.7629, 50.9120),
     "Wageningen": (5.6058, 51.9364, 5.7244, 52.0007),
-    "Arnhem": (5.8030, 51.9335, 5.9903, 52.0779)
+    "Arnhem": (5.8030, 51.9335, 5.9903, 52.0779),
 }
 
 
 def fetch_mapillary_photos(access_token, bbox_coords=None, next_url=None, delay=3.0):
     """Fetches Mapillary photos using a bounding box OR a pagination URL."""
-    headers = {
-        "Authorization": f"OAuth {access_token}"
-    }
+    headers = {"Authorization": f"OAuth {access_token}"}
 
     if next_url:
         url = next_url
     else:
-        bbox_str = f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
+        bbox_str = (
+            f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
+        )
         url = (
             f"https://graph.mapillary.com/images"
             f"?bbox={bbox_str}"
@@ -112,13 +106,16 @@ def fetch_mapillary_photos(access_token, bbox_coords=None, next_url=None, delay=
         response = requests.get(url, headers=headers, timeout=15)
 
         if response.status_code == 200:
-            data = response.json().get('data', [])
-            new_next_url = response.links.get('next', {}).get('url')
-            return {'stat': 'ok', 'data': data, 'next_url': new_next_url}
+            data = response.json().get("data", [])
+            new_next_url = response.links.get("next", {}).get("url")
+            return {"stat": "ok", "data": data, "next_url": new_next_url}
         else:
-            return {'stat': 'fail', 'message': f"HTTP {response.status_code}: {response.text}"}
+            return {
+                "stat": "fail",
+                "message": f"HTTP {response.status_code}: {response.text}",
+            }
     except Exception as e:
-        return {'stat': 'fail', 'message': f"Timeout or connection error: {str(e)}"}
+        return {"stat": "fail", "message": f"Timeout or connection error: {str(e)}"}
 
 
 def collect_images_for_bbox(access_token, bbox, limit, delay, depth=0):
@@ -127,54 +124,69 @@ def collect_images_for_bbox(access_token, bbox, limit, delay, depth=0):
     If Mapillary throws an HTTP 500, a data density error, or a read timeout, we subdivide the box.
     """
     images_collected = []
-    
+
     # Try fetching the first page
-    res = fetch_mapillary_photos(access_token, bbox_coords=bbox, next_url=None, delay=delay)
-    
-    if res['stat'] == 'fail':
-        msg = res['message'].lower()
+    res = fetch_mapillary_photos(
+        access_token, bbox_coords=bbox, next_url=None, delay=delay
+    )
+
+    if res["stat"] == "fail":
+        msg = res["message"].lower()
         # If we hit Mapillary's data density or timeout thresholds, split into 4 quadrants
-        if depth < 5 and ("reduce" in msg or "500" in msg or "limit" in msg or "code: 1" in msg or "timeout" in msg or "timed out" in msg):
-            print(f"    - [Density Alert] Bbox too dense at depth {depth}. Splitting into 4 sub-quadrants...")
+        if depth < 5 and (
+            "reduce" in msg
+            or "500" in msg
+            or "limit" in msg
+            or "code: 1" in msg
+            or "timeout" in msg
+            or "timed out" in msg
+        ):
+            print(
+                f"    - [Density Alert] Bbox too dense at depth {depth}. Splitting into 4 sub-quadrants..."
+            )
             min_lon, min_lat, max_lon, max_lat = bbox
             mid_lon = (min_lon + max_lon) / 2
             mid_lat = (min_lat + max_lat) / 2
-            
+
             quadrants = [
                 (min_lon, min_lat, mid_lon, mid_lat),  # SW
                 (mid_lon, min_lat, max_lon, mid_lat),  # SE
                 (min_lon, mid_lat, mid_lon, max_lat),  # NW
-                (mid_lon, mid_lat, max_lon, max_lat)   # NE
+                (mid_lon, mid_lat, max_lon, max_lat),  # NE
             ]
-            
+
             for quad in quadrants:
                 needed = limit - len(images_collected)
                 if needed <= 0:
                     break
-                sub_images = collect_images_for_bbox(access_token, quad, needed, delay, depth + 1)
+                sub_images = collect_images_for_bbox(
+                    access_token, quad, needed, delay, depth + 1
+                )
                 images_collected.extend(sub_images)
             return images_collected
         else:
             print(f"    - Mapillary request failed: {res['message']}")
             return []
-            
+
     # Page 1 succeeded, append results
-    images_collected.extend(res.get('data', []))
-    current_url = res.get('next_url')
-    
+    images_collected.extend(res.get("data", []))
+    current_url = res.get("next_url")
+
     # Paginate through remaining records
     while current_url and len(images_collected) < limit:
-        res = fetch_mapillary_photos(access_token, bbox_coords=None, next_url=current_url, delay=delay)
-        if res['stat'] == 'ok':
-            images = res.get('data', [])
+        res = fetch_mapillary_photos(
+            access_token, bbox_coords=None, next_url=current_url, delay=delay
+        )
+        if res["stat"] == "ok":
+            images = res.get("data", [])
             if not images:
                 break
             images_collected.extend(images)
-            current_url = res.get('next_url')
+            current_url = res.get("next_url")
         else:
             print(f"    - Pagination failed: {res['message']}")
             break
-            
+
     return images_collected[:limit]
 
 
@@ -188,14 +200,14 @@ def geocode_location(location_name):
         if response.status_code == 200:
             data = response.json()
             if data:
-                bbox = data[0].get('boundingbox')
+                bbox = data[0].get("boundingbox")
                 if bbox and len(bbox) == 4:
                     # Nominatim returns [min_lat, max_lat, min_lon, max_lon]
                     min_lat = float(bbox[0])
                     max_lat = float(bbox[1])
                     min_lon = float(bbox[2])
                     max_lon = float(bbox[3])
-                    
+
                     # Pad out small landmark bounding boxes (less than ~2.2km wide)
                     width = max_lon - min_lon
                     height = max_lat - min_lat
@@ -206,8 +218,10 @@ def geocode_location(location_name):
                         max_lon = center_lon + 0.01
                         min_lat = center_lat - 0.01
                         max_lat = center_lat + 0.01
-                        print(f" -> Small bounding box detected. Padded '{location_name}' to 2km x 2km buffer.")
-                        
+                        print(
+                            f" -> Small bounding box detected. Padded '{location_name}' to 2km x 2km buffer."
+                        )
+
                     return (min_lon, min_lat, max_lon, max_lat)
     except Exception as e:
         print(f"Geocoding error for '{location_name}': {e}")
@@ -217,43 +231,84 @@ def geocode_location(location_name):
 def generate_grid_boxes(bbox, step_km=5.0):
     """Divides a bounding box into a grid of step_km * step_km sub-boxes (accounting for latitude cosine)."""
     import math
+
     min_lon, min_lat, max_lon, max_lat = bbox
-    
+
     lat_step = step_km / 111.32
-    
+
     sub_boxes = []
     current_lat = min_lat
     while current_lat < max_lat:
         next_lat = min(current_lat + lat_step, max_lat)
-        
+
         # Calculate cos_lat for the center of this band
         mid_lat = (current_lat + next_lat) / 2.0
         cos_lat = math.cos(math.radians(max(-89.9, min(89.9, mid_lat))))
         lon_step = step_km / (111.32 * cos_lat)
-        
+
         current_lon = min_lon
         while current_lon < max_lon:
             next_lon = min(current_lon + lon_step, max_lon)
             sub_boxes.append((current_lon, current_lat, next_lon, next_lat))
             current_lon += lon_step
-            
+
         current_lat += lat_step
-        
+
     return sub_boxes
 
 
 def main():
     import argparse
     import sys
-    parser = argparse.ArgumentParser(description="Scrape Mapillary street-level images of locations.")
-    parser.add_argument("--limit", type=int, default=500, help="Maximum photos to collect per landmark (only used if grid_size=0).")
-    parser.add_argument("--limit_per_box", type=int, default=100, help="Maximum photos to collect per grid sub-box (default: 100).")
-    parser.add_argument("--grid_size", type=float, default=5.0, help="Grid size in km (default: 5.0). Set to 0 to disable grid splitting.")
-    parser.add_argument("--out", type=str, default="seven_wonders_mapillary.csv", help="Output CSV path.")
-    parser.add_argument("--delay", type=float, default=3.0, help="Delay between API calls in seconds (default: 3.0).")
-    parser.add_argument("--location", type=str, default=None, help="Dynamic location name to geocode and scrape.")
-    parser.add_argument("--bbox", type=str, default=None, help="Manual bounding box coords (min_lon,min_lat,max_lon,max_lat).")
-    parser.add_argument("--access_token", type=str, required=True, help="Mapillary API access token")
+
+    parser = argparse.ArgumentParser(
+        description="Scrape Mapillary street-level images of locations."
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=500,
+        help="Maximum photos to collect per landmark (only used if grid_size=0).",
+    )
+    parser.add_argument(
+        "--limit_per_box",
+        type=int,
+        default=100,
+        help="Maximum photos to collect per grid sub-box (default: 100).",
+    )
+    parser.add_argument(
+        "--grid_size",
+        type=float,
+        default=5.0,
+        help="Grid size in km (default: 5.0). Set to 0 to disable grid splitting.",
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="seven_wonders_mapillary.csv",
+        help="Output CSV path.",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=3.0,
+        help="Delay between API calls in seconds (default: 3.0).",
+    )
+    parser.add_argument(
+        "--location",
+        type=str,
+        default=None,
+        help="Dynamic location name to geocode and scrape.",
+    )
+    parser.add_argument(
+        "--bbox",
+        type=str,
+        default=None,
+        help="Manual bounding box coords (min_lon,min_lat,max_lon,max_lat).",
+    )
+    parser.add_argument(
+        "--access_token", type=str, required=True, help="Mapillary API access token"
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out).parent
@@ -272,7 +327,7 @@ def main():
             sys.exit(1)
     elif args.bbox:
         try:
-            coords = tuple(map(float, args.bbox.split(',')))
+            coords = tuple(map(float, args.bbox.split(",")))
             if len(coords) != 4:
                 raise ValueError("Bounding box must contain exactly 4 coordinates.")
             targets["Custom_BBox"] = coords
@@ -287,67 +342,90 @@ def main():
     output_exists = os.path.exists(args.out)
     processed_landmarks = set()
 
-    log_path = args.out.replace('.csv', '_completed_boxes.txt')
+    log_path = args.out.replace(".csv", "_completed_boxes.txt")
     completed_boxes = set()
     if os.path.exists(log_path):
-        with open(log_path, 'r') as f:
+        with open(log_path, "r") as f:
             completed_boxes = set(line.strip() for line in f)
         print(f"Found {len(completed_boxes)} completed boxes in log: {log_path}")
 
     if output_exists:
         try:
             df_temp = pd.read_csv(args.out)
-            if not df_temp.empty and 'Landmark' in df_temp.columns:
-                processed_landmarks = set(df_temp['Landmark'].unique())
-                print(f"Found existing output file. Landmarks already processed: {processed_landmarks}")
+            if not df_temp.empty and "Landmark" in df_temp.columns:
+                processed_landmarks = set(df_temp["Landmark"].unique())
+                print(
+                    f"Found existing output file. Landmarks already processed: {processed_landmarks}"
+                )
         except Exception:
             pass
 
-    csv_file = open(args.out, mode='a', newline='', encoding='utf-8')
+    csv_file = open(args.out, mode="a", newline="", encoding="utf-8")
     writer = csv.writer(csv_file)
 
     if not output_exists:
-        writer.writerow(['Photo_ID', 'Platform', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'Landmark'])
+        writer.writerow(
+            [
+                "Photo_ID",
+                "Platform",
+                "Latitude",
+                "Longitude",
+                "Image_URL",
+                "Captured_At",
+                "Landmark",
+            ]
+        )
 
     print("\n--- Starting Mapillary Density Profiler ---")
     for name, coords in targets.items():
         # Generate sub-boxes
         if args.grid_size > 0:
             sub_boxes = generate_grid_boxes(coords, step_km=args.grid_size)
-            print(f"\nProcessing '{name}' | Divided into {len(sub_boxes)} grid cells of {args.grid_size}km x {args.grid_size}km.")
+            print(
+                f"\nProcessing '{name}' | Divided into {len(sub_boxes)} grid cells of {args.grid_size}km x {args.grid_size}km."
+            )
         else:
             sub_boxes = [coords]
 
         for idx, box in enumerate(sub_boxes):
             box_id = f"{box[0]:.4f},{box[1]:.4f},{box[2]:.4f},{box[3]:.4f}"
             if box_id in completed_boxes:
-                print(f" -> Sub-box #{idx+1}/{len(sub_boxes)} ({box_id}) already scraped. Skipping...")
+                print(
+                    f" -> Sub-box #{idx+1}/{len(sub_boxes)} ({box_id}) already scraped. Skipping..."
+                )
                 continue
 
             print(f"\n -> Scraping Sub-box #{idx+1}/{len(sub_boxes)} ({box_id})...")
-            
-            photos = collect_images_for_bbox(args.access_token, box, args.limit_per_box, args.delay)
-            
+
+            photos = collect_images_for_bbox(
+                args.access_token, box, args.limit_per_box, args.delay
+            )
+
             photos_saved = 0
             for img in photos:
-                img_id = img.get('id')
-                lon, lat = img.get('geometry', {}).get('coordinates', [None, None])
-                image_url = img.get('thumb_1024_url')
-                captured_at_ms = img.get('captured_at')
+                img_id = img.get("id")
+                lon, lat = img.get("geometry", {}).get("coordinates", [None, None])
+                image_url = img.get("thumb_1024_url")
+                captured_at_ms = img.get("captured_at")
                 captured_at = ""
                 if captured_at_ms:
-                    captured_at = datetime.datetime.fromtimestamp(captured_at_ms / 1000.0,
-                                                                  datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                    captured_at = datetime.datetime.fromtimestamp(
+                        captured_at_ms / 1000.0, datetime.timezone.utc
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
                 if image_url and lat and lon:
-                    writer.writerow([img_id, "Mapillary", lat, lon, image_url, captured_at, name])
+                    writer.writerow(
+                        [img_id, "Mapillary", lat, lon, image_url, captured_at, name]
+                    )
                     photos_saved += 1
 
-            print(f"Finished scraping sub-box #{idx+1}/{len(sub_boxes)}! Saved: {photos_saved}")
+            print(
+                f"Finished scraping sub-box #{idx+1}/{len(sub_boxes)}! Saved: {photos_saved}"
+            )
 
             # Log this box to file for future backfills / resume tracking
-            with open(log_path, 'a') as log:
-                log.write(box_id + '\n')
+            with open(log_path, "a") as log:
+                log.write(box_id + "\n")
             completed_boxes.add(box_id)
 
             csv_file.flush()  # Force write to disk

@@ -29,17 +29,41 @@ def get_h3_polygon(cell):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate Uncovered Land Areas Shapefile using H3.")
-    parser.add_argument("--csv_paths", nargs="+", required=True,
-                        help="List of paths to CSV files or directories containing CSVs.")
-    default_land_shp = "shapefiles/ne_10m_admin_0_countries.shp" if os.path.exists(
-        "shapefiles/ne_10m_admin_0_countries.shp") else "ne_10m_admin_0_countries.shp"
-    parser.add_argument("--land_shp", type=str, default=default_land_shp, help="Path to the base land shapefile.")
-    parser.add_argument("--output", type=str, default="shapefiles/uncovered_land_areas_test.shp",
-                        help="Output shapefile path.")
-    parser.add_argument("--res", type=int, default=5, help="H3 resolution for covered areas.")
-    parser.add_argument("--threshold", type=int, default=0,
-                        help="Threshold for total number of images per H3 cell. Cells with counts <= threshold remain uncovered (default: 0).")
+    parser = argparse.ArgumentParser(
+        description="Generate Uncovered Land Areas Shapefile using H3."
+    )
+    parser.add_argument(
+        "--csv_paths",
+        nargs="+",
+        required=True,
+        help="List of paths to CSV files or directories containing CSVs.",
+    )
+    default_land_shp = (
+        "shapefiles/ne_10m_admin_0_countries.shp"
+        if os.path.exists("shapefiles/ne_10m_admin_0_countries.shp")
+        else "ne_10m_admin_0_countries.shp"
+    )
+    parser.add_argument(
+        "--land_shp",
+        type=str,
+        default=default_land_shp,
+        help="Path to the base land shapefile.",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="shapefiles/uncovered_land_areas_test.shp",
+        help="Output shapefile path.",
+    )
+    parser.add_argument(
+        "--res", type=int, default=5, help="H3 resolution for covered areas."
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=0,
+        help="Threshold for total number of images per H3 cell. Cells with counts <= threshold remain uncovered (default: 0).",
+    )
     args = parser.parse_args()
 
     # 1. Load Land
@@ -54,29 +78,45 @@ def main():
     for path in args.csv_paths:
         if os.path.isdir(path):
             data_files.extend(glob.glob(os.path.join(path, "**/*.csv"), recursive=True))
-            data_files.extend(glob.glob(os.path.join(path, "**/*.parquet"), recursive=True))
+            data_files.extend(
+                glob.glob(os.path.join(path, "**/*.parquet"), recursive=True)
+            )
         else:
             data_files.append(path)
 
     for f in tqdm(data_files, desc="Reading Data Files"):
         try:
-            if f.endswith('.parquet'):
+            if f.endswith(".parquet"):
                 # Inspect columns using pyarrow schema
                 available_cols = pq.ParquetFile(f).schema_arrow.names
-                lat_col = next((c for c in available_cols if c.lower() in ['latitude', 'lat']), None)
-                lon_col = next((c for c in available_cols if c.lower() in ['longitude', 'lon']), None)
+                lat_col = next(
+                    (c for c in available_cols if c.lower() in ["latitude", "lat"]),
+                    None,
+                )
+                lon_col = next(
+                    (c for c in available_cols if c.lower() in ["longitude", "lon"]),
+                    None,
+                )
                 if lat_col and lon_col:
                     df = load_dataframe(f, columns=[lat_col, lon_col])
                 else:
                     continue
             else:
-                df = pd.read_csv(f, usecols=lambda c: c.lower() in ['latitude', 'lat', 'longitude', 'lon'])
+                df = pd.read_csv(
+                    f,
+                    usecols=lambda c: c.lower()
+                    in ["latitude", "lat", "longitude", "lon"],
+                )
 
             if df.empty:
                 continue
 
-            lat_col = next((c for c in df.columns if c.lower() in ['latitude', 'lat']), None)
-            lon_col = next((c for c in df.columns if c.lower() in ['longitude', 'lon']), None)
+            lat_col = next(
+                (c for c in df.columns if c.lower() in ["latitude", "lat"]), None
+            )
+            lon_col = next(
+                (c for c in df.columns if c.lower() in ["longitude", "lon"]), None
+            )
 
             if not (lat_col and lon_col):
                 continue
@@ -84,7 +124,9 @@ def main():
             for _, row in df.iterrows():
                 try:
                     if pd.notna(row[lat_col]) and pd.notna(row[lon_col]):
-                        cell = h3.latlng_to_cell(float(row[lat_col]), float(row[lon_col]), args.res)
+                        cell = h3.latlng_to_cell(
+                            float(row[lat_col]), float(row[lon_col]), args.res
+                        )
                         covered_cells_counter[cell] += 1
                 except Exception:
                     continue
@@ -92,9 +134,12 @@ def main():
             print(f"Error reading {f}: {e}")
 
     # Filter cells by threshold
-    covered_cells = {cell for cell, count in covered_cells_counter.items() if count > args.threshold}
+    covered_cells = {
+        cell for cell, count in covered_cells_counter.items() if count > args.threshold
+    }
     print(
-        f"Found {len(covered_cells_counter):,} unique cells. Filtered to {len(covered_cells):,} cells with > {args.threshold} images.")
+        f"Found {len(covered_cells_counter):,} unique cells. Filtered to {len(covered_cells):,} cells with > {args.threshold} images."
+    )
 
     if not covered_cells:
         print("No covered cells found. Saving unmodified land shapefile.")
@@ -103,7 +148,9 @@ def main():
 
     # 3. Create Covered GeoDataFrame
     print("Generating polygons for covered cells...")
-    polygons = [get_h3_polygon(c) for c in tqdm(covered_cells, desc="Creating Polygons")]
+    polygons = [
+        get_h3_polygon(c) for c in tqdm(covered_cells, desc="Creating Polygons")
+    ]
     covered_gdf = gpd.GeoDataFrame(geometry=polygons, crs="EPSG:4326")
 
     # Optional: Combine overlapping covered hexagons to speed up difference

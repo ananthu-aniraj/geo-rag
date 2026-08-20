@@ -6,7 +6,7 @@ This document describes the design and operation of `standardize_timestamps.py`,
 
 ## ⚙️ Core Operation
 
-The script normalizes inconsistent date/time strings and Unix epochs across diverse platforms into standardized ISO 8601 strings (`YYYY-MM-DDTHH:MM:SSZ`). 
+The script normalizes inconsistent date/time strings and Unix epochs across diverse platforms into standardized ISO 8601 strings (`YYYY-MM-DDTHH:MM:SSZ`).
 
 ---
 
@@ -18,7 +18,7 @@ To prepare coordinates for downstream analysis, visualization, and VLM prompts, 
 If a Köppen-Geiger climate classification TIF map is provided (via `--koppen_tif` or parsed from `params.yaml`), coordinates are queried to assign each image a climate code (e.g. `BWh` for Hot Desert, `Csa` for Hot-Summer Mediterranean). The script utilizes `rasterio` and `pyproj` to dynamically handle raster projections.
 
 ### 2. Boundary Snapping (Country & Continent)
-If an administrative land boundary shapefile is provided (via `--land_shp`), the script performs a spatial polygon intersection join on the coordinates. 
+If an administrative land boundary shapefile is provided (via `--land_shp`), the script performs a spatial polygon intersection join on the coordinates.
 
 To optimize performance and handle boundary limitations, the script implements:
 * **H3-Cell Centroid Aggregation**: Coordinates are grouped into H3 Resolution 8 parent cells prior to joining. This reduces the number of geometric boundary tests by **$1000\times$**, mapping thousands of coordinates in a single check.

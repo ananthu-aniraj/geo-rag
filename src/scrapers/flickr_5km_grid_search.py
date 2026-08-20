@@ -18,17 +18,43 @@ REGION = (-180, -90, 180, 90)
 
 def parse_args():
     argparser = argparse.ArgumentParser(description="Flickr 5km Grid Search")
-    argparser.add_argument('--chunk', type=int, default=0, help='Which chunk of the grid to process (0-based index)')
-    argparser.add_argument('--total_chunks', type=int, default=10000,
-                           help='Total number of chunks to split the grid into')
-    argparser.add_argument('--base_dir', type=str, default='.', help='Base directory for output files')
-    argparser.add_argument('--api_key', type=str, help='Flickr API key')
-    argparser.add_argument('--step_km', type=float, default=5, help='Grid step size in kilometers')
-    argparser.add_argument('--max_photos_per_box', type=int, default=100,
-                           help='Maximum number of photos to fetch per grid box')
-    argparser.add_argument('--delay_between_calls', type=float, default=1.1, help='Delay between API calls in seconds')
-    argparser.add_argument('--uncovered_shapefile', type=str, default="shapefiles/uncovered_land_areas_test.shp",
-                           help='Path to the uncovered land areas shapefile')
+    argparser.add_argument(
+        "--chunk",
+        type=int,
+        default=0,
+        help="Which chunk of the grid to process (0-based index)",
+    )
+    argparser.add_argument(
+        "--total_chunks",
+        type=int,
+        default=10000,
+        help="Total number of chunks to split the grid into",
+    )
+    argparser.add_argument(
+        "--base_dir", type=str, default=".", help="Base directory for output files"
+    )
+    argparser.add_argument("--api_key", type=str, help="Flickr API key")
+    argparser.add_argument(
+        "--step_km", type=float, default=5, help="Grid step size in kilometers"
+    )
+    argparser.add_argument(
+        "--max_photos_per_box",
+        type=int,
+        default=100,
+        help="Maximum number of photos to fetch per grid box",
+    )
+    argparser.add_argument(
+        "--delay_between_calls",
+        type=float,
+        default=1.1,
+        help="Delay between API calls in seconds",
+    )
+    argparser.add_argument(
+        "--uncovered_shapefile",
+        type=str,
+        default="shapefiles/uncovered_land_areas_test.shp",
+        help="Path to the uncovered land areas shapefile",
+    )
     arguments = argparser.parse_args()
     return arguments
 
@@ -45,8 +71,10 @@ API_KEY = args.api_key
 
 # File Setup
 Path(args.base_dir).mkdir(parents=True, exist_ok=True)  # Ensure base directory exists
-OUTPUT_FILE = os.path.join(args.base_dir, f'flickr_data_chunk_{CURRENT_CHUNK}.csv')
-LOG_FILE = os.path.join(args.base_dir, f'flickr_completed_boxes_chunk_{CURRENT_CHUNK}.txt')
+OUTPUT_FILE = os.path.join(args.base_dir, f"flickr_data_chunk_{CURRENT_CHUNK}.csv")
+LOG_FILE = os.path.join(
+    args.base_dir, f"flickr_completed_boxes_chunk_{CURRENT_CHUNK}.txt"
+)
 
 
 # --- 2. Helper Functions ---
@@ -56,7 +84,9 @@ def is_in_uncovered_area(bbox_coords, uncovered_gdf):
     bbox_polygon = box(min_lon, min_lat, max_lon, max_lat)
 
     # Use spatial indexing for lightning-fast lookups
-    possible_matches_index = list(uncovered_gdf.sindex.intersection(bbox_polygon.bounds))
+    possible_matches_index = list(
+        uncovered_gdf.sindex.intersection(bbox_polygon.bounds)
+    )
 
     if len(possible_matches_index) == 0:
         return False
@@ -88,18 +118,18 @@ def fetch_photos(bbox_coords, page=1, geo_context=2):
         response = requests.get(url, timeout=10)
         return response.json()
     except Exception as e:
-        return {'stat': 'fail', 'message': str(e)}
+        return {"stat": "fail", "message": str(e)}
 
 
 # --- 3. Initialization ---
 completed_boxes = set()
 if os.path.exists(LOG_FILE):
-    with open(LOG_FILE, 'r') as f:
+    with open(LOG_FILE, "r") as f:
         completed_boxes = set(line.strip() for line in f)
 
 print(f"Loading Uncovered Land Areas map: {UNCOVERED_SHAPEFILE}...")
 try:
-    uncovered_gdf = gpd.read_file(UNCOVERED_SHAPEFILE, engine='pyogrio')
+    uncovered_gdf = gpd.read_file(UNCOVERED_SHAPEFILE, engine="pyogrio")
 except Exception as e:
     print(f"ERROR: Could not load {UNCOVERED_SHAPEFILE}: {e}")
     exit()
@@ -122,7 +152,14 @@ while current_lat < REGION[3]:
     current_lon = REGION[0]
     while current_lon < REGION[2]:
         if total_boxes_count % TOTAL_CHUNKS == CURRENT_CHUNK:
-            my_boxes.append((current_lon, current_lat, current_lon + lon_step, current_lat + lat_step))
+            my_boxes.append(
+                (
+                    current_lon,
+                    current_lat,
+                    current_lon + lon_step,
+                    current_lat + lat_step,
+                )
+            )
 
         current_lon += lon_step
         total_boxes_count += 1
@@ -137,18 +174,29 @@ print(f"Already completed: {len(completed_boxes)}")
 
 # --- 4. Main Execution ---
 file_exists = os.path.exists(OUTPUT_FILE)
-with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
+with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
     writer = csv.writer(csv_file)
 
     if not file_exists:
-        writer.writerow(['Photo_ID', 'Title', 'Latitude', 'Longitude', 'Image_URL', 'Captured_At', 'License'])
+        writer.writerow(
+            [
+                "Photo_ID",
+                "Title",
+                "Latitude",
+                "Longitude",
+                "Image_URL",
+                "Captured_At",
+                "License",
+            ]
+        )
 
     # Use tqdm to create a progress bar
     # CHANGE: Renamed 'box' to 'grid_box' to avoid overwriting Shapely's 'box' function
     for grid_box in tqdm(my_boxes, desc=f"Processing Chunk {CURRENT_CHUNK}"):
-
         # Create a unique ID for this box to log it
-        box_id = f"{grid_box[0]:.4f},{grid_box[1]:.4f},{grid_box[2]:.4f},{grid_box[3]:.4f}"
+        box_id = (
+            f"{grid_box[0]:.4f},{grid_box[1]:.4f},{grid_box[2]:.4f},{grid_box[3]:.4f}"
+        )
 
         # 1. Check Save-State
         if box_id in completed_boxes:
@@ -157,8 +205,8 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
         # 2. Check Uncovered Mask: Skip if it does NOT intersect an uncovered land area
         # This replaces both the land mask and the urban mask
         if not is_in_uncovered_area(grid_box, uncovered_gdf):
-            with open(LOG_FILE, 'a') as log:
-                log.write(box_id + '\n')
+            with open(LOG_FILE, "a") as log:
+                log.write(box_id + "\n")
             completed_boxes.add(box_id)
             continue
 
@@ -169,7 +217,6 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
 
         # Priority 1: Outdoors (2). Priority 2: Unlabelled (0).
         for current_context in [2, 0]:
-
             # If the bucket is already full from the previous priority, skip!
             if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
                 break
@@ -179,29 +226,41 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
 
             while current_page <= total_pages:
                 # Call our updated function with the current context
-                data = fetch_photos(grid_box, page=current_page, geo_context=current_context)
+                data = fetch_photos(
+                    grid_box, page=current_page, geo_context=current_context
+                )
 
-                if data.get('stat') == 'ok':
+                if data.get("stat") == "ok":
                     if current_page == 1:
-                        total_pages = data['photos']['pages']
+                        total_pages = data["photos"]["pages"]
 
-                    photos = data.get('photos', {}).get('photo', [])
+                    photos = data.get("photos", {}).get("photo", [])
                     if not photos:
                         break  # No more photos for this context, move on
 
                     for photo in photos:
-                        photo_id = photo.get('id')
-                        title = photo.get('title', 'Untitled')
-                        lat = photo.get('latitude')
-                        lon = photo.get('longitude')
-                        image_url = photo.get('url_m')
-                        captured_at = photo.get('datetaken', '')
+                        photo_id = photo.get("id")
+                        title = photo.get("title", "Untitled")
+                        lat = photo.get("latitude")
+                        lon = photo.get("longitude")
+                        image_url = photo.get("url_m")
+                        captured_at = photo.get("datetaken", "")
                         if captured_at:
                             captured_at = captured_at.replace(" ", "T")
-                        license_val = photo.get('license', '0')
+                        license_val = photo.get("license", "0")
 
                         if image_url and lat and lon:
-                            writer.writerow([photo_id, title, lat, lon, image_url, captured_at, license_val])
+                            writer.writerow(
+                                [
+                                    photo_id,
+                                    title,
+                                    lat,
+                                    lon,
+                                    image_url,
+                                    captured_at,
+                                    license_val,
+                                ]
+                            )
                             photos_saved_this_box += 1
 
                         # Break out if we hit the limit while looping through photos
@@ -218,7 +277,7 @@ with open(OUTPUT_FILE, mode='a', newline='', encoding='utf-8') as csv_file:
                     break  # API Error, break pagination loop
 
         # 5. Update Save-State
-        with open(LOG_FILE, 'a') as log:
-            log.write(box_id + '\n')
+        with open(LOG_FILE, "a") as log:
+            log.write(box_id + "\n")
         completed_boxes.add(box_id)
 print(f"\nChunk {CURRENT_CHUNK} finished!")

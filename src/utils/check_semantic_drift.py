@@ -9,17 +9,40 @@ from sklearn.preprocessing import normalize
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check for semantic drift of new images against existing centroids.")
-    parser.add_argument("--input", type=str, required=True, help="Path to new/combined dataset Parquet file.")
-    parser.add_argument("--centroids_parquet", type=str, required=True,
-                        help="Path to pre-existing clustered Parquet database.")
-    parser.add_argument("--k_clusters", type=int, default=40000, help="Number of clusters.")
-    parser.add_argument("--gpu", action="store_true", default=True, help="Use GPU for FAISS search.")
+    parser = argparse.ArgumentParser(
+        description="Check for semantic drift of new images against existing centroids."
+    )
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Path to new/combined dataset Parquet file.",
+    )
+    parser.add_argument(
+        "--centroids_parquet",
+        type=str,
+        required=True,
+        help="Path to pre-existing clustered Parquet database.",
+    )
+    parser.add_argument(
+        "--k_clusters", type=int, default=40000, help="Number of clusters."
+    )
+    parser.add_argument(
+        "--gpu", action="store_true", default=True, help="Use GPU for FAISS search."
+    )
     parser.add_argument("--no_gpu", action="store_false", dest="gpu")
-    parser.add_argument("--outlier_threshold", type=float, default=0.70,
-                        help="Cosine similarity below which a vector is an outlier.")
-    parser.add_argument("--drift_ratio_threshold", type=float, default=0.03,
-                        help="Outlier ratio threshold (e.g. 0.03 for 3%).")
+    parser.add_argument(
+        "--outlier_threshold",
+        type=float,
+        default=0.70,
+        help="Cosine similarity below which a vector is an outlier.",
+    )
+    parser.add_argument(
+        "--drift_ratio_threshold",
+        type=float,
+        default=0.03,
+        help="Outlier ratio threshold (e.g. 0.03 for 3%).",
+    )
     args = parser.parse_args()
 
     # Fallback to fit if the pre-existing file doesn't exist
@@ -52,19 +75,25 @@ def main():
 
         # Read the new combined database row-group by row-group
         for rg in range(pf_new.num_row_groups):
-            table = pf_new.read_row_group(rg, columns=["Photo_ID", "Platform", "embedding"])
+            table = pf_new.read_row_group(
+                rg, columns=["Photo_ID", "Platform", "embedding"]
+            )
             df_rg = table.to_pandas()
             if len(df_rg) == 0:
                 continue
 
             # Create keys for this row group
-            rg_keys = df_rg["Platform"].astype(str) + "_" + df_rg["Photo_ID"].astype(str)
+            rg_keys = (
+                df_rg["Platform"].astype(str) + "_" + df_rg["Photo_ID"].astype(str)
+            )
 
             # Mask to filter out images that were already in the old run
             is_new_mask = ~rg_keys.isin(old_keys_set)
 
             if is_new_mask.any():
-                new_embs_rg = np.vstack(df_rg.loc[is_new_mask, "embedding"].values).astype(np.float32)
+                new_embs_rg = np.vstack(
+                    df_rg.loc[is_new_mask, "embedding"].values
+                ).astype(np.float32)
                 new_embeddings.append(new_embs_rg)
                 rows_read += len(new_embs_rg)
 
@@ -86,14 +115,16 @@ def main():
         counts = np.zeros(args.k_clusters, dtype=np.int64)
 
         for rg in range(pf_old.num_row_groups):
-            table_old = pf_old.read_row_group(rg, columns=['cluster_id', 'embedding'])
+            table_old = pf_old.read_row_group(rg, columns=["cluster_id", "embedding"])
             df_rg_old = table_old.to_pandas()
             if len(df_rg_old) == 0:
                 continue
-            embs_old = np.vstack(df_rg_old['embedding'].values).astype(np.float32)
-            c_ids_old = df_rg_old['cluster_id'].values
+            embs_old = np.vstack(df_rg_old["embedding"].values).astype(np.float32)
+            c_ids_old = df_rg_old["cluster_id"].values
 
-            valid_mask = (c_ids_old >= 0) & (~pd.isna(c_ids_old)) & (c_ids_old < args.k_clusters)
+            valid_mask = (
+                (c_ids_old >= 0) & (~pd.isna(c_ids_old)) & (c_ids_old < args.k_clusters)
+            )
             c_ids_valid = c_ids_old[valid_mask].astype(np.int32)
 
             np.add.at(raw_centroids, c_ids_valid, embs_old[valid_mask])

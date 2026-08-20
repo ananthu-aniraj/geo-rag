@@ -31,13 +31,13 @@ class Mlp(nn.Module):
     """Transformer MLP, following DINOv2 implementation."""
 
     def __init__(
-            self,
-            in_features: int,
-            hidden_features: Optional[int] = None,
-            out_features: Optional[int] = None,
-            act_layer: Callable[..., nn.Module] = nn.GELU,
-            drop: float = 0.0,
-            bias: bool = True,
+        self,
+        in_features: int,
+        hidden_features: Optional[int] = None,
+        out_features: Optional[int] = None,
+        act_layer: Callable[..., nn.Module] = nn.GELU,
+        drop: float = 0.0,
+        bias: bool = True,
     ) -> None:
         super().__init__()
         out_features = out_features or in_features
@@ -69,13 +69,13 @@ class PatchEmbed(nn.Module):
     """2D image to patch embedding: (B,C,H,W) -> (B,N,D)."""
 
     def __init__(
-            self,
-            img_size: Union[int, Tuple[int, int]] = 224,
-            patch_size: Union[int, Tuple[int, int]] = 16,
-            in_chans: int = 3,
-            embed_dim: int = 768,
-            norm_layer: Optional[Callable] = None,  # pylint: disable=g-bare-generic
-            flatten_embedding: bool = True,
+        self,
+        img_size: Union[int, Tuple[int, int]] = 224,
+        patch_size: Union[int, Tuple[int, int]] = 16,
+        in_chans: int = 3,
+        embed_dim: int = 768,
+        norm_layer: Optional[Callable] = None,  # pylint: disable=g-bare-generic
+        flatten_embedding: bool = True,
     ) -> None:
         super().__init__()
 
@@ -106,10 +106,10 @@ class PatchEmbed(nn.Module):
         patch_h, patch_w = self.patch_size
 
         assert (
-                h % patch_h == 0
+            h % patch_h == 0
         ), f"Input image height {h} is not a multiple of patch height {patch_h}"
         assert (
-                w % patch_w == 0
+            w % patch_w == 0
         ), f"Input image width {w} is not a multiple of patch width: {patch_w}"
 
         x = self.proj(x)  # B C H W
@@ -123,11 +123,11 @@ class PatchEmbed(nn.Module):
     def flops(self) -> float:
         ho, wo = self.patches_resolution
         flops = (
-                ho
-                * wo
-                * self.embed_dim
-                * self.in_chans
-                * (self.patch_size[0] * self.patch_size[1])
+            ho
+            * wo
+            * self.embed_dim
+            * self.in_chans
+            * (self.patch_size[0] * self.patch_size[1])
         )
         if self.norm is not None:
             flops += ho * wo * self.embed_dim
@@ -138,13 +138,13 @@ class SwiGLUFFN(nn.Module):
     """SwiGLU FFN layer, following DINOv2 implementation."""
 
     def __init__(
-            self,
-            in_features: int,
-            hidden_features: Optional[int] = None,
-            out_features: Optional[int] = None,
-            act_layer: Callable[..., nn.Module] = None,
-            drop: float = 0.0,
-            bias: bool = True,
+        self,
+        in_features: int,
+        hidden_features: Optional[int] = None,
+        out_features: Optional[int] = None,
+        act_layer: Callable[..., nn.Module] = None,
+        drop: float = 0.0,
+        bias: bool = True,
     ) -> None:
         super().__init__()
         out_features = out_features or in_features
@@ -187,13 +187,13 @@ class SwiGLUFFNFused(SwiGLU):
     """SwiGLU FFN layer, following DINOv2 implementation."""
 
     def __init__(
-            self,
-            in_features: int,
-            hidden_features: Optional[int] = None,
-            out_features: Optional[int] = None,
-            act_layer: Callable[..., nn.Module] = None,  # pylint: disable=unused-argument
-            drop: float = 0.0,  # pylint: disable=unused-argument
-            bias: bool = True,
+        self,
+        in_features: int,
+        hidden_features: Optional[int] = None,
+        out_features: Optional[int] = None,
+        act_layer: Callable[..., nn.Module] = None,  # pylint: disable=unused-argument
+        drop: float = 0.0,  # pylint: disable=unused-argument
+        bias: bool = True,
     ) -> None:
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -210,18 +210,18 @@ class Attention(nn.Module):
     """Attention layer, following DINOv2 implementation."""
 
     def __init__(
-            self,
-            dim: int,
-            num_heads: int = 8,
-            qkv_bias: bool = False,
-            proj_bias: bool = True,
-            attn_drop: float = 0.0,
-            proj_drop: float = 0.0,
+        self,
+        dim: int,
+        num_heads: int = 8,
+        qkv_bias: bool = False,
+        proj_bias: bool = True,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -276,10 +276,10 @@ class LayerScale(nn.Module):
     """Layer scale, following DINOv2 implementation."""
 
     def __init__(
-            self,
-            dim: int,
-            init_values: Union[float, torch.Tensor] = 1e-5,
-            inplace: bool = False,
+        self,
+        dim: int,
+        init_values: Union[float, torch.Tensor] = 1e-5,
+        inplace: bool = False,
     ) -> None:
         super().__init__()
         self.inplace = inplace
@@ -294,7 +294,7 @@ def drop_path_impl(x, drop_prob: float = 0.0, training: bool = False):
         return x
     keep_prob = 1 - drop_prob
     shape = (x.shape[0],) + (1,) * (
-            x.ndim - 1
+        x.ndim - 1
     )  # work with diff dim tensors, not just 2D ConvNets
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0:
@@ -318,21 +318,21 @@ class Block(nn.Module):
     """Transformer Block Implementation, following DINOv2 implementation."""
 
     def __init__(
-            self,
-            dim: int,
-            num_heads: int,
-            mlp_ratio: float = 4.0,
-            qkv_bias: bool = False,
-            proj_bias: bool = True,
-            ffn_bias: bool = True,
-            drop: float = 0.0,
-            attn_drop: float = 0.0,
-            init_values=None,
-            drop_path: float = 0.0,
-            act_layer: Callable[..., nn.Module] = nn.GELU,
-            norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
-            attn_class: Callable[..., nn.Module] = Attention,
-            ffn_layer: Callable[..., nn.Module] = Mlp,
+        self,
+        dim: int,
+        num_heads: int,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = False,
+        proj_bias: bool = True,
+        ffn_bias: bool = True,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        init_values=None,
+        drop_path: float = 0.0,
+        act_layer: Callable[..., nn.Module] = nn.GELU,
+        norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
+        attn_class: Callable[..., nn.Module] = Attention,
+        ffn_layer: Callable[..., nn.Module] = Mlp,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -345,9 +345,7 @@ class Block(nn.Module):
             proj_drop=drop,
         )
         self.ls1 = (
-            LayerScale(dim, init_values=init_values)
-            if init_values
-            else nn.Identity()
+            LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         )
         self.drop_path1 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
@@ -361,9 +359,7 @@ class Block(nn.Module):
             bias=ffn_bias,
         )
         self.ls2 = (
-            LayerScale(dim, init_values=init_values)
-            if init_values
-            else nn.Identity()
+            LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         )
         self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
@@ -398,9 +394,9 @@ class Block(nn.Module):
 
 
 def drop_add_residual_stochastic_depth(
-        x: torch.Tensor,
-        residual_func: Callable[[torch.Tensor], torch.Tensor],
-        sample_drop_ratio: float = 0.0,
+    x: torch.Tensor,
+    residual_func: Callable[[torch.Tensor], torch.Tensor],
+    sample_drop_ratio: float = 0.0,
 ) -> torch.Tensor:
     """This function is taken from the original implementation in DINOv2 to implement stochastic depth in the image encoder."""
     # 1) extract subset using permutation
@@ -432,9 +428,7 @@ def get_branges_scales(x, sample_drop_ratio=0.0):
     return brange, residual_scale_factor
 
 
-def add_residual(
-        x, brange, residual, residual_scale_factor, scaling_vector=None
-):
+def add_residual(x, brange, residual, residual_scale_factor, scaling_vector=None):
     """Implement residual addition in the image encoder."""
     if scaling_vector is None:
         x_flat = x.flatten(1)
@@ -478,9 +472,9 @@ def get_attn_bias_and_cat(x_list, branges=None):
         attn_bias_cache[all_shapes] = attn_bias
 
     if branges is not None:
-        cat_tensors = index_select_cat(
-            [x.flatten(1) for x in x_list], branges
-        ).view(1, -1, x_list[0].shape[-1])
+        cat_tensors = index_select_cat([x.flatten(1) for x in x_list], branges).view(
+            1, -1, x_list[0].shape[-1]
+        )
     else:
         tensors_bs1 = tuple(x.reshape([1, -1, *x.shape[2:]]) for x in x_list)
         cat_tensors = torch.cat(tensors_bs1, dim=1)
@@ -489,10 +483,10 @@ def get_attn_bias_and_cat(x_list, branges=None):
 
 
 def drop_add_residual_stochastic_depth_list(
-        x_list: List[torch.Tensor],
-        residual_func: Callable[[torch.Tensor, Any], torch.Tensor],
-        sample_drop_ratio: float = 0.0,
-        scaling_vector=None,
+    x_list: List[torch.Tensor],
+    residual_func: Callable[[torch.Tensor, Any], torch.Tensor],
+    sample_drop_ratio: float = 0.0,
+    scaling_vector=None,
 ) -> torch.Tensor:
     """Add residual to a list of tensors."""
     # 1) generate random set of indices for dropping samples in the batch.
@@ -510,7 +504,7 @@ def drop_add_residual_stochastic_depth_list(
 
     outputs = []
     for x, brange, residual, residual_scale_factor in zip(
-            x_list, branges, residual_list, residual_scale_factors
+        x_list, branges, residual_list, residual_scale_factors
     ):
         outputs.append(
             add_residual(
@@ -579,11 +573,11 @@ class NestedTensorBlock(Block):
 
 
 def named_apply(
-        fn: Callable,  # pylint: disable=g-bare-generic
-        module: nn.Module,
-        name="",
-        depth_first=True,
-        include_root=False,
+    fn: Callable,  # pylint: disable=g-bare-generic
+    module: nn.Module,
+    name="",
+    depth_first=True,
+    include_root=False,
 ) -> nn.Module:
     """Apply a function to a module and its children."""
     if not depth_first and include_root:
@@ -603,7 +597,6 @@ def named_apply(
 
 
 class BlockChunk(nn.ModuleList):
-
     def forward(self, x):
         for b in self:
             x = b(x)
@@ -614,28 +607,28 @@ class VisionTransformer(nn.Module):
     """Vision Transformer implementation."""
 
     def __init__(
-            self,
-            img_size=224,
-            patch_size=16,
-            in_chans=3,
-            embed_dim=768,
-            depth=12,
-            num_heads=12,
-            mlp_ratio=4.0,
-            qkv_bias=True,
-            ffn_bias=True,
-            proj_bias=True,
-            drop_path_rate=0.0,
-            drop_path_uniform=False,
-            init_values=None,  # for layerscale: None or 0 => no layerscale
-            embed_layer=PatchEmbed,
-            act_layer=nn.GELU,
-            block_fn=Block,
-            ffn_layer="mlp",
-            block_chunks=1,
-            num_register_tokens=0,
-            interpolate_antialias=False,
-            interpolate_offset=0.1,
+        self,
+        img_size=224,
+        patch_size=16,
+        in_chans=3,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4.0,
+        qkv_bias=True,
+        ffn_bias=True,
+        proj_bias=True,
+        drop_path_rate=0.0,
+        drop_path_uniform=False,
+        init_values=None,  # for layerscale: None or 0 => no layerscale
+        embed_layer=PatchEmbed,
+        act_layer=nn.GELU,
+        block_fn=Block,
+        ffn_layer="mlp",
+        block_chunks=1,
+        num_register_tokens=0,
+        interpolate_antialias=False,
+        interpolate_offset=0.1,
     ):
         super().__init__()
         norm_layer = functools.partial(nn.LayerNorm, eps=1e-6)
@@ -706,7 +699,7 @@ class VisionTransformer(nn.Module):
             chunksize = depth // block_chunks
             for i in range(0, depth, chunksize):
                 chunked_blocks.append(
-                    [nn.Identity()] * i + blocks_list[i: i + chunksize]
+                    [nn.Identity()] * i + blocks_list[i : i + chunksize]
                 )
             self.blocks = nn.ModuleList([BlockChunk(p) for p in chunked_blocks])
         else:
@@ -751,9 +744,9 @@ class VisionTransformer(nn.Module):
         else:
             kwargs["size"] = (w0, h0)
         patch_pos_embed = nn.functional.interpolate(
-            patch_pos_embed.reshape(
-                1, num_patches_dim, num_patches_dim, dim
-            ).permute(0, 3, 1, 2),
+            patch_pos_embed.reshape(1, num_patches_dim, num_patches_dim, dim).permute(
+                0, 3, 1, 2
+            ),
             mode="bilinear",
             antialias=self.interpolate_antialias,
             **kwargs,
@@ -799,13 +792,15 @@ class VisionTransformer(nn.Module):
         output = []
         for x, masks in zip(all_x, masks_list):
             x_norm = self.norm(x)
-            output.append({
-                "x_norm_1st_clstoken": x_norm[:, :1],
-                "x_norm_2nd_clstoken": x_norm[:, 1: self.num_register_tokens + 1],
-                "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1:],
-                "x_prenorm": x,
-                "masks": masks,
-            })
+            output.append(
+                {
+                    "x_norm_1st_clstoken": x_norm[:, :1],
+                    "x_norm_2nd_clstoken": x_norm[:, 1 : self.num_register_tokens + 1],
+                    "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
+                    "x_prenorm": x,
+                    "masks": masks,
+                }
+            )
         return output
 
     def forward_features(self, x, masks=None):
@@ -820,8 +815,8 @@ class VisionTransformer(nn.Module):
         x_norm = self.norm(x)
         return {
             "x_norm_1st_clstoken": x_norm[:, :1],
-            "x_norm_2nd_clstoken": x_norm[:, 1: self.num_register_tokens + 1],
-            "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1:],
+            "x_norm_2nd_clstoken": x_norm[:, 1 : self.num_register_tokens + 1],
+            "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
             "x_prenorm": x,
             "masks": masks,
         }
@@ -859,12 +854,14 @@ class VisionTransformer(nn.Module):
         return output
 
     def get_intermediate_layers(
-            self,
-            x: torch.torch.Tensor,
-            n: Union[int, Sequence] = 1,  # Layers or n last layers to take  # pylint: disable=g-bare-generic
-            reshape: bool = False,
-            return_class_token: bool = False,
-            norm=True,
+        self,
+        x: torch.torch.Tensor,
+        n: Union[
+            int, Sequence
+        ] = 1,  # Layers or n last layers to take  # pylint: disable=g-bare-generic
+        reshape: bool = False,
+        return_class_token: bool = False,
+        norm=True,
     ) -> Tuple[Union[torch.torch.Tensor, Tuple[torch.torch.Tensor]]]:  # pylint: disable=g-one-element-tuple
         if self.chunked_blocks:
             outputs = self._get_intermediate_layers_chunked(x, n)
@@ -873,13 +870,11 @@ class VisionTransformer(nn.Module):
         if norm:
             outputs = [self.norm(out) for out in outputs]
         class_tokens = [out[:, 0] for out in outputs]
-        outputs = [out[:, 1 + self.num_register_tokens:] for out in outputs]
+        outputs = [out[:, 1 + self.num_register_tokens :] for out in outputs]
         if reshape:
             batch_size, _, w, h = x.shape
             outputs = [
-                out.reshape(
-                    batch_size, w // self.patch_size, h // self.patch_size, -1
-                )
+                out.reshape(batch_size, w // self.patch_size, h // self.patch_size, -1)
                 .permute(0, 3, 1, 2)
                 .contiguous()
                 for out in outputs
@@ -893,9 +888,11 @@ class VisionTransformer(nn.Module):
         if is_training:
             return ret
         else:
-            return self.head(ret["x_norm_1st_clstoken"]), self.head(
-                ret["x_norm_2nd_clstoken"]
-            ), ret["x_norm_patchtokens"]
+            return (
+                self.head(ret["x_norm_1st_clstoken"]),
+                self.head(ret["x_norm_2nd_clstoken"]),
+                ret["x_norm_patchtokens"],
+            )
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ""):  # pylint: disable=unused-argument

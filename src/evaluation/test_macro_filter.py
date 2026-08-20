@@ -10,12 +10,14 @@ from PIL import Image
 from torchvision import transforms
 from transformers import AutoModel
 
-MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER'
+MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
 
-tips_transform = transforms.Compose([
-    transforms.Resize((448, 448)),
-    transforms.ToTensor(),
-])
+tips_transform = transforms.Compose(
+    [
+        transforms.Resize((448, 448)),
+        transforms.ToTensor(),
+    ]
+)
 
 
 def download_image(url):
@@ -49,11 +51,20 @@ def download_image(url):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Test script to verify the zero-shot macro/close-up filter on iNaturalist observations.")
-    parser.add_argument("--csv", type=str, required=True, help="Path to the iNaturalist CSV file.")
-    parser.add_argument("--limit", type=int, default=15, help="Number of observations to test.")
-    parser.add_argument("--out_dir", type=str, default="macro_test_results",
-                        help="Directory to save classified test images.")
+        description="Test script to verify the zero-shot macro/close-up filter on iNaturalist observations."
+    )
+    parser.add_argument(
+        "--csv", type=str, required=True, help="Path to the iNaturalist CSV file."
+    )
+    parser.add_argument(
+        "--limit", type=int, default=15, help="Number of observations to test."
+    )
+    parser.add_argument(
+        "--out_dir",
+        type=str,
+        default="macro_test_results",
+        help="Directory to save classified test images.",
+    )
     args = parser.parse_args()
 
     # Load CSV
@@ -78,7 +89,7 @@ def main():
         "An indoor scene",
         "An outdoor landscape or street view",
         "A close-up macro photo of a animal, single leaf, plant petal, flower, insect, mushroom, or tree bark",
-        "A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible"
+        "A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible",
     ]
     print("Pre-computing filter text embeddings...")
     with torch.no_grad():
@@ -97,11 +108,13 @@ def main():
 
     print("\nProcessing images...")
     for idx, row in df_sample.iterrows():
-        photo_id = str(row['Photo_ID'])
-        common_name = row.get('Common_Name', 'Unknown')
-        url = row['Image_URL']
+        photo_id = str(row["Photo_ID"])
+        common_name = row.get("Common_Name", "Unknown")
+        url = row["Image_URL"]
 
-        print(f"\n[{idx + 1}/{len(df_sample)}] Downloading Photo ID {photo_id} ({common_name})...")
+        print(
+            f"\n[{idx + 1}/{len(df_sample)}] Downloading Photo ID {photo_id} ({common_name})..."
+        )
         img = download_image(url)
         if img is None:
             print(" -> Failed to download image.")
@@ -110,15 +123,24 @@ def main():
         # Extract embedding
         with torch.no_grad():
             img_tensor = tips_transform(img).unsqueeze(0).to(device)
-            embedding = model.encode_image(img_tensor).cls_token.squeeze(1).cpu().numpy()
+            embedding = (
+                model.encode_image(img_tensor).cls_token.squeeze(1).cpu().numpy()
+            )
 
         # Compute cosine similarities
         emb_norm = embedding / (np.linalg.norm(embedding) or 1.0)
-        text_norms = text_features / np.linalg.norm(text_features, axis=1, keepdims=True)
+        text_norms = text_features / np.linalg.norm(
+            text_features, axis=1, keepdims=True
+        )
         sims = np.dot(emb_norm, text_norms.T)[0]
 
         best_class = np.argmax(sims)
-        classes_map = {0: "Indoor", 1: "Landscape", 2: "Macro/Close-up", 3: "Sky/Flying"}
+        classes_map = {
+            0: "Indoor",
+            1: "Landscape",
+            2: "Macro/Close-up",
+            3: "Sky/Flying",
+        }
         prediction = classes_map[best_class]
 
         # Determine decision
@@ -135,20 +157,28 @@ def main():
             save_target_dir = sky_dir
 
         # Save image to respective folder
-        img.save(os.path.join(save_target_dir, f"{photo_id}_{common_name.replace(' ', '_')}.jpg"))
+        img.save(
+            os.path.join(
+                save_target_dir, f"{photo_id}_{common_name.replace(' ', '_')}.jpg"
+            )
+        )
 
-        results_summary.append({
-            "Photo_ID": photo_id,
-            "Common_Name": common_name,
-            "Indoor_Sim": sims[0],
-            "Landscape_Sim": sims[1],
-            "Macro_Sim": sims[2],
-            "Sky_Sim": sims[3],
-            "Prediction": prediction,
-            "Decision": decision
-        })
+        results_summary.append(
+            {
+                "Photo_ID": photo_id,
+                "Common_Name": common_name,
+                "Indoor_Sim": sims[0],
+                "Landscape_Sim": sims[1],
+                "Macro_Sim": sims[2],
+                "Sky_Sim": sims[3],
+                "Prediction": prediction,
+                "Decision": decision,
+            }
+        )
 
-        print(f" -> Cosine Sims: Indoor={sims[0]:.4f} | Landscape={sims[1]:.4f} | Macro={sims[2]:.4f} | Sky={sims[3]:.4f}")
+        print(
+            f" -> Cosine Sims: Indoor={sims[0]:.4f} | Landscape={sims[1]:.4f} | Macro={sims[2]:.4f} | Sky={sims[3]:.4f}"
+        )
         print(f" -> Predicted: {prediction} | Decision: {decision}")
 
     # Display final table
@@ -156,9 +186,15 @@ def main():
     print("\n" + "=" * 105)
     print("TEST FILTER RESULTS SUMMARY")
     print("=" * 105)
-    print(df_res.to_string(index=False, columns=["Photo_ID", "Common_Name", "Prediction", "Decision"]))
+    print(
+        df_res.to_string(
+            index=False, columns=["Photo_ID", "Common_Name", "Prediction", "Decision"]
+        )
+    )
     print("=" * 105)
-    print(f"\nImages saved to dynamic classification folders under: {os.path.abspath(args.out_dir)}")
+    print(
+        f"\nImages saved to dynamic classification folders under: {os.path.abspath(args.out_dir)}"
+    )
     print(" - kept_landscape/: True outdoor views")
     print(" - dropped_macro/: Plant/animal close-ups (discarded)")
     print(" - dropped_indoor/: Indoor scenes (discarded)")

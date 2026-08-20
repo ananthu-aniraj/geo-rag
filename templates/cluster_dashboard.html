@@ -338,7 +338,7 @@
     <div id="results" class="results-container">
         <!-- Clusters rendered here via JS -->
     </div>
-    
+
     <button id="loadMoreBtn" class="load-more" onclick="loadMore()" style="display: none;">Load More Clusters</button>
 
     <script>
@@ -352,17 +352,17 @@
             // Avoid infinite loops if retry fails
             if (img.dataset.retryAttempt) return;
             img.dataset.retryAttempt = '1';
-            
+
             const platformLower = String(platform).toLowerCase().trim();
             const isMapillary = platformLower === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
             const isKartaview = platformLower === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
-            
+
             // Clean up photoId to remove any trailing .0 or other formatting issues
             let cleanPhotoId = String(photoId).trim();
             if (cleanPhotoId.endsWith('.0')) {
                 cleanPhotoId = cleanPhotoId.slice(0, -2);
             }
-            
+
             if (isMapillary && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {
                 const apiUrl = `https://graph.mapillary.com/${cleanPhotoId}?fields=thumb_1024_url`;
                 fetch(apiUrl, {
@@ -400,7 +400,7 @@
         function renderResults(append = false) {
             const container = document.getElementById('results');
             const sortVal = document.getElementById('sortSelect').value;
-            
+
             let toRender = [...filteredData];
             if (sortVal === 'count') {
                 toRender.sort((a, b) => ((b.count !== undefined ? b.count : (b.size || 0)) - (a.count !== undefined ? a.count : (a.size || 0))));
@@ -411,11 +411,11 @@
             }
 
             const slice = toRender.slice(append ? renderLimit - 50 : 0, renderLimit);
-            
+
             const html = slice.map(c => {
                 const countVal = (c.count !== undefined) ? c.count : (c.size !== undefined ? c.size : 0);
                 const h3Val = (c.unique_h3_count !== undefined) ? c.unique_h3_count : 0;
-                
+
                 return `
                 <div class="cluster-card" id="cluster-card-${c.id}">
                     <div class="cluster-header">
@@ -430,16 +430,16 @@
                     <div class="desc-box" style="border-left-color: #f59e0b; background-color: #fffbeb; margin-bottom: 12px;">
                         <b>VLM Step 1 (Visual Description):</b> ${c.visual_description}
                     </div>` : ''}
-                    
+
                     ${c.description ? `
                     <div class="desc-box" style="border-left-color: #4f46e5; background-color: #f8fafc; margin-bottom: 20px;">
                         <b>VLM Step 2 (LULC Ecological Description):</b> ${c.description}
                     </div>` : ''}
-                    
+
                     <button class="map-toggle-btn" id="map-btn-${c.id}" onclick="toggleMap(${c.id})">
                         🗺️ Show Geographic Spread Map
                     </button>
-                    
+
                     <div id="map-container-${c.id}" class="map-container" style="display: none;"></div>
 
                     <div class="image-grid">
@@ -453,7 +453,7 @@
                             const maxDate = maxDateEl ? maxDateEl.value : '';
                             const seasonVal = seasonSelectEl ? seasonSelectEl.value : '';
                             const todVal = todSelectEl ? todSelectEl.value : '';
-                            
+
                             if (seasonVal && s.season !== seasonVal) return false;
                             if (todVal && s.time_of_day !== todVal) return false;
                             if (minDate || maxDate) {
@@ -473,7 +473,7 @@
                             const simVal = (s.sim !== undefined && s.sim !== null) ? Number(s.sim).toFixed(4) : '0.0000';
                             const latVal = (s.lat !== undefined && s.lat !== null) ? Number(s.lat).toFixed(4) : '0.0000';
                             const lonVal = (s.lon !== undefined && s.lon !== null) ? Number(s.lon).toFixed(4) : '0.0000';
-                            
+
                             return `
                                 <div class="image-item" style="${s.is_outlier ? 'border-color: #ffe0b2; background-color: #fffaf0;' : ''}">
                                     <div class="image-role" style="color: ${roleColor}">
@@ -494,7 +494,7 @@
                 </div>
             `;
             }).join('');
-            
+
             if (append) {
                 container.innerHTML += html;
             } else {
@@ -505,7 +505,7 @@
                 });
                 container.innerHTML = html;
             }
-            
+
             const btn = document.getElementById('loadMoreBtn');
             if (toRender.length > renderLimit) {
                 btn.style.display = 'block';
@@ -517,7 +517,7 @@
         function toggleMap(clusterId) {
             const container = document.getElementById(`map-container-${clusterId}`);
             const btn = document.getElementById(`map-btn-${clusterId}`);
-            
+
             if (container.style.display === 'none') {
                 container.style.display = 'block';
                 btn.innerHTML = '🗺️ Hide Geographic Map';
@@ -591,7 +591,7 @@
                     markerColor = '#d93025';
                 }
                 const label = s.rank_label + ' location';
-                
+
                 L.circleMarker([s.lat, s.lon], {
                     radius: 8,
                     fillColor: markerColor,
@@ -637,7 +637,7 @@
             const input = document.getElementById('locationInput');
             const statusLabel = document.getElementById('locationStatus');
             const query = input.value.trim();
-            
+
             if (!query) {
                 locationBbox = null;
                 localLocationFilter = null;
@@ -703,15 +703,15 @@
                 filterDataCombined();
                 return;
             }
-            
+
             // 3. Online geocoding API fallback for specific cities/landmarks
             try {
                 const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
                 const response = await fetch(url);
-                
+
                 if (!response.ok) throw new Error("OSM Nominatim API request failed.");
                 const results = await response.json();
-                
+
                 if (results && results.length > 0) {
                     const place = results[0];
                     const bbox = place.boundingbox.map(Number); // [minlat, maxlat, minlon, maxlon]
@@ -740,7 +740,7 @@
                 statusLabel.innerHTML = "❌ Connection error";
                 statusLabel.style.color = "red";
             }
-            
+
             filterDataCombined();
         }
 
@@ -762,7 +762,7 @@
             const cells = new Set();
             const latStep = (bbox.max_lat - bbox.min_lat) / 8;
             const lonStep = (bbox.max_lon - bbox.min_lon) / 8;
-            
+
             for (let i = 0; i <= 8; i++) {
                 for (let j = 0; j <= 8; j++) {
                     const lat = bbox.min_lat + i * latStep;
@@ -783,23 +783,23 @@
             const maxDate = document.getElementById('maxDateInput').value;
             const seasonVal = document.getElementById('seasonSelect').value;
             const todVal = document.getElementById('todSelect').value;
-            
+
             // 1. Text Search filtering
             let temp = data;
             if (searchVal) {
-                temp = temp.filter(c => 
-                    c.id.toString().includes(searchVal) || 
+                temp = temp.filter(c =>
+                    c.id.toString().includes(searchVal) ||
                     c.label.toLowerCase().includes(searchVal) ||
                     (c.description && c.description.toLowerCase().includes(searchVal)) ||
                     (c.visual_description && c.visual_description.toLowerCase().includes(searchVal))
                 );
             }
-            
+
             // 2. Parent Category filtering
             if (parentVal) {
                 temp = temp.filter(c => c.parent_label === parentVal);
             }
-            
+
             // 3. Location / Region filtering
             if (localLocationFilter) {
                 temp = temp.filter(c => {
@@ -815,14 +815,14 @@
                     const h3Res = (typeof TARGET_H3_RES !== 'undefined') ? TARGET_H3_RES : 5;
                     queryCells = getH3CellsInBbox(locationBbox, h3Res);
                 }
-                
+
                 temp = temp.filter(c => {
                     // Check H3 overlap if H3 library is loaded and cluster has coverage
                     if (queryCells.length > 0 && c.h3_res_tgt && c.h3_res_tgt.length > 0) {
                         const hasOverlap = c.h3_res_tgt.some(cell => queryCells.includes(cell));
                         if (hasOverlap) return true;
                     }
-                    
+
                     // Fallback to coordinates bounding box check
                     // Check if cluster center is inside geocoded bounding box
                     const centerInBbox = (
@@ -832,50 +832,50 @@
                         c.center_lon <= locationBbox.max_lon
                     );
                     if (centerInBbox) return true;
-                    
+
                     // Check if any cluster sample coordinates are inside bounding box
-                    const sampleInBbox = c.samples.some(s => 
+                    const sampleInBbox = c.samples.some(s =>
                         s.lat >= locationBbox.min_lat &&
                         s.lat <= locationBbox.max_lat &&
                         s.lon >= locationBbox.min_lon &&
                         s.lon <= locationBbox.max_lon
                     );
                     if (sampleInBbox) return true;
- 
+
                     // Check if any density centroid points are inside bounding box
-                    const h3InBbox = c.h3_centroids.some(pt => 
+                    const h3InBbox = c.h3_centroids.some(pt =>
                         pt[0] >= locationBbox.min_lat &&
                         pt[0] <= locationBbox.max_lat &&
                         pt[1] >= locationBbox.min_lon &&
                         pt[1] <= locationBbox.max_lon
                     );
                     if (h3InBbox) return true;
-                    
+
                     // Proximity fallback: Check if cluster center is within 60km of search point
                     const distance = getHaversineDistance(c.center_lat, c.center_lon, locationBbox.lat, locationBbox.lon);
                     if (distance <= 60.0) return true;
-                    
+
                     return false;
                 });
             }
 
             // 4. Season filtering
             if (seasonVal) {
-                temp = temp.filter(c => 
+                temp = temp.filter(c =>
                     c.samples.some(s => s.season === seasonVal)
                 );
             }
 
             // 5. Time of Day filtering
             if (todVal) {
-                temp = temp.filter(c => 
+                temp = temp.filter(c =>
                     c.samples.some(s => s.time_of_day === todVal)
                 );
             }
 
             // 6. Date Range filtering
             if (minDate || maxDate) {
-                temp = temp.filter(c => 
+                temp = temp.filter(c =>
                     c.samples.some(s => {
                         if (!s.captured_at) return false;
                         const dateStr = s.captured_at.substring(0, 10);
@@ -885,7 +885,7 @@
                     })
                 );
             }
-            
+
             filteredData = temp;
             resetAndRender();
         }
