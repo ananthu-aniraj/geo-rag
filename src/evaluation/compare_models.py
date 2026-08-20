@@ -84,11 +84,19 @@ def parse_report_file(report_path, model_name):
                     # Strip leading spaces/hyphens/underscores
                     rep = re.sub(r"^[-_\s]+", "", rep)
 
+                    # Extract precision suffix if present
+                    precision = "FP32"  # default
+                    match_prec = re.search(r"\s+\((FP16|FP32)\)$", rep)
+                    if match_prec:
+                        precision = match_prec.group(1)
+                        rep = rep[: -len(match_prec.group(0))].strip()
+
                     results.append(
                         {
                             "Model": model_name,
                             "Evaluation": current_evaluation,
                             "Representation": rep,
+                            "Precision": precision,
                             "P@1": parts[1],
                             "P@5": parts[2],
                             "P@10": parts[3],
@@ -101,37 +109,45 @@ def parse_report_file(report_path, model_name):
 
 def deduplicate_cnn_rows(results):
     """
-    If a model doesn't have a real CLS token, CLS and Average Patch scores
-    will be identical. We filter out the redundant CLS row for such cases.
+    If a model doesn't have a real CLS token, CLS and other representation
+    combinations (like CLS + Avg Patch) will have identical scores to
+    Average Patch. We filter out the redundant rows for such cases.
     """
     grouped = {}
     for r in results:
-        key = (r["Model"], r["Evaluation"])
+        key = (r["Model"], r["Evaluation"], r["Precision"])
         if key not in grouped:
             grouped[key] = []
         grouped[key].append(r)
 
     filtered_results = []
     for key, rows in grouped.items():
-        cls_row = next((r for r in rows if r["Representation"] == "CLS"), None)
         avg_row = next(
             (r for r in rows if r["Representation"] == "Average Patch"), None
         )
 
-        if cls_row and avg_row:
-            metrics_match = (
-                cls_row["P@1"] == avg_row["P@1"]
-                and cls_row["P@5"] == avg_row["P@5"]
-                and cls_row["P@10"] == avg_row["P@10"]
-                and cls_row["MAP@10"] == avg_row["MAP@10"]
-                and cls_row["MRR@10"] == avg_row["MRR@10"]
-            )
-            if metrics_match:
-                # Remove redundant CLS row and rename Average Patch to show it's a CNN/No-CLS model
-                rows = [r for r in rows if r is not cls_row]
-                for r in rows:
-                    if r["Representation"] == "Average Patch":
-                        r["Representation"] = "Average (No CLS)"
+        if avg_row:
+            cleaned_rows = [avg_row]
+
+            for r in rows:
+                if r is avg_row:
+                    continue
+                if r["Representation"] in ["CLS", "CLS + Avg Patch"]:
+                    metrics_match = (
+                        r["P@1"] == avg_row["P@1"]
+                        and r["P@5"] == avg_row["P@5"]
+                        and r["P@10"] == avg_row["P@10"]
+                        and r["MAP@10"] == avg_row["MAP@10"]
+                        and r["MRR@10"] == avg_row["MRR@10"]
+                    )
+                    if metrics_match:
+                        continue
+                cleaned_rows.append(r)
+
+            if len(cleaned_rows) < len(rows):
+                avg_row["Representation"] = "Average (No CLS)"
+
+            rows = cleaned_rows
 
         filtered_results.extend(rows)
     return filtered_results
@@ -284,8 +300,10 @@ def main():
         categories = sorted(list(set(r["Evaluation"] for r in all_results)))
         for category in categories:
             f.write(f"## {category} Comparison\n\n")
-            f.write("| Model | Representation | P@1 | P@5 | P@10 | MAP@10 | MRR@10 |\n")
-            f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+            f.write(
+                "| Model | Representation | Precision | P@1 | P@5 | P@10 | MAP@10 | MRR@10 |\n"
+            )
+            f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
 
             cat_results = [r for r in all_results if r["Evaluation"] == category]
             # Sort by P@1 metric descending
@@ -295,7 +313,7 @@ def main():
 
             for r in cat_results:
                 f.write(
-                    f"| {r['Model']} | {r['Representation']} | {r['P@1']} | {r['P@5']} | {r['P@10']} | {r['MAP@10']} | {r['MRR@10']} |\n"
+                    f"| {r['Model']} | {r['Representation']} | {r['Precision']} | {r['P@1']} | {r['P@5']} | {r['P@10']} | {r['MAP@10']} | {r['MRR@10']} |\n"
                 )
             f.write("\n")
 
