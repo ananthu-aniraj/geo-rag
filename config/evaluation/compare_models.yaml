@@ -6,3 +6,4 @@ models:
   - "convnext_base.dinov3_lvd1689m"
   - "vit_base_patch16_dinov3_qkvb.lvd1689m"
   - "vit_base_patch16_dinov3.lvd1689m"
+  - "vit_base_patch16_clip_224.openai"
