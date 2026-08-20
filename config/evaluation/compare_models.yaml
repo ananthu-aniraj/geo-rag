@@ -1,0 +1,5 @@
+# List of vision models to evaluate in the comparison benchmarks
+models:
+  - "google/tipsv2-b14"
+  - "vit_base_patch14_dinov2.lvd142m"
+  - "resnet50"

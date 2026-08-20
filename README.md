@@ -23,7 +23,7 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 ```text
 geo-rag/
 ├── config/                       # Centralized parameter & credentials files
-│   ├── evaluation/               # Evaluation parameters (offline/online)
+│   ├── evaluation/               # Evaluation parameters (params, compare_models.yaml)
 │   ├── scrapers/                 # Scraper execution configs (YAML)
 │   └── wiki/                     # MkDocs wiki configuration (YAML)
 ├── docs/                         # Technical Documentation & Wiki pages
@@ -41,7 +41,7 @@ geo-rag/
 │   └── pipeline_flowchart_clean.jpg # Pipeline architecture flowchart diagram
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
 ├── scripts/                      # Automated shell orchestrators
-│   ├── evaluation/               # Benchmark and evaluation runner scripts
+│   ├── evaluation/               # Evaluation & collated model comparison runners
 │   └── scrapers/                 # Data collection and profiling runner wrappers
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
 ├── src/                          # Core Python Package
