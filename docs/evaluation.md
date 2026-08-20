@@ -1,6 +1,7 @@
 # Evaluation & Benchmarking Methodology
 
 This document outlines the evaluation and benchmarking suites in the Geo-RAG pipeline. These scripts are designed to measure:
+
 1. **MLLM/VLM Captioning Quality & Scene Classification (`caption_test.py`)** - Zero-shot scene classification and text-image alignment on Places365.
 2. **LUCAS 2018 Classification Accuracy (`evaluate_lucas.py`)** - Zero-shot VLM land cover, land use, and habitat prediction accuracy.
 3. **Cross-Modal Retrieval Performance (`evaluate_retrieval.py`)** - Text-to-image and image-to-text retrieval using VLM captions.

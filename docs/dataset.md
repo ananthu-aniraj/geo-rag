@@ -35,10 +35,11 @@ This document describes the structure, formats, and design of the dataset output
 To conserve SSD storage and system RAM, the dataset uses a **decoupled architecture** where heavy embedding matrices, base metadata, and cluster mappings are stored separately but remain mathematically linked:
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": true}} }%%
 graph TD
     A["Base Metadata<br>geo_space_cleaned.parquet<br>(Photo_ID, Platform, Lat, Lon)"] -->|1. Lookup photo_key| E["Keys Index<br>geo_space_cls_embeddings.keys.parquet<br>(photo_key)"]
     E -->|2. Map indices| B["Master Embedding Matrix<br>geo_space_cls_embeddings.npy<br>(N_master, 768)"]
-    A <-->|Join on Photo_ID & Platform| C["Cluster Sidecar<br>geo_space_clustered_k_40000.parquet<br>(cluster_id, parent_id, visual_desc)"]
+    A ---|Join on Photo_ID & Platform| C["Cluster Sidecar<br>geo_space_clustered_k_40000.parquet<br>(cluster_id, parent_id, visual_desc)"]
     C -->|Aggregate H3 cells res 1-11| D["Hierarchical Index<br>geo_space_h3_semantic_index.parquet<br>(H3_Cell, cluster_id, query_cell)"]
 ```
 

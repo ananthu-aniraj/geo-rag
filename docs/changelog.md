@@ -9,10 +9,22 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ### Planned Security Refactoring
 - **Pipeline & MLLM Configuration Decoupling**:
   - Restructure core pipeline configurations (`params.yaml` -> `config/pipeline/params.yaml`).
-  - Add a `--mapillary_token` CLI argument to all Python scripts that interact with Mapillary, and configure shell runners to parse and pass this token dynamically.
   - Update `run_full_pipeline.sh` to source the `.env` variables and pass them natively to the Docker container environment (e.g. via `--env-file .env`).
 
-## [1.2.0] - 2026-08-18
+## [1.1.2] - 2026-08-20
+
+### Added
+- **Interactive Project Wiki & MathJax Support**: Added a Material for MkDocs configuration (`config/wiki/mkdocs.yml`) with support for Mermaid diagrams and MathJax LaTeX equation rendering (delimiters: `$ ... $`, `$$ ... $$`). Relocated the changelog inside the `docs/` folder and created a site homepage.
+- **Configurable CLIP Comparison**: Added the `compare_clip` parameter to the Places365 config, allowing users to toggle CLIP baselines directly from the YAML.
+- **Sanitized Model-Specific Output Reports**: Appended clean model names to benchmark report text and CSV files (e.g. `lucas_report_google_tipsv2-b14.txt`), preventing concurrent runs from overwriting each other.
+
+### Changed
+- **Streamlined Model Inference**: Refactored the vision model loading and inference layer to focus strictly on `timm` and `TIPSv2` models, making the code much easier to maintain.
+- **Lazy Class Token Verification**: Implemented lazy checks to query and cache class token presence (`cls_token` or `num_prefix_tokens > 0`) on model instances during the first forward pass, enabling support for models without a standard CLS token.
+- **Robust Boolean Parsing**: Standardized bash wrappers to support both lowercase (`false`) and title-case (`False`) outputs from PyYAML parser lookups, correcting issues where flags like `use_segformer: false` were ignored.
+- **Dynamic Mapillary API Keying in Evaluations**: Replaced hardcoded Mapillary credential variables in the spatial evaluation scripts with dynamic `--mapillary_token` parameters populated from the `.env` environment.
+
+## [1.1.1] - 2026-08-18
 
 ### Added
 - **Centralized Secrets Environment**: Created a gitignored `.env` file in the project root to store Flickr, Mapillary, and Hugging Face tokens, along with a committed `.env.template` setup template.

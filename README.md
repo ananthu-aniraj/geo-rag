@@ -24,13 +24,16 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 geo-rag/
 ├── config/                       # Centralized parameter & credentials files
 │   ├── evaluation/               # Evaluation parameters (offline/online)
-│   └── scrapers/                 # Scraper execution configs (YAML)
-├── docs/                         # Technical Documentation
+│   ├── scrapers/                 # Scraper execution configs (YAML)
+│   └── wiki/                     # MkDocs wiki configuration (YAML)
+├── docs/                         # Technical Documentation & Wiki pages
+│   ├── assets/                   # Website styling and frontend assets (MathJax, etc.)
 │   ├── pipeline/                 # Data engineering step-by-step pipeline stages
 │   │   ├── 01_ingestion_scraping.md
 │   │   ├── 02_spatial_deduplication.md
 │   │   ├── ...
 │   │   └── 09_visualization_dashboards.md
+│   ├── changelog.md              # Project history and release changes
 │   ├── dataset.md                # Dataset files, structures, & loading guide
 │   ├── evaluation.md             # Benchmark evaluations & retrieval suites
 │   ├── metrics.md                # Evaluation & retrieval metrics definitions
