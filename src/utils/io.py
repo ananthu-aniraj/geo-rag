@@ -425,6 +425,8 @@ def load_embeddings(parquet_path, column="embedding", representation_type="cls")
 
             master_keys = pd.Index(
                 pd.read_parquet(keys_path, columns=["photo_key"])["photo_key"]
+                .astype(str)
+                .str.lower()
             )
             if master_keys.is_unique:
                 indices = master_keys.get_indexer(meta_keys)
