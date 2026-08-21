@@ -444,8 +444,13 @@ def main():
     has_parents = "parent_cluster_id" in df.columns
     if has_parents:
         parent_ids = df.groupby("cluster_id")["parent_cluster_id"].first().to_dict()
-        unique_parents = sorted(set(parent_ids.values()))
-        k_parents = len(unique_parents)
+        # Clean and type-cast the dict to filter out any NaNs
+        parent_ids = {
+            int(cid): int(pid)
+            for cid, pid in parent_ids.items()
+            if pd.notna(cid) and pd.notna(pid)
+        }
+        k_parents = max(parent_ids.values()) + 1 if parent_ids else 0
         parent_centroids = np.zeros((k_parents, d), dtype=np.float32)
         for cid, pid in parent_ids.items():
             if cid < len(raw_centroids) and pid < k_parents:
