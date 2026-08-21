@@ -372,6 +372,15 @@ def main():
                                 "eunis_raster_class": metadata_dict[point_num].get(
                                     "eunis_raster_class", ""
                                 ),
+                                "eunis_raster_l1": metadata_dict[point_num].get(
+                                    "eunis_raster_l1", ""
+                                ),
+                                "eunis_raster_l2": metadata_dict[point_num].get(
+                                    "eunis_raster_l2", ""
+                                ),
+                                "eunis_raster_l3": metadata_dict[point_num].get(
+                                    "eunis_raster_l3", ""
+                                ),
                                 "env_zone_class": metadata_dict[point_num].get(
                                     "env_zone_class", ""
                                 ),
