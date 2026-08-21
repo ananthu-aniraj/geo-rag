@@ -25,23 +25,17 @@ def cluster_data(input_embeddings, k, gpu_enabled=True, minibatch_enabled=False)
     d = input_embeddings.shape[1]
 
     if gpu_enabled:
-        if faiss is None:
-            print(
-                "[WARNING] FAISS not available. Falling back to scikit-learn K-Means."
-            )
-            gpu_enabled = False
-        else:
-            print(f"Running FAISS GPU K-Means (k={k}, dim={d}, niter=20)...")
-            t0 = time.time()
-            kmeans_faiss = faiss.Kmeans(d, k, niter=20, verbose=True, gpu=True, seed=42)
-            kmeans_faiss.train(input_embeddings)
-            _, cluster_ids = kmeans_faiss.index.search(input_embeddings, 1)
-            cluster_ids = cluster_ids.ravel()
-            centroids = kmeans_faiss.centroids
-            print(f" -> FAISS GPU K-Means completed in {time.time() - t0:.2f}s.")
-            return cluster_ids, centroids
+        print(f"Running FAISS GPU K-Means (k={k}, dim={d}, niter=20)...")
+        t0 = time.time()
+        kmeans_faiss = faiss.Kmeans(d, k, niter=20, verbose=True, gpu=True, seed=42)
+        kmeans_faiss.train(input_embeddings)
+        _, cluster_ids = kmeans_faiss.index.search(input_embeddings, 1)
+        cluster_ids = cluster_ids.ravel()
+        centroids = kmeans_faiss.centroids
+        print(f" -> FAISS GPU K-Means completed in {time.time() - t0:.2f}s.")
+        return cluster_ids, centroids
 
-    if not gpu_enabled:
+    else:
         t0 = time.time()
         if minibatch_enabled:
             print(f"Running MiniBatchKMeans (k={k})...")
