@@ -14,6 +14,60 @@ from sklearn.preprocessing import normalize
 from src.utils.io import load_dataframe, load_embeddings, save_dataframe
 
 
+def sample_closest_points(embeddings_norm, cluster_ids, centroids, n_samples=10):
+    """
+    Selects the N points closest to each centroid from within their respective clusters.
+    Inspired by ssl-data-curation's closest-to-centroid sampling strategy.
+    """
+    sampled_indices = []
+    for cid in range(len(centroids)):
+        mask = cluster_ids == cid
+        if not np.any(mask):
+            continue
+        indices = np.where(mask)[0]
+        if len(indices) <= n_samples:
+            sampled_indices.extend(indices)
+        else:
+            # Vectorized dot product for cosine similarity (since vectors are normalized)
+            similarities = np.dot(embeddings_norm[indices], centroids[cid])
+            top_k = np.argsort(similarities)[-n_samples:]
+            sampled_indices.extend(indices[top_k])
+
+    return np.array(sampled_indices, dtype=np.int64)
+
+
+def map_resampled_parents_to_children(
+    sampled_indices, resampled_parent_ids, child_cluster_ids, k_child
+):
+    """
+    Maps parent cluster assignments from resampled points back to child clusters.
+    Uses majority voting of resampled points belonging to each child cluster.
+    """
+    from collections import Counter
+
+    child_to_parent = {}
+
+    # Group sampled indices by child cluster ID
+    # sampled_indices is aligned 1-to-1 with resampled_parent_ids
+    child_samples = {}
+    for idx, parent_id in zip(sampled_indices, resampled_parent_ids):
+        child_id = child_cluster_ids[idx]
+        if child_id not in child_samples:
+            child_samples[child_id] = []
+        child_samples[child_id].append(parent_id)
+
+    for cid in range(k_child):
+        parents = child_samples.get(cid, [])
+        if not parents:
+            # Fallback
+            child_to_parent[cid] = cid // 80
+        else:
+            # Majority vote
+            child_to_parent[cid] = Counter(parents).most_common(1)[0][0]
+
+    return child_to_parent
+
+
 def cluster_data(input_embeddings, k, gpu_enabled=True, minibatch_enabled=False):
     """Performs K-Means clustering using FAISS (GPU/CPU) or scikit-learn."""
     if k <= 0:
@@ -314,24 +368,36 @@ def main():
         valid_counts = counts > 0
         raw_centroids[valid_counts] /= counts[valid_counts, None]
 
-        # 2. Hierarchical Parent Clustering using FAISS
+        # 2. Hierarchical Parent Clustering using FAISS with Closest-Point Resampling
         print(
-            f"\n--- [Stage 2/2] Hierarchical Parent Clustering (k_parents={k_parents}) ---"
+            f"\n--- [Stage 2/2] Hierarchical Parent Clustering via Resampling (k_parents={k_parents}) ---"
         )
-        centroids_norm_hac = normalize(raw_centroids).astype(np.float32)
-        parent_ids, _ = cluster_data(
-            centroids_norm_hac,
+        print("Sampling 10 closest points per child cluster centroid...")
+        t_resample = time.time()
+        sampled_indices = sample_closest_points(
+            embeddings_norm, child_cluster_ids, raw_centroids, n_samples=10
+        )
+        print(
+            f" -> Sampled {len(sampled_indices):,} representative points in {time.time() - t_resample:.2f}s."
+        )
+
+        print(f"Clustering resampled embeddings into {k_parents} parent groups...")
+        resampled_embeddings = embeddings_norm[sampled_indices]
+        resampled_parent_ids, _ = cluster_data(
+            resampled_embeddings,
             k_parents,
             gpu_enabled=args.gpu,
             minibatch_enabled=args.minibatch,
         )
 
+        print("Mapping resampled parent assignments back to child clusters...")
+        parent_id_map = map_resampled_parents_to_children(
+            sampled_indices, resampled_parent_ids, child_cluster_ids, args.k
+        )
+
         # Assign cluster IDs to DataFrame
         print("\nAssigning cluster IDs to metadata...")
         df["cluster_id"] = child_cluster_ids.astype(int)
-        parent_id_map = {
-            cid: int(parent_ids[cid]) for cid in range(args.k) if cid < len(parent_ids)
-        }
         df["parent_cluster_id"] = df["cluster_id"].map(parent_id_map)
 
     # Save output
