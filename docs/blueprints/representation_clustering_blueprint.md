@@ -10,26 +10,35 @@ This blueprint outlines the planned architectural shifts for the Geo-RAG represe
 Currently, image clustering is performed purely in the visual embedding space. While this groups visually identical categories, it lacks spatial awareness, causing similar environments (e.g., agricultural fields in northern Finland and southern Spain) to share the same child clusters. To capture regional geographic contiguity, we will implement spatial-semantic joint spaces.
 
 ### Technical Design
-We project coordinates onto a 3D unit sphere to prevent longitude wrapping boundary errors, scale them by a spatial-semantic balance hyperparameter $\lambda$, and concatenate them with normalized visual embeddings.
+We project geographical coordinates into a conformal 2D space using the Mercator projection and encode them into multi-scale representations using **Random Fourier Features (RFF)**. This design is directly based on the **G3 Geolocalization Framework (NeurIPS 2024)**, which demonstrates that continuous conformal projections aligned with visual-text representations achieve state-of-the-art results.
 
 1. **Visual Embedding Normalization**:
    $$v_{\text{norm}} = \frac{v}{\|v\|_2}$$
-2. **3D Cartesian Projection**:
-   $$x = \cos(\text{lat}) \cos(\text{lon})$$
-   $$y = \cos(\text{lat}) \sin(\text{lon})$$
-   $$z = \sin(\text{lat})$$
-3. **Concatenated Target Vector**:
-   $$X_{\text{joint}} = [v_{\text{norm}} \;\|\; \lambda \cdot x, \; \lambda \cdot y, \; \lambda \cdot z]$$
+
+2. **Mercator Coordinate Projection (Conformal)**:
+   We transform radians of latitude ($\phi$) and longitude ($\lambda$) into plane coordinates:
+   $$x = R \cdot (\lambda - \lambda_0)$$
+   $$y = R \cdot \ln\left[ \tan\left( \frac{\pi}{4} + \frac{\phi}{2} \right) \right]$$
+   where $R$ is a proportional constant of Earth's radius and $\lambda_0$ is the central meridian longitude.
+
+3. **Multi-Scale Random Fourier Features (RFF) Mapping**:
+   To capture both macro-scale (continental) and micro-scale (local) spatial variations, the projected coordinate $G_i = (x_i, y_i)$ is passed through a bank of Gaussian-frequency sinusoids:
+   $$\gamma(G_i, \sigma_k) = [\cos(2\pi M G_i), \sin(2\pi S G_i)]^T$$
+   where $M$ and $S$ are frequency matrices sampled from a Gaussian distribution $\mathcal{N}(0, \sigma_k)$. We compute representations across $K$ hierarchical frequency bands ($\sigma_{\text{min}}$ to $\sigma_{\text{max}}$) and aggregate them into the final continuous coordinate embedding:
+   $$e_{\text{gps}} = \sum_{k=1}^K f_k(\gamma(G_i, \sigma_k))$$
+
+4. **Concatenated Target Vector**:
+   $$X_{\text{joint}} = [v_{\text{norm}} \;\|\; \lambda_{\text{spatial}} \cdot e_{\text{gps}}]$$
 
 ```
 ┌───────────────────────────────────────┬─────────────────────────┐
-│  Visual Semantic Embeddings (768 Dim)  │ Spatial Coordinates (3) │
+│  Visual Semantic Embeddings (768 Dim)  │ Multi-scale RFF Coords  │
 │           Normalized to L2 = 1        │  Scaled by Weight (λ)   │
 └───────────────────────────────────────┴─────────────────────────┘
 ```
 
 ### FAISS Execution Engine
-* Since $\lambda$ alters the overall vector magnitude, we **cannot** use FAISS Spherical K-Means directly (which normalizes vectors to unit length at training time, erasing $\lambda$).
+* Since the spatial scaling parameter $\lambda_{\text{spatial}}$ alters the overall vector magnitude, we **cannot** use FAISS Spherical K-Means directly (as it normalizes inputs to unit length at training time, erasing the weight balance).
 * Instead, we will use **FAISS L2 K-Means** (`spherical=False`) on GPU, which executes at high speed on flat concatenated arrays.
 
 ---
