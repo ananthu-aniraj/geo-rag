@@ -8,6 +8,9 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Fixed
 - **Duplicate Key Reindexing Protection**: Gracefully handle duplicate photo keys in `load_embeddings` (`io.py`) and streaming indexers (`process_scraped_data.py`) by resolving indexing to their first unique occurrence, preventing `InvalidIndexError` when reindexing large datasets.
+- **Lowercase Platform and photo_key Standardization**: Standardized database and codebase casings for `Platform` columns and `photo_key` identifiers to lowercase globally (in `process_scraped_data.py` and `io.py`). This prevents duplicate entries when resuming scraping runs or merging datasets with mixed platform casings (e.g. 'Flickr' vs 'flickr').
+- **EUNIS 2024 Code-Based Legend Resolution**: Keyed the EUNIS 2024 legend mapping using the classification `Code` attribute rather than the row `Id` index in `spatial_overlays.py`. This resolves coordinate query errors where pixel codes (e.g. `8000`, `2113`) failed to map, fully restoring Level 1, 2, and 3 geobotanical retrieval evaluations.
+- **Complete Checkpoint Purge**: Updated the cleanup task handler at the end of `process_scraped_data.py` to completely purge companion `*.keys.parquet`, `.npy` files, and lingering `.tmp` files left over from checkpoints upon successful completion.
 
 ### Planned Security Refactoring
 - **Pipeline & MLLM Configuration Decoupling**:
