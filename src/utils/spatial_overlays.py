@@ -122,9 +122,16 @@ def load_eunis_legend(raster_path):
         os.path.dirname(raster_path), "eunis_legend_detailed.csv"
     )
     if not os.path.exists(legend_path):
-        legend_path = os.path.join(
+        fallback_path = os.path.join(
             os.path.dirname(os.path.dirname(raster_path)), "eunis_legend_detailed.csv"
         )
+        if os.path.exists(fallback_path):
+            legend_path = fallback_path
+        else:
+            print(
+                f"Error: EUNIS legend file 'eunis_legend_detailed.csv' not found. "
+                f"Searched in: '{os.path.dirname(raster_path)}' and '{os.path.dirname(os.path.dirname(raster_path))}'"
+            )
 
     legend_df = pd.read_csv(legend_path)
     legend_mapping = {}
@@ -185,11 +192,13 @@ def lookup_eunis_levels(lat, lon, r_ds, transformer, has_axis_order, legend_mapp
         dict: {'eunis_l1': ..., 'eunis_l2': ..., 'eunis_l3': ...} or None if not found/invalid.
     """
     pixel_val = lookup_raster_pixel(lat, lon, r_ds, transformer, has_axis_order)
-    if (
-        pixel_val is None
-        or pixel_val == r_ds.nodata
-        or pixel_val <= 0
-        or pixel_val not in legend_mapping
-    ):
+    if pixel_val is None:
+        return None
+    if pixel_val == r_ds.nodata or pixel_val <= 0:
+        return None
+    if pixel_val not in legend_mapping:
+        print(
+            f"Warning: EUNIS pixel value {pixel_val} at coordinate ({lat}, {lon}) is missing from the legend CSV mapping!"
+        )
         return None
     return legend_mapping[pixel_val]
