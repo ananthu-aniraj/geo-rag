@@ -407,12 +407,18 @@ def load_embeddings(parquet_path, column="embedding", representation_type="cls")
             print(f" -> Resolving embeddings via companion keys index: {keys_path}")
             if has_photo_key:
                 meta_keys_table = pf.read(columns=["photo_key"])
-                meta_keys = meta_keys_table["photo_key"].to_pandas().values
+                meta_keys = (
+                    meta_keys_table["photo_key"]
+                    .to_pandas()
+                    .astype(str)
+                    .str.lower()
+                    .values
+                )
             else:
                 meta_keys_table = pf.read(columns=["Platform", "Photo_ID"])
                 df_temp = meta_keys_table.to_pandas()
                 meta_keys = (
-                    df_temp["Platform"].astype(str)
+                    df_temp["Platform"].astype(str).str.lower()
                     + "_"
                     + df_temp["Photo_ID"].astype(str)
                 ).values
@@ -420,7 +426,13 @@ def load_embeddings(parquet_path, column="embedding", representation_type="cls")
             master_keys = pd.Index(
                 pd.read_parquet(keys_path, columns=["photo_key"])["photo_key"]
             )
-            indices = master_keys.get_indexer(meta_keys)
+            if master_keys.is_unique:
+                indices = master_keys.get_indexer(meta_keys)
+            else:
+                # If keys contain duplicates, resolve each key to its first occurrence in the matrix
+                pos_series = pd.Series(np.arange(len(master_keys)), index=master_keys)
+                pos_series = pos_series[~pos_series.index.duplicated(keep="first")]
+                indices = pos_series.reindex(meta_keys, fill_value=-1).values
 
             valid_mask = indices >= 0
             if not valid_mask.all():

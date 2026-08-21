@@ -387,18 +387,36 @@ def stream_update_parquet(
                             "License", null_col
                         )
 
-                    # Ensure photo_key is populated in the table
-                    if "photo_key" in filtered_table.column_names:
-                        keys_arr = filtered_table["photo_key"]
-                    else:
-                        df_temp_rg = filtered_table.select(
-                            ["Platform", "Photo_ID"]
-                        ).to_pandas()
-                        keys_arr = pa.array(
-                            df_temp_rg["Platform"].astype(str)
-                            + "_"
-                            + df_temp_rg["Photo_ID"].astype(str)
+                    # Standardize Platform to lowercase
+                    if "Platform" in filtered_table.column_names:
+                        plat_pos = filtered_table.column_names.index("Platform")
+                        plat_col = (
+                            filtered_table.column(plat_pos)
+                            .to_pandas()
+                            .astype(str)
+                            .str.lower()
                         )
+                        filtered_table = filtered_table.set_column(
+                            plat_pos,
+                            pa.field("Platform", pa.string()),
+                            pa.array(plat_col),
+                        )
+
+                    # Ensure photo_key is populated and standardized to lowercase
+                    df_temp_rg = filtered_table.select(
+                        ["Platform", "Photo_ID"]
+                    ).to_pandas()
+                    keys_arr = pa.array(
+                        df_temp_rg["Platform"].astype(str).str.lower()
+                        + "_"
+                        + df_temp_rg["Photo_ID"].astype(str)
+                    )
+                    if "photo_key" in filtered_table.column_names:
+                        pk_pos = filtered_table.column_names.index("photo_key")
+                        filtered_table = filtered_table.set_column(
+                            pk_pos, pa.field("photo_key", pa.string()), keys_arr
+                        )
+                    else:
                         filtered_table = filtered_table.append_column(
                             "photo_key", keys_arr
                         )
@@ -407,7 +425,16 @@ def stream_update_parquet(
                     inactive_keys_list.append(chunk_keys)
 
                     # Retrieve matching embeddings using stable keys Indexer
-                    indices = input_keys_index.get_indexer(chunk_keys)
+                    if input_keys_index.is_unique:
+                        indices = input_keys_index.get_indexer(chunk_keys)
+                    else:
+                        pos_series = pd.Series(
+                            np.arange(len(input_keys_index)), index=input_keys_index
+                        )
+                        pos_series = pos_series[
+                            ~pos_series.index.duplicated(keep="first")
+                        ]
+                        indices = pos_series.reindex(chunk_keys, fill_value=-1).values
                     embs = full_embeddings[indices]
                     inactive_embs_list.append(embs)
 
@@ -425,12 +452,11 @@ def stream_update_parquet(
                 )
 
                 # Generate stable photo_key
-                if "photo_key" not in df_new_aligned.columns:
-                    df_new_aligned["photo_key"] = (
-                        df_new_aligned["Platform"].astype(str)
-                        + "_"
-                        + df_new_aligned["Photo_ID"].astype(str)
-                    )
+                df_new_aligned["photo_key"] = (
+                    df_new_aligned["Platform"].astype(str).str.lower()
+                    + "_"
+                    + df_new_aligned["Photo_ID"].astype(str)
+                )
 
                 new_keys = df_new_aligned["photo_key"].values
                 df_new_aligned = df_new_aligned.drop(
@@ -639,13 +665,13 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
             df["Platform"] = platform
         else:
             if "inaturalist" in f.lower():
-                platform = "iNaturalist"
+                platform = "inaturalist"
             elif "flickr" in f.lower():
-                platform = "Flickr"
+                platform = "flickr"
             elif "iwildcam" in f.lower():
-                platform = "iWildCam"
+                platform = "iwildcam"
             else:
-                platform = "Mapillary"
+                platform = os.path.splitext(os.path.basename(f))[0].lower()
 
             col_map = {
                 "latitude": "Latitude",
@@ -670,6 +696,8 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
                         break
             if "Platform" not in df.columns:
                 df["Platform"] = platform
+            else:
+                df["Platform"] = df["Platform"].astype(str).str.strip().str.lower()
 
         # Determine if the file is from an offline directory
         is_offline = False
@@ -923,7 +951,7 @@ def main():
 
             seen_keys = set(
                 zip(
-                    df_existing["Platform"],
+                    df_existing["Platform"].astype(str).str.lower(),
                     df_existing["Photo_ID"].apply(clean_photo_id),
                 )
             )
@@ -951,7 +979,7 @@ def main():
             )
             seen_keys = set(
                 zip(
-                    df_existing["Platform"],
+                    df_existing["Platform"].astype(str).str.lower(),
                     df_existing["Photo_ID"].apply(clean_photo_id),
                 )
             )
@@ -1126,7 +1154,14 @@ def main():
                 )
 
                 # Resolve indices using pd.Index.get_indexer
-                indices = master_keys.get_indexer(active_keys)
+                if master_keys.is_unique:
+                    indices = master_keys.get_indexer(active_keys)
+                else:
+                    pos_series = pd.Series(
+                        np.arange(len(master_keys)), index=master_keys
+                    )
+                    pos_series = pos_series[~pos_series.index.duplicated(keep="first")]
+                    indices = pos_series.reindex(active_keys, fill_value=-1).values
 
                 valid_mask = indices >= 0
                 if not valid_mask.all():
@@ -1378,28 +1413,30 @@ def main():
         )
 
     # Clean up checkpoint files on successful completion
-    if os.path.exists(checkpoint_path):
-        try:
-            os.remove(checkpoint_path)
-        except Exception:
-            pass
+    for path_to_remove in [checkpoint_path, checkpoint_meta_path]:
+        if os.path.exists(path_to_remove):
+            try:
+                os.remove(path_to_remove)
+            except Exception:
+                pass
+        # Clean up any lingering .tmp files
+        if os.path.exists(path_to_remove + ".tmp"):
+            try:
+                os.remove(path_to_remove + ".tmp")
+            except Exception:
+                pass
 
-    # Clean up checkpoint companion .npy files
+    # Clean up checkpoint companion files (.npy and .keys.parquet)
     checkpoint_dir = os.path.dirname(os.path.abspath(checkpoint_path))
     checkpoint_base = os.path.splitext(os.path.basename(checkpoint_path))[0]
-    for checkpoint_npy in glob.glob(
-        os.path.join(checkpoint_dir, f"{checkpoint_base}*.npy")
-    ):
-        try:
-            os.remove(checkpoint_npy)
-        except Exception:
-            pass
-
-    if os.path.exists(checkpoint_meta_path):
-        try:
-            os.remove(checkpoint_meta_path)
-        except Exception:
-            pass
+    for ext in ["*.npy", "*.keys.parquet"]:
+        for companion_file in glob.glob(
+            os.path.join(checkpoint_dir, f"{checkpoint_base}{ext}")
+        ):
+            try:
+                os.remove(companion_file)
+            except Exception:
+                pass
 
     print("\nProcessing Complete!")
     print(f"Unique images kept: {len(final_data)}")

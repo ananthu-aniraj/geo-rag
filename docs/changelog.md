@@ -6,6 +6,9 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Duplicate Key Reindexing Protection**: Gracefully handle duplicate photo keys in `load_embeddings` (`io.py`) and streaming indexers (`process_scraped_data.py`) by resolving indexing to their first unique occurrence, preventing `InvalidIndexError` when reindexing large datasets.
+
 ### Planned Security Refactoring
 - **Pipeline & MLLM Configuration Decoupling**:
   - Restructure core pipeline configurations (`params.yaml` -> `config/pipeline/params.yaml`).
