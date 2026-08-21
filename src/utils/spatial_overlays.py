@@ -137,7 +137,7 @@ def load_eunis_legend(raster_path):
     legend_mapping = {}
     for _, row in legend_df.iterrows():
         try:
-            rid = int(row["Id"])
+            rid = int(row["Code"])
             l1_name = (
                 str(row["EUNIS1_name"]).strip()
                 if pd.notna(row["EUNIS1_name"])
