@@ -4,73 +4,63 @@ This blueprint outlines the planned architectural shifts for the Geo-RAG represe
 
 ---
 
-## 🗺️ 1. Spatial-Semantic Joint Clustering
+### 🗺️ 1. H3-Restricted Local Visual Clustering (Primary Training-Free Design)
 
 ### Background & Objective
-Currently, image clustering is performed purely in the visual embedding space. While this groups visually identical categories, it lacks spatial awareness, causing similar environments (e.g., agricultural fields in northern Finland and southern Spain) to share the same child clusters. To capture regional geographic contiguity, we will implement spatial-semantic joint spaces.
+In a training-free pipeline, we cannot train projection networks (such as G3's learned contrastive Geo-alignment layers) to align the scales of coordinate representations and visual embeddings. Concatenating raw coordinates with normalized visual embeddings is highly unstable and requires intensive, sensitive tuning of the spatial weight hyperparameter $\lambda$.
+
+To enforce geographic contiguity without manual tuning or model training, we adopt **Discrete H3-Restricted Visual Clustering**. We use H3 cells at a coarse resolution as hard boundaries to bucket images geographically, and then cluster visually *within* those cells.
 
 ### Technical Design
-We project geographical coordinates into a conformal 2D space using the Mercator projection and encode them into multi-scale representations using **Random Fourier Features (RFF)**. This design is directly based on the **G3 Geolocalization Framework (NeurIPS 2024)**, which demonstrates that continuous conformal projections aligned with visual-text representations achieve state-of-the-art results.
-
-1. **Visual Embedding Normalization**:
-   $$v_{\text{norm}} = \frac{v}{\|v\|_2}$$
-
-2. **Mercator Coordinate Projection (Conformal)**:
-   We transform radians of latitude ($\phi$) and longitude ($\lambda$) into plane coordinates:
-   $$x = R \cdot (\lambda - \lambda_0)$$
-   $$y = R \cdot \ln\left[ \tan\left( \frac{\pi}{4} + \frac{\phi}{2} \right) \right]$$
-   where $R$ is a proportional constant of Earth's radius and $\lambda_0$ is the central meridian longitude.
-
-3. **Multi-Scale Random Fourier Features (RFF) Mapping**:
-   To capture both macro-scale (continental) and micro-scale (local) spatial variations, the projected coordinate $G_i = (x_i, y_i)$ is passed through a bank of Gaussian-frequency sinusoids:
-   $$\gamma(G_i, \sigma_k) = [\cos(2\pi M G_i), \sin(2\pi S G_i)]^T$$
-   where $M$ and $S$ are frequency matrices sampled from a Gaussian distribution $\mathcal{N}(0, \sigma_k)$. We compute representations across $K$ hierarchical frequency bands ($\sigma_{\text{min}}$ to $\sigma_{\text{max}}$) and aggregate them into the final continuous coordinate embedding:
-   $$e_{\text{gps}} = \sum_{k=1}^K f_k(\gamma(G_i, \sigma_k))$$
-
-4. **Concatenated Target Vector**:
-   $$X_{\text{joint}} = [v_{\text{norm}} \;\|\; \lambda_{\text{spatial}} \cdot e_{\text{gps}}]$$
+We partition the dataset into a small, stable set of coarse H3 cells, run standard K-Means locally on visual embeddings inside each cell, and map the visual clusters back to fine-grained locations.
 
 ```
-┌───────────────────────────────────────┬─────────────────────────┐
-│  Visual Semantic Embeddings (768 Dim)  │ Multi-scale RFF Coords  │
-│           Normalized to L2 = 1        │  Scaled by Weight (λ)   │
-└───────────────────────────────────────┴─────────────────────────┘
+[ 7M Images ]
+     │
+     ▼  (Geographic Bucketing by H3 Resolution 4 Cells)
+┌─────────────────────────┐ ┌─────────────────────────┐
+│ H3 Cell A (~11,000 km²) │ │ H3 Cell B (~11,000 km²) │
+└────────────┬────────────┘ └────────────┬────────────┘
+             ▼                           ▼
+      (Local K-Means)             (Local K-Means)
+   500 visual clusters         1,000 visual clusters
 ```
 
-### FAISS Execution Engine
-* Since the spatial scaling parameter $\lambda_{\text{spatial}}$ alters the overall vector magnitude, we **cannot** use FAISS Spherical K-Means directly (as it normalizes inputs to unit length at training time, erasing the weight balance).
-* Instead, we will use **FAISS L2 K-Means** (`spherical=False`) on GPU, which executes at high speed on flat concatenated arrays.
+1. **Coarse Partitioning (H3 Resolution 4/5)**:
+   * Divide the Earth's land surface into coarse H3 cells. At Resolution 4, there are only $\approx$ 2,016 active cells globally, keeping the classification buckets fixed and scale-invariant.
+   * Group the 7M images into these coarse buckets based on their geographic coordinates.
+2. **Local Visual K-Means**:
+   * Within each coarse cell, run standard FAISS Spherical K-Means (`spherical=True` / cosine distance) purely on the normalized visual embeddings $v_{\text{norm}}$.
+   * This completely bypasses the need for coordinate concatenation and eliminates the $\lambda$ hyperparameter.
+3. **Fine-Grained Mapping (H3 Resolution 11)**:
+   * Every image belongs to a specific Resolution 11 cell (deduplication level) and has a local visual cluster ID.
+   * The Resolution 11 cells simply inherit the visual cluster IDs of the images they contain, allowing users to zoom in to 50-meter coordinates on the map while keeping the clustering computation lightweight.
 
 ---
 
-## 🌳 2. Resampling-Aware Cascaded K-Means Hierarchy
+## 🌳 2. Resampling-Aware Local Cascaded K-Means (Within H3 Blocks)
 
 ### Background & Objective
-To bypass the quadratic space $O(N^2)$ and cubic time $O(N^3)$ computational bottlenecks of linkage-based agglomerative clustering on CPU, we adopt a **Resampling-Aware Cascaded K-Means** structure. This is directly inspired by the configuration design in `ssl-data-curation`'s `4levels_web_based_images.yaml` (which uses a bottom-up cascade of 10M $\rightarrow$ 500k $\rightarrow$ 50k $\rightarrow$ 10k clusters), but scaled down proportionally to fit our dataset of close to 7M images.
-
-To prevent mathematical centroid drift (where parent centroids drift into sparse, empty regions of the embedding space), we implement a **Closest-Point Resampling** step between clustering levels. Instead of clustering centroids of centroids, we refit parent clusters on the actual database images that lie closest to the child centroids.
+To bypass the quadratic space $O(N^2)$ computational bottleneck of linkage trees on the CPU, we run **Cascaded K-Means** locally inside each coarse H3 cell. To prevent parent categories from drifting into empty regions of the high-dimensional embedding space, we perform closest-point resampling between the levels of the local cascade.
 
 ### Technical Design
-We run flat FAISS GPU K-Means in a bottom-up cascade. Each step operates on a subset of real image embeddings sampled from the active clusters of the previous level. Since the subset size at each subsequent level is compressed by over a factor of 10, the complexity remains strictly linear $O(N)$ and runs in milliseconds on GPU.
+We run local FAISS GPU K-Means in a bottom-up sequence within each active H3 Resolution 4 cell:
 
 ```mermaid
 graph TD
-    A[ 7M Raw Embeddings ] -->|FAISS GPU K-Means| B[ Level 3: 40,000 Child Clusters ]
-    B -->|Closest-Point Resampling: 400k Vectors| C[ Level 2: 2,000 Meso Clusters ]
-    C -->|Closest-Point Resampling: 20k Vectors| D[ Level 1: 100 Macro Clusters ]
+    A[ H3 Res 4 Cell Images ] -->|Local FAISS K-Means| B[ Level 3: Local Child Clusters ]
+    B -->|Closest-Point Resampling: 10 images/cluster| C[ Level 2: Local Meso Clusters ]
+    C -->|Closest-Point Resampling: 10 images/cluster| D[ Level 1: Local Macro Clusters ]
 ```
 
-### Scale Comparison with `ssl-data-curation`
-The following table shows how we scale down the Meta/ssl-data-curation config to fit our 7M image scope:
-
-| Level | `ssl-data-curation` Config (Billion-scale) | Our Geobotanical Config (7M Scale) | Input Source |
-| :--- | :--- | :--- | :--- |
-| **Level 3 (Fine)** | 10,000,000 clusters (100k $\times$ 100 splits) | **40,000 clusters** (Child / Leaves) | Raw visual-spatial embeddings |
-| **Level 2 (Meso)** | 500,000 clusters | **2,000 clusters** (Sub-categories) | Resampled Level 3 leaf points |
-| **Level 1 (Macro)** | 50,000 / 10,000 clusters | **100 clusters** (Macro-categories) | Resampled Level 2 centroids |
+### Scale Hierarchy
+Within each active H3 Resolution 4 cell, we set a proportional hierarchy:
+* **Level 3 (Child / Leaves)**: Set dynamically using the auto-find-$k$ validation script on the local images (e.g. $k^* = 500$ clusters).
+* **Level 2 (Meso / Sub-categories)**: Set to $k_{\text{meso}} = k^* / 20$ (e.g. 25 clusters).
+* **Level 1 (Macro / Categories)**: Set to $k_{\text{macro}} = k_{\text{meso}} / 20$ (e.g. 2 clusters).
 
 ### Code Implementation
-We implement the resampling using a fast, vectorized NumPy helper:
+We extract representative image indexes from the raw embeddings using a fast, vectorized NumPy sampler:
 
 ```python
 def sample_closest_points(embeddings_norm, cluster_ids, centroids, n_samples=10):
@@ -95,13 +85,13 @@ def sample_closest_points(embeddings_norm, cluster_ids, centroids, n_samples=10)
     return np.array(sampled_indices, dtype=np.int64)
 ```
 
-In `cluster_images_global.py`, we execute the cascaded runs in sequence:
-1. **Stage 1 (Leaves)**: Run standard FAISS K-Means on raw visual-spatial vectors: `faiss.Kmeans(d, 40000, spherical=False)`.
-2. **Resampling 1**: Call `sampled_leaf_indices = sample_closest_points(embeddings_norm, child_cluster_ids, child_centroids, n_samples=10)` (subset of $\le 400,000$ vectors).
-3. **Stage 2 (Meso)**: Cluster the resampled leaf vectors: `faiss.Kmeans(d, 2000, spherical=True)`.
-4. **Resampling 2**: Call `sampled_meso_indices = sample_closest_points(embeddings_norm[sampled_leaf_indices], meso_cluster_ids, meso_centroids, n_samples=10)` (subset of $\le 20,000$ vectors).
-5. **Stage 3 (Macro)**: Cluster the resampled meso vectors: `faiss.Kmeans(d, 100, spherical=True)`.
-6. **Index Mapping**: Map every database record to `cluster_id` (Level 3), `meso_cluster_id` (Level 2), and `macro_cluster_id` (Level 1) in the Parquet file.
+For each active coarse H3 cell:
+1. **Local Stage 1 (Leaves)**: Run standard FAISS Spherical K-Means on the cell's image embeddings: `faiss.Kmeans(d, k_child, spherical=True)`.
+2. **Resampling 1**: Call `sample_closest_points` to gather the 10 closest images to each child centroid (creating a subset of $\le 5,000$ vectors).
+3. **Local Stage 2 (Meso)**: Cluster the resampled child vectors: `faiss.Kmeans(d, k_meso, spherical=True)`.
+4. **Resampling 2**: Call `sample_closest_points` on the Meso subset (creating a subset of $\le 250$ vectors).
+5. **Local Stage 3 (Macro)**: Cluster the resampled meso vectors: `faiss.Kmeans(d, k_macro, spherical=True)`.
+6. **Majority Mapping**: Map child IDs to parent IDs vectorially, and write the hierarchical columns (`cluster_id`, `meso_cluster_id`, `macro_cluster_id`) directly to the Parquet database.
 
 ---
 
