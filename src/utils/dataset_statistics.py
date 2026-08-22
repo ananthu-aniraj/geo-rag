@@ -84,14 +84,12 @@ def map_coordinates_to_regions(
             index_parquet = pq.ParquetFile(spatial_index_path)
             avail = index_parquet.schema_arrow.names
             if "resolution" in avail and "query_cell" in avail:
-                idx_df = pd.read_parquet(
-                    spatial_index_path, columns=["resolution", "query_cell"]
+                table = pq.read_table(
+                    spatial_index_path,
+                    columns=["resolution", "query_cell"],
+                    filters=[("resolution", "==", target_res)],
                 )
-                idx_query_cells = (
-                    idx_df[idx_df["resolution"] == target_res]["query_cell"]
-                    .dropna()
-                    .unique()
-                )
+                idx_query_cells = table.to_pandas()["query_cell"].dropna().unique()
                 unique_target_res.update(idx_query_cells)
                 print(
                     f" -> Found {len(idx_query_cells):,} pre-indexed H3 resolution {target_res} cells."

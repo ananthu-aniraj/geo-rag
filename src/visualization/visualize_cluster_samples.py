@@ -14,7 +14,7 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
-from src.utils.io import load_dataframe, load_dataset_with_clusters, load_embeddings
+from src.utils.io import load_dataset_with_clusters, load_embeddings
 
 MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
 
@@ -69,12 +69,14 @@ def create_sample_grid(
         index_path = index_candidates[0]
         print(f"Loading pre-built H3 index from {index_path}...")
         try:
-            index_df = load_dataframe(
-                index_path, columns=["resolution", "cluster_id", "query_cell"]
+            import pyarrow.parquet as pq
+
+            table = pq.read_table(
+                index_path,
+                columns=["resolution", "cluster_id", "query_cell"],
+                filters=[("resolution", "==", target_h3_res)],
             )
-            target_h3_res_df = index_df[index_df["resolution"] == target_h3_res].dropna(
-                subset=["query_cell"]
-            )
+            target_h3_res_df = table.to_pandas().dropna(subset=["query_cell"])
             target_h3_res_df = target_h3_res_df[
                 ["cluster_id", "query_cell"]
             ].drop_duplicates()

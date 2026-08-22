@@ -6,6 +6,7 @@ import branca.colormap as cm
 import folium
 import h3
 import numpy as np
+import pyarrow.parquet as pq
 from tqdm import tqdm
 
 from src.utils.io import load_dataframe
@@ -47,11 +48,17 @@ def main():
         print("Please build the index first using build_spatial_semantic_index.py.")
         return
 
-    print(f"Loading spatial-semantic index from {args.index}...")
-    df = load_dataframe(args.index)
+    print(
+        f"Loading spatial-semantic index from {args.index} (filtering for resolution {args.res})..."
+    )
 
-    # Filter for the target resolution
-    df_res = df[df["resolution"] == args.res]
+    try:
+        table = pq.read_table(args.index, filters=[("resolution", "==", args.res)])
+        df_res = table.to_pandas()
+    except Exception as e:
+        print(f"Error loading filtered index: {e}. Falling back to full load...")
+        df = load_dataframe(args.index)
+        df_res = df[df["resolution"] == args.res]
 
     if df_res.empty:
         print(f"Error: No records found for resolution {args.res} in the index.")

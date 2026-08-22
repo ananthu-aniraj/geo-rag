@@ -65,11 +65,21 @@ def main():
     # Convert query coordinates to H3 Cell at target resolution
     target_cell = h3.latlng_to_cell(args.lat, args.lng, args.res)
 
-    print(f"Loading H3 spatial-semantic index from {args.index}...")
-    df = pd.read_parquet(args.index)
+    print(
+        f"Loading H3 spatial-semantic index from {args.index} (filtering for resolution {args.res})..."
+    )
+    import pyarrow.parquet as pq
 
-    # Filter by resolution and cell
-    df_cell = df[(df["resolution"] == args.res) & (df["query_cell"] == target_cell)]
+    try:
+        table = pq.read_table(args.index, filters=[("resolution", "==", args.res)])
+        df_cell = table.to_pandas()
+        df_cell = df_cell[df_cell["query_cell"] == target_cell]
+    except Exception as e:
+        print(
+            f"Warning: Failed to load filtered index ({e}). Falling back to full load..."
+        )
+        df = pd.read_parquet(args.index)
+        df_cell = df[(df["resolution"] == args.res) & (df["query_cell"] == target_cell)]
 
     if not df_cell.empty:
         total_images = df_cell["image_count"].sum()
