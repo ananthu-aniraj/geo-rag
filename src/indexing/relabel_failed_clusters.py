@@ -436,14 +436,14 @@ def main():
         label = item.get("cluster_label")
         cid = item.get("cluster_id")
         if cid is not None:
-            if label is None or label in ("Error Labeling", "Unlabeled", "", "None"):
+            if pd.isna(label) or label in ("Error Labeling", "Unlabeled", "", "None"):
                 target_cluster_ids.add(int(cid))
 
         if has_parents:
             p_label = item.get("parent_cluster_label")
             pid = item.get("parent_cluster_id")
             if pid is not None:
-                if p_label is None or p_label in (
+                if pd.isna(p_label) or p_label in (
                     "Error Labeling",
                     "Unlabeled Parent",
                     "",
