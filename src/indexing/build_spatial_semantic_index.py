@@ -61,17 +61,37 @@ def main():
     # Drop rows with null H3 cells or cluster ids
     df = df.dropna(subset=["H3_Cell", "cluster_id"])
 
-    # Default populate other missing columns to ensure schema consistency
+    # Default populate other missing columns or fill NaNs to ensure schema consistency
     if "cluster_label" not in df.columns:
         df["cluster_label"] = df["cluster_id"].apply(lambda x: f"Cluster {x}")
+    else:
+        df["cluster_label"] = df["cluster_label"].fillna(
+            df["cluster_id"].apply(
+                lambda x: f"Cluster {x}" if pd.notna(x) else "Unlabeled Cluster"
+            )
+        )
+
     if "cluster_description" not in df.columns:
         df["cluster_description"] = "No description available"
+    else:
+        df["cluster_description"] = df["cluster_description"].fillna(
+            "No description available"
+        )
 
     if "parent_cluster_id" not in df.columns:
         df["parent_cluster_id"] = df["cluster_id"] // 80
+    else:
+        df["parent_cluster_id"] = df["parent_cluster_id"].fillna(df["cluster_id"] // 80)
+
     if "parent_cluster_label" not in df.columns:
         df["parent_cluster_label"] = df["parent_cluster_id"].apply(
             lambda x: f"Parent Cluster {x}"
+        )
+    else:
+        df["parent_cluster_label"] = df["parent_cluster_label"].fillna(
+            df["parent_cluster_id"].apply(
+                lambda x: f"Parent Cluster {x}" if pd.notna(x) else "Unlabeled Parent"
+            )
         )
 
     if "Season" not in df.columns:
@@ -141,7 +161,7 @@ def main():
             group_cols.append("parent_cluster_label")
 
         grouped = (
-            df_res.groupby(group_cols, observed=True)
+            df_res.groupby(group_cols, observed=True, dropna=False)
             .size()
             .reset_index(name="image_count")
         )
