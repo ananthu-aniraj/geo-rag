@@ -850,8 +850,13 @@ def main():
 
                     for col_name, mapping_dict in meta_updates.items():
                         if mapping_dict:
+                            map_col = (
+                                "parent_cluster_id"
+                                if "parent" in col_name
+                                else "cluster_id"
+                            )
                             df_rg[col_name] = (
-                                df_rg["cluster_id"]
+                                df_rg[map_col]
                                 .map(mapping_dict)
                                 .combine_first(
                                     df_rg[col_name]
