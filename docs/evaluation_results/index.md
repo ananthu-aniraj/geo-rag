@@ -4,14 +4,20 @@
 
 ### 📊 Evaluation Reports
 
-* **[EUNIS Dominant Habitat Mapping](comparison_eunis.md)**
-  Evaluation of vision models on dominant habitat and vegetation mapping across Europe, comparing zero-shot and retrieval performance against the EUNIS 2024 Level 1, 2, and 3 raster legends.
+**[EUNIS](comparison_eunis.md)**
 
-* **[LUCAS Soil & Land Cover Classification](comparison_lucas.md)**
-  Agricultural classification benchmark comparing visual representation accuracy across land cover and soil types from the LUCAS survey.
+  * Dataset: <https://zenodo.org/records/16985100>
+  * Evaluates vision representation accuracy on the **European Nature Information System (EUNIS) Dominant Habitat Map** (2024 Level 1, 2, and 3 dominant ecosystem classifications). It measures how well model features can retrieve and identify corresponding geobotanical classifications for query coordinate locations.
 
-* **[Places365 Scene Categorization](comparison_places.md)**
-  General scene classification and zero-shot land cover categorization evaluations comparing the representation models.
+**[LUCAS (Land Use and Coverage Area frame Survey (LUCAS))](comparison_lucas.md)**
+
+  * Dataset: <https://ec.europa.eu/eurostat/web/lucas/database/2018>
+  * Evaluates vision models on the **Land Use and Coverage Area frame Survey (LUCAS)** database. The benchmark evaluates model capability in classifying agricultural land cover, soil types, and crop types based on coordinate-overlay data.
+
+**[Places365 Scene Categorization](comparison_places.md)**
+
+  * Dataset: <http://places2.csail.mit.edu/>
+  * Evaluates models on zero-shot scene categorization and land cover classification against the **Places365 database**, testing their ability to resolve general scene layouts and place categories.
 
 ---
 
