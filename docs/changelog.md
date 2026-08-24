@@ -6,6 +6,10 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Multi-Model Support in Backfill Embeddings**: Upgraded `backfill_embeddings.py` to support computing and saving embeddings for any Hugging Face or `timm` representation models using the unified `load_vision_model` helper.
+- **Model-Specific Embedding Serialization**: Updated `save_dataframe` and `load_embeddings` in `src/utils/io.py` to serialize companion `.npy` matrices using model-specific filenames (e.g. `{base_name}_{model_name}_{representation_type}_embeddings.npy`), preventing different model runs from overwriting each other's cache. Retained fully backward-compatible fallbacks to model-agnostic filenames if a model-specific file is not found.
+
 ### Planned
 - **Image Mosaicing in Cluster Labeling**: Add support for mosaicing (stitching) multiple sample images together when submitting them to the MLLM for cluster labeling to improve context and visual density.
 ## [1.2.0] - 2026-08-24
