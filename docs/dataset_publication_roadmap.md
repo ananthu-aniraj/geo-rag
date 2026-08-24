@@ -4,30 +4,24 @@ This roadmap outlines the best practices, legal considerations, and steps for pu
 
 ---
 
-## ⚖️ 1. Image Data vs. Licensing (The "Should the images be included?" question)
+## ⚖️ 1. Image Data vs. Licensing (The Hybrid Publication Strategy)
 
-Directly hosting and distributing raw scraped images is a common challenge in dataset publication due to copyright restrictions.
+Directly hosting and distributing raw scraped images is a common challenge in dataset publication due to copyright restrictions. To resolve this, the **Geo-RAG dataset uses a Hybrid Publication Strategy** that combines online downloading with offline archives:
 
-### Option A: Metadata + Embeddings Only (Recommended Standard)
-This is the methodology used by major datasets (e.g., LAION, CC12M).
+### Part 1: Online Platforms (Flickr, Mapillary, iNaturalist, GBIF) -> Metadata & Embeddings Only
+For platforms where images are hosted publicly online but subject to copyright restrictions (e.g. "All Rights Reserved" Flickr photos):
 * **What to distribute**:
   1. The metadata Parquet database (`geo_space_deduplicated.parquet`) containing `photo_key`, `Latitude`, `Longitude`, `Platform`, `Captured_At`, and `License`.
-  2. The pre-computed model embeddings (`.npy` files) for DINOv3, TIPSv2, etc. (Embeddings are legal to distribute as they are mathematical derivatives and cannot reconstruct the original images).
-  3. A robust, multi-threaded **image downloading script** (e.g., a cleaned-up version of `src/utils/download_images.py`) so researchers can recreate the image folder locally.
-* **Pros**: 100% legally safe; extremely lightweight; avoids hosting large image archives.
-* **Cons**: Subject to "link rot" (images deleted by uploaders on Flickr or Mapillary won't be downloadable in the future).
+  2. The pre-computed model embeddings (`.npy` files and `.keys.parquet` index maps) for DINOv3, TIPSv2, etc. (Embeddings are legal to distribute as they are mathematical derivatives and cannot reconstruct the original images).
+  3. A robust, multi-threaded **image downloading script** (e.g., `src/utils/download_images.py`) so researchers can recreate the image folder locally.
+* **Benefits**: 100% legally safe; extremely lightweight; avoids hosting large image archives.
 
-### Option B: CC-Only Image Archive
-* **What to distribute**: The dataset is filtered to group only images with open licenses (e.g., `CC0`, `CC-BY`, `CC-BY-SA`). These are packaged into a compressed zip archive and hosted. All "All Rights Reserved" images are excluded from the zip but remain download-able via the script.
-* **Pros**: Provides a plug-and-play subset for quick evaluation while complying with copyright law.
-* **Cons**: Requires additional data filtering and increases hosting storage needs.
-
-### Option C: Hybrid Hosting for Offline & Rate-Limited Subsets (Wikimedia, iWildCam)
+### Part 2: Offline & Rate-Limited Platforms (Wikimedia Commons, iWildCam) -> CC-Licensed Image Archives
 Some parts of the dataset have unique hosting constraints:
-* **Wikimedia Commons**: Wikimedia Commons heavily rate-limits and blocks rapid automated API downloads, making direct scripting unreliable. Furthermore, the Wikimedia Commons subset is very large (approx. 102.5 GB).
+* **Wikimedia Commons**: Wikimedia heavily rate-limits and blocks rapid automated API downloads, making direct scripting unreliable. Furthermore, the Wikimedia Commons subset is very large (approx. 102.5 GB).
 * **iWildCam Subset**: This is a custom pre-filtered subset of the iWildCam 2022 dataset that is not hosted in this exact form anywhere else.
-* **Solution**: Since both Wikimedia Commons and iWildCam images are under open-access/Creative Commons licenses, these sub-folders can be packaged and hosted directly as companion downloads on the **Hugging Face** repository (which natively supports very large file storage via Git LFS).
-* **Large-File Delivery Best Practice (100+ GB)**: To prevent download timeouts and corruption errors over public connections, the 102.5 GB Wikimedia Commons archive should be split into **multi-part zip volumes** (e.g., 10 GB parts: `wikimedia_commons_subset.zip.001`, `wikimedia_commons_subset.zip.002`, etc.) before upload.
+* **Solution**: Since both Wikimedia Commons and iWildCam images are under open-access/Creative Commons licenses, these sub-folders are packaged and hosted directly as companion downloads on the **Hugging Face** repository (which natively supports very large file storage via Git LFS).
+* **Large-File Delivery Best Practice (100+ GB)**: To prevent download timeouts and corruption errors over public connections, the 102.5 GB Wikimedia Commons archive is split into **multi-part zip volumes** (e.g., 10 GB parts: `wikimedia_commons_subset.zip.001`, `wikimedia_commons_subset.zip.002`, etc.) before upload.
 
 ---
 
