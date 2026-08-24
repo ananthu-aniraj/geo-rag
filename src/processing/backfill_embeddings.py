@@ -10,10 +10,12 @@ import pandas as pd
 import torch
 from torchvision import transforms
 from tqdm import tqdm
-from transformers import AutoModel
 
 import src.models.tips_image_encoder as image_encoder
-from src.models.vision_model_inference import extract_model_embeddings
+from src.models.vision_model_inference import (
+    extract_benchmark_features_single_pass,
+    load_vision_model,
+)
 from src.utils.io import (
     download_image,
     load_dataframe,
@@ -32,6 +34,12 @@ def main():
         type=str,
         required=True,
         help="Path to the input metadata file (.parquet, .csv, or .pkl).",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="google/tipsv2-b14",
+        help="Hugging Face identifier or timm model name of the vision encoder to load.",
     )
     parser.add_argument(
         "--output",
@@ -180,17 +188,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Initializing model on {device}...")
 
-    # Load model transforms
-    image_size = 224 if (args.tips_model_path and args.tips_low_res) else 448
-    transform = transforms.Compose(
-        [
-            transforms.Resize((image_size, image_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-
-    if args.tips_model_path:
+    # Load model transforms and initialize model
+    is_local = bool(args.tips_model_path)
+    if is_local:
         print(f"Loading local checkpoint from {args.tips_model_path}...")
         model_def = {
             "s": image_encoder.vit_small14,
@@ -198,6 +198,17 @@ def main():
             "l": image_encoder.vit_large14,
             "g": image_encoder.vit_giant2,
         }[args.tips_model_variant]
+
+        image_size = 224 if args.tips_low_res else 448
+        transform = transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
 
         ffn_layer = "swiglu" if args.tips_model_variant == "g" else "mlp"
         checkpoint = dict(np.load(args.tips_model_path, allow_pickle=False))
@@ -214,14 +225,10 @@ def main():
             interpolate_offset=0.0,
         )
         model.load_state_dict(checkpoint)
-        tipsv2 = model.eval().to(device)
+        model = model.eval().to(device)
     else:
-        print("Loading Hugging Face google/tipsv2-b14 model...")
-        tipsv2 = (
-            AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
-            .eval()
-            .to(device)
-        )
+        # Load any timm or Hugging Face model dynamically
+        model, transform, image_size = load_vision_model(args.model_name, device)
 
     # 3. Compute Embeddings in Parallel Chunks
     print(
@@ -302,10 +309,26 @@ def main():
                         [transform(img) for img in batch_imgs]
                     ).to(device)
                     with torch.no_grad():
-                        features = extract_model_embeddings(
-                            tipsv2,
-                            batch_tensors,
-                            representation_type=args.representation_type,
+                        cls_out, patch_tokens_vals = (
+                            extract_benchmark_features_single_pass(
+                                model, batch_tensors, is_local=is_local
+                            )
+                        )
+                    patch_tokens_vals = patch_tokens_vals.reshape(
+                        len(batch_imgs), -1, patch_tokens_vals.shape[-1]
+                    )
+                    cls_tokens = cls_out[0] if is_local else cls_out
+
+                    if args.representation_type == "cls":
+                        features = cls_tokens
+                    elif args.representation_type == "avg_patch":
+                        features = np.mean(patch_tokens_vals, axis=1)
+                    elif args.representation_type == "cls_avg_patch":
+                        avg_patch = np.mean(patch_tokens_vals, axis=1)
+                        features = np.concatenate([cls_tokens, avg_patch], axis=1)
+                    else:
+                        raise ValueError(
+                            f"Unsupported representation type: {args.representation_type}"
                         )
 
                     if embeddings_matrix is None:
@@ -356,12 +379,18 @@ def main():
     # Re-integrate embeddings into the dataframe so that save_dataframe handles decoupling and key mapping automatically
     df["embedding"] = list(embeddings_matrix)
 
+    # Determine model suffix for npy file name
+    model_name_for_save = (
+        f"local_tipsv2_{args.tips_model_variant}" if is_local else args.model_name
+    )
+
     print(f"Saving decoupled dataset to: {out_path}")
     save_dataframe(
         df,
         out_path,
         representation_type=args.representation_type,
         precision=args.precision,
+        model_name=model_name_for_save,
     )
 
     print("✅ Embeddings backfilling and metadata alignment complete!")

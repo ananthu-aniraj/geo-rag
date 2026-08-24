@@ -51,7 +51,13 @@ def load_dataframe(file_path, **kwargs):
 
 
 def save_dataframe(
-    df, file_path, index=False, representation_type=None, precision=None, **kwargs
+    df,
+    file_path,
+    index=False,
+    representation_type=None,
+    precision=None,
+    model_name=None,
+    **kwargs,
 ):
     """
     Saves a dataframe to CSV, Parquet, or Pickle with optimal compression default (Zstd for Parquet).
@@ -105,7 +111,13 @@ def save_dataframe(
                 else:
                     rep_suffix = "cls"
 
-            npy_path = os.path.join(db_dir, f"{core_name}_{rep_suffix}_embeddings.npy")
+            model_suffix = ""
+            if model_name:
+                model_suffix = "_" + model_name.replace("/", "_")
+
+            npy_path = os.path.join(
+                db_dir, f"{core_name}{model_suffix}_{rep_suffix}_embeddings.npy"
+            )
 
             # 2. Resolve precision dtype
             dtype = np.float32
@@ -269,7 +281,9 @@ def load_dataset_with_clusters(
     return df_meta
 
 
-def load_embeddings(parquet_path, column="embedding", representation_type="cls"):
+def load_embeddings(
+    parquet_path, column="embedding", representation_type="cls", model_name=None
+):
     """
     Backward-compatible loader that returns memory-mapped or raw embedding matrices.
     Supports dynamic mapping lookup via 'embedding_idx' to load from a shared base file.
@@ -305,26 +319,32 @@ def load_embeddings(parquet_path, column="embedding", representation_type="cls")
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
 
-    # First, try to load using the base name directly (e.g. geo_space_cleaned_cls_embeddings.npy)
-    if column == "embedding":
-        suffix = representation_type
-        npy_name = f"{base_name}_{suffix}_embeddings.npy"
-    elif column == "patch_embedding":
-        npy_name = f"{base_name}_patch_embeddings.npy"
-    else:
-        npy_name = f"{base_name}_{column}_embeddings.npy"
-    npy_path = os.path.join(db_dir, npy_name)
-
-    # Fallback to stripped core_name if base file is cleaned/filtered and has no dedicated npy
-    if not os.path.exists(npy_path):
-        core_name = get_core_base_name(base_name)
+    def get_npy_path(base, model):
+        model_suf = f"_{model.replace('/', '_')}" if model else ""
         if column == "embedding":
-            npy_name = f"{core_name}_{suffix}_embeddings.npy"
+            name = f"{base}{model_suf}_{representation_type}_embeddings.npy"
         elif column == "patch_embedding":
-            npy_name = f"{core_name}_patch_embeddings.npy"
+            name = f"{base}{model_suf}_patch_embeddings.npy"
         else:
-            npy_name = f"{core_name}_{column}_embeddings.npy"
-        npy_path = os.path.join(db_dir, npy_name)
+            name = f"{base}{model_suf}_{column}_embeddings.npy"
+        return os.path.join(db_dir, name)
+
+    # 1. Try resolving with model_name if provided
+    npy_path = None
+    if model_name:
+        for b in [base_name, get_core_base_name(base_name)]:
+            path = get_npy_path(b, model_name)
+            if os.path.exists(path):
+                npy_path = path
+                break
+
+    # 2. Fallback to model-agnostic (legacy) path resolution
+    if not npy_path:
+        for b in [base_name, get_core_base_name(base_name)]:
+            path = get_npy_path(b, None)
+            if os.path.exists(path) or b == base_name:
+                npy_path = path
+                break
 
     def suffix_matches(filename, req_rep):
         has_cls_avg = "cls_avg_patch" in filename
