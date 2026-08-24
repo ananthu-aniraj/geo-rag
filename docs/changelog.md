@@ -6,6 +6,9 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Dynamic Image Path Server Mapping in Dashboard**: Added an "Offline Image Server Mapping" control panel to the cluster dashboard HTML (`templates/cluster_dashboard.html`). The dashboard now automatically scans the data on page load to detect the original local file prefix path and provides a search-and-replace interface. This allows users to dynamically map local file paths (`file://...`) to remote loopback servers (`http://localhost:8000/`) over SSH port-forwarding tunnels, enabling remote image viewing without file modifications.
+
 ### Fixed
 - **H3 Index Missing Points Groupby Fix**: Resolved a major bug in `build_spatial_semantic_index.py` where rows with `NaN` in `parent_cluster_label` (unlabeled parent clusters) were silently discarded by Pandas `groupby` during index aggregation. This caused 98% of points to be missing from the generated spatial-semantic index. Fixed by filling NaN values in all label and description columns with default fallback values (e.g. `Parent Cluster <ID>`) and adding `dropna=False` to the groupby.
 - **MLLM Parent Label Streaming Mapping Key Fix**: Fixed a critical bug in the output Parquet streaming writer of `label_clusters_mllm.py` where parent labels and descriptions were being mapped against `cluster_id` instead of `parent_cluster_id`. Since parent labels are keyed 0–499 while child IDs go up to 39,999, this caused all parent columns to be written as `NaN` for 98.7% of the dataset.

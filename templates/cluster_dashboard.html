@@ -333,6 +333,14 @@
                 <option value="geo">Sort by Geo Spread</option>
             </select>
         </div>
+        <div style="flex: 2; min-width: 320px; display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Offline Image Server Mapping</label>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="text" id="findPrefixInput" placeholder="Detecting base path..." style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 12px; flex-grow: 1;" oninput="resetAndRender()">
+                <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: bold;">➔</span>
+                <input type="text" id="replacePrefixInput" placeholder="e.g. http://localhost:8000/" style="height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: 8px; font-family: inherit; font-size: 12px; flex-grow: 1;" oninput="resetAndRender()">
+            </div>
+        </div>
     </div>
 
     <div id="results" class="results-container">
@@ -347,6 +355,30 @@
         let filteredData = [...data];
         let renderLimit = 50;
         const activeMaps = {};
+
+        // Auto-detect base file path prefix
+        let autoDetectedBase = '';
+        for (let c of data) {
+            let sample = (c.samples || []).find(s => s.url && s.url.startsWith('file://'));
+            if (sample) {
+                const lastSlash = sample.url.lastIndexOf('/');
+                if (lastSlash !== -1) {
+                    autoDetectedBase = sample.url.substring(0, lastSlash + 1);
+                }
+                break;
+            }
+        }
+
+        function getDisplayUrl(url) {
+            const findInput = document.getElementById('findPrefixInput');
+            const replaceInput = document.getElementById('replacePrefixInput');
+            const findVal = findInput ? findInput.value.trim() : '';
+            const replaceVal = replaceInput ? replaceInput.value.trim() : '';
+            if (findVal && replaceVal && url.startsWith(findVal)) {
+                return url.replace(findVal, replaceVal);
+            }
+            return url;
+        }
 
         function handleImageError(img, photoId, platform) {
             // Avoid infinite loops if retry fails
@@ -479,8 +511,8 @@
                                     <div class="image-role" style="color: ${roleColor}">
                                         ${s.rank_label || ''}
                                     </div>
-                                    <a href="${s.url}" target="_blank">
-                                        <img src="${s.url}" onerror="handleImageError(this, '${s.id}', '${s.platform}')" loading="lazy">
+                                    <a href="${getDisplayUrl(s.url)}" target="_blank">
+                                        <img src="${getDisplayUrl(s.url)}" onerror="handleImageError(this, '${s.id}', '${s.platform}')" loading="lazy">
                                     </a>
                                     <div class="image-meta">
                                         <b>ID:</b> ${s.id || ''}<br>
@@ -899,6 +931,14 @@
             opt.textContent = p;
             parentSelect.appendChild(opt);
         });
+
+        // Pre-fill auto-detected local prefix
+        if (autoDetectedBase) {
+            const findInput = document.getElementById('findPrefixInput');
+            if (findInput) {
+                findInput.value = autoDetectedBase;
+            }
+        }
 
         // Initial render
         resetAndRender();
