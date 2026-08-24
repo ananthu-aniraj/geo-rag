@@ -18,9 +18,6 @@ To run local vision-language model inference on GPUs, the master script `run_ful
 ---
 
 ## 🤖 Two-Step Prompting Strategy
-
-To classify image clusters accurately, the pipeline uses a decoupled **Two-Step Prompting Strategy** inside `src/indexing/label_clusters_mllm.py`. This split architecture enhances classification accuracy, minimizes category hallucination, and avoids processing heavy image tokens twice.
-
 ### 📷 Step 1: Multimodal Visual Description
 * **Input**: The representative cluster image + `prompts/shared/prompt_step1.txt`
 * **Output**: A detailed, objective paragraph describing the physical scene features (no LULC labels).
