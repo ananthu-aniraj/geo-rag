@@ -37,6 +37,7 @@ geo-rag/
 │   │   └── 09_visualization_dashboards.md
 │   ├── changelog.md              # Project history and release changes
 │   ├── dataset.md                # Dataset files, structures, & loading guide
+│   ├── dataset_publication_roadmap.md # Best practices & hosting steps for publishing
 │   ├── evaluation.md             # Benchmark evaluations & retrieval suites
 │   ├── metrics.md                # Evaluation & retrieval metrics definitions
 │   ├── pipeline.md               # Data engineering details & architecture overview

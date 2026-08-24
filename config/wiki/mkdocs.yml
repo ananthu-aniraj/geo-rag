@@ -30,7 +30,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Dataset Guide: dataset.md
+  - Dataset Guide:
+      - Overview: dataset.md
+      - Publication Roadmap: dataset_publication_roadmap.md
   - Pipeline Architecture:
       - Overview: pipeline.md
       - 1. Ingestion & Scraping: pipeline/01_ingestion_scraping.md
