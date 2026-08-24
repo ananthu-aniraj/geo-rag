@@ -58,7 +58,7 @@ graph TD
 
 | Phase | Milestone | Action Items |
 | :--- | :--- | :--- |
-| **Phase 1: Sanitization** | Clean Metadata & Code | <ul><li>Verify all git history is free of API keys.</li><li>Add license classifications (`cc0`, `cc-by`, etc.) to the database.</li><li>Replace `google_landmarks` platform name references with `wikimedia_commons` in the metadata.</li></ul> |
+| **Phase 1: Sanitization** | Clean Metadata & Code | <ul><li>Verify all git history is free of API keys.</li><li>Add license classifications (`cc0`, `cc-by`, etc.) to the database.</li></ul> |
 | **Phase 2: Package** | Prepare Embeddings & Chunks | <ul><li>Backfill all benchmark model embeddings (DINOv3, TIPSv2) using the updated utility.</li><li>Compress the iWildCam folder and split the 102.5 GB Wikimedia Commons folder into 10 GB volumes.</li><li>Write a clear `download_dataset.sh` script for the repository.</li></ul> |
 | **Phase 3: Host** | Upload to Hugging Face | <ul><li>Create a Hugging Face Dataset repository.</li><li>Configure Git LFS tracking for `.zip`, `.npy` and `.keys.parquet` files.</li><li>Upload the Parquet database, `.npy` embeddings, `.keys.parquet` index maps, zip volumes, and `README.md`.</li></ul> |
 | **Phase 4: Publish** | Mint DOI & Reference | <ul><li>Go to Dataset Settings and click **"Mint DOI"** to generate the permanent academic identifier.</li><li>Add the minted DOI badge and BibTeX citation block to the main `README.md`.</li></ul> |
