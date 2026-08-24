@@ -17,7 +17,7 @@
 **[Places365 Scene Categorization](comparison_places.md)**
 
   * Dataset: <http://places2.csail.mit.edu/>
-  * Evaluates models on zero-shot scene categorization and land cover classification against the **Places365 database**, testing their ability to resolve general scene layouts and place categories.
+  * Evaluates models on scene categorization against the **Places365 database**, testing their ability to resolve general scene layouts and place categories.
 
 ---
 
