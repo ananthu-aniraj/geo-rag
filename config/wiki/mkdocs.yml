@@ -44,8 +44,9 @@ nav:
       - 9. Dashboards: pipeline/09_visualization_dashboards.md
   - Evaluation:
       - Overview: evaluation.md
-      - EUNIS Results: evaluation_results/comparison_eunis.md
-      - LUCAS Results: evaluation_results/comparison_lucas.md
-      - Places Results: evaluation_results/comparison_places.md
+      - Benchmark Results:
+          - EUNIS Comparison: evaluation_results/comparison_eunis.md
+          - LUCAS Comparison: evaluation_results/comparison_lucas.md
+          - Places Comparison: evaluation_results/comparison_places.md
   - Metrics: metrics.md
   - Changelog: changelog.md
