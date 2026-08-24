@@ -24,10 +24,12 @@ For in-depth architectural details, data ingestion specs, MLLM auto-labeling pro
 geo-rag/
 ├── config/                       # Centralized parameter & credentials files
 │   ├── evaluation/               # Evaluation parameters (params, compare_models.yaml)
+│   ├── pipeline/                 # Core pipeline parameters (params.yaml)
 │   ├── scrapers/                 # Scraper execution configs (YAML)
 │   └── wiki/                     # MkDocs wiki configuration (YAML)
 ├── docs/                         # Technical Documentation & Wiki pages
 │   ├── assets/                   # Website styling and frontend assets (MathJax, etc.)
+│   ├── evaluation_results/       # Collated benchmark comparison reports (EUNIS, LUCAS, Places)
 │   ├── pipeline/                 # Data engineering step-by-step pipeline stages
 │   │   ├── 01_ingestion_scraping.md
 │   │   ├── 02_spatial_deduplication.md
@@ -54,7 +56,6 @@ geo-rag/
 ├── templates/                    # Standalone HTML/JS frontend templates
 ├── .env                          # Local credentials file (gitignored)
 ├── .env.template                 # Template for API credentials configuration
-├── params.yaml                   # Root pipeline params (loaded by running process)
 └── run_full_pipeline.sh          # Full end-to-end data processing pipeline
 ```
 
