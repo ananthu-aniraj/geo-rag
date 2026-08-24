@@ -578,9 +578,11 @@ def create_sample_grid(
     with open(template_path, "r", encoding="utf-8") as f:
         html_template = f.read()
 
-    html_content = html_template.replace(
-        "{{DATA_JS_FILENAME}}", data_js_filename
-    ).replace("{{TOTAL_CLUSTERS}}", str(len(dashboard_data)))
+    html_content = (
+        html_template.replace("{{DATA_JS_FILENAME}}", data_js_filename)
+        .replace("{{TOTAL_CLUSTERS}}", str(len(dashboard_data)))
+        .replace("{{MAPILLARY_TOKEN}}", MAPILLARY_TOKEN)
+    )
 
     with open(output_html, "w", encoding="utf-8") as f:
         f.write(html_content)

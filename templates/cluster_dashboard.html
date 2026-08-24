@@ -350,7 +350,7 @@
     <button id="loadMoreBtn" class="load-more" onclick="loadMore()" style="display: none;">Load More Clusters</button>
 
     <script>
-        const MAPILLARY_TOKEN = 'MAPILLARY_TOKEN_PLACEHOLDER';
+        const MAPILLARY_TOKEN = '{{MAPILLARY_TOKEN}}';
         const data = typeof CLUSTER_DATA !== 'undefined' ? CLUSTER_DATA : [];
         let filteredData = [...data];
         let renderLimit = 50;

@@ -38,7 +38,3 @@ pipeline:
 
   # Land boundaries shapefile for region mapping (country & continent)
   land_shp: "shapefiles/ne_10m_admin_0_countries.shp"
-
-  # API Tokens
-  mapillary_token: "MAPILLARY_TOKEN_PLACEHOLDER"
-  flickr_api_key: "FLICKR_API_KEY_PLACEHOLDER"

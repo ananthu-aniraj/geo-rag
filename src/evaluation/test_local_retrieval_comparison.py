@@ -21,7 +21,21 @@ from transformers import (
 # Configuration Defaults
 DEFAULT_CSV_PATH = "./full_pipeline_output/geo_space_deduplicated.csv"
 DEFAULT_OUTPUT_DIR = "./retrieval_exps"
-MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
+# Try to load .env variables if not already set
+if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
+    try:
+        with open(".env", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    if k.strip() == "MAPILLARY_TOKEN":
+                        os.environ["MAPILLARY_TOKEN"] = v.strip().strip('"').strip("'")
+                        break
+    except Exception:
+        pass
+
+MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
 DISCARD_CLASSES = {
     2,
     12,

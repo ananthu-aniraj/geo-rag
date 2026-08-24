@@ -13,8 +13,24 @@ from tqdm import tqdm
 
 from src.utils.io import get_core_base_name, load_dataframe, save_dataframe
 
-MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
-FLICKR_API_KEY = "FLICKR_API_KEY_PLACEHOLDER"
+# Try to load .env variables if not already set
+if not os.environ.get("MAPILLARY_TOKEN") or not os.environ.get("FLICKR_API_KEY"):
+    if os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+
+MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
+FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
 FLICKR_DELAY = 1.1
 
 
