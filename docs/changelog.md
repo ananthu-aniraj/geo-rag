@@ -6,6 +6,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Planned
+- **Image Mosaicing in Cluster Labeling**: Add support for mosaicing (stitching) multiple sample images together when submitting them to the MLLM for cluster labeling to improve context and visual density.
 ## [1.2.0] - 2026-08-24
 
 ### Added
