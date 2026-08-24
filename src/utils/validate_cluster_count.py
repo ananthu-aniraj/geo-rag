@@ -93,6 +93,12 @@ def main():
         action="store_true",
         help="If set, mathematically calculates the elbow point and updates 'k_clusters' in params.yaml.",
     )
+    parser.add_argument(
+        "--params_path",
+        type=str,
+        default="params.yaml",
+        help="Path to the parameters YAML file.",
+    )
     args = parser.parse_args()
 
     print(
@@ -243,7 +249,7 @@ def main():
     print(f"\n💡 Mathematical Elbow Analysis suggests optimal k = {optimal_k}")
 
     if args.update_params:
-        params_path = "params.yaml"
+        params_path = args.params_path
         if os.path.exists(params_path):
             try:
                 import re

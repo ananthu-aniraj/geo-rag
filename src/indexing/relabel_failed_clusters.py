@@ -10,7 +10,6 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import requests
-import yaml
 from PIL import Image
 from sklearn.preprocessing import normalize
 
@@ -292,36 +291,7 @@ def save_dataset(data, final_results, parent_results, out_path):
 
 
 def main():
-    # 1. Load Defaults from params.yaml if available
-    default_mllm_model = "google/gemma-4-E4B-it"
-    default_mllm_backend = "sglang"
-    default_output_dir = ""
-    default_base_name = "geo_space"
-    default_k = 40000
-
-    if os.path.exists("params.yaml"):
-        try:
-            with open("params.yaml", "r") as f:
-                params = yaml.safe_load(f)
-                if "pipeline" in params:
-                    pipe = params["pipeline"]
-                    default_mllm_model = pipe.get("mllm_model", default_mllm_model)
-                    default_mllm_backend = pipe.get(
-                        "mllm_backend", default_mllm_backend
-                    )
-                    default_output_dir = pipe.get("output_dir", default_output_dir)
-                    default_base_name = pipe.get("base_name", default_base_name)
-                    default_k = pipe.get("k_clusters", default_k)
-        except Exception as e:
-            print(f"Warning: Could not read params.yaml: {e}")
-
-    default_in = ""
-    if default_output_dir:
-        default_in = os.path.join(
-            default_output_dir, f"{default_base_name}_clustered_k_{default_k}.parquet"
-        )
-
-    # 2. Parse CLI Arguments
+    # 1. Parse CLI Arguments
     parser = argparse.ArgumentParser(
         description="Re-label failed clusters sequentially where images failed to load."
     )
@@ -330,8 +300,7 @@ def main():
         "--in",
         dest="file",
         type=str,
-        default=default_in,
-        required=not bool(default_in),
+        required=True,
         help="Path to the clustered .pkl or .parquet file.",
     )
     parser.add_argument(
@@ -350,14 +319,14 @@ def main():
     parser.add_argument(
         "--mllm_model",
         type=str,
-        default=default_mllm_model,
+        default="google/gemma-4-E4B-it",
         help="VLM model identifier.",
     )
     parser.add_argument(
         "--mllm_backend",
         type=str,
         choices=["ollama", "sglang"],
-        default=default_mllm_backend,
+        default="sglang",
         help="Backend server type. Sets default endpoint port.",
     )
     parser.add_argument(

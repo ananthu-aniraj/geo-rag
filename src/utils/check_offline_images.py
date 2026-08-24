@@ -9,7 +9,7 @@ from src.utils.io import resolve_offline_image_path
 
 
 def main():
-    params_path = "params.yaml"
+    params_path = "config/pipeline/params.yaml"
     if not os.path.exists(params_path):
         print(f"Error: Could not find {params_path} in the current project directory.")
         return

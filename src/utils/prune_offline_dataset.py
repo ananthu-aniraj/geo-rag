@@ -45,6 +45,12 @@ def main():
         action="store_true",
         help="Only prune metadata CSVs; do not delete image files.",
     )
+    parser.add_argument(
+        "--params_path",
+        type=str,
+        default="config/pipeline/params.yaml",
+        help="Path to the parameters YAML file.",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.parquet):
@@ -77,7 +83,7 @@ def main():
     )
 
     # Read offline directories from params.yaml
-    params_path = "params.yaml"
+    params_path = args.params_path
     offline_dirs = []
     if os.path.exists(params_path):
         with open(params_path, "r") as f:

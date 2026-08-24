@@ -23,38 +23,43 @@ if [ -z "$MAPILLARY_TOKEN" ]; then
 fi
 
 # 1. Load Parameters from params.yaml
-echo "Loading parameters from params.yaml..."
-K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
-AUTO_FIND_K=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('auto_find_k', False)).lower())" 2>/dev/null || echo "false")
-K_MIN=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_min', 10000))" 2>/dev/null || echo "10000")
-K_MAX=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_max', 50000))" 2>/dev/null || echo "50000")
-K_STEP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_step', 10000))" 2>/dev/null || echo "10000")
-CLEANUP_ANOMALIES=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_anomalies', False)).lower())" 2>/dev/null || echo "false")
-CLEANUP_PLATFORM=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_platform', ''))" 2>/dev/null || echo "")
-CLEANUP_CONTINENT=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cleanup_continent', ''))" 2>/dev/null || echo "")
-MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('max_markers', 10000))" 2>/dev/null || echo "10000")
-LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
-CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
-BATCH_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('batch_size', 64))" 2>/dev/null || echo "64")
-CELL_CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('cell_chunk_size', 64))" 2>/dev/null || echo "64")
-BASE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('base_name', 'geo_space'))" 2>/dev/null || echo "geo_space")
-OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('output_dir', '/home/ananthu/DATA/data_ananthu/full_pipeline_output'))" 2>/dev/null || echo "/home/ananthu/DATA/data_ananthu/full_pipeline_output")
-REPRESENTATION_TYPE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('representation_type', 'cls'))" 2>/dev/null || echo "cls")
-PRECISION=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('precision', 'float32'))" 2>/dev/null || echo "float32")
+PARAMS_YAML="config/pipeline/params.yaml"
+if [ ! -f "$PARAMS_YAML" ]; then
+    PARAMS_YAML="params.yaml"
+fi
+
+echo "Loading parameters from $PARAMS_YAML..."
+K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
+AUTO_FIND_K=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('auto_find_k', False)).lower())" 2>/dev/null || echo "false")
+K_MIN=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_min', 10000))" 2>/dev/null || echo "10000")
+K_MAX=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_max', 50000))" 2>/dev/null || echo "50000")
+K_STEP=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_step', 10000))" 2>/dev/null || echo "10000")
+CLEANUP_ANOMALIES=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cleanup_anomalies', False)).lower())" 2>/dev/null || echo "false")
+CLEANUP_PLATFORM=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cleanup_platform', ''))" 2>/dev/null || echo "")
+CLEANUP_CONTINENT=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cleanup_continent', ''))" 2>/dev/null || echo "")
+MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('max_markers', 10000))" 2>/dev/null || echo "10000")
+LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
+CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
+BATCH_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('batch_size', 64))" 2>/dev/null || echo "64")
+CELL_CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cell_chunk_size', 64))" 2>/dev/null || echo "64")
+BASE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('base_name', 'geo_space'))" 2>/dev/null || echo "geo_space")
+OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('output_dir', '/home/ananthu/DATA/data_ananthu/full_pipeline_output'))" 2>/dev/null || echo "/home/ananthu/DATA/data_ananthu/full_pipeline_output")
+REPRESENTATION_TYPE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('representation_type', 'cls'))" 2>/dev/null || echo "cls")
+PRECISION=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('precision', 'float32'))" 2>/dev/null || echo "float32")
 
 # Input dirs
-INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
-OFFLINE_DATASET_DIRS=$(python3 -c "import yaml; p=yaml.safe_load(open('params.yaml'))['pipeline']; print(p.get('offline_dataset_dirs') or p.get('iwildcam_dir', ''))" 2>/dev/null || echo "")
-KOPPEN_GEIGER_TIF=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('koppen_geiger_tif', ''))" 2>/dev/null || echo "")
-LAND_SHP=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('land_shp', ''))" 2>/dev/null || echo "")
+INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
+OFFLINE_DATASET_DIRS=$(python3 -c "import yaml; p=yaml.safe_load(open('$PARAMS_YAML'))['pipeline']; print(p.get('offline_dataset_dirs') or p.get('iwildcam_dir', ''))" 2>/dev/null || echo "")
+KOPPEN_GEIGER_TIF=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('koppen_geiger_tif', ''))" 2>/dev/null || echo "")
+LAND_SHP=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('land_shp', ''))" 2>/dev/null || echo "")
 
 # MLLM config
-LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('label_method', 'mllm'))" 2>/dev/null || echo "mllm")
-MLLM_BACKEND=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('mllm_backend', 'sglang'))" 2>/dev/null || echo "sglang")
-MLLM_MODEL=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('mllm_model', 'google/gemma-4-E4B-it'))" 2>/dev/null || echo "google/gemma-4-E4B-it")
-CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('chunk_size', 64))" 2>/dev/null || echo "64")
-FILTER_MACRO=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('filter_macro', False)).lower())" 2>/dev/null || echo "false")
-FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('params.yaml'))['pipeline'].get('filter_sky', False)).lower())" 2>/dev/null || echo "false")
+LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('label_method', 'mllm'))" 2>/dev/null || echo "mllm")
+MLLM_BACKEND=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_backend', 'sglang'))" 2>/dev/null || echo "sglang")
+MLLM_MODEL=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_model', 'google/gemma-4-E4B-it'))" 2>/dev/null || echo "google/gemma-4-E4B-it")
+CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('chunk_size', 64))" 2>/dev/null || echo "64")
+FILTER_MACRO=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_macro', False)).lower())" 2>/dev/null || echo "false")
+FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_sky', False)).lower())" 2>/dev/null || echo "false")
 
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
@@ -174,11 +179,12 @@ if [ "$AUTO_FIND_K" = "true" ]; then
       --k_step "$K_STEP" \
       --update_params \
       --output_plot "$CLUSTER_COUNT_PLOT" \
-      --sample_limit 0
+      --sample_limit 0 \
+      --params_path "$PARAMS_YAML"
 
     # Reload the newly estimated K_CLUSTERS value from params.yaml
     echo "Reloading k_clusters parameter..."
-    K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
+    K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
     echo "Optimal k determined: $K_CLUSTERS"
 
     # Update target clustered parquet path with the new K_CLUSTERS
@@ -270,7 +276,7 @@ else
       --env "HF_TOKEN=${HF_TOKEN}" \
       --ipc=host \
       lmsysorg/sglang:latest-runtime \
-      bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --mem-fraction-static 0.75"
+      bash -c "pip install distro && python3 -m sglang.launch_server --model-path $MLLM_MODEL --host 0.0.0.0 --port 30000 --mem-fraction-static 0.75"
 
     SGLANG_STARTED=true
 

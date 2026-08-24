@@ -3,7 +3,6 @@ import os
 import pickle
 
 import pandas as pd
-import yaml
 
 from src.utils.io import load_dataframe, save_dataframe
 from src.utils.koppen_geiger import extract_koppen_geiger
@@ -39,19 +38,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # Load koppen_tif path from params.yaml if not explicitly passed
+    # Load koppen_tif path
     koppen_tif = args.koppen_tif
-    if not koppen_tif:
-        params_path = "params.yaml"
-        if os.path.exists(params_path):
-            try:
-                with open(params_path, "r") as f:
-                    params = yaml.safe_load(f)
-                    koppen_tif = params.get("pipeline", {}).get(
-                        "koppen_geiger_tif", None
-                    )
-            except Exception as e:
-                print(f"[WARNING] Could not parse params.yaml: {e}")
 
     out_path = args.output if args.output else args.input
 
