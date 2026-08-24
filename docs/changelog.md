@@ -6,6 +6,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-24
+
 ### Added
 - **Dynamic Image Path Server Mapping in Dashboard**: Added an "Offline Image Server Mapping" control panel to the cluster dashboard HTML (`templates/cluster_dashboard.html`). The dashboard now automatically scans the data on page load to detect the original local file prefix path and provides a search-and-replace interface. This allows users to dynamically map local file paths (`file://...`) to remote loopback servers (`http://localhost:8000/`) over SSH port-forwarding tunnels, enabling remote image viewing without file modifications.
 - **Environment Token Security Overhaul**: Secured the entire pipeline from hardcoded API tokens. Modified `run_full_pipeline.sh` to automatically source environment variables from a gitignored `.env` file and forwarded `HF_TOKEN` dynamically to the SGLang Docker container. Removed all hardcoded fallback Mapillary API tokens across all Python pipeline modules (`label_clusters_mllm.py`, `relabel_failed_clusters.py`, `visualize_clusters.py`, `visualize_cluster_samples.py`, `backfill_embeddings.py`, `backfill_timestamps.py`, `backfill_licenses.py`, `process_scraped_data.py`, `test_local_retrieval_comparison.py`, `test_macro_filter.py`, `benchmark_representations.py`, and `download_images.py`), replacing them with dynamic OS environment variable lookups and local `.env` file parsing fallbacks.
@@ -21,11 +23,6 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Lowercase Platform and photo_key Standardization**: Standardized database and codebase casings for `Platform` columns and `photo_key` identifiers to lowercase globally (in `process_scraped_data.py` and `io.py`). This prevents duplicate entries when resuming scraping runs or merging datasets with mixed platform casings (e.g. 'Flickr' vs 'flickr').
 - **EUNIS 2024 Code-Based Legend Resolution**: Keyed the EUNIS 2024 legend mapping using the classification `Code` attribute rather than the row `Id` index in `spatial_overlays.py`. This resolves coordinate query errors where pixel codes (e.g. `8000`, `2113`) failed to map, fully restoring Level 1, 2, and 3 geobotanical retrieval evaluations.
 - **Complete Checkpoint Purge**: Updated the cleanup task handler at the end of `process_scraped_data.py` to completely purge companion `*.keys.parquet`, `.npy` files, and lingering `.tmp` files left over from checkpoints upon successful completion.
-
-### Planned Security Refactoring
-- **Pipeline & MLLM Configuration Decoupling**:
-  - Restructure core pipeline configurations (`params.yaml` -> `config/pipeline/params.yaml`).
-  - Update `run_full_pipeline.sh` to source the `.env` variables and pass them natively to the Docker container environment (e.g. via `--env-file .env`).
 
 ## [1.1.2] - 2026-08-20
 
