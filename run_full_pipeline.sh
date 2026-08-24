@@ -11,7 +11,10 @@ echo "=========================================================="
 # Load environment variables from .env if present
 if [ -f .env ]; then
     echo "Loading environment variables from .env..."
-    export $(grep -v '^#' .env | xargs)
+    set -a
+    # shellcheck source=/dev/null
+    source .env
+    set +a
 fi
 
 if [ -z "$MAPILLARY_TOKEN" ]; then
