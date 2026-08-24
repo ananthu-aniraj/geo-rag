@@ -1,0 +1,33 @@
+name: Deploy Wiki to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'config/wiki/**'
+      - '.github/workflows/deploy_wiki.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install mkdocs-material pymdown-extensions
+
+      - name: Deploy documentation
+        run: |
+          mkdocs gh-deploy --config-file config/wiki/mkdocs.yml --remote-branch gh-pages --force

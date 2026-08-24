@@ -42,6 +42,10 @@ nav:
       - 7. MLLM Labeling: pipeline/07_mllm_labeling.md
       - 8. Spatial-Semantic Indexing: pipeline/08_spatial_semantic_indexing.md
       - 9. Dashboards: pipeline/09_visualization_dashboards.md
-  - Evaluation: evaluation.md
+  - Evaluation:
+      - Overview: evaluation.md
+      - EUNIS Results: evaluation_results/comparison_eunis.md
+      - LUCAS Results: evaluation_results/comparison_lucas.md
+      - Places Results: evaluation_results/comparison_places.md
   - Metrics: metrics.md
   - Changelog: changelog.md
