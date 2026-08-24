@@ -19,9 +19,6 @@ if [ -z "$MAPILLARY_TOKEN" ]; then
     exit 1
 fi
 
-# API keys for external services (Mapillary, Flickr, HuggingFace) should be set in the environment or .env file
-MAPILLARY_TOKEN="$MAPILLARY_TOKEN"
-
 # 1. Load Parameters from params.yaml
 echo "Loading parameters from params.yaml..."
 K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
