@@ -14,7 +14,21 @@ from tqdm import tqdm
 from src.utils.io import get_core_base_name, load_dataframe, save_dataframe
 from src.utils.licensing import FLICKR_LICENSE_MAP
 
-FLICKR_API_KEY = "FLICKR_API_KEY_PLACEHOLDER"
+# Try to load .env variables if not already set
+if not os.environ.get("FLICKR_API_KEY") and os.path.exists(".env"):
+    try:
+        with open(".env", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    if k.strip() == "FLICKR_API_KEY":
+                        os.environ["FLICKR_API_KEY"] = v.strip().strip('"').strip("'")
+                        break
+    except Exception:
+        pass
+
+FLICKR_API_KEY = os.environ.get("FLICKR_API_KEY", "")
 FLICKR_DELAY = 1.1
 
 
