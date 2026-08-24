@@ -168,11 +168,14 @@ def process_cell(
     sky_idx=-1,
     offline_dirs=None,
     representation_type="cls",
+    mapillary_token=None,
 ):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item["embedding"] for item in results]
-    download_fn = partial(download_image, offline_dirs=offline_dirs)
+    download_fn = partial(
+        download_image, offline_dirs=offline_dirs, mapillary_token=mapillary_token
+    )
 
     # Process new images in chunks to limit peak memory usage
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
@@ -899,7 +902,32 @@ def main():
         choices=["float32", "float16"],
         help="Floating point precision format for stored embeddings (float32 or float16).",
     )
+    parser.add_argument(
+        "--mapillary_token",
+        type=str,
+        default=None,
+        help="Mapillary API token for downloading images.",
+    )
     args = parser.parse_args()
+
+    # Try to load .env variables if not already set
+    if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() == "MAPILLARY_TOKEN":
+                            os.environ["MAPILLARY_TOKEN"] = (
+                                v.strip().strip('"').strip("'")
+                            )
+                            break
+        except Exception:
+            pass
+
+    if not args.mapillary_token:
+        args.mapillary_token = os.environ.get("MAPILLARY_TOKEN", "")
 
     # 1. Gather all CSVs and Parquets
     csv_files = []
@@ -1339,6 +1367,7 @@ def main():
                 sky_idx=sky_idx,
                 offline_dirs=args.offline_dataset_dirs,
                 representation_type=args.representation_type,
+                mapillary_token=args.mapillary_token,
             )
             final_data.extend(deduped)
             processed_cells.add(cell)

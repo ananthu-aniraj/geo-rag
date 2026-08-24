@@ -89,7 +89,32 @@ def main():
         default=512,
         help="Number of images to process in parallel download chunks.",
     )
+    parser.add_argument(
+        "--mapillary_token",
+        type=str,
+        default=None,
+        help="Mapillary API token for downloading images.",
+    )
     args = parser.parse_args()
+
+    # Try to load .env variables if not already set
+    if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() == "MAPILLARY_TOKEN":
+                            os.environ["MAPILLARY_TOKEN"] = (
+                                v.strip().strip('"').strip("'")
+                            )
+                            break
+        except Exception:
+            pass
+
+    if not args.mapillary_token:
+        args.mapillary_token = os.environ.get("MAPILLARY_TOKEN", "")
 
     out_path = args.output if args.output else args.input
     if out_path.endswith(".csv"):
@@ -208,7 +233,7 @@ def main():
     successful_indices = []
 
     def download_thread_fn(
-        global_idx, url, photo_id, platform, offline_dirs, image_size
+        global_idx, url, photo_id, platform, offline_dirs, image_size, mapillary_token
     ):
         try:
             img = download_image(
@@ -217,6 +242,7 @@ def main():
                 platform=platform,
                 offline_dirs=offline_dirs,
                 image_size=image_size,
+                mapillary_token=mapillary_token,
             )
             return global_idx, img
         except Exception:
@@ -249,6 +275,7 @@ def main():
                     row["Platform"],
                     args.image_root_dir,
                     image_size,
+                    args.mapillary_token,
                 ): global_idx
                 for global_idx, row in chunk_df.iterrows()
             }

@@ -584,7 +584,6 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
 
 # Thread-safe global session for download adapters
 _http_session = None
-_MAPILLARY_TOKEN = "MAPILLARY_TOKEN_PLACEHOLDER"
 
 
 def _get_http_session():
@@ -605,12 +604,12 @@ def _get_http_session():
 
 def download_image(
     url,
+    mapillary_token,
     photo_id=None,
     platform=None,
     offline_dirs=None,
     image_size=448,
     max_retries=3,
-    mapillary_token=_MAPILLARY_TOKEN,
 ):
     """Loads an image locally if it's part of an offline dataset, or downloads it via connection pool with retries and fallbacks."""
     for attempt in range(max_retries):

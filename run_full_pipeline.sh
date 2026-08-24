@@ -8,6 +8,20 @@ echo "=========================================================="
 echo "  Geo-RAG: Full Processing & Global Clustering Pipeline"
 echo "=========================================================="
 
+# Load environment variables from .env if present
+if [ -f .env ]; then
+    echo "Loading environment variables from .env..."
+    export $(grep -v '^#' .env | xargs)
+fi
+
+if [ -z "$MAPILLARY_TOKEN" ]; then
+    echo "❌ Error: MAPILLARY_TOKEN is not set in your environment or .env file."
+    exit 1
+fi
+
+# API keys for external services (Mapillary, Flickr, HuggingFace) should be set in the environment or .env file
+MAPILLARY_TOKEN="$MAPILLARY_TOKEN"
+
 # 1. Load Parameters from params.yaml
 echo "Loading parameters from params.yaml..."
 K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('params.yaml'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
@@ -100,6 +114,7 @@ python3 -m src.processing.process_scraped_data \
   --cell_chunk_size "$CELL_CHUNK_SIZE" \
   --representation_type "$REPRESENTATION_TYPE" \
   --precision "$PRECISION" \
+  --mapillary_token "$MAPILLARY_TOKEN" \
   $RESUME_FLAG \
   $FILTER_FLAGS \
   $OFFLINE_FLAG
@@ -252,7 +267,7 @@ else
       --shm-size 32g \
       -p 30000:30000 \
       -v ~/.cache/huggingface:/root/.cache/huggingface \
-      --env "HF_TOKEN=HF_TOKEN_PLACEHOLDER" \
+      --env "HF_TOKEN=${HF_TOKEN}" \
       --ipc=host \
       lmsysorg/sglang:latest-runtime \
       bash -c "pip install distro && python3 -m sglang.launch_server --model-path google/gemma-4-E4B-it --host 0.0.0.0 --port 30000 --mem-fraction-static 0.75"
