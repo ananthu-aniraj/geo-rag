@@ -11,10 +11,9 @@ echo "=========================================================="
 # Load environment variables from .env if present
 if [ -f .env ]; then
     echo "Loading environment variables from .env..."
-    set -a
-    # shellcheck source=/dev/null
-    source .env
-    set +a
+    # Export variables dynamically using xargs to prevent unquoted pipes from breaking bash
+    # shellcheck disable=SC2046
+    export $(grep -v '^#' .env | xargs)
 fi
 
 if [ -z "$MAPILLARY_TOKEN" ]; then
