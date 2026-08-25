@@ -5,7 +5,6 @@ import pickle
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import partial
 
 import h3
 import numpy as np
@@ -173,9 +172,15 @@ def process_cell(
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
     processed_embeddings = [item["embedding"] for item in results]
-    download_fn = partial(
-        download_image, offline_dirs=offline_dirs, mapillary_token=mapillary_token
-    )
+
+    def download_fn(url, pid, plat):
+        return download_image(
+            url,
+            mapillary_token=mapillary_token,
+            photo_id=pid,
+            platform=plat,
+            offline_dirs=offline_dirs,
+        )
 
     # Process new images in chunks to limit peak memory usage
     for chunk_start in range(0, len(metadata_list), cell_chunk_size):
