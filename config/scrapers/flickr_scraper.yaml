@@ -4,4 +4,4 @@ scraper:
   step_km: 5
   max_photos_per_box: 100
   uncovered_shapefile: "shapefiles/uncovered_land_areas_test.shp"
-  base_dir: "/home/ananthu/Projects/data/flickr_scrape_rand_8"
+  base_dir: "/home/ananthu/Projects/data/flickr_scrape_rand_9"
