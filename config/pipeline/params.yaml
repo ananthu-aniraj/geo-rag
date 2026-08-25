@@ -38,3 +38,9 @@ pipeline:
 
   # Land boundaries shapefile for region mapping (country & continent)
   land_shp: "shapefiles/ne_10m_admin_0_countries.shp"
+
+  # Public Hugging Face Datasets packaging options
+  relativize_paths: true
+  relativize_mappings:
+    - "/home/ananthu/DATA/google-landmark/train:wikimedia_commons"
+    - "/home/ananthu/DATA/data_ananthu/iwildcam_subset:iwildcam_subset"

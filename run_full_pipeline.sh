@@ -58,8 +58,13 @@ LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'
 MLLM_BACKEND=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_backend', 'sglang'))" 2>/dev/null || echo "sglang")
 MLLM_MODEL=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_model', 'google/gemma-4-E4B-it'))" 2>/dev/null || echo "google/gemma-4-E4B-it")
 CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('chunk_size', 64))" 2>/dev/null || echo "64")
+# Zero-shot filters for iNaturalist data (true/false)
 FILTER_MACRO=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_macro', False)).lower())" 2>/dev/null || echo "false")
 FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_sky', False)).lower())" 2>/dev/null || echo "false")
+
+# Path Relativization Config
+RELATIVIZE_PATHS=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('relativize_paths', False)).lower())" 2>/dev/null || echo "false")
+RELATIVIZE_MAPPINGS=$(python3 -c "import yaml; p=yaml.safe_load(open('$PARAMS_YAML'))['pipeline']; print(' '.join(f'-r {m}' for m in p.get('relativize_mappings', [])))" 2>/dev/null || echo "")
 
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
@@ -374,6 +379,29 @@ python3 -m src.utils.dataset_statistics \
   --output_plot "$STATS_PLOT" \
   --output_text "$STATS_TEXT" \
   --output_map "$STATS_MAP"
+
+if [ "$RELATIVIZE_PATHS" = "true" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "  Generating Public Hugging Face Datasets (Relative Paths)"
+    echo "=========================================================="
+
+    if [ -f "$CLEANED_PARQUET" ]; then
+        echo "Relativizing paths in cleaned dataset..."
+        PYTHONPATH=. ./src/utils/relativize_dataset_paths.py \
+          -i "$CLEANED_PARQUET" \
+          -o "$OUTPUT_DIR/${BASE_NAME}_cleaned_hf.parquet" \
+          $RELATIVIZE_MAPPINGS
+    fi
+
+    if [ -f "$CLUSTERED_PARQUET" ]; then
+        echo "Relativizing paths in clustered dataset..."
+        PYTHONPATH=. ./src/utils/relativize_dataset_paths.py \
+          -i "$CLUSTERED_PARQUET" \
+          -o "$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}_hf.parquet" \
+          $RELATIVIZE_MAPPINGS
+    fi
+fi
 
 echo ""
 echo "=========================================================="
