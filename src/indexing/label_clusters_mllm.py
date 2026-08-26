@@ -883,9 +883,8 @@ def main():
                                 df_rg[col_name] = None
 
                     df_rg_aligned = df_rg[schema_out.names]
-                    tbl_out = pa.Table.from_pandas(
-                        df_rg_aligned, schema=schema_out, preserve_index=False
-                    )
+                    tbl_out = pa.Table.from_pandas(df_rg_aligned, preserve_index=False)
+                    tbl_out = tbl_out.cast(schema_out)
                     writer.write_table(tbl_out)
 
             if os.path.exists(temp_out):

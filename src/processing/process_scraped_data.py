@@ -476,9 +476,8 @@ def stream_update_parquet(
                         df_new_aligned[name] = None
                 df_new_aligned = df_new_aligned[schema.names]
 
-                new_table = pa.Table.from_pandas(
-                    df_new_aligned, schema=schema, preserve_index=False
-                )
+                new_table = pa.Table.from_pandas(df_new_aligned, preserve_index=False)
+                new_table = new_table.cast(schema)
                 writer.write_table(new_table)
 
         # 3. Concatenate and save all embeddings to output .npy
