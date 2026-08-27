@@ -7,8 +7,19 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [Unreleased]
 
 ### Added
+- **Dynamic Ingestion Platform & photo_key Standardization**: Standardized `Platform` values to lowercase and generated the unique `photo_key` dynamically on the fly during file ingestion in `load_and_preprocess_csv`.
+- **Memory-Optimized Resume Loader**: Updated the resume loader to inspect the database schema using PyArrow. If `photo_key` is present, it loads *only* the `photo_key` and `H3_Cell` columns, resulting in near-zero memory footprint during pipeline resumption. Added backward-compatible generation fallbacks for legacy files.
+- **Occupancy Map Lowercased Platform Breakdown**: Updated `generate_h3_occupancy_map.py` to normalize and group platform statistics in lowercase, ensuring consistent and unified tooltips.
 - **Multi-Model Support in Backfill Embeddings**: Upgraded `backfill_embeddings.py` to support computing and saving embeddings for any Hugging Face or `timm` representation models using the unified `load_vision_model` helper.
 - **Model-Specific Embedding Serialization**: Updated `save_dataframe` and `load_embeddings` in `src/utils/io.py` to serialize companion `.npy` matrices using model-specific filenames (e.g. `{base_name}_{model_name}_{representation_type}_embeddings.npy`), preventing different model runs from overwriting each other's cache. Retained fully backward-compatible fallbacks to model-agnostic filenames if a model-specific file is not found.
+
+### Changed
+- **Parent Clustering Division Factor (`K // 20`)**: Switched the default parent cluster division ratio from `K // 80` to `K // 20` for superior parent semantic cohesion and tree-search branching.
+- **Dynamic Step-Ratio Mapping**: Refactored the parent-child index mapper in `cluster_images_global.py` to dynamically compute step ratios based on the resolved `k_parents` count rather than using hardcoded ratios.
+
+### Fixed
+- **Streaming Parquet Write Schema ArrowInvalid Crash**: Resolved `ArrowInvalid` type-matching errors in `stream_update_parquet` by dynamically checking schema string widths (`large_string` vs `string`) and casting/aligning copied row groups before writing.
+- **Clustering Argument Overriding Bug**: Fixed a bug in `cluster_images_global.py` where the user-specified `--k_parents` configuration parameter was being silently overridden and reset.
 
 ### Planned
 - **Image Mosaicing in Cluster Labeling**: Add support for mosaicing (stitching) multiple sample images together when submitting them to the MLLM for cluster labeling to improve context and visual density.
