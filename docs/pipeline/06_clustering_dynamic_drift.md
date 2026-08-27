@@ -37,7 +37,7 @@ faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)
 Using raw normalized image embeddings, this partitions the dataset into $k$ fine-grained child clusters.
 
 ### 2. Hierarchical Parent Clustering
-Runs Spherical K-Means on GPU on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 80)$).
+Runs Spherical K-Means on GPU on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 20)$).
 
 ### 3. Type Resilience & Immediate Persistence
 * Coordinate columns are cast to numeric float64 right after loading to preserve schema alignment during final Parquet export.

@@ -17,7 +17,7 @@ The pipeline operates globally on the GPU using FAISS:
 ```mermaid
 graph TD
     A[ 7M Raw Embeddings ] -->|FAISS GPU K-Means| B[ Stage 1: 40,000 Child Clusters ]
-    B -->|Closest-Point Resampling: 400k Vectors| C[ Stage 2: 500 Parent Clusters ]
+    B -->|Closest-Point Resampling: 400k Vectors| C[ Stage 2: 2,000 Parent Clusters ]
     C -->|Majority-Vote Child Mapping| D[ Final Hierarchical Index ]
 ```
 
@@ -26,7 +26,7 @@ graph TD
 2. **Closest-Point Resampling**:
    * For each of the 40,000 child clusters, we retrieve the top $N = 10$ image embeddings closest to its centroid (using cosine similarity). This creates a highly representative subset of $\le 400,000$ vectors.
 3. **Stage 2 (Categories / Parent)**:
-   * Cluster these $400,000$ resampled vectors into $k_{\text{parents}} = 500$ parent groups using FAISS GPU K-Means.
+   * Cluster these $400,000$ resampled vectors into $k_{\text{parents}} = 2,000$ parent groups (using a division factor of $K // 20$) using FAISS GPU K-Means.
 4. **Majority-Vote Child Mapping**:
    * Assign parent IDs back to the 40,000 child centroids using a majority vote of the resampled points belonging to each child cluster, mapping them to the `parent_cluster_id` column.
 
