@@ -331,16 +331,24 @@ def stream_update_parquet(
             continue
         new_fields.append(f)
 
+    # Detect if existing schema uses large_string
+    has_large_string = False
+    for f in pf.schema_arrow:
+        if f.type == pa.large_string():
+            has_large_string = True
+            break
+    str_type = pa.large_string() if has_large_string else pa.string()
+
     # Ensure photo_key is in the output schema
     if "photo_key" not in [f.name for f in new_fields]:
-        new_fields.append(pa.field("photo_key", pa.string()))
+        new_fields.append(pa.field("photo_key", str_type))
 
     # Upgrade schema to include License if it is present in the new df
     # but not in the existing parquet database
     has_license_in_new = "License" in df_new.columns if df_new is not None else False
     has_license_in_existing = "License" in pf.schema_arrow.names
     if has_license_in_new and not has_license_in_existing:
-        new_fields.append(pa.field("License", pa.string()))
+        new_fields.append(pa.field("License", str_type))
 
     schema = pa.schema(new_fields)
 
@@ -388,12 +396,11 @@ def stream_update_parquet(
                         has_license_in_new
                         and "License" not in filtered_table.column_names
                     ):
+                        field = schema.field("License")
                         null_col = pa.array(
-                            [None] * len(filtered_table), type=pa.string()
+                            [None] * len(filtered_table), type=field.type
                         )
-                        filtered_table = filtered_table.append_column(
-                            "License", null_col
-                        )
+                        filtered_table = filtered_table.append_column(field, null_col)
 
                     # Standardize Platform to lowercase
                     if "Platform" in filtered_table.column_names:
@@ -404,30 +411,31 @@ def stream_update_parquet(
                             .astype(str)
                             .str.lower()
                         )
+                        field = schema.field("Platform")
                         filtered_table = filtered_table.set_column(
                             plat_pos,
-                            pa.field("Platform", pa.string()),
-                            pa.array(plat_col),
+                            field,
+                            pa.array(plat_col, type=field.type),
                         )
 
                     # Ensure photo_key is populated and standardized to lowercase
                     df_temp_rg = filtered_table.select(
                         ["Platform", "Photo_ID"]
                     ).to_pandas()
+                    field = schema.field("photo_key")
                     keys_arr = pa.array(
                         df_temp_rg["Platform"].astype(str).str.lower()
                         + "_"
-                        + df_temp_rg["Photo_ID"].astype(str)
+                        + df_temp_rg["Photo_ID"].astype(str),
+                        type=field.type,
                     )
                     if "photo_key" in filtered_table.column_names:
                         pk_pos = filtered_table.column_names.index("photo_key")
                         filtered_table = filtered_table.set_column(
-                            pk_pos, pa.field("photo_key", pa.string()), keys_arr
+                            pk_pos, field, keys_arr
                         )
                     else:
-                        filtered_table = filtered_table.append_column(
-                            "photo_key", keys_arr
-                        )
+                        filtered_table = filtered_table.append_column(field, keys_arr)
 
                     chunk_keys = keys_arr.to_numpy()
                     inactive_keys_list.append(chunk_keys)
@@ -446,6 +454,9 @@ def stream_update_parquet(
                     embs = full_embeddings[indices]
                     inactive_embs_list.append(embs)
 
+                    # Align column order and cast to the exact target schema
+                    filtered_table = filtered_table.select(schema.names)
+                    filtered_table = filtered_table.cast(schema)
                     writer.write_table(filtered_table)
 
             # 2. Write the new/updated active rows
