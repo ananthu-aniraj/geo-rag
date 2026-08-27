@@ -37,7 +37,7 @@ def sample_closest_points(embeddings_norm, cluster_ids, centroids, n_samples=10)
 
 
 def map_resampled_parents_to_children(
-    sampled_indices, resampled_parent_ids, child_cluster_ids, k_child
+    sampled_indices, resampled_parent_ids, child_cluster_ids, k_child, k_parent
 ):
     """
     Maps parent cluster assignments from resampled points back to child clusters.
@@ -56,11 +56,12 @@ def map_resampled_parents_to_children(
             child_samples[child_id] = []
         child_samples[child_id].append(parent_id)
 
+    step = max(1, k_child // k_parent)
     for cid in range(k_child):
         parents = child_samples.get(cid, [])
         if not parents:
             # Fallback
-            child_to_parent[cid] = cid // 80
+            child_to_parent[cid] = min(k_parent - 1, cid // step)
         else:
             # Majority vote
             child_to_parent[cid] = Counter(parents).most_common(1)[0][0]
@@ -119,7 +120,7 @@ def main():
         "--k_parents",
         type=int,
         default=None,
-        help="Number of parent clusters for hierarchical grouping (default: k // 80).",
+        help="Number of parent clusters for hierarchical grouping (default: k // 20).",
     )
     parser.add_argument(
         "--minibatch",
@@ -169,7 +170,7 @@ def main():
 
     k_parents = args.k_parents
     if args.k_parents is None:
-        k_parents = max(2, args.k // 80)
+        k_parents = max(2, args.k // 20)
 
     print(f"Loading dataset from {args.pkl}...")
     if args.pkl.endswith(".pkl"):
@@ -204,9 +205,6 @@ def main():
         df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
     if "Longitude" in df.columns:
         df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-
-    # Setup parent cluster count
-    k_parents = args.k // 80 if args.k >= 80 else 1
 
     if len(df) == 0:
         print("No data found.")
@@ -276,8 +274,11 @@ def main():
             counts += np.bincount(c_ids_valid, minlength=args.k)
 
             # Map child to parent vectorially
+            step = max(1, args.k // k_parents)
             child_to_parent[c_ids_valid] = np.where(
-                pd.isna(p_ids_old[valid_mask]), c_ids_valid // 80, p_ids_old[valid_mask]
+                pd.isna(p_ids_old[valid_mask]),
+                np.minimum(k_parents - 1, c_ids_valid // step),
+                p_ids_old[valid_mask],
             ).astype(np.int32)
 
         # Normalize centroids by their counts
@@ -340,8 +341,12 @@ def main():
             parent_map_dict = {
                 unique_ids[i]: child_to_parent[i] for i in range(len(unique_ids))
             }
+            step = max(1, args.k // k_parents)
             df["parent_cluster_id"] = np.array(
-                [parent_map_dict.get(cid, cid // 80) for cid in df["cluster_id"]]
+                [
+                    parent_map_dict.get(cid, min(k_parents - 1, cid // step))
+                    for cid in df["cluster_id"]
+                ]
             )
 
         print(f" -> Mapping completed in {time.time() - start_assign:.2f}s.")
