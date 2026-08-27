@@ -84,7 +84,12 @@ Instead of single-medoid images, we stack four mutually diverse nearest-neighbor
    * Any unused space inside the cell is padded with a neutral dark-gray background (`#282828`).
 2. **Vertical Stitching**:
    * The 4 cells are stacked vertically into a single $512 \times 1024$ JPEG file (less than 80 KB).
-3. **sglang VLM Prompting**:
-   * The single composite image is sent to sglang. The first sentence of the prompt is updated to:
+3. **Multi-Aspect VLM Prompting (Stage 1)**:
+   * The single composite image is sent to sglang. The prompt instructs the model to synthesize the dominant, common land-cover features across the vertical stack rather than treating it as a single photo:
      *"The input image contains a vertical stack of 4 representative photographs from the same local cluster; analyze the common land-cover features across these frames..."*
-   * This is treated as a single image token input, keeping VLM API costs and processing speeds identical to the single-medoid setup.
+4. **Composite Metadata Aggregation (Stage 2)**:
+   * Since the 4 images represent different sample points within the same semantic-spatial cluster, we compile aggregated metadata for the Stage 2 classification prompt:
+     - **Location**: Bounding box and centroid of the 4 coordinates.
+     - **Region/Country**: List of unique countries represented.
+     - **Climate & Season**: List of unique climates and seasons represented.
+   * This prevents the MLLM from overfitting to a single coordinate or a single photo's season, making the classification robust to temporal/spatial anomalies.
