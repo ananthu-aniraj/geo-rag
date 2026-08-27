@@ -765,6 +765,7 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
             "Image_URL",
             "Captured_At",
             "License",
+            "photo_key",
         ]
         for col in required_cols:
             if col not in df.columns:
@@ -809,6 +810,9 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
             df.loc[flickr_mask, "License"] = mapped.fillna(
                 df.loc[flickr_mask, "License"]
             )
+
+        df["Platform"] = df["Platform"].astype(str).str.strip().str.lower()
+        df["photo_key"] = df["Platform"] + "_" + df["Photo_ID"].astype(str)
 
         df = df[required_cols].copy()
         df["License"] = (
@@ -993,10 +997,9 @@ def main():
             )
 
             seen_keys = set(
-                zip(
-                    df_existing["Platform"].astype(str).str.lower(),
-                    df_existing["Photo_ID"].apply(clean_photo_id),
-                )
+                df_existing["Platform"].astype(str).str.lower()
+                + "_"
+                + df_existing["Photo_ID"].apply(clean_photo_id)
             )
 
             # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
@@ -1018,14 +1021,9 @@ def main():
             # Load minimal metadata columns only (uses ~50MB RAM even for millions of rows)
             print("Loading existing dataset metadata using PyArrow...")
             df_existing = load_dataframe(
-                args.resume_from, columns=["Photo_ID", "Platform", "H3_Cell"]
+                args.resume_from, columns=["photo_key", "H3_Cell"]
             )
-            seen_keys = set(
-                zip(
-                    df_existing["Platform"].astype(str).str.lower(),
-                    df_existing["Photo_ID"].apply(clean_photo_id),
-                )
-            )
+            seen_keys = set(df_existing["photo_key"])
 
         # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
         if not df_existing.empty and "Image_URL" in df_existing.columns:
@@ -1117,11 +1115,9 @@ def main():
             for plat, pid, url in zip(platforms, photo_ids, image_urls)
         ]
 
-        df_all = df_all.drop_duplicates(subset=["Platform", "Photo_ID"])
+        df_all = df_all.drop_duplicates(subset=["photo_key"])
         if seen_keys:
-            df_all["temp_key"] = list(zip(df_all["Platform"], df_all["Photo_ID"]))
-            df_all = df_all[~df_all["temp_key"].isin(seen_keys)]
-            df_all = df_all.drop(columns=["temp_key"])
+            df_all = df_all[~df_all["photo_key"].isin(seen_keys)]
 
     print(f"Total NEW raw images: {len(df_all)}")
 

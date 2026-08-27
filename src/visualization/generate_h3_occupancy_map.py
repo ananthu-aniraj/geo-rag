@@ -131,10 +131,14 @@ def main():
                 df = df.drop_duplicates(subset=[id_col])
 
             # Extract platform
-            inferred_platform = "Flickr" if "flickr" in f.lower() else "Mapillary"
+            inferred_platform = "flickr" if "flickr" in f.lower() else "mapillary"
             if platform_col:
                 df["Platform_Clean"] = (
-                    df[platform_col].fillna(inferred_platform).astype(str)
+                    df[platform_col]
+                    .fillna(inferred_platform)
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
                 )
             else:
                 df["Platform_Clean"] = inferred_platform
