@@ -996,11 +996,13 @@ def main():
                 np.float32
             )
 
-            seen_keys = set(
-                df_existing["Platform"].astype(str).str.lower()
-                + "_"
-                + df_existing["Photo_ID"].apply(clean_photo_id)
+            df_existing["Platform"] = (
+                df_existing["Platform"].astype(str).str.strip().str.lower()
             )
+            df_existing["photo_key"] = (
+                df_existing["Platform"] + "_" + df_existing["Photo_ID"].astype(str)
+            )
+            seen_keys = set(df_existing["photo_key"])
 
             # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
             if not df_existing.empty and "Image_URL" in df_existing.columns:
@@ -1020,9 +1022,23 @@ def main():
         else:
             # Load minimal metadata columns only (uses ~50MB RAM even for millions of rows)
             print("Loading existing dataset metadata using PyArrow...")
-            df_existing = load_dataframe(
-                args.resume_from, columns=["photo_key", "H3_Cell"]
-            )
+            import pyarrow.parquet as pq
+
+            pf_meta = pq.ParquetFile(args.resume_from)
+            if "photo_key" in pf_meta.schema_arrow.names:
+                df_existing = load_dataframe(
+                    args.resume_from, columns=["photo_key", "H3_Cell"]
+                )
+            else:
+                df_existing = load_dataframe(
+                    args.resume_from, columns=["Photo_ID", "Platform", "H3_Cell"]
+                )
+                df_existing["Platform"] = (
+                    df_existing["Platform"].astype(str).str.strip().str.lower()
+                )
+                df_existing["photo_key"] = (
+                    df_existing["Platform"] + "_" + df_existing["Photo_ID"].astype(str)
+                )
             seen_keys = set(df_existing["photo_key"])
 
         # Retroactively clean existing URLs to virtual format if they are Mapillary/KartaView (vectorized)
@@ -1178,19 +1194,25 @@ def main():
                 )
 
                 # Build master keys index from df_existing
-                df_existing_keys = (
-                    df_existing["Platform"].astype(str)
-                    + "_"
-                    + df_existing["Photo_ID"].astype(str)
-                )
-                master_keys = pd.Index(df_existing_keys)
+                if "photo_key" in df_existing.columns:
+                    master_keys = pd.Index(df_existing["photo_key"])
+                else:
+                    df_existing_keys = (
+                        df_existing["Platform"].astype(str).str.lower()
+                        + "_"
+                        + df_existing["Photo_ID"].astype(str)
+                    )
+                    master_keys = pd.Index(df_existing_keys)
 
                 # Get keys of active cells
-                active_keys = (
-                    df_existing_active["Platform"].astype(str)
-                    + "_"
-                    + df_existing_active["Photo_ID"].astype(str)
-                )
+                if "photo_key" in df_existing_active.columns:
+                    active_keys = df_existing_active["photo_key"]
+                else:
+                    active_keys = (
+                        df_existing_active["Platform"].astype(str).str.lower()
+                        + "_"
+                        + df_existing_active["Photo_ID"].astype(str)
+                    )
 
                 # Resolve indices using pd.Index.get_indexer
                 if master_keys.is_unique:
