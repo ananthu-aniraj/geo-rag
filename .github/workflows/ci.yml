@@ -38,8 +38,8 @@ jobs:
           pip install --upgrade pip
           # Install core packages (wheels are pre-compiled and load instantly)
           pip install -r requirements.txt
-          # Install CPU torch and timm for fast import checks
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # Install CPU torch and torchvision for fast import checks
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install timm
 
       - name: Run Unit Tests
