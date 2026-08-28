@@ -5,8 +5,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.processing.process_scraped_data import stream_update_parquet
-from src.utils.io import save_dataframe
+from src.processing.process_scraped_data import save_checkpoint, stream_update_parquet
+from src.utils.io import load_embeddings, save_dataframe
 
 
 class TestStreamUpdate(unittest.TestCase):
@@ -106,6 +106,79 @@ class TestStreamUpdate(unittest.TestCase):
         self.assertTrue(os.path.exists(out_npy_path))
         out_embs = np.load(out_npy_path)
         self.assertEqual(len(out_embs), len(df_out))
+
+    def test_checkpoint_resume_and_save_success(self):
+        # 1. Save an initial checkpoint file from first run state
+        initial_data = [
+            {
+                "Photo_ID": "999",
+                "Platform": "mapillary",
+                "H3_Cell": "841f8f3ffffffff",
+                "Latitude": 40.5,
+                "Longitude": -73.5,
+                "Image_URL": "url999",
+                "Captured_At": "2026-02-01",
+                "License": "CC-BY",
+                "photo_key": "mapillary_999",
+                "embedding": np.random.rand(768).astype(np.float32),
+            }
+        ]
+        ckpt_path = os.path.join(self.test_dir, "db_checkpoint.parquet")
+        ckpt_meta_path = ckpt_path.replace(".parquet", "_meta.pkl")
+
+        save_checkpoint(
+            initial_data,
+            {"841f8f3ffffffff"},
+            ckpt_path,
+            ckpt_meta_path,
+            resume_from=self.input_parquet,
+            active_cells={"841f8f3ffffffff"},
+            representation_type="cls",
+        )
+
+        self.assertTrue(os.path.exists(ckpt_path))
+
+        # 2. Simulate resuming from the checkpoint: load Parquet AND load companion embeddings
+        from src.utils.io import load_dataframe
+
+        df_ckpt = load_dataframe(ckpt_path)
+
+        # Verify it has no embedding column by default (since it is decoupled)
+        self.assertNotIn("embedding", df_ckpt.columns)
+
+        # Load companion embeddings and reconstruct df
+        ckpt_embs = load_embeddings(ckpt_path, representation_type="cls")
+        df_ckpt["embedding"] = list(ckpt_embs)
+
+        # Filter and retrieve final_data dicts
+        df_ckpt_active = df_ckpt[df_ckpt["H3_Cell"].isin({"841f8f3ffffffff"})]
+        final_data = df_ckpt_active.to_dict("records")
+
+        # Verify embeddings are successfully restored
+        self.assertIn("embedding", final_data[0])
+        self.assertIsInstance(final_data[0]["embedding"], np.ndarray)
+
+        # 3. Save second checkpoint using the restored final_data (should succeed without KeyError)
+        ckpt_path_2 = os.path.join(self.test_dir, "db_checkpoint_2.parquet")
+        ckpt_meta_path_2 = ckpt_path_2.replace(".parquet", "_meta.pkl")
+
+        try:
+            save_checkpoint(
+                final_data,
+                {"841f8f3ffffffff"},
+                ckpt_path_2,
+                ckpt_meta_path_2,
+                resume_from=self.input_parquet,
+                active_cells={"841f8f3ffffffff"},
+                representation_type="cls",
+            )
+            second_save_success = True
+        except Exception as e:
+            self.fail(f"save_checkpoint after resume failed with exception: {e}")
+            second_save_success = False
+
+        self.assertTrue(second_save_success)
+        self.assertTrue(os.path.exists(ckpt_path_2))
 
 
 if __name__ == "__main__":

@@ -128,28 +128,50 @@ def save_dataframe(
             else:
                 dtype = embs.dtype
 
+            # Save the companion files to temporary paths first
+            tmp_npy_path = file_path + f".tmp_{rep_suffix}_embeddings.npy"
+            tmp_keys_path = tmp_npy_path.replace(".npy", ".keys.parquet")
+
             print(
                 f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={np.dtype(dtype).name})"
             )
-            np.save(npy_path, embs.astype(dtype))
+            np.save(tmp_npy_path, embs.astype(dtype))
 
             if "photo_key" not in df_to_save.columns:
                 df_to_save["photo_key"] = "idx_" + np.arange(len(df_to_save)).astype(
                     str
                 )
 
-            # Save the companion keys file
+            # Save the companion keys file to temporary path
             keys_df = pd.DataFrame({"photo_key": df_to_save["photo_key"]})
             keys_path = os.path.join(
                 db_dir, f"{core_name}_{rep_suffix}_embeddings.keys.parquet"
             )
             print(f" -> Saving companion keys file to: {keys_path}")
-            keys_df.to_parquet(keys_path, compression="zstd")
+            keys_df.to_parquet(tmp_keys_path, compression="zstd")
 
             df_to_save = df_to_save.drop(
                 columns=["embedding", "embedding_idx"], errors="ignore"
             )
-            df_to_save.to_parquet(file_path, index=index, **kwargs)
+
+            try:
+                df_to_save.to_parquet(file_path, index=index, **kwargs)
+                # Atomically rename companion files on success
+                os.replace(tmp_npy_path, npy_path)
+                os.replace(tmp_keys_path, keys_path)
+            except Exception as e:
+                # Clean up temporary companion files on failure
+                if os.path.exists(tmp_npy_path):
+                    try:
+                        os.remove(tmp_npy_path)
+                    except Exception:
+                        pass
+                if os.path.exists(tmp_keys_path):
+                    try:
+                        os.remove(tmp_keys_path)
+                    except Exception:
+                        pass
+                raise e
             return
 
         df_to_save.to_parquet(file_path, index=index, **kwargs)

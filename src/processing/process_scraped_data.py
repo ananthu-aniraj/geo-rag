@@ -523,23 +523,39 @@ def stream_update_parquet(
         dtype = np.float16 if precision == "float16" else np.float32
         final_embs_cast = final_embs.astype(dtype)
 
+        tmp_npy_path = tmp_output + f"_{representation_type}_embeddings.npy"
+        tmp_keys_path = tmp_npy_path.replace(".npy", ".keys.parquet")
+
         print(
-            f" -> Saving merged companion embeddings matrix: {npy_path} (dtype={dtype.__name__})"
+            f" -> Saving merged companion embeddings matrix: {npy_path} (dtype={np.dtype(dtype).name})"
         )
-        np.save(npy_path, final_embs_cast)
+        np.save(tmp_npy_path, final_embs_cast)
 
         keys_path = npy_path.replace(".npy", ".keys.parquet")
         print(f" -> Saving companion keys index: {keys_path}")
         pd.DataFrame({"photo_key": final_keys}).to_parquet(
-            keys_path, compression="zstd"
+            tmp_keys_path, compression="zstd"
         )
 
         if os.path.exists(tmp_output):
             os.replace(tmp_output, output_path)
+            # Atomically rename companion files on success
+            os.replace(tmp_npy_path, npy_path)
+            os.replace(tmp_keys_path, keys_path)
     except Exception as e:
         if os.path.exists(tmp_output):
             try:
                 os.remove(tmp_output)
+            except Exception:
+                pass
+        if "tmp_npy_path" in locals() and os.path.exists(tmp_npy_path):
+            try:
+                os.remove(tmp_npy_path)
+            except Exception:
+                pass
+        if "tmp_keys_path" in locals() and os.path.exists(tmp_keys_path):
+            try:
+                os.remove(tmp_keys_path)
             except Exception:
                 pass
         raise e
@@ -1325,6 +1341,15 @@ def main():
         )
         try:
             df_ckpt = load_dataframe(checkpoint_path)
+            try:
+                ckpt_embs = load_embeddings(
+                    checkpoint_path, representation_type=args.representation_type
+                )
+                df_ckpt["embedding"] = list(ckpt_embs)
+            except FileNotFoundError:
+                print(
+                    f" -> [WARNING] Companion embeddings file not found for checkpoint: {checkpoint_path}"
+                )
             # Filter df_ckpt to only include active cells for final_data
             df_ckpt_active = df_ckpt[df_ckpt["H3_Cell"].isin(active_cells)]
             final_data = df_ckpt_active.to_dict("records")
