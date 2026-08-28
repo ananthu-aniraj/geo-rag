@@ -204,6 +204,21 @@ The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is 
 
 ---
 
+## 🧪 Running Unit & Integration Tests
+
+The pipeline features a robust, fast unit testing suite to verify database transformations, schema changes, and semantic drift calculations before committing code.
+
+### Running Tests Locally
+To execute the complete unit test suite, run:
+```bash
+PYTHONPATH=. python3 -m unittest discover -s tests
+```
+
+### CI/CD Integration
+Tests are fully integrated into GitHub Actions CI (`.github/workflows/ci.yml`) and run automatically on every push or pull request to the `main` branch.
+
+---
+
 ## ⚠️ Troubleshooting: Ubuntu AppArmor & Container Termination hangs
 
 On modern Ubuntu releases (specifically Ubuntu 24.04 LTS), a conflict between AppArmor and the `containerd` runtime can prevent Docker containers from stopping or being deleted.
