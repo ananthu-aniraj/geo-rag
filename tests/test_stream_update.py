@@ -219,6 +219,45 @@ class TestStreamUpdate(unittest.TestCase):
         # 4. Verify that we resolved the base embeddings (all 1.0) and NOT the checkpoint embeddings (all 2.0)
         np.testing.assert_array_equal(loaded_embs, np.ones((2, 768), dtype=np.float32))
 
+    def test_save_dataframe_with_model_name(self):
+        db_path = os.path.join(self.test_dir, "test_model_db.parquet")
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2"],
+                "Platform": ["flickr", "flickr"],
+                "H3_Cell": ["841f8f3ffffffff", "841f8f3ffffffff"],
+                "Latitude": [40.0, 40.1],
+                "Longitude": [-74.0, -74.1],
+                "Image_URL": ["url1", "url2"],
+                "Captured_At": ["2024-01-01", "2024-01-02"],
+            }
+        )
+        # Use a distinctive embedding filled with 3.5
+        df["embedding"] = list(np.ones((2, 768), dtype=np.float32) * 3.5)
+
+        # Save with a specific model name
+        model_name = "google/tipsv2"
+        save_dataframe(df, db_path, representation_type="cls", model_name=model_name)
+
+        # Expected file paths
+        expected_npy = os.path.join(
+            self.test_dir, "test_model_db_google_tipsv2_cls_embeddings.npy"
+        )
+        expected_keys = os.path.join(
+            self.test_dir, "test_model_db_google_tipsv2_cls_embeddings.keys.parquet"
+        )
+
+        self.assertTrue(os.path.exists(expected_npy))
+        self.assertTrue(os.path.exists(expected_keys))
+
+        # Test loading it back using load_embeddings with model_name
+        loaded_embs = load_embeddings(
+            db_path, model_name=model_name, representation_type="cls"
+        )
+        np.testing.assert_array_equal(
+            loaded_embs, np.ones((2, 768), dtype=np.float32) * 3.5
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

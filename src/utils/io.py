@@ -144,9 +144,7 @@ def save_dataframe(
 
             # Save the companion keys file to temporary path
             keys_df = pd.DataFrame({"photo_key": df_to_save["photo_key"]})
-            keys_path = os.path.join(
-                db_dir, f"{core_name}_{rep_suffix}_embeddings.keys.parquet"
-            )
+            keys_path = npy_path.replace(".npy", ".keys.parquet")
             print(f" -> Saving companion keys file to: {keys_path}")
             keys_df.to_parquet(tmp_keys_path, compression="zstd")
 
