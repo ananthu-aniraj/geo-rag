@@ -7,6 +7,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [Unreleased]
 
 ### Added
+- **Automated Pipeline Component Unit Testing**: Added integration and unit tests for coordinate anomaly cleaning (`tests/test_coordinate_cleanup.py`), semantic drift validation (`tests/test_semantic_drift.py`), and regional/seasonal timestamp metadata standardization (`tests/test_standardize_timestamps.py`).
+- **Support for Decoupled Databases in Semantic Drift Detector**: Upgraded `check_semantic_drift.py` to support decoupled embedding structures by fetching representations dynamically using the unified `load_embeddings()` handler rather than seeking them directly inside the Parquet schema.
 - **Automated PyArrow Streaming Update Unit Testing**: Created a dedicated unit test suite (`tests/test_stream_update.py`) simulating PyArrow streaming parquet updates, checking copy safety, H3 cell exclusions, schema castings, and companion index allocations.
 - **GitHub Actions CI/CD Integration**: Expanded the CI/CD pipeline workflow (`.github/workflows/ci.yml`) to automatically install dependencies and run unit tests on all push and pull request activities.
 - **Dynamic Ingestion Platform & photo_key Standardization**: Standardized `Platform` values to lowercase and generated the unique `photo_key` dynamically on the fly during file ingestion in `load_and_preprocess_csv`.
@@ -20,6 +22,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Dynamic Step-Ratio Mapping**: Refactored the parent-child index mapper in `cluster_images_global.py` to dynamically compute step ratios based on the resolved `k_parents` count rather than using hardcoded ratios.
 
 ### Fixed
+- **Fixed None-Path TypeError in Timestamp Standardization**: Added a null validation guard on shapefile parameters in `standardize_timestamps.py` to prevent crash triggers when executing without boundary maps.
+- **Fixed NumPy 2.0 type name crash**: Fixed a crash in `save_dataframe()` where modern NumPy float classes lack a `__name__` attribute.
 - **Streaming Parquet Write Schema ArrowInvalid Crash**: Resolved `ArrowInvalid` type-matching errors in `stream_update_parquet` by dynamically checking schema string widths (`large_string` vs `string`) and casting/aligning copied row groups before writing.
 - **Clustering Argument Overriding Bug**: Fixed a bug in `cluster_images_global.py` where the user-specified `--k_parents` configuration parameter was being silently overridden and reset.
 
