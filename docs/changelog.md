@@ -7,6 +7,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [Unreleased]
 
 ### Added
+- **Automated PyArrow Streaming Update Unit Testing**: Created a dedicated unit test suite (`tests/test_stream_update.py`) simulating PyArrow streaming parquet updates, checking copy safety, H3 cell exclusions, schema castings, and companion index allocations.
+- **GitHub Actions CI/CD Integration**: Expanded the CI/CD pipeline workflow (`.github/workflows/ci.yml`) to automatically install dependencies and run unit tests on all push and pull request activities.
 - **Dynamic Ingestion Platform & photo_key Standardization**: Standardized `Platform` values to lowercase and generated the unique `photo_key` dynamically on the fly during file ingestion in `load_and_preprocess_csv`.
 - **Memory-Optimized Resume Loader**: Updated the resume loader to inspect the database schema using PyArrow. If `photo_key` is present, it loads *only* the `photo_key` and `H3_Cell` columns, resulting in near-zero memory footprint during pipeline resumption. Added backward-compatible generation fallbacks for legacy files.
 - **Occupancy Map Lowercased Platform Breakdown**: Updated `generate_h3_occupancy_map.py` to normalize and group platform statistics in lowercase, ensuring consistent and unified tooltips.
