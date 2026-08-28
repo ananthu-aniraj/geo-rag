@@ -180,6 +180,45 @@ class TestStreamUpdate(unittest.TestCase):
         self.assertTrue(second_save_success)
         self.assertTrue(os.path.exists(ckpt_path_2))
 
+    def test_load_embeddings_no_checkpoint_mixup(self):
+        # 1. Create a base database file with 1.0-filled embeddings
+        base_db_path = os.path.join(self.test_dir, "test_mixup.parquet")
+        df_base = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2"],
+                "Platform": ["flickr", "flickr"],
+                "H3_Cell": ["841f8f3ffffffff", "841f8f3ffffffff"],
+                "Latitude": [40.0, 40.1],
+                "Longitude": [-74.0, -74.1],
+                "Image_URL": ["url1", "url2"],
+                "Captured_At": ["2024-01-01", "2024-01-02"],
+            }
+        )
+        df_base["embedding"] = list(np.ones((2, 768), dtype=np.float32))
+        save_dataframe(df_base, base_db_path, representation_type="cls")
+
+        # 2. Create a checkpoint file in the same directory with 2.0-filled embeddings
+        ckpt_db_path = os.path.join(self.test_dir, "test_mixup_checkpoint.parquet")
+        df_ckpt = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2"],
+                "Platform": ["flickr", "flickr"],
+                "H3_Cell": ["841f8f3ffffffff", "841f8f3ffffffff"],
+                "Latitude": [40.0, 40.1],
+                "Longitude": [-74.0, -74.1],
+                "Image_URL": ["url1", "url2"],
+                "Captured_At": ["2024-01-01", "2024-01-02"],
+            }
+        )
+        df_ckpt["embedding"] = list(np.ones((2, 768), dtype=np.float32) * 2.0)
+        save_dataframe(df_ckpt, ckpt_db_path, representation_type="cls")
+
+        # 3. Load embeddings for the base database path
+        loaded_embs = load_embeddings(base_db_path, representation_type="cls")
+
+        # 4. Verify that we resolved the base embeddings (all 1.0) and NOT the checkpoint embeddings (all 2.0)
+        np.testing.assert_array_equal(loaded_embs, np.ones((2, 768), dtype=np.float32))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -364,9 +364,11 @@ def load_embeddings(
     if not npy_path:
         for b in [base_name, get_core_base_name(base_name)]:
             path = get_npy_path(b, None)
-            if os.path.exists(path) or b == base_name:
+            if os.path.exists(path):
                 npy_path = path
                 break
+        if not npy_path:
+            npy_path = get_npy_path(base_name, None)
 
     def suffix_matches(filename, req_rep):
         has_cls_avg = "cls_avg_patch" in filename
@@ -405,6 +407,11 @@ def load_embeddings(
             pattern = os.path.join(db_dir, f"{b}*.npy")
             matches = glob.glob(pattern)
             if matches:
+                # Exclude checkpoint files if base_name does not contain checkpoint
+                if "checkpoint" not in base_name:
+                    matches = [
+                        m for m in matches if "checkpoint" not in os.path.basename(m)
+                    ]
                 # Filter matches by representation type if default 'embedding' column is requested
                 if column == "embedding" and representation_type:
                     matches = [
