@@ -22,6 +22,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Dynamic Step-Ratio Mapping**: Refactored the parent-child index mapper in `cluster_images_global.py` to dynamically compute step ratios based on the resolved `k_parents` count rather than using hardcoded ratios.
 
 ### Fixed
+- **Transactional Atomic Companion Updates**: Configured `save_dataframe()` and `stream_update_parquet()` to write companion `.npy` and `.keys.parquet` files to temporary names, renaming them to their final paths only *after* the main database Parquet file successfully saves. This prevents out-of-sync states between Parquet files and companion matrices upon write crashes.
+- **Checkpoint Resume Embeddings Restorer**: Fixed a checkpointing bug in `process_scraped_data.py` where resuming from a checkpoint failed to load companion embeddings, causing `KeyError: 'embedding'` during subsequent checkpoint saves. It now automatically pulls and matches companion embeddings when resuming from a checkpoint.
 - **Fixed None-Path TypeError in Timestamp Standardization**: Added a null validation guard on shapefile parameters in `standardize_timestamps.py` to prevent crash triggers when executing without boundary maps.
 - **Fixed NumPy 2.0 type name crash**: Fixed a crash in `save_dataframe()` where modern NumPy float classes lack a `__name__` attribute.
 - **Streaming Parquet Write Schema ArrowInvalid Crash**: Resolved `ArrowInvalid` type-matching errors in `stream_update_parquet` by dynamically checking schema string widths (`large_string` vs `string`) and casting/aligning copied row groups before writing.
