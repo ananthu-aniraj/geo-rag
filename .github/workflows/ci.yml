@@ -44,7 +44,7 @@ jobs:
 
       - name: Install Model Representation Libraries
         run: |
-          pip install timm transformers
+          pip install timm transformers faiss-cpu
 
       - name: Run Unit Tests
         run: |
