@@ -458,9 +458,11 @@ def load_embeddings(
 
             valid_mask = indices >= 0
             if not valid_mask.all():
+                missing_samples = list(meta_keys[~valid_mask][:10])
                 print(
                     f"Warning: Found {np.sum(~valid_mask):,} missing keys in embeddings keys index. Zero-filling..."
                 )
+                print(f" -> Sample missing keys: {missing_samples}")
                 safe_indices = np.clip(indices, 0, len(emb) - 1)
                 sliced_emb = emb[safe_indices].astype(np.float32)
                 sliced_emb[~valid_mask] = 0.0
