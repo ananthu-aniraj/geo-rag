@@ -422,13 +422,13 @@ def stream_update_parquet(
                     df_temp_rg = filtered_table.select(
                         ["Platform", "Photo_ID"]
                     ).to_pandas()
-                    field = schema.field("photo_key")
-                    keys_arr = pa.array(
+                    chunk_keys = (
                         df_temp_rg["Platform"].astype(str).str.lower()
                         + "_"
-                        + df_temp_rg["Photo_ID"].astype(str),
-                        type=field.type,
-                    )
+                        + df_temp_rg["Photo_ID"].astype(str)
+                    ).to_numpy()
+                    field = schema.field("photo_key")
+                    keys_arr = pa.array(chunk_keys, type=field.type)
                     if "photo_key" in filtered_table.column_names:
                         pk_pos = filtered_table.column_names.index("photo_key")
                         filtered_table = filtered_table.set_column(
@@ -437,7 +437,6 @@ def stream_update_parquet(
                     else:
                         filtered_table = filtered_table.append_column(field, keys_arr)
 
-                    chunk_keys = keys_arr.to_numpy()
                     inactive_keys_list.append(chunk_keys)
 
                     # Retrieve matching embeddings using stable keys Indexer
