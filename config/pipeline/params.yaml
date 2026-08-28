@@ -12,7 +12,7 @@ pipeline:
   cleanup_continent: ""    # (Optional) Restrict anomaly cleanup to a specific continent (e.g., "africa")
   max_markers: 10000
   limit_cells: 0
-  checkpoint_interval: 300
+  checkpoint_interval: 30000
   batch_size: 128
   cell_chunk_size: 64
   base_name: "geo_space"
