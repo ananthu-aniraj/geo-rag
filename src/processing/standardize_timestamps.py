@@ -295,7 +295,7 @@ def main():
 
     # 4b. Map coordinates to regions (country and continent)
     land_shp = args.land_shp
-    if os.path.exists(land_shp):
+    if land_shp and os.path.exists(land_shp):
         try:
             print("Mapping coordinates to countries/continents...")
             from src.utils.dataset_statistics import map_coordinates_to_regions

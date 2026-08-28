@@ -69,40 +69,26 @@ def main():
 
     # 2. Sample the EMBEDDINGS of ONLY the newly added images
     try:
+        from src.utils.io import load_embeddings
+
         pf_new = pq.ParquetFile(args.input)
-        new_embeddings = []
-        rows_read = 0
-
-        # Read the new combined database row-group by row-group
+        new_ids = []
         for rg in range(pf_new.num_row_groups):
-            table = pf_new.read_row_group(
-                rg, columns=["Photo_ID", "Platform", "embedding"]
-            )
-            df_rg = table.to_pandas()
-            if len(df_rg) == 0:
-                continue
+            table_ids = pf_new.read_row_group(rg, columns=["Photo_ID", "Platform"])
+            df_ids = table_ids.to_pandas()
+            keys = df_ids["Platform"].astype(str) + "_" + df_ids["Photo_ID"].astype(str)
+            new_ids.extend(keys.values)
+        new_keys = np.array(new_ids)
 
-            # Create keys for this row group
-            rg_keys = (
-                df_rg["Platform"].astype(str) + "_" + df_rg["Photo_ID"].astype(str)
-            )
+        is_new_mask = ~np.isin(new_keys, list(old_keys_set))
 
-            # Mask to filter out images that were already in the old run
-            is_new_mask = ~rg_keys.isin(old_keys_set)
-
-            if is_new_mask.any():
-                new_embs_rg = np.vstack(
-                    df_rg.loc[is_new_mask, "embedding"].values
-                ).astype(np.float32)
-                new_embeddings.append(new_embs_rg)
-                rows_read += len(new_embs_rg)
-
-        # If no new images were added at all, we can safely run assign mode (0 drift)
-        if len(new_embeddings) == 0:
+        if not np.any(is_new_mask):
             print("assign")
             return
 
-        new_embs = np.vstack(new_embeddings)
+        embs_all_new = load_embeddings(args.input)
+        new_embs = embs_all_new[is_new_mask].astype(np.float32)
+
         new_embs = normalize(new_embs).astype(np.float32)
         dim = new_embs.shape[1]
     except Exception:
@@ -111,24 +97,29 @@ def main():
 
     # 3. Load the old centroids dynamically using vectorized addition
     try:
+        from src.utils.io import load_embeddings
+
+        pf_old = pq.ParquetFile(args.centroids_parquet)
+        c_ids_list = []
+        for rg in range(pf_old.num_row_groups):
+            c_ids_rg = pf_old.read_row_group(rg, columns=["cluster_id"])[
+                "cluster_id"
+            ].to_numpy()
+            c_ids_list.append(c_ids_rg)
+        c_ids_old = np.concatenate(c_ids_list)
+
+        embs_old = load_embeddings(args.centroids_parquet)
+
         raw_centroids = np.zeros((args.k_clusters, dim), dtype=np.float32)
         counts = np.zeros(args.k_clusters, dtype=np.int64)
 
-        for rg in range(pf_old.num_row_groups):
-            table_old = pf_old.read_row_group(rg, columns=["cluster_id", "embedding"])
-            df_rg_old = table_old.to_pandas()
-            if len(df_rg_old) == 0:
-                continue
-            embs_old = np.vstack(df_rg_old["embedding"].values).astype(np.float32)
-            c_ids_old = df_rg_old["cluster_id"].values
+        valid_mask = (
+            (c_ids_old >= 0) & (~pd.isna(c_ids_old)) & (c_ids_old < args.k_clusters)
+        )
+        c_ids_valid = c_ids_old[valid_mask].astype(np.int32)
 
-            valid_mask = (
-                (c_ids_old >= 0) & (~pd.isna(c_ids_old)) & (c_ids_old < args.k_clusters)
-            )
-            c_ids_valid = c_ids_old[valid_mask].astype(np.int32)
-
-            np.add.at(raw_centroids, c_ids_valid, embs_old[valid_mask])
-            counts += np.bincount(c_ids_valid, minlength=args.k_clusters)
+        np.add.at(raw_centroids, c_ids_valid, embs_old[valid_mask])
+        counts += np.bincount(c_ids_valid, minlength=args.k_clusters)
 
         valid_counts = counts > 0
         raw_centroids[valid_counts] /= counts[valid_counts, None]

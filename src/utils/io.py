@@ -129,7 +129,7 @@ def save_dataframe(
                 dtype = embs.dtype
 
             print(
-                f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={dtype.__name__})"
+                f" -> Automatically decoupling embeddings to companion file: {npy_path} (dtype={np.dtype(dtype).name})"
             )
             np.save(npy_path, embs.astype(dtype))
 
