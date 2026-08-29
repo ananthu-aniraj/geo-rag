@@ -397,7 +397,11 @@ def main():
 
         print("Mapping resampled parent assignments back to child clusters...")
         parent_id_map = map_resampled_parents_to_children(
-            sampled_indices, resampled_parent_ids, child_cluster_ids, args.k
+            sampled_indices,
+            resampled_parent_ids,
+            child_cluster_ids,
+            args.k,
+            k_parents,
         )
 
         # Assign cluster IDs to DataFrame
