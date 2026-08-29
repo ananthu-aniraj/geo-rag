@@ -22,6 +22,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Dynamic Step-Ratio Mapping**: Refactored the parent-child index mapper in `cluster_images_global.py` to dynamically compute step ratios based on the resolved `k_parents` count rather than using hardcoded ratios.
 
 ### Fixed
+- **MLLM Labeling and Spatial-Semantic Indexing Tests**: Created `tests/test_label_clusters_mllm.py` and `tests/test_build_spatial_semantic_index.py` to cover image resizing, zero-shot categorizations, VLM prompt templating, and end-to-end multi-resolution H3 spatial aggregations.
 - **Global Clustering Test Suite**: Created a comprehensive test file `tests/test_cluster_images_global.py` containing unit and integration tests for `cluster_data()`, `sample_closest_points()`, and `map_resampled_parents_to_children()`, as well as end-to-end CPU fit mode runs to protect clustering scripts against arguments and index mismatches in the future.
 - **Global Clustering Missing Arguments Typo**: Fixed a `TypeError` in `cluster_images_global.py` where calling `map_resampled_parents_to_children()` was missing the required fifth positional argument `k_parents`.
 - **Consistently Include `model_name` in Companion Keys Filenames**: Fixed a mismatch in `save_dataframe()` where specifying a `model_name` correctly added a model suffix to the `.npy` embeddings matrix but omitted it from the `.keys.parquet` index. The companion keys path is now derived directly from the `.npy` path, ensuring name alignment.
