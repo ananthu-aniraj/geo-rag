@@ -44,9 +44,16 @@ class TestBuildSpatialSemanticIndex(unittest.TestCase):
             151.2111,
             -0.1419,
         ]
-        h3_cells = [
-            h3.latlng_to_cell(lat, lon, 11) for lat, lon in zip(latitudes, longitudes)
-        ]
+        # Define compatibility wrapper for H3 version 3 vs 4
+        if hasattr(h3, "latlng_to_cell"):
+            h3_cells = [
+                h3.latlng_to_cell(lat, lon, 11)
+                for lat, lon in zip(latitudes, longitudes)
+            ]
+        else:
+            h3_cells = [
+                h3.geo_to_h3(lat, lon, 11) for lat, lon in zip(latitudes, longitudes)
+            ]
 
         df = pd.DataFrame(
             {

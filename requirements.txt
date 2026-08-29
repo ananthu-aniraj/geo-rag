@@ -3,7 +3,7 @@ numpy
 pandas
 geopandas
 rasterio
-h3>=3.7.0,<4.0.0
+h3>=4.0.0
 matplotlib
 seaborn
 pyarrow
