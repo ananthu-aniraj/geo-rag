@@ -57,6 +57,7 @@ LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'
 MLLM_BACKEND=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_backend', 'sglang'))" 2>/dev/null || echo "sglang")
 MLLM_MODEL=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_model', 'google/gemma-4-E4B-it'))" 2>/dev/null || echo "google/gemma-4-E4B-it")
 CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('chunk_size', 64))" 2>/dev/null || echo "64")
+NUM_MEDOIDS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('num_medoids', 1))" 2>/dev/null || echo "1")
 # Zero-shot filters for iNaturalist data (true/false)
 FILTER_MACRO=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_macro', False)).lower())" 2>/dev/null || echo "false")
 FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_sky', False)).lower())" 2>/dev/null || echo "false")
@@ -307,6 +308,7 @@ else
       --chunk_size "$CHUNK_SIZE" \
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
+      --num_medoids "$NUM_MEDOIDS" \
       $IMAGE_ROOT_FLAG
 
     echo ""
@@ -317,6 +319,7 @@ else
       --mllm_backend "$MLLM_BACKEND" \
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
+      --num_medoids "$NUM_MEDOIDS" \
       $IMAGE_ROOT_FLAG
 
     echo ""

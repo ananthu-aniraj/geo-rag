@@ -7,6 +7,10 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [Unreleased]
 
 ### Added
+- **Multi-Medoid Film-Strip Collage Labeling**: Added support for vertically stacked, letterboxed collages of up to 4 diverse nearest-neighbor representative images per cluster instead of a single medoid. Stitched images are standardized to a $512 \times 256$ aspect ratio per cell with `#282828` dark gray padding inside a single $512 \times (256 \times M)$ JPEG collage. Enabled via `--num_medoids`.
+- **Aggregated Metadata Context Generator**: Added spatial-semantic metadata aggregator compiling geographic bounding boxes, centroids, unique countries/continents, climates (Köppen-Geiger codes & descriptions), and seasons across the multiple medoids for Stage 2 classification prompts.
+- **Shared Multi-Medoid Utility Helpers**: Created `src/indexing/multi_medoid_utils.py` containing modular functions for diverse sampling, letterboxing, vertical collage stitching, and metadata aggregation.
+- **Support for Multi-Medoid Collage in Fallback Relabeler**: Added `--num_medoids` support in `relabel_failed_clusters.py` that dynamically searches cluster/parent hierarchies to load and construct collages using only successfully downloaded candidate images.
 - **Automated Pipeline Component Unit Testing**: Added integration and unit tests for coordinate anomaly cleaning (`tests/test_coordinate_cleanup.py`), semantic drift validation (`tests/test_semantic_drift.py`), and regional/seasonal timestamp metadata standardization (`tests/test_standardize_timestamps.py`).
 - **Support for Decoupled Databases in Semantic Drift Detector**: Upgraded `check_semantic_drift.py` to support decoupled embedding structures by fetching representations dynamically using the unified `load_embeddings()` handler rather than seeking them directly inside the Parquet schema.
 - **Automated PyArrow Streaming Update Unit Testing**: Created a dedicated unit test suite (`tests/test_stream_update.py`) simulating PyArrow streaming parquet updates, checking copy safety, H3 cell exclusions, schema castings, and companion index allocations.

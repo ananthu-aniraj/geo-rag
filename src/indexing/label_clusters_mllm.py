@@ -231,13 +231,38 @@ def label_clusters_mllm_batched(
 
         def prepare_image(task):
             cid = task["cid"]
-            img = load_image(
-                task["img_url"],
-                target_max=img_max_dim,
-                image_root_dir=image_root_dir,
-                photo_id=task.get("photo_id"),
-                platform=task.get("platform"),
-            )
+            if "medoids" in task and task["medoids"]:
+                from src.indexing.multi_medoid_utils import (
+                    create_letterboxed_cell,
+                    stitch_cells_vertically,
+                )
+
+                cells = []
+                for med in task["medoids"]:
+                    loaded_img = load_image(
+                        med["img_url"],
+                        target_max=img_max_dim,
+                        image_root_dir=image_root_dir,
+                        photo_id=med.get("photo_id"),
+                        platform=med.get("platform"),
+                    )
+                    if loaded_img is not None:
+                        cell = create_letterboxed_cell(
+                            loaded_img, target_w=512, target_h=256
+                        )
+                        cells.append(cell)
+                if cells:
+                    img = stitch_cells_vertically(cells, target_w=512, target_h=256)
+                else:
+                    img = None
+            else:
+                img = load_image(
+                    task["img_url"],
+                    target_max=img_max_dim,
+                    image_root_dir=image_root_dir,
+                    photo_id=task.get("photo_id"),
+                    platform=task.get("platform"),
+                )
             if img is not None:
                 buffered = BytesIO()
                 img.save(buffered, format="JPEG")
@@ -388,6 +413,12 @@ def main():
         choices=["float32", "float16"],
         help="Stored precision of companion binary file (float32 or float16).",
     )
+    parser.add_argument(
+        "--num_medoids",
+        type=int,
+        default=1,
+        help="Number of representative medoids to stack for collage auto-labeling (default: 1).",
+    )
     args = parser.parse_args()
 
     if args.output_file is None:
@@ -501,10 +532,21 @@ def main():
             child_centroid_norm = child_centroid / (
                 np.linalg.norm(child_centroid) + 1e-9
             )
-            cluster_embs = embeddings_norm[indices]
-            img_sims = np.dot(cluster_embs, child_centroid_norm)
-            closest_img_idx = indices[np.argmax(img_sims)]
-            parent_rep_indices[pid] = closest_img_idx
+            if args.num_medoids > 1:
+                from src.indexing.multi_medoid_utils import sample_diverse_medoids
+
+                parent_rep_indices[pid] = sample_diverse_medoids(
+                    embeddings_norm,
+                    indices,
+                    child_centroid_norm,
+                    df,
+                    n_medoids=args.num_medoids,
+                )
+            else:
+                cluster_embs = embeddings_norm[indices]
+                img_sims = np.dot(cluster_embs, child_centroid_norm)
+                closest_img_idx = indices[np.argmax(img_sims)]
+                parent_rep_indices[pid] = closest_img_idx
 
     for cid in range(k_clusters):
         indices = np.where(child_ids == cid)[0]
@@ -512,10 +554,17 @@ def main():
             continue
         centroid = raw_centroids[cid]
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
-        cluster_embs = embeddings_norm[indices]
-        sims = np.dot(cluster_embs, centroid_norm)
-        closest_idx = indices[np.argmax(sims)]
-        child_rep_indices[cid] = closest_idx
+        if args.num_medoids > 1:
+            from src.indexing.multi_medoid_utils import sample_diverse_medoids
+
+            child_rep_indices[cid] = sample_diverse_medoids(
+                embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
+            )
+        else:
+            cluster_embs = embeddings_norm[indices]
+            sims = np.dot(cluster_embs, centroid_norm)
+            closest_idx = indices[np.argmax(sims)]
+            child_rep_indices[cid] = closest_idx
 
     # Release heavy embedding matrices immediately
     del embeddings
@@ -605,10 +654,194 @@ def main():
             print(f"\nPreparing {k_parents} parent cluster tasks for MLLM labeling...")
             parent_tasks = []
             for pid in range(k_parents):
-                closest_img_idx = parent_rep_indices.get(pid)
-                if closest_img_idx is None:
+                rep_val = parent_rep_indices.get(pid)
+                if rep_val is None:
                     continue
-                representative_item = df.iloc[closest_img_idx]
+
+                if args.num_medoids > 1 and isinstance(rep_val, list):
+                    medoids = []
+                    for idx in rep_val:
+                        item = df.iloc[idx]
+                        img_url = item["Image_URL"]
+                        photo_id = item.get("Photo_ID")
+                        platform = str(item.get("Platform", "")).lower()
+                        if photo_id:
+                            photo_str = str(photo_id).strip()
+                            if photo_str.endswith(".0"):
+                                photo_str = photo_str[:-2]
+                            if (
+                                platform == "mapillary"
+                                or "mapillary" in img_url
+                                or "fbcdn.net" in img_url
+                            ):
+                                img_url = f"mapillary://{photo_str}"
+                            elif (
+                                platform == "kartaview"
+                                or "kartaview" in img_url
+                                or "openstreetcam" in img_url
+                            ):
+                                img_url = f"kartaview://{photo_str}"
+                        medoids.append(
+                            {
+                                "img_url": img_url,
+                                "photo_id": photo_id,
+                                "platform": platform,
+                            }
+                        )
+
+                    from src.indexing.multi_medoid_utils import (
+                        aggregate_medoid_metadata,
+                    )
+
+                    agg_meta = aggregate_medoid_metadata(rep_val, df)
+
+                    p1_text = (
+                        "The input image contains a vertical stack of representative photographs from the same local cluster; "
+                        "characterize the dominant land-cover features visible across these frames.\n\n"
+                        + prompt_step1_template
+                    )
+                    p2_text = prompt_step2_template.format(
+                        location=agg_meta["location"],
+                        country=agg_meta["country"],
+                        continent=agg_meta["continent"],
+                        season=agg_meta["season"],
+                        time_of_day=agg_meta["time_of_day"],
+                        koppen_code=agg_meta["koppen_code"],
+                        koppen_desc=agg_meta["koppen_desc"],
+                        visual_description="{visual_description}",
+                        lulc_list=lulc_list_str,
+                    )
+
+                    parent_tasks.append(
+                        {
+                            "cid": pid,
+                            "img_url": "",
+                            "prompt_step1": p1_text,
+                            "prompt_step2_template": p2_text,
+                            "medoids": medoids,
+                        }
+                    )
+                else:
+                    representative_item = df.iloc[rep_val]
+                    img_url = representative_item["Image_URL"]
+
+                    photo_id = representative_item.get("Photo_ID")
+                    platform = str(representative_item.get("Platform", "")).lower()
+                    if photo_id:
+                        photo_str = str(photo_id).strip()
+                        if photo_str.endswith(".0"):
+                            photo_str = photo_str[:-2]
+                        if (
+                            platform == "mapillary"
+                            or "mapillary" in img_url
+                            or "fbcdn.net" in img_url
+                        ):
+                            img_url = f"mapillary://{photo_str}"
+                        elif (
+                            platform == "kartaview"
+                            or "kartaview" in img_url
+                            or "openstreetcam" in img_url
+                        ):
+                            img_url = f"kartaview://{photo_str}"
+
+                    # Build templates
+                    p1_text, p2_text = build_prompt_templates(
+                        representative_item,
+                        prompt_step1_template,
+                        prompt_step2_template,
+                        lulc_list_str,
+                    )
+                    parent_tasks.append(
+                        {
+                            "cid": pid,
+                            "img_url": img_url,
+                            "prompt_step1": p1_text,
+                            "prompt_step2_template": p2_text,
+                            "photo_id": photo_id,
+                            "platform": platform,
+                        }
+                    )
+
+            parent_results = label_clusters_mllm_batched(
+                parent_tasks,
+                args.mllm_model,
+                endpoint,
+                chunk_size=args.chunk_size,
+                img_max_dim=args.img_max_dim,
+                image_root_dir=args.image_root_dir,
+            )
+            for pid, (lbl, desc, desc_vis) in parent_results.items():
+                parent_labels[pid] = lbl
+                parent_descriptions[pid] = desc
+                parent_visual_descriptions[pid] = desc_vis
+
+        # Label Child Clusters
+        print(f"\nPreparing {k_clusters} child cluster tasks for MLLM labeling...")
+        tasks = []
+        for cid in range(k_clusters):
+            rep_val = child_rep_indices.get(cid)
+            if rep_val is None:
+                continue
+
+            if args.num_medoids > 1 and isinstance(rep_val, list):
+                medoids = []
+                for idx in rep_val:
+                    item = df.iloc[idx]
+                    img_url = item["Image_URL"]
+                    photo_id = item.get("Photo_ID")
+                    platform = str(item.get("Platform", "")).lower()
+                    if photo_id:
+                        photo_str = str(photo_id).strip()
+                        if photo_str.endswith(".0"):
+                            photo_str = photo_str[:-2]
+                        if (
+                            platform == "mapillary"
+                            or "mapillary" in img_url
+                            or "fbcdn.net" in img_url
+                        ):
+                            img_url = f"mapillary://{photo_str}"
+                        elif (
+                            platform == "kartaview"
+                            or "kartaview" in img_url
+                            or "openstreetcam" in img_url
+                        ):
+                            img_url = f"kartaview://{photo_str}"
+                    medoids.append(
+                        {"img_url": img_url, "photo_id": photo_id, "platform": platform}
+                    )
+
+                from src.indexing.multi_medoid_utils import aggregate_medoid_metadata
+
+                agg_meta = aggregate_medoid_metadata(rep_val, df)
+
+                p1_text = (
+                    "The input image contains a vertical stack of representative photographs from the same local cluster; "
+                    "characterize the dominant land-cover features visible across these frames.\n\n"
+                    + prompt_step1_template
+                )
+                p2_text = prompt_step2_template.format(
+                    location=agg_meta["location"],
+                    country=agg_meta["country"],
+                    continent=agg_meta["continent"],
+                    season=agg_meta["season"],
+                    time_of_day=agg_meta["time_of_day"],
+                    koppen_code=agg_meta["koppen_code"],
+                    koppen_desc=agg_meta["koppen_desc"],
+                    visual_description="{visual_description}",
+                    lulc_list=lulc_list_str,
+                )
+
+                tasks.append(
+                    {
+                        "cid": cid,
+                        "img_url": "",
+                        "prompt_step1": p1_text,
+                        "prompt_step2_template": p2_text,
+                        "medoids": medoids,
+                    }
+                )
+            else:
+                representative_item = df.iloc[rep_val]
                 img_url = representative_item["Image_URL"]
 
                 photo_id = representative_item.get("Photo_ID")
@@ -637,9 +870,9 @@ def main():
                     prompt_step2_template,
                     lulc_list_str,
                 )
-                parent_tasks.append(
+                tasks.append(
                     {
-                        "cid": pid,
+                        "cid": cid,
                         "img_url": img_url,
                         "prompt_step1": p1_text,
                         "prompt_step2_template": p2_text,
@@ -647,66 +880,6 @@ def main():
                         "platform": platform,
                     }
                 )
-
-            parent_results = label_clusters_mllm_batched(
-                parent_tasks,
-                args.mllm_model,
-                endpoint,
-                chunk_size=args.chunk_size,
-                img_max_dim=args.img_max_dim,
-                image_root_dir=args.image_root_dir,
-            )
-            for pid, (lbl, desc, desc_vis) in parent_results.items():
-                parent_labels[pid] = lbl
-                parent_descriptions[pid] = desc
-                parent_visual_descriptions[pid] = desc_vis
-
-        # Label Child Clusters
-        print(f"\nPreparing {k_clusters} child cluster tasks for MLLM labeling...")
-        tasks = []
-        for cid in range(k_clusters):
-            closest_idx = child_rep_indices.get(cid)
-            if closest_idx is None:
-                continue
-            representative_item = df.iloc[closest_idx]
-            img_url = representative_item["Image_URL"]
-
-            photo_id = representative_item.get("Photo_ID")
-            platform = str(representative_item.get("Platform", "")).lower()
-            if photo_id:
-                photo_str = str(photo_id).strip()
-                if photo_str.endswith(".0"):
-                    photo_str = photo_str[:-2]
-                if (
-                    platform == "mapillary"
-                    or "mapillary" in img_url
-                    or "fbcdn.net" in img_url
-                ):
-                    img_url = f"mapillary://{photo_str}"
-                elif (
-                    platform == "kartaview"
-                    or "kartaview" in img_url
-                    or "openstreetcam" in img_url
-                ):
-                    img_url = f"kartaview://{photo_str}"
-
-            # Build templates
-            p1_text, p2_text = build_prompt_templates(
-                representative_item,
-                prompt_step1_template,
-                prompt_step2_template,
-                lulc_list_str,
-            )
-            tasks.append(
-                {
-                    "cid": cid,
-                    "img_url": img_url,
-                    "prompt_step1": p1_text,
-                    "prompt_step2_template": p2_text,
-                    "photo_id": photo_id,
-                    "platform": platform,
-                }
-            )
 
         results = label_clusters_mllm_batched(
             tasks,

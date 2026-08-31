@@ -23,6 +23,7 @@ pipeline:
   mllm_backend: "sglang"
   mllm_model: "google/gemma-4-E4B-it"
   chunk_size: 64
+  num_medoids: 4             # Number of representative medoids to stack for collage auto-labeling (1 to disable / use single-medoid)
   # Input directories passed as a space-separated string
   input_dirs: "/home/ananthu/Projects/data/flickr_scrape_rand_8 /home/ananthu/Projects/data/mapillary_scrape_rand_8 /home/ananthu/Projects/data/osm_scrape_rand_2"
 

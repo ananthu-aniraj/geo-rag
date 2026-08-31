@@ -360,6 +360,12 @@ def main():
         help="Timeout in seconds for image download HTTP requests.",
     )
     parser.add_argument(
+        "--num_medoids",
+        type=int,
+        default=1,
+        help="Number of representative medoids to stack for collage auto-labeling (default: 1).",
+    )
+    parser.add_argument(
         "--image_root_dir",
         type=str,
         nargs="+",
@@ -544,6 +550,9 @@ def main():
     with open(prompt_step2_path, "r", encoding="utf-8") as f:
         prompt_step2_template = f.read()
 
+    # Convert data list of dicts to DataFrame to easily query fields for metadata aggregation
+    df = pd.DataFrame(data)
+
     # Helper function to prepare task for a single cluster (downloading with retry and fallback)
     def prepare_cluster_task(cid):
         indices = np.where(cluster_ids == cid)[0]
@@ -555,55 +564,174 @@ def main():
         centroid = np.mean(cluster_embs, axis=0)
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
 
-        # Sort members by cosine similarity to the centroid (descending)
-        sims = np.dot(cluster_embs, centroid_norm)
-        sorted_idx_in_cluster = np.argsort(sims)[::-1]
-
-        # Try downloading images starting from the closest
-        for rank in range(min(args.fallback_depth, len(sorted_idx_in_cluster))):
-            item_idx = indices[sorted_idx_in_cluster[rank]]
-            item = data[item_idx]
-            img_url = item["Image_URL"]
-            photo_id = item.get("Photo_ID")
-            platform = str(item.get("Platform", "")).lower()
-
-            # Resolve potentially expired Mapillary or Kartaview URLs dynamically
-            if photo_id:
-                if (
-                    platform == "mapillary"
-                    or "mapillary" in img_url
-                    or "fbcdn.net" in img_url
-                ):
-                    img_url = f"mapillary://{photo_id}"
-                elif (
-                    platform == "kartaview"
-                    or "kartaview" in img_url
-                    or "openstreetcam" in img_url
-                ):
-                    img_url = f"kartaview://{photo_id}"
-
-            img = load_image_with_retry(
-                img_url,
-                target_max=args.img_max_dim,
-                timeout=args.timeout,
-                max_retries=args.max_retries,
-                image_root_dir=args.image_root_dir,
-                photo_id=photo_id,
-                platform=platform,
+        if args.num_medoids > 1:
+            from src.indexing.multi_medoid_utils import (
+                aggregate_medoid_metadata,
+                create_letterboxed_cell,
+                sample_diverse_medoids,
+                stitch_cells_vertically,
             )
 
-            if img is not None:
-                buffered = BytesIO()
-                img.save(buffered, format="JPEG")
-                img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                return {
-                    "cid": cid,
-                    "img_str": img_str,
-                    "img_url": img_url,
-                    "rank": rank,
-                    "item": item,
-                }
-        return None
+            medoid_indices = sample_diverse_medoids(
+                embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
+            )
+            successful_medoids_indices = []
+            cells = []
+            items = []
+
+            for item_idx in medoid_indices:
+                item = data[item_idx]
+                img_url = item["Image_URL"]
+                photo_id = item.get("Photo_ID")
+                platform = str(item.get("Platform", "")).lower()
+
+                if photo_id:
+                    photo_str = str(photo_id).strip()
+                    if photo_str.endswith(".0"):
+                        photo_str = photo_str[:-2]
+                    if (
+                        platform == "mapillary"
+                        or "mapillary" in img_url
+                        or "fbcdn.net" in img_url
+                    ):
+                        img_url = f"mapillary://{photo_str}"
+                    elif (
+                        platform == "kartaview"
+                        or "kartaview" in img_url
+                        or "openstreetcam" in img_url
+                    ):
+                        img_url = f"kartaview://{photo_str}"
+
+                img = load_image_with_retry(
+                    img_url,
+                    target_max=args.img_max_dim,
+                    timeout=args.timeout,
+                    max_retries=args.max_retries,
+                    image_root_dir=args.image_root_dir,
+                    photo_id=photo_id,
+                    platform=platform,
+                )
+                if img is not None:
+                    cell = create_letterboxed_cell(img, target_w=512, target_h=256)
+                    cells.append(cell)
+                    successful_medoids_indices.append(item_idx)
+                    items.append(item)
+
+            if len(cells) < args.num_medoids:
+                sims = np.dot(cluster_embs, centroid_norm)
+                sorted_idx_in_cluster = np.argsort(sims)[::-1]
+                for offset in sorted_idx_in_cluster:
+                    if len(cells) >= args.num_medoids:
+                        break
+                    item_idx = indices[offset]
+                    if item_idx in successful_medoids_indices:
+                        continue
+                    item = data[item_idx]
+                    img_url = item["Image_URL"]
+                    photo_id = item.get("Photo_ID")
+                    platform = str(item.get("Platform", "")).lower()
+
+                    if photo_id:
+                        photo_str = str(photo_id).strip()
+                        if photo_str.endswith(".0"):
+                            photo_str = photo_str[:-2]
+                        if (
+                            platform == "mapillary"
+                            or "mapillary" in img_url
+                            or "fbcdn.net" in img_url
+                        ):
+                            img_url = f"mapillary://{photo_str}"
+                        elif (
+                            platform == "kartaview"
+                            or "kartaview" in img_url
+                            or "openstreetcam" in img_url
+                        ):
+                            img_url = f"kartaview://{photo_str}"
+
+                    img = load_image_with_retry(
+                        img_url,
+                        target_max=args.img_max_dim,
+                        timeout=args.timeout,
+                        max_retries=args.max_retries,
+                        image_root_dir=args.image_root_dir,
+                        photo_id=photo_id,
+                        platform=platform,
+                    )
+                    if img is not None:
+                        cell = create_letterboxed_cell(img, target_w=512, target_h=256)
+                        cells.append(cell)
+                        successful_medoids_indices.append(item_idx)
+                        items.append(item)
+
+            if not cells:
+                return None
+
+            collage = stitch_cells_vertically(cells, target_w=512, target_h=256)
+            buffered = BytesIO()
+            collage.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            agg_meta = aggregate_medoid_metadata(successful_medoids_indices, df)
+
+            return {
+                "cid": cid,
+                "img_str": img_str,
+                "rank": 0,
+                "item": items[0],
+                "agg_meta": agg_meta,
+            }
+        else:
+            # Sort members by cosine similarity to the centroid (descending)
+            sims = np.dot(cluster_embs, centroid_norm)
+            sorted_idx_in_cluster = np.argsort(sims)[::-1]
+
+            # Try downloading images starting from the closest
+            for rank in range(min(args.fallback_depth, len(sorted_idx_in_cluster))):
+                item_idx = indices[sorted_idx_in_cluster[rank]]
+                item = data[item_idx]
+                img_url = item["Image_URL"]
+                photo_id = item.get("Photo_ID")
+                platform = str(item.get("Platform", "")).lower()
+
+                # Resolve potentially expired Mapillary or Kartaview URLs dynamically
+                if photo_id:
+                    photo_str = str(photo_id).strip()
+                    if photo_str.endswith(".0"):
+                        photo_str = photo_str[:-2]
+                    if (
+                        platform == "mapillary"
+                        or "mapillary" in img_url
+                        or "fbcdn.net" in img_url
+                    ):
+                        img_url = f"mapillary://{photo_str}"
+                    elif (
+                        platform == "kartaview"
+                        or "kartaview" in img_url
+                        or "openstreetcam" in img_url
+                    ):
+                        img_url = f"kartaview://{photo_str}"
+
+                img = load_image_with_retry(
+                    img_url,
+                    target_max=args.img_max_dim,
+                    timeout=args.timeout,
+                    max_retries=args.max_retries,
+                    image_root_dir=args.image_root_dir,
+                    photo_id=photo_id,
+                    platform=platform,
+                )
+
+                if img is not None:
+                    buffered = BytesIO()
+                    img.save(buffered, format="JPEG")
+                    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    return {
+                        "cid": cid,
+                        "img_str": img_str,
+                        "img_url": img_url,
+                        "rank": rank,
+                        "item": item,
+                    }
+            return None
 
     # Helper function to prepare task for a single parent cluster
     def prepare_parent_task(pid):
@@ -618,54 +746,173 @@ def main():
         centroid = np.mean(parent_embs, axis=0)
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
 
-        # Sort parent members by similarity to parent centroid
-        sims = np.dot(parent_embs, centroid_norm)
-        sorted_idx_in_parent = np.argsort(sims)[::-1]
-
-        # Try downloading images starting from the closest
-        for rank in range(min(args.fallback_depth, len(sorted_idx_in_parent))):
-            item_idx = indices[sorted_idx_in_parent[rank]]
-            item = data[item_idx]
-            img_url = item["Image_URL"]
-            photo_id = item.get("Photo_ID")
-            platform = str(item.get("Platform", "")).lower()
-
-            if photo_id:
-                if (
-                    platform == "mapillary"
-                    or "mapillary" in img_url
-                    or "fbcdn.net" in img_url
-                ):
-                    img_url = f"mapillary://{photo_id}"
-                elif (
-                    platform == "kartaview"
-                    or "kartaview" in img_url
-                    or "openstreetcam" in img_url
-                ):
-                    img_url = f"kartaview://{photo_id}"
-
-            img = load_image_with_retry(
-                img_url,
-                target_max=args.img_max_dim,
-                timeout=args.timeout,
-                max_retries=args.max_retries,
-                image_root_dir=args.image_root_dir,
-                photo_id=photo_id,
-                platform=platform,
+        if args.num_medoids > 1:
+            from src.indexing.multi_medoid_utils import (
+                aggregate_medoid_metadata,
+                create_letterboxed_cell,
+                sample_diverse_medoids,
+                stitch_cells_vertically,
             )
 
-            if img is not None:
-                buffered = BytesIO()
-                img.save(buffered, format="JPEG")
-                img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                return {
-                    "pid": pid,
-                    "img_str": img_str,
-                    "img_url": img_url,
-                    "rank": rank,
-                    "item": item,
-                }
-        return None
+            medoid_indices = sample_diverse_medoids(
+                embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
+            )
+            successful_medoids_indices = []
+            cells = []
+            items = []
+
+            for item_idx in medoid_indices:
+                item = data[item_idx]
+                img_url = item["Image_URL"]
+                photo_id = item.get("Photo_ID")
+                platform = str(item.get("Platform", "")).lower()
+
+                if photo_id:
+                    photo_str = str(photo_id).strip()
+                    if photo_str.endswith(".0"):
+                        photo_str = photo_str[:-2]
+                    if (
+                        platform == "mapillary"
+                        or "mapillary" in img_url
+                        or "fbcdn.net" in img_url
+                    ):
+                        img_url = f"mapillary://{photo_str}"
+                    elif (
+                        platform == "kartaview"
+                        or "kartaview" in img_url
+                        or "openstreetcam" in img_url
+                    ):
+                        img_url = f"kartaview://{photo_str}"
+
+                img = load_image_with_retry(
+                    img_url,
+                    target_max=args.img_max_dim,
+                    timeout=args.timeout,
+                    max_retries=args.max_retries,
+                    image_root_dir=args.image_root_dir,
+                    photo_id=photo_id,
+                    platform=platform,
+                )
+                if img is not None:
+                    cell = create_letterboxed_cell(img, target_w=512, target_h=256)
+                    cells.append(cell)
+                    successful_medoids_indices.append(item_idx)
+                    items.append(item)
+
+            if len(cells) < args.num_medoids:
+                sims = np.dot(parent_embs, centroid_norm)
+                sorted_idx_in_parent = np.argsort(sims)[::-1]
+                for offset in sorted_idx_in_parent:
+                    if len(cells) >= args.num_medoids:
+                        break
+                    item_idx = indices[offset]
+                    if item_idx in successful_medoids_indices:
+                        continue
+                    item = data[item_idx]
+                    img_url = item["Image_URL"]
+                    photo_id = item.get("Photo_ID")
+                    platform = str(item.get("Platform", "")).lower()
+
+                    if photo_id:
+                        photo_str = str(photo_id).strip()
+                        if photo_str.endswith(".0"):
+                            photo_str = photo_str[:-2]
+                        if (
+                            platform == "mapillary"
+                            or "mapillary" in img_url
+                            or "fbcdn.net" in img_url
+                        ):
+                            img_url = f"mapillary://{photo_str}"
+                        elif (
+                            platform == "kartaview"
+                            or "kartaview" in img_url
+                            or "openstreetcam" in img_url
+                        ):
+                            img_url = f"kartaview://{photo_str}"
+
+                    img = load_image_with_retry(
+                        img_url,
+                        target_max=args.img_max_dim,
+                        timeout=args.timeout,
+                        max_retries=args.max_retries,
+                        image_root_dir=args.image_root_dir,
+                        photo_id=photo_id,
+                        platform=platform,
+                    )
+                    if img is not None:
+                        cell = create_letterboxed_cell(img, target_w=512, target_h=256)
+                        cells.append(cell)
+                        successful_medoids_indices.append(item_idx)
+                        items.append(item)
+
+            if not cells:
+                return None
+
+            collage = stitch_cells_vertically(cells, target_w=512, target_h=256)
+            buffered = BytesIO()
+            collage.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            agg_meta = aggregate_medoid_metadata(successful_medoids_indices, df)
+
+            return {
+                "pid": pid,
+                "img_str": img_str,
+                "rank": 0,
+                "item": items[0],
+                "agg_meta": agg_meta,
+            }
+        else:
+            # Sort parent members by similarity to parent centroid
+            sims = np.dot(parent_embs, centroid_norm)
+            sorted_idx_in_parent = np.argsort(sims)[::-1]
+
+            # Try downloading images starting from the closest
+            for rank in range(min(args.fallback_depth, len(sorted_idx_in_parent))):
+                item_idx = indices[sorted_idx_in_parent[rank]]
+                item = data[item_idx]
+                img_url = item["Image_URL"]
+                photo_id = item.get("Photo_ID")
+                platform = str(item.get("Platform", "")).lower()
+
+                if photo_id:
+                    photo_str = str(photo_id).strip()
+                    if photo_str.endswith(".0"):
+                        photo_str = photo_str[:-2]
+                    if (
+                        platform == "mapillary"
+                        or "mapillary" in img_url
+                        or "fbcdn.net" in img_url
+                    ):
+                        img_url = f"mapillary://{photo_str}"
+                    elif (
+                        platform == "kartaview"
+                        or "kartaview" in img_url
+                        or "openstreetcam" in img_url
+                    ):
+                        img_url = f"kartaview://{photo_str}"
+
+                img = load_image_with_retry(
+                    img_url,
+                    target_max=args.img_max_dim,
+                    timeout=args.timeout,
+                    max_retries=args.max_retries,
+                    image_root_dir=args.image_root_dir,
+                    photo_id=photo_id,
+                    platform=platform,
+                )
+
+                if img is not None:
+                    buffered = BytesIO()
+                    img.save(buffered, format="JPEG")
+                    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    return {
+                        "pid": pid,
+                        "img_str": img_str,
+                        "img_url": img_url,
+                        "rank": rank,
+                        "item": item,
+                    }
+            return None
 
     # 7. Query the VLM sequentially for child clusters
     final_results = {}
@@ -692,13 +939,32 @@ def main():
                     continue
 
                 # Build templates
-                representative_item = task["item"]
-                p1_text, p2_text = build_prompt_templates(
-                    representative_item,
-                    prompt_step1_template,
-                    prompt_step2_template,
-                    lulc_list_str,
-                )
+                if args.num_medoids > 1 and "agg_meta" in task:
+                    agg_meta = task["agg_meta"]
+                    p1_text = (
+                        "The input image contains a vertical stack of representative photographs from the same local cluster; "
+                        "characterize the dominant land-cover features visible across these frames.\n\n"
+                        + prompt_step1_template
+                    )
+                    p2_text = prompt_step2_template.format(
+                        location=agg_meta["location"],
+                        country=agg_meta["country"],
+                        continent=agg_meta["continent"],
+                        season=agg_meta["season"],
+                        time_of_day=agg_meta["time_of_day"],
+                        koppen_code=agg_meta["koppen_code"],
+                        koppen_desc=agg_meta["koppen_desc"],
+                        visual_description="{visual_description}",
+                        lulc_list=lulc_list_str,
+                    )
+                else:
+                    representative_item = task["item"]
+                    p1_text, p2_text = build_prompt_templates(
+                        representative_item,
+                        prompt_step1_template,
+                        prompt_step2_template,
+                        lulc_list_str,
+                    )
 
                 # Step 1: Vision
                 desc_text = query_vlm_openai_api(
@@ -782,13 +1048,32 @@ def main():
                     continue
 
                 # Build templates
-                representative_item = task["item"]
-                p1_text, p2_text = build_prompt_templates(
-                    representative_item,
-                    prompt_step1_template,
-                    prompt_step2_template,
-                    lulc_list_str,
-                )
+                if args.num_medoids > 1 and "agg_meta" in task:
+                    agg_meta = task["agg_meta"]
+                    p1_text = (
+                        "The input image contains a vertical stack of representative photographs from the same local cluster; "
+                        "characterize the dominant land-cover features visible across these frames.\n\n"
+                        + prompt_step1_template
+                    )
+                    p2_text = prompt_step2_template.format(
+                        location=agg_meta["location"],
+                        country=agg_meta["country"],
+                        continent=agg_meta["continent"],
+                        season=agg_meta["season"],
+                        time_of_day=agg_meta["time_of_day"],
+                        koppen_code=agg_meta["koppen_code"],
+                        koppen_desc=agg_meta["koppen_desc"],
+                        visual_description="{visual_description}",
+                        lulc_list=lulc_list_str,
+                    )
+                else:
+                    representative_item = task["item"]
+                    p1_text, p2_text = build_prompt_templates(
+                        representative_item,
+                        prompt_step1_template,
+                        prompt_step2_template,
+                        lulc_list_str,
+                    )
 
                 # Step 1: Vision
                 desc_text = query_vlm_openai_api(
