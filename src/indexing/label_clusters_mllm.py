@@ -5,6 +5,7 @@ import os
 import pickle
 import time
 import urllib.request
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 
@@ -553,8 +554,6 @@ def main():
     if has_parents and k_parents > 0:
         centroids_norm_hac = normalize(raw_centroids)
         # Precompute parent-to-children mapping to avoid nested O(N) list comprehensions inside loop
-        from collections import defaultdict
-
         pid_to_cids = defaultdict(list)
         for cid, pid in parent_ids.items():
             pid_to_cids[pid].append(cid)
