@@ -46,6 +46,18 @@ def sample_diverse_medoids(embeddings_norm, indices, centroid_norm, df, n_medoid
     if len(indices) == 0:
         return []
 
+    # Extract NumPy arrays/lists once up-front to avoid extremely slow Pandas .iloc lookups inside loops
+    if isinstance(df, dict):
+        lats = df.get("Latitude", np.zeros(len(df)))
+        lons = df.get("Longitude", np.zeros(len(df)))
+        urls = df.get("Image_URL", [""] * len(df))
+    else:
+        lats = df["Latitude"].values if "Latitude" in df.columns else np.zeros(len(df))
+        lons = (
+            df["Longitude"].values if "Longitude" in df.columns else np.zeros(len(df))
+        )
+        urls = df["Image_URL"].values if "Image_URL" in df.columns else [""] * len(df)
+
     cluster_embs = embeddings_norm[indices]
     sims = np.dot(cluster_embs, centroid_norm)
 
@@ -60,19 +72,24 @@ def sample_diverse_medoids(embeddings_norm, indices, centroid_norm, df, n_medoid
         if len(selected) >= n_medoids:
             break
 
-        item = df.iloc[idx]
+        lat = lats[idx]
+        lon = lons[idx]
+        url = urls[idx]
+
         is_diverse = True
         for sel_idx in selected:
-            sel_item = df.iloc[sel_idx]
+            sel_lat = lats[sel_idx]
+            sel_lon = lons[sel_idx]
+            sel_url = urls[sel_idx]
 
             # Distance comparison to prevent near-duplicate coordinates
-            lat_diff = abs(item.get("Latitude", 0) - sel_item.get("Latitude", 0))
-            lon_diff = abs(item.get("Longitude", 0) - sel_item.get("Longitude", 0))
+            lat_diff = abs(lat - sel_lat)
+            lon_diff = abs(lon - sel_lon)
             if lat_diff < 1e-4 and lon_diff < 1e-4:
                 is_diverse = False
                 break
 
-            if item.get("Image_URL") == sel_item.get("Image_URL"):
+            if url == sel_url:
                 is_diverse = False
                 break
 

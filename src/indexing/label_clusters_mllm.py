@@ -648,6 +648,9 @@ def main():
             [f"- {k}: {v}" for k, v in zip(all_categories, all_prompts)]
         )
 
+        # Convert df to records list to make indexing extremely fast (dictionary lookups)
+        records = df.to_dict("records")
+
         # Label Parent Clusters
         if has_parents and k_parents > 0:
             print(f"\nPreparing {k_parents} parent cluster tasks for MLLM labeling...")
@@ -660,7 +663,7 @@ def main():
                 if args.num_medoids > 1 and isinstance(rep_val, list):
                     medoids = []
                     for idx in rep_val:
-                        item = df.iloc[idx]
+                        item = records[idx]
                         img_url = item["Image_URL"]
                         photo_id = item.get("Photo_ID")
                         platform = str(item.get("Platform", "")).lower()
@@ -717,7 +720,7 @@ def main():
                         }
                     )
                 else:
-                    representative_item = df.iloc[rep_val]
+                    representative_item = records[rep_val]
                     img_url = representative_item["Image_URL"]
 
                     photo_id = representative_item.get("Photo_ID")
@@ -781,7 +784,7 @@ def main():
             if args.num_medoids > 1 and isinstance(rep_val, list):
                 medoids = []
                 for idx in rep_val:
-                    item = df.iloc[idx]
+                    item = records[idx]
                     img_url = item["Image_URL"]
                     photo_id = item.get("Photo_ID")
                     platform = str(item.get("Platform", "")).lower()
@@ -834,7 +837,7 @@ def main():
                     }
                 )
             else:
-                representative_item = df.iloc[rep_val]
+                representative_item = records[rep_val]
                 img_url = representative_item["Image_URL"]
 
                 photo_id = representative_item.get("Photo_ID")
