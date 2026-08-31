@@ -648,8 +648,10 @@ def main():
             [f"- {k}: {v}" for k, v in zip(all_categories, all_prompts)]
         )
 
-        # Convert df to records list to make indexing extremely fast (dictionary lookups)
-        records = df.to_dict("records")
+        # Use a high-performance, zero-copy row wrapper to avoid slow .iloc and high memory of .to_dict()
+        from src.indexing.multi_medoid_utils import DataFrameRowWrapper
+
+        wrapper = DataFrameRowWrapper(df)
 
         # Label Parent Clusters
         if has_parents and k_parents > 0:
@@ -663,7 +665,7 @@ def main():
                 if args.num_medoids > 1 and isinstance(rep_val, list):
                     medoids = []
                     for idx in rep_val:
-                        item = records[idx]
+                        item = wrapper.get_row(idx)
                         img_url = item["Image_URL"]
                         photo_id = item.get("Photo_ID")
                         platform = str(item.get("Platform", "")).lower()
@@ -720,7 +722,7 @@ def main():
                         }
                     )
                 else:
-                    representative_item = records[rep_val]
+                    representative_item = wrapper.get_row(rep_val)
                     img_url = representative_item["Image_URL"]
 
                     photo_id = representative_item.get("Photo_ID")
@@ -784,7 +786,7 @@ def main():
             if args.num_medoids > 1 and isinstance(rep_val, list):
                 medoids = []
                 for idx in rep_val:
-                    item = records[idx]
+                    item = wrapper.get_row(idx)
                     img_url = item["Image_URL"]
                     photo_id = item.get("Photo_ID")
                     platform = str(item.get("Platform", "")).lower()
@@ -837,7 +839,7 @@ def main():
                     }
                 )
             else:
-                representative_item = records[rep_val]
+                representative_item = wrapper.get_row(rep_val)
                 img_url = representative_item["Image_URL"]
 
                 photo_id = representative_item.get("Photo_ID")

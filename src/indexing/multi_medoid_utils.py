@@ -168,3 +168,63 @@ def aggregate_medoid_metadata(indices, df):
         "koppen_code": koppen_code,
         "koppen_desc": koppen_desc,
     }
+
+
+class DataFrameRowWrapper:
+    """
+    High-performance wrapper around Pandas DataFrame to provide O(1) row access
+    via .iat indexer, avoiding the memory copying and CPU overhead of .iloc or .to_dict().
+    """
+
+    def __init__(self, df):
+        self.df = df
+        self.col_map = {col: i for i, col in enumerate(df.columns)}
+
+    def get_row(self, idx):
+        return DataFrameRow(self.df, idx, self.col_map)
+
+    def __getitem__(self, idx):
+        return DataFrameRow(self.df, idx, self.col_map)
+
+    def __len__(self):
+        return len(self.df)
+
+    def __iter__(self):
+        for i in range(len(self.df)):
+            yield DataFrameRow(self.df, i, self.col_map)
+
+
+class DataFrameRow:
+    def __init__(self, df, idx, col_map):
+        self.df = df
+        self.idx = idx
+        self.col_map = col_map
+
+    def get(self, key, default=None):
+        col_idx = self.col_map.get(key)
+        if col_idx is not None:
+            import pandas as pd
+
+            val = self.df.iat[self.idx, col_idx]
+            if (
+                val is None
+                or (isinstance(val, float) and np.isnan(val))
+                or pd.isna(val)
+            ):
+                return default
+            return val
+        return default
+
+    def __getitem__(self, key):
+        col_idx = self.col_map.get(key)
+        if col_idx is None:
+            raise KeyError(key)
+        import pandas as pd
+
+        val = self.df.iat[self.idx, col_idx]
+        if val is None or (isinstance(val, float) and np.isnan(val)) or pd.isna(val):
+            raise KeyError(key)
+        return val
+
+    def __contains__(self, key):
+        return key in self.col_map

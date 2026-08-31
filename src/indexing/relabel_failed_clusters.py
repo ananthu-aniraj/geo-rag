@@ -23,7 +23,6 @@ from src.utils.io import (
     load_dataset_with_clusters,
     load_embeddings,
     resolve_offline_image_path,
-    save_dataframe,
 )
 
 # Shared LULC Vocabularies
@@ -225,12 +224,8 @@ def build_prompt_templates(
     return prompt_step1_template, step2_prompt
 
 
-def save_dataset(data, final_results, parent_results, out_path):
-    """Helper to update labels in the data list and write them to the output file."""
-    updated_clusters = set()
-    updated_parents = set()
-    row_update_count = 0
-
+def save_dataset(df, final_results, parent_results, out_path):
+    """Helper to update labels in the DataFrame and write them to the output file."""
     # Map child results
     cluster_labels = {}
     cluster_descriptions = {}
@@ -240,7 +235,6 @@ def save_dataset(data, final_results, parent_results, out_path):
             cluster_labels[cid] = lbl
             cluster_descriptions[cid] = desc
             cluster_visual_descriptions[cid] = desc_vis
-            updated_clusters.add(cid)
 
     # Map parent results
     parent_labels = {}
@@ -251,49 +245,81 @@ def save_dataset(data, final_results, parent_results, out_path):
             parent_labels[pid] = lbl
             parent_descriptions[pid] = desc
             parent_visual_descriptions[pid] = desc_vis
-            updated_parents.add(pid)
 
-    for item in data:
-        cid = item.get("cluster_id")
-        try:
-            cid_int = int(cid) if (cid is not None and cid == cid) else None
-        except (ValueError, TypeError):
-            cid_int = None
+    if cluster_labels:
+        df["cluster_label"] = (
+            df["cluster_id"]
+            .map(cluster_labels)
+            .combine_first(
+                df["cluster_label"]
+                if "cluster_label" in df.columns
+                else pd.Series(dtype=str)
+            )
+        )
+    if cluster_descriptions:
+        df["cluster_description"] = (
+            df["cluster_id"]
+            .map(cluster_descriptions)
+            .combine_first(
+                df["cluster_description"]
+                if "cluster_description" in df.columns
+                else pd.Series(dtype=str)
+            )
+        )
+    if cluster_visual_descriptions:
+        df["visual_description"] = (
+            df["cluster_id"]
+            .map(cluster_visual_descriptions)
+            .combine_first(
+                df["visual_description"]
+                if "visual_description" in df.columns
+                else pd.Series(dtype=str)
+            )
+        )
 
-        if cid_int is not None and cid_int in cluster_labels:
-            item["cluster_label"] = cluster_labels[cid_int]
-            item["cluster_description"] = cluster_descriptions[cid_int]
-            if cid_int in cluster_visual_descriptions:
-                item["visual_description"] = cluster_visual_descriptions[cid_int]
-            row_update_count += 1
-
-        pid = item.get("parent_cluster_id")
-        try:
-            pid_int = int(pid) if (pid is not None and pid == pid) else None
-        except (ValueError, TypeError):
-            pid_int = None
-
-        if pid_int is not None and pid_int in parent_labels:
-            item["parent_cluster_label"] = parent_labels[pid_int]
-            if pid_int in parent_descriptions:
-                item["parent_cluster_description"] = parent_descriptions[pid_int]
-            if int(pid_int) in parent_visual_descriptions:
-                item["parent_visual_description"] = parent_visual_descriptions[pid_int]
-            row_update_count += 1
+    if parent_labels:
+        df["parent_cluster_label"] = (
+            df["parent_cluster_id"]
+            .map(parent_labels)
+            .combine_first(
+                df["parent_cluster_label"]
+                if "parent_cluster_label" in df.columns
+                else pd.Series(dtype=str)
+            )
+        )
+    if parent_descriptions:
+        df["parent_cluster_description"] = (
+            df["parent_cluster_id"]
+            .map(parent_descriptions)
+            .combine_first(
+                df["parent_cluster_description"]
+                if "parent_cluster_description" in df.columns
+                else pd.Series(dtype=str)
+            )
+        )
+    if parent_visual_descriptions:
+        df["parent_visual_description"] = (
+            df["parent_cluster_id"]
+            .map(parent_visual_descriptions)
+            .combine_first(
+                df["parent_visual_description"]
+                if "parent_visual_description" in df.columns
+                else pd.Series(dtype=str)
+            )
+        )
 
     if out_path.endswith(".pkl"):
+        # Save as pkl list of dicts for backwards compatibility
+        records = df.to_dict("records")
         with open(out_path, "wb") as f:
-            pickle.dump(data, f)
+            pickle.dump(records, f)
     else:
-        df = pd.DataFrame(data)
-        if "Latitude" in df.columns:
-            df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
-        if "Longitude" in df.columns:
-            df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
+        from src.utils.io import save_dataframe
+
         save_dataframe(df, out_path)
 
     print(
-        f"  -> Checkpoint: Saved {row_update_count} rows across {len(updated_clusters)} child clusters and {len(updated_parents)} parent clusters to {out_path}."
+        f"  -> Checkpoint: Saved {len(final_results)} child clusters and {len(parent_results)} parent clusters to {out_path}."
     )
 
 
@@ -407,14 +433,18 @@ def main():
     print(f"Loading dataset from {args.file}...")
     if args.file.endswith(".pkl"):
         with open(args.file, "rb") as f:
-            data = pickle.load(f)
+            raw_data = pickle.load(f)
+        df = pd.DataFrame(raw_data)
     else:
         df = load_dataset_with_clusters(args.file)
         if "Latitude" in df.columns:
             df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
         if "Longitude" in df.columns:
             df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-        data = df.to_dict("records")
+
+    from src.indexing.multi_medoid_utils import DataFrameRowWrapper
+
+    data = DataFrameRowWrapper(df)
 
     if not data:
         print("No data found.")
@@ -1013,11 +1043,11 @@ def main():
                     )
 
                 if len(final_results) % args.save_interval == 0:
-                    save_dataset(data, final_results, {}, args.out)
+                    save_dataset(df, final_results, {}, args.out)
 
         except KeyboardInterrupt:
             print("\nSequential child cluster labeling interrupted by user.")
-
+            save_dataset(df, final_results, {}, args.out)
     # 8. Query the VLM sequentially for parent clusters
     parent_results = {}
     sorted_failed_parent_ids = sorted(list(target_parent_ids))
@@ -1125,7 +1155,7 @@ def main():
                     )
 
                 if len(parent_results) % args.save_interval == 0:
-                    save_dataset(data, final_results, parent_results, args.out)
+                    save_dataset(df, final_results, parent_results, args.out)
 
         except KeyboardInterrupt:
             print("\nSequential parent cluster labeling interrupted by user.")
@@ -1133,7 +1163,7 @@ def main():
     # Final Save
     if final_results or parent_results:
         print("\nSaving final results...")
-        save_dataset(data, final_results, parent_results, args.out)
+        save_dataset(df, final_results, parent_results, args.out)
         print("Re-labeling session finished.")
     else:
         print("\nNo clusters were successfully re-labeled.")
