@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import requests
 from PIL import Image
-from sklearn.preprocessing import normalize
 
 from src.indexing.multi_medoid_utils import (
     DataFrameRowWrapper,
@@ -547,9 +546,6 @@ def main():
             args.file, column="embedding", representation_type=args.representation_type
         ).squeeze()
 
-    print("Normalizing embeddings...")
-    embeddings_norm = normalize(embeddings)
-
     # 6. Construct prompt templates
     noise_category = "None of the above / Noise"
     noise_prompt = "Noisy image, indoor scene, closeup object, selfie, text/graphic, or unrelated non-geographic photo."
@@ -587,20 +583,74 @@ def main():
     # Convert data list of dicts to DataFrame to easily query fields for metadata aggregation
     df = pd.DataFrame(data)
 
+    # Pre-group indices by child_id for instant O(1) query lookups
+    print("Pre-grouping cluster indices for fast lookup...")
+    sort_idx = np.argsort(cluster_ids)
+    sorted_child_ids = cluster_ids[sort_idx]
+    unique_ids, starts, counts_uniq = np.unique(
+        sorted_child_ids, return_index=True, return_counts=True
+    )
+    cid_to_pos = {cid: i for i, cid in enumerate(unique_ids)}
+
+    def get_indices_for_cid(cid):
+        pos = cid_to_pos.get(cid)
+        if pos is None:
+            return np.array([], dtype=np.int64)
+        start = starts[pos]
+        count = counts_uniq[pos]
+        return sort_idx[start : start + count]
+
+    # Pre-group indices by parent_cluster_id for instant O(1) query lookups
+    parent_ids_arr = (
+        df["parent_cluster_id"].values
+        if "parent_cluster_id" in df.columns
+        else np.array([])
+    )
+    if len(parent_ids_arr) > 0:
+        parent_ids_arr = np.nan_to_num(parent_ids_arr, nan=-1).astype(np.int64)
+        sort_pid_idx = np.argsort(parent_ids_arr)
+        sorted_parent_ids = parent_ids_arr[sort_pid_idx]
+        unique_pids, starts_pid, counts_pid = np.unique(
+            sorted_parent_ids, return_index=True, return_counts=True
+        )
+        pid_to_pos = {pid: i for i, pid in enumerate(unique_pids)}
+
+        def get_indices_for_pid(pid):
+            pos = pid_to_pos.get(pid)
+            if pos is None:
+                return np.array([], dtype=np.int64)
+            start = starts_pid[pos]
+            count = counts_pid[pos]
+            return sort_pid_idx[start : start + count]
+
+    else:
+
+        def get_indices_for_pid(pid):
+            return np.array([], dtype=np.int64)
+
     # Helper function to prepare task for a single cluster (downloading with retry and fallback)
     def prepare_cluster_task(cid):
-        indices = np.where(cluster_ids == cid)[0]
+        indices = get_indices_for_cid(cid)
         if len(indices) == 0:
             return None
 
+        # Sliced local normalization
+        cluster_raw = embeddings[indices]
+        norms = np.linalg.norm(cluster_raw, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-9
+        cluster_embs_norm = (cluster_raw / norms).astype(np.float32)
+
         # Calculate cluster centroid in 768D space
-        cluster_embs = embeddings_norm[indices]
-        centroid = np.mean(cluster_embs, axis=0)
+        centroid = np.mean(cluster_embs_norm, axis=0)
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
 
         if args.num_medoids > 1:
             medoid_indices = sample_diverse_medoids(
-                embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
+                cluster_embs_norm,
+                indices,
+                centroid_norm,
+                df,
+                n_medoids=args.num_medoids,
             )
             successful_medoids_indices = []
             cells = []
@@ -645,7 +695,7 @@ def main():
                     items.append(item)
 
             if len(cells) < args.num_medoids:
-                sims = np.dot(cluster_embs, centroid_norm)
+                sims = np.dot(cluster_embs_norm, centroid_norm)
                 sorted_idx_in_cluster = np.argsort(sims)[::-1]
                 for offset in sorted_idx_in_cluster:
                     if len(cells) >= args.num_medoids:
@@ -708,7 +758,7 @@ def main():
             }
         else:
             # Sort members by cosine similarity to the centroid (descending)
-            sims = np.dot(cluster_embs, centroid_norm)
+            sims = np.dot(cluster_embs_norm, centroid_norm)
             sorted_idx_in_cluster = np.argsort(sims)[::-1]
 
             # Try downloading images starting from the closest
@@ -762,20 +812,23 @@ def main():
 
     # Helper function to prepare task for a single parent cluster
     def prepare_parent_task(pid):
-        # We need to map row indices to parent IDs
-        parent_ids_arr = np.array([item.get("parent_cluster_id", -1) for item in data])
-        indices = np.where(parent_ids_arr == pid)[0]
+        indices = get_indices_for_pid(pid)
         if len(indices) == 0:
             return None
 
+        # Sliced local normalization
+        parent_raw = embeddings[indices]
+        norms = np.linalg.norm(parent_raw, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-9
+        parent_embs_norm = (parent_raw / norms).astype(np.float32)
+
         # Calculate parent centroid directly from raw image embeddings belonging to this parent
-        parent_embs = embeddings_norm[indices]
-        centroid = np.mean(parent_embs, axis=0)
+        centroid = np.mean(parent_embs_norm, axis=0)
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
 
         if args.num_medoids > 1:
             medoid_indices = sample_diverse_medoids(
-                embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
+                parent_embs_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
             )
             successful_medoids_indices = []
             cells = []
@@ -820,7 +873,7 @@ def main():
                     items.append(item)
 
             if len(cells) < args.num_medoids:
-                sims = np.dot(parent_embs, centroid_norm)
+                sims = np.dot(parent_embs_norm, centroid_norm)
                 sorted_idx_in_parent = np.argsort(sims)[::-1]
                 for offset in sorted_idx_in_parent:
                     if len(cells) >= args.num_medoids:
@@ -883,7 +936,7 @@ def main():
             }
         else:
             # Sort parent members by similarity to parent centroid
-            sims = np.dot(parent_embs, centroid_norm)
+            sims = np.dot(parent_embs_norm, centroid_norm)
             sorted_idx_in_parent = np.argsort(sims)[::-1]
 
             # Try downloading images starting from the closest

@@ -480,21 +480,45 @@ def main():
 
     print(f"Found {len(df):,} items across {k_clusters:,} child clusters.")
 
-    # Re-compute child centroids
+    # Re-compute child centroids in memory-efficient chunks to prevent virtual memory swapping
+    print("Re-computing child centroids in memory-efficient chunks...")
     d = embeddings.shape[1]
-    embeddings_norm = normalize(embeddings).astype(np.float32)
     raw_centroids = np.zeros((k_clusters, d), dtype=np.float32)
-    valid_mask = child_ids >= 0
-    np.add.at(raw_centroids, child_ids[valid_mask], embeddings_norm[valid_mask])
-    counts = np.bincount(child_ids[valid_mask], minlength=k_clusters)
+
+    # Pre-group indices by child_id for instant O(1) query lookups
+    t_group = time.time()
+    sort_idx = np.argsort(child_ids)
+    sorted_child_ids = child_ids[sort_idx]
+    unique_ids, starts, counts_uniq = np.unique(
+        sorted_child_ids, return_index=True, return_counts=True
+    )
+    cid_to_pos = {cid: i for i, cid in enumerate(unique_ids)}
+    print(f" -> Grouped 7.1M child IDs in {time.time() - t_group:.2f}s.")
+
+    # Chunked normalized centroid calculation
+    t_centroids = time.time()
+    chunk_size = 500000
+    total_len = len(embeddings)
+    for start_idx in range(0, total_len, chunk_size):
+        end_idx = min(start_idx + chunk_size, total_len)
+        chunk_raw = embeddings[start_idx:end_idx]
+        norms = np.linalg.norm(chunk_raw, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-9
+        chunk_norm = (chunk_raw / norms).astype(np.float32)
+
+        chunk_ids = child_ids[start_idx:end_idx]
+        valid_mask = chunk_ids >= 0
+        np.add.at(raw_centroids, chunk_ids[valid_mask], chunk_norm[valid_mask])
+
+    counts = np.bincount(child_ids[child_ids >= 0], minlength=k_clusters)
     valid_counts = counts > 0
     raw_centroids[valid_counts] /= counts[valid_counts, None]
+    print(f" -> Re-computed centroids in {time.time() - t_centroids:.2f}s.")
 
     # Parent cluster mapping
     has_parents = "parent_cluster_id" in df.columns
     if has_parents:
         parent_ids = df.groupby("cluster_id")["parent_cluster_id"].first().to_dict()
-        # Clean and type-cast the dict to filter out any NaNs
         parent_ids = {
             int(cid): int(pid)
             for cid, pid in parent_ids.items()
@@ -518,10 +542,25 @@ def main():
     parent_rep_indices = {}
     child_rep_indices = {}
 
+    def get_indices_for_cid(cid):
+        pos = cid_to_pos.get(cid)
+        if pos is None:
+            return np.array([], dtype=np.int64)
+        start = starts[pos]
+        count = counts_uniq[pos]
+        return sort_idx[start : start + count]
+
     if has_parents and k_parents > 0:
         centroids_norm_hac = normalize(raw_centroids)
+        # Precompute parent-to-children mapping to avoid nested O(N) list comprehensions inside loop
+        from collections import defaultdict
+
+        pid_to_cids = defaultdict(list)
+        for cid, pid in parent_ids.items():
+            pid_to_cids[pid].append(cid)
+
         for pid in tqdm(range(k_parents), desc="Parent Clusters"):
-            cids_in_parent = [cid for cid, p in parent_ids.items() if p == pid]
+            cids_in_parent = pid_to_cids.get(pid, [])
             if not cids_in_parent:
                 continue
             p_centroid = parent_centroids[pid]
@@ -530,46 +569,61 @@ def main():
             sims = np.dot(child_embs, p_centroid_norm)
             closest_child_cid = cids_in_parent[np.argmax(sims)]
 
-            indices = np.where(child_ids == closest_child_cid)[0]
+            indices = get_indices_for_cid(closest_child_cid)
             if len(indices) == 0:
                 continue
+
+            # Sliced local normalization
+            cluster_raw = embeddings[indices]
+            norms = np.linalg.norm(cluster_raw, axis=1, keepdims=True)
+            norms[norms == 0] = 1e-9
+            cluster_embs_norm = (cluster_raw / norms).astype(np.float32)
+
             child_centroid = raw_centroids[closest_child_cid]
             child_centroid_norm = child_centroid / (
                 np.linalg.norm(child_centroid) + 1e-9
             )
             if args.num_medoids > 1:
                 parent_rep_indices[pid] = sample_diverse_medoids(
-                    embeddings_norm,
+                    cluster_embs_norm,
                     indices,
                     child_centroid_norm,
                     df,
                     n_medoids=args.num_medoids,
                 )
             else:
-                cluster_embs = embeddings_norm[indices]
-                img_sims = np.dot(cluster_embs, child_centroid_norm)
+                img_sims = np.dot(cluster_embs_norm, child_centroid_norm)
                 closest_img_idx = indices[np.argmax(img_sims)]
                 parent_rep_indices[pid] = closest_img_idx
 
     for cid in tqdm(range(k_clusters), desc="Child Clusters"):
-        indices = np.where(child_ids == cid)[0]
+        indices = get_indices_for_cid(cid)
         if len(indices) == 0:
             continue
+
+        # Sliced local normalization
+        cluster_raw = embeddings[indices]
+        norms = np.linalg.norm(cluster_raw, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-9
+        cluster_embs_norm = (cluster_raw / norms).astype(np.float32)
+
         centroid = raw_centroids[cid]
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
         if args.num_medoids > 1:
             child_rep_indices[cid] = sample_diverse_medoids(
-                embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
+                cluster_embs_norm,
+                indices,
+                centroid_norm,
+                df,
+                n_medoids=args.num_medoids,
             )
         else:
-            cluster_embs = embeddings_norm[indices]
-            sims = np.dot(cluster_embs, centroid_norm)
-            closest_idx = indices[np.argmax(sims)]
+            img_sims = np.dot(cluster_embs_norm, centroid_norm)
+            closest_idx = indices[np.argmax(img_sims)]
             child_rep_indices[cid] = closest_idx
 
     # Release heavy embedding matrices immediately
     del embeddings
-    del embeddings_norm
     gc.collect()
     print(
         " -> Released embedding matrices from memory to conserve RAM during VLM labeling."

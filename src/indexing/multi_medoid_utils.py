@@ -59,7 +59,11 @@ def sample_diverse_medoids(embeddings_norm, indices, centroid_norm, df, n_medoid
         )
         urls = df["Image_URL"].values if "Image_URL" in df.columns else [""] * len(df)
 
-    cluster_embs = embeddings_norm[indices]
+    if embeddings_norm.shape[0] == len(indices):
+        cluster_embs = embeddings_norm
+    else:
+        cluster_embs = embeddings_norm[indices]
+
     sims = np.dot(cluster_embs, centroid_norm)
 
     # Sort indices by cosine similarity to centroid descending

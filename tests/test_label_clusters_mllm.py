@@ -226,6 +226,67 @@ class TestLabelClustersMLLM(unittest.TestCase):
         # Also let's check that load_image was called 4 times
         self.assertEqual(mock_load.call_count, 4)
 
+    def test_dataframe_row_wrapper(self):
+        import pandas as pd
+
+        from src.indexing.multi_medoid_utils import DataFrameRowWrapper
+
+        df = pd.DataFrame(
+            {
+                "Latitude": [45.0, None, 46.0],
+                "Longitude": [-122.0, -123.0, None],
+                "Image_URL": ["url1", "url2", "url3"],
+                "Photo_ID": ["1", "2.0", "3"],
+            }
+        )
+
+        wrapper = DataFrameRowWrapper(df)
+        self.assertEqual(len(wrapper), 3)
+
+        # Test individual row retrieval
+        row0 = wrapper[0]
+        self.assertEqual(row0["Image_URL"], "url1")
+        self.assertEqual(row0.get("Latitude"), 45.0)
+        self.assertEqual(row0.get("Longitude"), -122.0)
+
+        # Test null handle
+        self.assertEqual(row0.get("Nonexistent", "default"), "default")
+        row1 = wrapper[1]
+        self.assertIsNone(row1.get("Latitude"))
+
+        # Test iteration
+        rows = list(wrapper)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[2]["Image_URL"], "url3")
+
+    def test_diverse_medoids_pre_sliced(self):
+        import pandas as pd
+
+        from src.indexing.multi_medoid_utils import sample_diverse_medoids
+
+        df = pd.DataFrame(
+            {
+                "Latitude": [45.0, 45.0, 46.0, 47.0],
+                "Longitude": [-122.0, -122.0, -123.0, -124.0],
+                "Image_URL": ["url1", "url1", "url3", "url4"],
+            }
+        )
+
+        # If we pass pre-sliced cluster embeddings (shape matching len(indices)):
+        cluster_embs_norm = np.array([[1.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.7, 0.7]])
+        centroid_norm = np.array([1.0, 0.0])
+        indices = np.array([0, 1, 2, 3])
+
+        selected = sample_diverse_medoids(
+            cluster_embs_norm, indices, centroid_norm, df, n_medoids=3
+        )
+
+        # index 0 and 1 are identical (lat/lon/url), so one should be pruned for diversity
+        self.assertIn(0, selected)
+        self.assertNotIn(1, selected)
+        self.assertIn(2, selected)
+        self.assertIn(3, selected)
+
 
 if __name__ == "__main__":
     unittest.main()
