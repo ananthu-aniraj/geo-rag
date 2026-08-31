@@ -21,7 +21,9 @@ from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
 
+# Use a high-performance, zero-copy row wrapper to avoid slow .iloc and high memory of .to_dict()
 from src.indexing.multi_medoid_utils import (
+    DataFrameRowWrapper,
     aggregate_medoid_metadata,
     create_letterboxed_cell,
     sample_diverse_medoids,
@@ -647,9 +649,6 @@ def main():
         lulc_list_str = "\n".join(
             [f"- {k}: {v}" for k, v in zip(all_categories, all_prompts)]
         )
-
-        # Use a high-performance, zero-copy row wrapper to avoid slow .iloc and high memory of .to_dict()
-        from src.indexing.multi_medoid_utils import DataFrameRowWrapper
 
         wrapper = DataFrameRowWrapper(df)
 

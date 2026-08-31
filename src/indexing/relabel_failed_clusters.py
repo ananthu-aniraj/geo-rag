@@ -14,6 +14,7 @@ from PIL import Image
 from sklearn.preprocessing import normalize
 
 from src.indexing.multi_medoid_utils import (
+    DataFrameRowWrapper,
     aggregate_medoid_metadata,
     create_letterboxed_cell,
     sample_diverse_medoids,
@@ -23,6 +24,7 @@ from src.utils.io import (
     load_dataset_with_clusters,
     load_embeddings,
     resolve_offline_image_path,
+    save_dataframe,
 )
 
 # Shared LULC Vocabularies
@@ -314,8 +316,6 @@ def save_dataset(df, final_results, parent_results, out_path):
         with open(out_path, "wb") as f:
             pickle.dump(records, f)
     else:
-        from src.utils.io import save_dataframe
-
         save_dataframe(df, out_path)
 
     print(
@@ -441,8 +441,6 @@ def main():
             df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
         if "Longitude" in df.columns:
             df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-
-    from src.indexing.multi_medoid_utils import DataFrameRowWrapper
 
     data = DataFrameRowWrapper(df)
 
