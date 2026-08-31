@@ -716,7 +716,7 @@ def main():
 
                 if args.num_medoids > 1 and isinstance(rep_val, list):
                     medoids = []
-                    for idx in tqdm(rep_val, desc="Medoids"):
+                    for idx in rep_val:
                         item = wrapper.get_row(idx)
                         img_url = item["Image_URL"]
                         photo_id = item.get("Photo_ID")
@@ -837,7 +837,7 @@ def main():
 
             if args.num_medoids > 1 and isinstance(rep_val, list):
                 medoids = []
-                for idx in tqdm(rep_val, desc="Medoids"):
+                for idx in rep_val:
                     item = wrapper.get_row(idx)
                     img_url = item["Image_URL"]
                     photo_id = item.get("Photo_ID")
