@@ -941,9 +941,12 @@ def main():
                 # Build templates
                 if args.num_medoids > 1 and "agg_meta" in task:
                     agg_meta = task["agg_meta"]
+                    num_actual_medoids = (
+                        len(task.get("medoids_indices", [])) or args.num_medoids
+                    )
                     p1_text = (
-                        "The input image contains a vertical stack of representative photographs from the same local cluster; "
-                        "characterize the dominant land-cover features visible across these frames.\n\n"
+                        f"The input image contains a vertical stack of {num_actual_medoids} representative photographs from the same local cluster; "
+                        "analyze the common land-cover features across these frames.\n\n"
                         + prompt_step1_template
                     )
                     p2_text = prompt_step2_template.format(
@@ -1050,9 +1053,12 @@ def main():
                 # Build templates
                 if args.num_medoids > 1 and "agg_meta" in task:
                     agg_meta = task["agg_meta"]
+                    num_actual_medoids = (
+                        len(task.get("medoids_indices", [])) or args.num_medoids
+                    )
                     p1_text = (
-                        "The input image contains a vertical stack of representative photographs from the same local cluster; "
-                        "characterize the dominant land-cover features visible across these frames.\n\n"
+                        f"The input image contains a vertical stack of {num_actual_medoids} representative photographs from the same local cluster; "
+                        "analyze the common land-cover features across these frames.\n\n"
                         + prompt_step1_template
                     )
                     p2_text = prompt_step2_template.format(
