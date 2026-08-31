@@ -17,6 +17,7 @@ import torch
 from PIL import Image
 from requests.adapters import HTTPAdapter
 from sklearn.preprocessing import normalize
+from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
 
@@ -515,7 +516,7 @@ def main():
 
     if has_parents and k_parents > 0:
         centroids_norm_hac = normalize(raw_centroids)
-        for pid in range(k_parents):
+        for pid in tqdm(range(k_parents), desc="Parent Clusters"):
             cids_in_parent = [cid for cid, p in parent_ids.items() if p == pid]
             if not cids_in_parent:
                 continue
@@ -548,7 +549,7 @@ def main():
                 closest_img_idx = indices[np.argmax(img_sims)]
                 parent_rep_indices[pid] = closest_img_idx
 
-    for cid in range(k_clusters):
+    for cid in tqdm(range(k_clusters), desc="Child Clusters"):
         indices = np.where(child_ids == cid)[0]
         if len(indices) == 0:
             continue
