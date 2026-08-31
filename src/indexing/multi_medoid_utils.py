@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from PIL import Image
 
 
@@ -203,8 +204,6 @@ class DataFrameRow:
     def get(self, key, default=None):
         col_idx = self.col_map.get(key)
         if col_idx is not None:
-            import pandas as pd
-
             val = self.df.iat[self.idx, col_idx]
             if (
                 val is None
@@ -219,7 +218,6 @@ class DataFrameRow:
         col_idx = self.col_map.get(key)
         if col_idx is None:
             raise KeyError(key)
-        import pandas as pd
 
         val = self.df.iat[self.idx, col_idx]
         if val is None or (isinstance(val, float) and np.isnan(val)) or pd.isna(val):
