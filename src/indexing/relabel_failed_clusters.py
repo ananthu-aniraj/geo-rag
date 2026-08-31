@@ -747,7 +747,7 @@ def main():
             buffered = BytesIO()
             collage.save(buffered, format="JPEG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            agg_meta = aggregate_medoid_metadata(successful_medoids_indices, df)
+            agg_meta = aggregate_medoid_metadata(successful_medoids_indices, data)
 
             return {
                 "cid": cid,
@@ -925,7 +925,7 @@ def main():
             buffered = BytesIO()
             collage.save(buffered, format="JPEG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            agg_meta = aggregate_medoid_metadata(successful_medoids_indices, df)
+            agg_meta = aggregate_medoid_metadata(successful_medoids_indices, data)
 
             return {
                 "pid": pid,

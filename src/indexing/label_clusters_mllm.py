@@ -716,7 +716,7 @@ def main():
 
                 if args.num_medoids > 1 and isinstance(rep_val, list):
                     medoids = []
-                    for idx in rep_val:
+                    for idx in tqdm(rep_val, desc="Medoids"):
                         item = wrapper.get_row(idx)
                         img_url = item["Image_URL"]
                         photo_id = item.get("Photo_ID")
@@ -745,7 +745,7 @@ def main():
                             }
                         )
 
-                    agg_meta = aggregate_medoid_metadata(rep_val, df)
+                    agg_meta = aggregate_medoid_metadata(rep_val, wrapper)
 
                     p1_text = (
                         f"The input image contains a vertical stack of {len(medoids)} representative photographs from the same local cluster; "
@@ -837,7 +837,7 @@ def main():
 
             if args.num_medoids > 1 and isinstance(rep_val, list):
                 medoids = []
-                for idx in rep_val:
+                for idx in tqdm(rep_val, desc="Medoids"):
                     item = wrapper.get_row(idx)
                     img_url = item["Image_URL"]
                     photo_id = item.get("Photo_ID")
@@ -862,7 +862,7 @@ def main():
                         {"img_url": img_url, "photo_id": photo_id, "platform": platform}
                     )
 
-                agg_meta = aggregate_medoid_metadata(rep_val, df)
+                agg_meta = aggregate_medoid_metadata(rep_val, wrapper)
 
                 p1_text = (
                     f"The input image contains a vertical stack of {len(medoids)} representative photographs from the same local cluster; "

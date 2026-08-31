@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from PIL import Image
 
 
@@ -127,11 +126,25 @@ def aggregate_medoid_metadata(indices, df):
             "koppen_desc": "Unknown",
         }
 
-    items = df.iloc[indices]
+    # Use the high-performance wrapper interface if it is already wrapped,
+    # otherwise wrap it on-the-fly to prevent extremely slow .iloc on PyArrow columns.
+    if hasattr(df, "iloc"):
+        wrapper = DataFrameRowWrapper(df)
+    else:
+        wrapper = df
+
+    items = [wrapper[idx] for idx in indices]
 
     # coordinates & bounding box
-    lats = items["Latitude"].dropna().tolist() if "Latitude" in items.columns else []
-    lons = items["Longitude"].dropna().tolist() if "Longitude" in items.columns else []
+    lats = []
+    lons = []
+    for item in items:
+        lat = item.get("Latitude")
+        lon = item.get("Longitude")
+        if lat is not None:
+            lats.append(lat)
+        if lon is not None:
+            lons.append(lon)
 
     if lats and lons:
         min_lat, max_lat = min(lats), max(lats)
@@ -146,16 +159,15 @@ def aggregate_medoid_metadata(indices, df):
         location = "Unknown"
 
     def get_unique_list(col_name):
-        if col_name not in items.columns:
-            return "Unknown"
-        vals = items[col_name].dropna().astype(str).tolist()
-        unique_vals = []
-        for v in vals:
-            v_strip = v.strip()
-            if v_strip and v_strip.lower() not in ["unknown", "nan", "n/a", "none"]:
-                if v_strip not in unique_vals:
-                    unique_vals.append(v_strip)
-        return ", ".join(unique_vals) if unique_vals else "Unknown"
+        vals = []
+        for item in items:
+            val = item.get(col_name)
+            if val is not None:
+                val_str = str(val).strip()
+                if val_str and val_str.lower() not in ["unknown", "nan", "n/a", "none"]:
+                    if val_str not in vals:
+                        vals.append(val_str)
+        return ", ".join(vals) if vals else "Unknown"
 
     country = get_unique_list("country")
     continent = get_unique_list("continent")
@@ -208,6 +220,8 @@ class DataFrameRow:
     def get(self, key, default=None):
         col_idx = self.col_map.get(key)
         if col_idx is not None:
+            import pandas as pd
+
             val = self.df.iat[self.idx, col_idx]
             if (
                 val is None
@@ -222,6 +236,7 @@ class DataFrameRow:
         col_idx = self.col_map.get(key)
         if col_idx is None:
             raise KeyError(key)
+        import pandas as pd
 
         val = self.df.iat[self.idx, col_idx]
         if val is None or (isinstance(val, float) and np.isnan(val)) or pd.isna(val):
