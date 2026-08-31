@@ -21,6 +21,13 @@ from tqdm import tqdm
 from transformers import AutoModel
 from urllib3.util import Retry
 
+from src.indexing.multi_medoid_utils import (
+    aggregate_medoid_metadata,
+    create_letterboxed_cell,
+    sample_diverse_medoids,
+    stitch_cells_vertically,
+)
+
 # Load dataset with clusters using our decoupled-compatible loader
 from src.utils.io import (
     get_parquet_writer,
@@ -233,11 +240,6 @@ def label_clusters_mllm_batched(
         def prepare_image(task):
             cid = task["cid"]
             if "medoids" in task and task["medoids"]:
-                from src.indexing.multi_medoid_utils import (
-                    create_letterboxed_cell,
-                    stitch_cells_vertically,
-                )
-
                 cells = []
                 for med in task["medoids"]:
                     loaded_img = load_image(
@@ -534,8 +536,6 @@ def main():
                 np.linalg.norm(child_centroid) + 1e-9
             )
             if args.num_medoids > 1:
-                from src.indexing.multi_medoid_utils import sample_diverse_medoids
-
                 parent_rep_indices[pid] = sample_diverse_medoids(
                     embeddings_norm,
                     indices,
@@ -556,8 +556,6 @@ def main():
         centroid = raw_centroids[cid]
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
         if args.num_medoids > 1:
-            from src.indexing.multi_medoid_utils import sample_diverse_medoids
-
             child_rep_indices[cid] = sample_diverse_medoids(
                 embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
             )
@@ -654,7 +652,7 @@ def main():
         if has_parents and k_parents > 0:
             print(f"\nPreparing {k_parents} parent cluster tasks for MLLM labeling...")
             parent_tasks = []
-            for pid in range(k_parents):
+            for pid in tqdm(range(k_parents), desc="Parent Clusters"):
                 rep_val = parent_rep_indices.get(pid)
                 if rep_val is None:
                     continue
@@ -689,10 +687,6 @@ def main():
                                 "platform": platform,
                             }
                         )
-
-                    from src.indexing.multi_medoid_utils import (
-                        aggregate_medoid_metadata,
-                    )
 
                     agg_meta = aggregate_medoid_metadata(rep_val, df)
 
@@ -779,7 +773,7 @@ def main():
         # Label Child Clusters
         print(f"\nPreparing {k_clusters} child cluster tasks for MLLM labeling...")
         tasks = []
-        for cid in range(k_clusters):
+        for cid in tqdm(range(k_clusters), desc="Child Clusters"):
             rep_val = child_rep_indices.get(cid)
             if rep_val is None:
                 continue
@@ -810,8 +804,6 @@ def main():
                     medoids.append(
                         {"img_url": img_url, "photo_id": photo_id, "platform": platform}
                     )
-
-                from src.indexing.multi_medoid_utils import aggregate_medoid_metadata
 
                 agg_meta = aggregate_medoid_metadata(rep_val, df)
 

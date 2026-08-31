@@ -13,8 +13,15 @@ import requests
 from PIL import Image
 from sklearn.preprocessing import normalize
 
+from src.indexing.multi_medoid_utils import (
+    aggregate_medoid_metadata,
+    create_letterboxed_cell,
+    sample_diverse_medoids,
+    stitch_cells_vertically,
+)
 from src.utils.io import (
     load_dataset_with_clusters,
+    load_embeddings,
     resolve_offline_image_path,
     save_dataframe,
 )
@@ -499,7 +506,6 @@ def main():
     cluster_ids = np.array([item["cluster_id"] for item in data])
 
     print("Extracting embeddings...")
-    from src.utils.io import load_embeddings
 
     try:
         embeddings = load_embeddings(
@@ -565,13 +571,6 @@ def main():
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
 
         if args.num_medoids > 1:
-            from src.indexing.multi_medoid_utils import (
-                aggregate_medoid_metadata,
-                create_letterboxed_cell,
-                sample_diverse_medoids,
-                stitch_cells_vertically,
-            )
-
             medoid_indices = sample_diverse_medoids(
                 embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
             )
@@ -747,13 +746,6 @@ def main():
         centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
 
         if args.num_medoids > 1:
-            from src.indexing.multi_medoid_utils import (
-                aggregate_medoid_metadata,
-                create_letterboxed_cell,
-                sample_diverse_medoids,
-                stitch_cells_vertically,
-            )
-
             medoid_indices = sample_diverse_medoids(
                 embeddings_norm, indices, centroid_norm, df, n_medoids=args.num_medoids
             )
