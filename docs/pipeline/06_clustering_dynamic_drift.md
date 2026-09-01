@@ -25,20 +25,36 @@ Triggered if the pre-existing clustered database exists and the semantic distrib
 
 ---
 
-## 📐 Clustering Methodology (GPU Spherical K-Means)
+## 🌳 Global Resampling-Aware 2-Stage K-Means Hierarchy
 
-Clustering is performed inside `cluster_images_global.py` using two levels of grouping:
+### Background & Motivation
+Traditional hierarchical clustering often runs parent K-Means directly on child centroid vectors. Because centroids are mathematical averages of averages, this can cause "centroid drift," pulling parent categories into sparse, empty regions of the visual embedding space.
 
-### 1. Fine-Grained Child Clustering
-Runs Spherical K-Means on GPU:
-```python
-faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)
+To resolve this, Geo-RAG adopts a **Global Resampling-Aware 2-Stage K-Means** hierarchy in `cluster_images_global.py`. Instead of clustering mathematical centroids, the system performs a closest-point resampling step to extract real representative image embeddings from each child cluster, and clusters *those* images to establish the parent categories.
+
+```mermaid
+graph TD
+    A[ 7.1M Raw Normalized Embeddings ] -->|Stage 1: FAISS GPU Spherical K-Means| B[ 40,000 Child Clusters ]
+    B -->|Closest-Point Resampling: N=10 per Centroid| C[ 400,000 Representative Vectors ]
+    C -->|Stage 2: FAISS GPU Spherical K-Means| D[ 2,000 Parent Clusters <br/> k_parents = K // 20 ]
+    D -->|Majority-Vote Child Mapping| E[ Final Hierarchical Database <br/> parent_cluster_id & cluster_id ]
 ```
-Using raw normalized image embeddings, this partitions the dataset into $k$ fine-grained child clusters.
 
-### 2. Hierarchical Parent Clustering
-Runs Spherical K-Means on GPU on the normalized child centroids to group them into $k_{\text{parents}}$ broader parent clusters (where $k_{\text{parents}} = \max(2, k / 20)$).
+### Technical Workflow
 
-### 3. Type Resilience & Immediate Persistence
-* Coordinate columns are cast to numeric float64 right after loading to preserve schema alignment during final Parquet export.
+1. **Stage 1 (Fine-Grained Child Clustering)**:
+   * Partitions the raw visual embeddings into $k = 40,000$ fine-grained child clusters using FAISS Spherical K-Means on the GPU:
+   ```python
+   faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)
+   ```
+2. **Closest-Point Resampling**:
+   * For each child cluster, retrieves the top $N = 10$ image embeddings closest to its centroid (via cosine similarity). This creates a representative subset of up to $400,000$ real image vectors.
+   * If a cluster has fewer than $N$ points, all available members are selected.
+3. **Stage 2 (Hierarchical Parent Clustering)**:
+   * Clusters the $400,000$ resampled vectors into $k_{\text{parents}} = 2,000$ parent categories (using a division factor of $K // 20$) via FAISS GPU Spherical K-Means.
+4. **Majority-Vote Child Mapping**:
+   * Maps parent cluster IDs back to the $40,000$ child clusters using a majority vote of the resampled points belonging to each child cluster, populating the `parent_cluster_id` column.
+
+### Type Resilience & Immediate Persistence
+* Coordinate columns are cast to numeric `float64` right after loading to preserve schema alignment during final Parquet export.
 * Cluster assignments are written to the database (`geo_space_clustered_k_{num_clusters}.parquet`) and heavy embedding matrices are immediately released from RAM to avoid CPU memory bottlenecks.

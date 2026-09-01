@@ -17,9 +17,49 @@ To run local vision-language model inference on GPUs, the master script `run_ful
 
 ---
 
+## 🎞️ Multi-Medoid Film-Strip Collage Labeling
+
+### Background & Objective
+Vision-Language Models (VLMs) can hallucinate or mislabel a cluster if the single medoid image chosen to represent it contains an anomaly (such as a close-up object, selfie, vehicle hood, or transient artifact). To make auto-labeling robust against web-scraping noise, Geo-RAG supports multi-medoid composite collages (configured via `--num_medoids`, default: 4).
+
+```
+┌─────────────────────────────────────────┐
+│     Vertical Film-Strip Collage         │
+├─────────────────────────────────────────┤
+│  Medoid 1: Primary Centroid Neighbor    │
+├─────────────────────────────────────────┤
+│  Medoid 2: Mutually Diverse Candidate   │
+├─────────────────────────────────────────┤
+│  Medoid 3: Temporal / Seasonal Variant  │
+├─────────────────────────────────────────┤
+│  Medoid 4: Spatial / Angle Variant      │
+└─────────────────────────────────────────┘
+```
+
+### Technical Workflow
+1. **Diverse Nearest-Neighbor Sampling**:
+   * For each cluster, `sample_diverse_medoids()` selects up to $N = 4$ nearest images to the cluster centroid while enforcing spatial coordinate and URL diversity thresholds (avoiding near-duplicate viewpoints).
+2. **Aspect-Ratio Preserving Letterboxing**:
+   * Each candidate image is resized to fit inside a standard $512 \times 256$ cell ($2:1$ aspect ratio), preserving original proportions without distortion.
+   * Empty space is padded with a neutral dark-gray background (`#282828`).
+3. **Vertical Film-Strip Stitching**:
+   * The cells are stitched vertically into a single $512 \times (256 \times M)$ JPEG image (e.g. $512 \times 1024$ for 4 medoids, $< 80\text{ KB}$).
+4. **Multi-Medoid Prompt Prefix (Step 1)**:
+   * When multi-medoid mode is enabled, the Step 1 prompt instructs the VLM to synthesize the common, dominant land-cover features across the vertical stack:
+     ```text
+     The input image contains a vertical stack of 4 representative photographs from the same local cluster; analyze the common land-cover features across these frames.
+     ```
+5. **Composite Metadata Aggregation (Step 2)**:
+   * Instead of relying on a single coordinate, metadata attributes across all selected medoids are aggregated:
+     - **Location**: Geographic bounding box and centroid across the medoids.
+     - **Country & Continent**: Deduplicated list of represented countries.
+     - **Climate & Season**: Deduplicated list of Köppen-Geiger climate codes and observed seasons.
+
+---
+
 ## 🤖 Two-Step Prompting Strategy
 ### 📷 Step 1: Multimodal Visual Description
-* **Input**: The representative cluster image + `prompts/shared/prompt_step1.txt`
+* **Input**: The representative cluster image / vertical film-strip collage + `prompts/shared/prompt_step1.txt`
 * **Output**: A detailed, objective paragraph describing the physical scene features (no LULC labels).
 
 **Prompt Template (`prompts/shared/prompt_step1.txt`):**

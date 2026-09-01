@@ -23,8 +23,8 @@ Detailed documentation for each stage of the pipeline can be found in the sub-gu
 | **03. Timestamp Standardization** | `standardize_timestamps.py` | Capture datetime normalization, climate zoning, boundary country snapping, EPSG:3857 coastal buffer. | [Detailed Guide ➡️](pipeline/03_timestamp_standardization.md) |
 | **04. Coordinate Anomaly Cleanup** | `cleanup_coordinate_anomalies.py` | locked-latitude parallel GPS glitch purges. | [Detailed Guide ➡️](pipeline/04_coordinate_cleanup.md) |
 | **05. Optimal k Estimation** | `validate_cluster_count.py` | Spatial Block Hold-Out validation, reconstruction loss curves, Elbow heuristic estimation. | [Detailed Guide ➡️](pipeline/05_optimal_k_estimation.md) |
-| **06. Global GPU Clustering** | `cluster_images_global.py` | Semantic drift outlier tracking, fit vs assign automated decisioning, FAISS Spherical child/parent grouping. | [Detailed Guide ➡️](pipeline/06_clustering_dynamic_drift.md) |
-| **07. MLLM Cluster Labeling** | `label_clusters_mllm.py` | Nvidia Docker SGLang lifecycle trap manager, visual description prompting, text ecological categorization. | [Detailed Guide ➡️](pipeline/07_mllm_labeling.md) |
+| **06. Global GPU Clustering** | `cluster_images_global.py` | Semantic drift outlier tracking, fit vs assign decisioning, FAISS Spherical child clustering & resampling-aware parent hierarchy. | [Detailed Guide ➡️](pipeline/06_clustering_dynamic_drift.md) |
+| **07. MLLM Cluster Labeling** | `label_clusters_mllm.py` | Nvidia Docker SGLang lifecycle manager, multi-medoid film-strip collages, visual description prompting, text ecological categorization. | [Detailed Guide ➡️](pipeline/07_mllm_labeling.md) |
 | **08. Spatial-Semantic Indexing** | `build_spatial_semantic_index.py` | H3 multi-resolution spatial index aggregation. | [Detailed Guide ➡️](pipeline/08_spatial_semantic_indexing.md) |
 | **09. Visualization Dashboards** | `src/visualization/*` | Leaflet density/semantic maps, WebGL UMAP projections, HTML grids, and reports. | [Detailed Guide ➡️](pipeline/09_visualization_dashboards.md) |
 
