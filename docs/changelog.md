@@ -6,6 +6,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-01
+
 ### Added
 - **Multi-Medoid Film-Strip Collage Labeling**: Added support for vertically stacked, letterboxed collages of up to 4 diverse nearest-neighbor representative images per cluster instead of a single medoid. Stitched images are standardized to a $512 \times 256$ aspect ratio per cell with `#282828` dark gray padding inside a single $512 \times (256 \times M)$ JPEG collage. Enabled via `--num_medoids`.
 - **Aggregated Metadata Context Generator**: Added spatial-semantic metadata aggregator compiling geographic bounding boxes, centroids, unique countries/continents, climates (Köppen-Geiger codes & descriptions), and seasons across the multiple medoids for Stage 2 classification prompts.
@@ -43,8 +45,6 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Streaming Parquet Write Schema ArrowInvalid Crash**: Resolved `ArrowInvalid` type-matching errors in `stream_update_parquet` by dynamically checking schema string widths (`large_string` vs `string`) and casting/aligning copied row groups before writing.
 - **Clustering Argument Overriding Bug**: Fixed a bug in `cluster_images_global.py` where the user-specified `--k_parents` configuration parameter was being silently overridden and reset.
 
-### Planned
-- **Image Mosaicing in Cluster Labeling**: Add support for mosaicing (stitching) multiple sample images together when submitting them to the MLLM for cluster labeling to improve context and visual density.
 ## [1.2.0] - 2026-08-24
 
 ### Added
