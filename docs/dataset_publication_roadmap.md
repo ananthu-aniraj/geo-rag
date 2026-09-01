@@ -10,6 +10,7 @@ Directly hosting and distributing raw scraped images is a common challenge in da
 
 ### Part 1: Online Platforms (Flickr, Mapillary, iNaturalist, GBIF) -> Metadata & Embeddings Only
 For platforms where images are hosted publicly online but subject to copyright restrictions (e.g. "All Rights Reserved" Flickr photos):
+
 * **What to distribute**:
   1. The metadata Parquet database (`geo_space_deduplicated.parquet`) containing `photo_key`, `Latitude`, `Longitude`, `Platform`, `Captured_At`, and `License`.
   2. The pre-computed model embeddings (`.npy` files and `.keys.parquet` index maps) for DINOv3, TIPSv2, etc. (Embeddings are legal to distribute as they are mathematical derivatives and cannot reconstruct the original images).
@@ -18,6 +19,7 @@ For platforms where images are hosted publicly online but subject to copyright r
 
 ### Part 2: Offline & Rate-Limited Platforms (Wikimedia Commons, iWildCam) -> CC-Licensed Image Archives
 Some parts of the dataset have unique hosting constraints:
+
 * **Wikimedia Commons**: Wikimedia heavily rate-limits and blocks rapid automated API downloads, making direct scripting unreliable. Furthermore, the Wikimedia Commons subset is very large (approx. 102.5 GB).
 * **iWildCam Subset**: This is a custom pre-filtered subset of the iWildCam 2022 dataset that is not hosted in this exact form anywhere else.
 * **Solution**: Since both Wikimedia Commons and iWildCam images are under open-access/Creative Commons licenses, these sub-folders are packaged and hosted directly as companion downloads on the **Hugging Face** repository (which natively supports very large file storage via Git LFS).
@@ -67,5 +69,6 @@ graph TD
 
 ## 📄 4. Attribution & Data Citations
 When scraping from platforms like **GBIF**, **iNaturalist**, and **Mapillary**, attribution sections must be included.
+
 * **Flickr/Mapillary**: Provide a link to the Terms of Service in the documentation.
 * **GBIF/iNaturalist**: GBIF datasets require citing the specific download DOI. Ensure the GBIF download query ID is located and linked in the documentation.

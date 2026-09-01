@@ -11,6 +11,7 @@ During scraping, certain contributors may have faulty GPS tracking equipment tha
 The script scans coordinate distributions, flags locked parallels, and deletes the anomalies to write an independent cleaned metadata file (`geo_space_cleaned.parquet`), leaving the raw deduplicated database untouched.
 
 To prevent false positives, **anomaly checking is grouped by platform and continent**:
+
 1. It reads `Latitude`, `Longitude`, `Platform`, and `continent` (if present) from the Parquet dataset.
 2. It aggregates statistics within individual platforms (and optionally continents) rather than globally.
 3. This ensures that a normal dense urban center captured by one platform is not flagged as an anomaly because of a GPS glitch present on a different platform.
@@ -43,6 +44,7 @@ pipeline:
 
 ### Command Line Arguments
 Alternatively, you can run the script manually with targeted flags:
+
 * `--platform`: Restricts detection and cleaning to a specific platform (e.g. `--platform mapillary`).
 * `--continent`: Restricts detection and cleaning to a specific continent (e.g. `--continent africa`).
 

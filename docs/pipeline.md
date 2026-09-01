@@ -33,6 +33,7 @@ Detailed documentation for each stage of the pipeline can be found in the sub-gu
 ## 💾 3. Data Versioning (DVC)
 
 To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline.sh` implements autonomous DVC standalone tracking:
+
 1. **HDD Storage**: Outputs are written to a fast SSD, then backed up to a high-capacity HDD directory tracked by DVC.
 2. **Push**: Pushes heavy data to remote storage using `dvc push`.
 3. **Git Sync**: Copies the updated `.dvc` tracking files back to the SSD Git repository, automatically commits them, and pushes them to track repository state changes.

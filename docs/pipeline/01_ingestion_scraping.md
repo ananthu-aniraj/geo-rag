@@ -55,6 +55,7 @@ To keep credentials secure and make runs reproducible, configurations are decoup
 
 ### 1. API Credentials (`.env`)
 All sensitive credentials must be set in a `.env` file in the repository root (copied from `.env.template`):
+
 * `FLICKR_API_KEY`: Sourced by Flickr scrapers and profilers.
 * `MAPILLARY_TOKEN`: Sourced by Mapillary scrapers and profilers.
 
@@ -62,6 +63,7 @@ The scraper shell scripts automatically source `.env` at startup to export these
 
 ### 2. Scraper Parameters (`config/scrapers/`)
 Scraping parameters (limits, chunks, directories, bounding boxes, target regions) are defined in dedicated YAML files under `config/scrapers/`:
+
 * **`flickr_scraper.yaml` / `mapillary_scraper.yaml`**: Grid search settings.
 * **`flickr_profiler.yaml` / `mapillary_profiler.yaml`**: Density profiling boundaries and locations.
 * **`inaturalist_scraper.yaml` / `inaturalist_presets.yaml`**: Regions, biome presets, and observations quotas.
@@ -74,5 +76,6 @@ These configurations are read dynamically at run-time, and can still be overridd
 ## 🗺️ Uncovered Area Detection (Spatial Filtering)
 
 To optimize global random search and avoid querying coordinates that already contain dense image coverage, the pipeline uses a spatial difference mask:
+
 * **`src/utils/create_uncovered_land_areas_shp.py`**: Reads existing image CSV datasets, aggregates coordinate points into H3 cells at a user-defined resolution (default: resolution 5), and flags cells as "covered" if they exceed an image count threshold (default: 0). It then converts the covered H3 cells to polygon geometry and subtracts them from a standard global land mass shapefile (e.g., Natural Earth admin borders).
 * **Usage in Search**: The resulting output shapefile (`shapefiles/uncovered_land_areas_test.shp`) represents land areas that are still poorly mapped. The global grid searchers (like `src/scrapers/flickr_5km_grid_search.py`) load this shapefile at startup and perform a fast spatial R-tree index check. They skip querying any grid box that does not intersect an uncovered land polygon, which reduces API requests and concentrates scraping efforts on data-poor zones.

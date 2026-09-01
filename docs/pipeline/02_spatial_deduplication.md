@@ -10,6 +10,7 @@ The script takes a raw scraped database, partitions coordinates into **H3 Resolu
 
 ### 1. Multi-Representation & Precision Customization
 Through command-line options and the master `params.yaml`, the pipeline supports customizable representations and storage layouts:
+
 * **`--representation_type`**:
   * `cls`: Standard CLS token ($768$ dimensions).
   * `avg_patch`: Attention-weighted average of vision patch tokens ($768$ dimensions).
@@ -26,6 +27,7 @@ When computing concatenated representations (`cls_avg_patch`), rather than runni
 ## 📐 Decoupled Storage Layout
 
 To prevent Parquet file bloating and RAM starvation, the database uses a decoupled storage architecture:
+
 * **Lightweight Parquet File**: The `.parquet` output holds only metadata columns (Photo ID, Platform, coordinates, H3 cell) and a stable unique `photo_key` column (formatted as `{Platform}_{Photo_ID}`). No heavy vectors are stored inside the Parquet format.
 * **Companion NumPy Binary File**: The embedding vectors are stacked in a dense NumPy matrix and saved to an independent file named `{core_name}_{representation_type}_embeddings.npy` (e.g., `geo_space_cls_avg_patch_embeddings.npy`).
 * **Keys Index File**: A companion index file named `{core_name}_{representation_type}_embeddings.keys.parquet` stores the ordered list of `photo_key` values matching the rows of the `.npy` matrix.
@@ -61,6 +63,7 @@ To process datasets in the millions without Out-of-Memory (OOM) errors, the scri
 
 ### Parallel Network Engine
 To optimize ingestion speed and minimize network bottlenecks:
+
 * **HTTP Connection Pooling**: A thread-safe global `requests.Session` with a connection adapter (128 maximum connections) keeps sockets alive across download threads, eliminating TCP/SSL handshake latency.
 * **On-The-Fly Background Resizing**: Images are resized to `448x448` immediately inside background download threads before passing them to the main thread. This reduces the RAM footprint per image to ~602 KB, allowing you to safely scale the `--cell_chunk_size` (e.g. to `256` or `512` images in parallel per cell block) without OOM risks.
 * **Thread Concurrency & Batching**: Uses 64 concurrent download threads. The GPU batch size can be set via `--batch_size` (e.g., to `128` or `256` for modern GPUs) to maximize inference throughput.
@@ -72,6 +75,7 @@ To optimize ingestion speed and minimize network bottlenecks:
 
 ### 1. Flickr Indoor/Outdoor Filter
 Filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts:
+
 * *"An indoor scene"*
 * *"An outdoor landscape or street view"*
 

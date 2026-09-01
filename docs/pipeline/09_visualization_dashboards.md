@@ -33,14 +33,17 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
   * **Offline-First Region Search**: Implements local, offline country and continent search filters. If you type a region that exists in the database, it filters the clusters instantly in-memory, completely bypassing external OSM Nominatim geocoding requests.
   * **Remote Image Viewing over SSH Tunneling**:
     If the dashboard is generated on a remote execution machine and you want to view it on a local PC (e.g. your laptop), you can securely stream the offline images without copying them:
+
     1. **Start Server on Remote PC**: Start a lightweight python file server pointing to your image directory:
        ```bash
        python3 -m http.server 8000 --directory /user/aaniraj/home/Documents/Projects/data/
        ```
+
     2. **Establish Tunnel on Local Laptop**: Run an SSH session with local port forwarding enabled:
        ```bash
        ssh -L 8000:localhost:8000 user@execution_pc_ip
        ```
+
     3. **Map Path in Browser UI**: Copy the `cluster_samples.html` and `cluster_samples_data.js` to your laptop and open the HTML file. In the **Offline Image Server Mapping** panel at the top, paste `http://localhost:8000/` in the **Replace** box. The browser will dynamically stream the images from the remote disk over your SSH tunnel in real-time.
 
 ### 5. Centroid Semantic UMAP Projection (`visualize_cluster_scatter.py`)

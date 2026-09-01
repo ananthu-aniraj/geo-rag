@@ -7,11 +7,13 @@ This document describes the design and prompting strategies of `label_clusters_m
 ## ⚙️ SGLang Docker Lifecycle Management
 
 To run local vision-language model inference on GPUs, the master script `run_full_pipeline.sh` automatically manages the lifecycle of the SGLang container (`sglang-server`):
+
 1. **Pre-Launch Cleanup**: Scan and kill any stale container bindings to clear Nvidia GPU memory and ports.
 2. **Container Launch**: Spawns the container with NVIDIA runtime support:
    ```bash
    docker run -d --gpus all -p 30000:30000 --name sglang-server ...
    ```
+
 3. **Health Checks**: Polls the server `/health` endpoint and monitors container status until the backend is fully initialized.
 4. **Autonomous Teardown**: Automatically kills and removes the container upon completion or pipeline interruption (via bash `trap` handlers).
 
@@ -49,6 +51,7 @@ Vision-Language Models (VLMs) can hallucinate or mislabel a cluster if the singl
      ```text
      The input image contains a vertical stack of 4 representative photographs from the same local cluster; analyze the common land-cover features across these frames.
      ```
+
 5. **Composite Metadata Aggregation (Step 2)**:
    * Instead of relying on a single coordinate, metadata attributes across all selected medoids are aggregated:
      - **Location**: Geographic bounding box and centroid across the medoids.
@@ -169,6 +172,7 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 ## 🩹 Fallback Retry Safety (`relabel_failed_clusters.py`)
 
 Due to HTTP timeouts or server errors, certain clusters may fail MLLM processing (labeled as `"Error Labeling"` or `"Unlabeled"`).
+
 * The script scans the metadata database and identifies failed clusters.
 * For each failed cluster, it performs **depth retries (up to `--fallback_depth 20`)**, pulling sequentially further representative images in the cluster card and re-running the classification.
 * This guarantees $100\%$ labeling coverage of all visual nodes.

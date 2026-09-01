@@ -161,6 +161,7 @@ python3 -m src.evaluation.benchmark_places \
 
 ### 📦 Outputs
 Output filenames are formatted dynamically by appending the seed and query count (`_s[seed]_q[queries]`) to prevent overwriting results across experiments:
+
 - `benchmark_results/places_report_s42_q100.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
 - `benchmark_results/places_results_s42_q100.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding metrics.
 
@@ -235,6 +236,7 @@ To make evaluations easily reproducible and readable, the pipeline uses YAML fil
 ### 🎛️ Multi-Model Benchmarking (timm & TIPSv2)
 
 All 4 benchmark scripts support evaluating different vision representations. You can configure which model to load in the YAML configuration parameters:
+
 * **timm Models**: Set `model_name` to a timm identifier (e.g. `vit_base_patch14_dinov2.lvd142m` or `resnet50`). Standard models like DINOv2 or SigLIP are loaded through timm.
 * **TIPSv2 Models**: Set `model_name` to `google/tipsv2-b14` or a path to a local TIPSv2 checkpoint. These models employ the custom TIPSv2 feature extraction layout and MaskCLIP value attention tricks.
 
@@ -243,6 +245,7 @@ At runtime, the loader automatically queries `timm` to resolve the correct input
 ### ⚡ Optional SegFormer Segmentation (Speedup Toggle)
 
 To calculate the geobotanical `Seg-Masked` patch representations, the benchmark scripts load the **SegFormer** model (`nvidia/segformer-b0-finetuned-ade-512-512`) to identify and discard background/sky classes. Because running SegFormer inference on every batch introduces a non-trivial computational and memory overhead, you can turn it off to significantly speed up your evaluations:
+
 * **YAML Toggle**: Set `use_segformer: false` in `config/evaluation/params_offline.yaml` or `config/evaluation/params_online.yaml`.
 * **CLI Flag**: Run individual scripts with the `--no_segformer` command-line argument.
 
@@ -259,6 +262,7 @@ If you want to evaluate multiple models side-by-side on a specific dataset witho
      - "vit_base_patch14_dinov2.lvd142m"
      - "resnet50"
    ```
+
 2. **Execute comparison**: Run the orchestrator shell script specifying the target benchmark:
    ```bash
    ./scripts/evaluation/run_comparison.sh [lucas|places|eunis|env_zones]
@@ -275,6 +279,7 @@ If you want to evaluate multiple models side-by-side on a specific dataset witho
 ## 📈 Combined Evaluation Flow
 
 To run an end-to-end evaluation cycle:
+
 1. Populate your dataset paths and parameters in `config/evaluation/params_offline.yaml` and `config/evaluation/params_online.yaml`.
 2. Run `./scripts/evaluation/run_offline_eval_semantic.sh` to benchmark semantic representation retrieval precision on local datasets.
 3. Run `./scripts/evaluation/run_offline_eval_spatial.sh` to measure geobotanical and climate alignment retrieval precision on geolocated databases.
@@ -287,6 +292,7 @@ To run an end-to-end evaluation cycle:
 ## 💾 Memory-Efficient Large-Scale Evaluation
 
 When evaluating large databases (e.g. `num_database` set up to 100,000 or more), holding all images simultaneously in RAM as PIL Image objects will cause system Out-Of-Memory (OOM) crashes. Both `benchmark_environmental_zones.py` and `benchmark_eunis.py` employ a stream-processing and memory-capped architecture:
+
 1. **Query Pre-load & Free:** Queries are downloaded and embedded first. Raw query images are then immediately closed and popped from RAM.
 2. **Chunked Database Processing:** Database images are downloaded, embedded, and discarded in sequential chunks of **1,000 images**.
 3. **GPU VRAM Cleanup:** Intermediate PyTorch tensors are deleted dynamically and local PIL streams are closed immediately at the end of each chunk.

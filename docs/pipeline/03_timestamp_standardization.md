@@ -21,6 +21,7 @@ If a Köppen-Geiger climate classification TIF map is provided (via `--koppen_ti
 If an administrative land boundary shapefile is provided (via `--land_shp`), the script performs a spatial polygon intersection join on the coordinates.
 
 To optimize performance and handle boundary limitations, the script implements:
+
 * **H3-Cell Centroid Aggregation**: Coordinates are grouped into H3 Resolution 8 parent cells prior to joining. This reduces the number of geometric boundary tests by **$1000\times$**, mapping thousands of coordinates in a single check.
 * **Nearest-Land Snapping (88.8 km Buffer)**: Coordinates located slightly offshore (e.g., beaches, piers, bridges) or on coastal H3 cells whose centroids lie in the water often miss land polygons. The script projects coordinate coordinates into a Web Mercator projection system (`EPSG:3857`) and snaps cells to the nearest country within an **$88,800$ meter** (approx. $0.8^{\circ}$) radius. Points beyond this buffer are classified as `"Ocean / Unknown"`.
 
@@ -30,6 +31,7 @@ To optimize performance and handle boundary limitations, the script implements:
 
 ### 1. Time of Day
 Captured hours are grouped into standard blocks:
+
 * **Dawn**: 05:00 – 08:00
 * **Morning**: 08:00 – 12:00
 * **Afternoon**: 12:00 – 17:00
@@ -38,6 +40,7 @@ Captured hours are grouped into standard blocks:
 
 ### 2. Seasons (Climate-Aware Zoning)
 Rather than using standard temperate astronomical calendars everywhere, seasons are mapped based on climate characteristics:
+
 * **Desert Climates (BWh, BWk)**: Fixed to `"Dry Season"` year-round.
 * **Tropical Savanna & Monsoon (Aw, Am)**: Wet season is defined as June–September in the Northern Hemisphere and November–April in the Southern Hemisphere.
 * **Mediterranean (Csa, Csb)**: Wet season is December–February in the Northern Hemisphere and June–August in the Southern Hemisphere.

@@ -13,6 +13,7 @@ If a clustered Parquet database file already exists on disk for the current $k$,
 
 ### 2. `fit` Mode (Re-cluster and Label)
 Triggered under any of the following conditions:
+
 * No pre-existing clustered database exists for the space.
 * The target cluster count $k$ configured in `params.yaml` has changed.
 * **Significant semantic drift is detected**: More than 3% of the new images are classified as outliers, meaning they have a cosine similarity of $< 0.70$ with all existing centroids.
@@ -21,6 +22,7 @@ In `fit` mode, it runs full FAISS Spherical K-Means and triggers downstream VLM 
 
 ### 3. `assign` Mode (Map to Centroids)
 Triggered if the pre-existing clustered database exists and the semantic distribution of new images is stable (outliers $\le 3\%$).
+
 * **Zero VLM Cost**: Rather than re-clustering all data and re-running expensive MLLMs, it dynamically calculates the centroid coordinates from the existing Parquet database in memory, maps the new images to their nearest centroids using FAISS nearest-neighbor search, and maps existing VLM labels/descriptions to the new images. This executes in seconds.
 
 ---
@@ -47,6 +49,7 @@ graph TD
    ```python
    faiss.Kmeans(d, k, niter=20, spherical=True, gpu=True)
    ```
+
 2. **Closest-Point Resampling**:
    * For each child cluster, retrieves the top $N = 10$ image embeddings closest to its centroid (via cosine similarity). This creates a representative subset of up to $400,000$ real image vectors.
    * If a cluster has fewer than $N$ points, all available members are selected.

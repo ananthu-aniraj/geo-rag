@@ -46,8 +46,10 @@ graph TD
 1. **Mapping via `photo_key` Hash-Map:**
    To avoid data redundancy, only a single master embedding `.npy` matrix (generated at the deduplication step) is stored on disk.
    Alongside the matrix, a lightweight companion `.keys.parquet` file contains the ordered list of stable unique keys (`photo_key`, constructed as `Platform_Photo_ID`). When metadata is cleaned, filtered, or clustered, the loader dynamically reads the keys from the metadata file and performs a fast C-accelerated index lookup (`pd.Index.get_indexer`) against the master keys index to retrieve the correct row indices and slice the memory-mapped matrix in less than 0.3 seconds.
+
 2. **Sidecar Merging:**
    The cluster assignments parquet (`geo_space_clustered_k_40000.parquet`) does not duplicate heavy coordinates or URLs. It links back to the base metadata using the primary key: `['Platform', 'Photo_ID']`.
+
 3. **Multi-Representation Extensibility:**
    Because the heavy visual features are decoupled from the metadata tables, this architecture natively supports multiple representation types (e.g. `patch_embeddings`, text features, or alternative vision backbones). Additional representation matrices of shape `(N, D_new)` can be saved as independent companion `.npy` files and aligned row-for-row using their matching keys index.
 

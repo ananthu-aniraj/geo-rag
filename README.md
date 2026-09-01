@@ -14,6 +14,7 @@ Visit our full interactive documentation and pipeline walkthroughs at:
 👉 **[Geo-RAG Interactive Wiki & Docs](https://ananthu-aniraj.github.io/geo-rag/)**
 
 For direct browsing within this repository:
+
 - 👉 **[Data Engineering Documentation](docs/pipeline.md)**
 - 👉 **[Evaluation & Benchmarking Documentation](docs/evaluation.md)**
 - 👉 **[Dataset Structure & Loading Guide](docs/dataset.md)**
@@ -77,10 +78,12 @@ To download the latest version of the dataset locally (requires SSH access to th
    ```bash
    pip install dvc dvc-ssh
    ```
+
 3. Configure your local server username:
    ```bash
    dvc remote modify --local hdd_cache user <your_server_username>
    ```
+
 4. Pull the dataset outputs:
    ```bash
    dvc pull full_pipeline_output.dvc
@@ -88,10 +91,12 @@ To download the latest version of the dataset locally (requires SSH access to th
 
 ### Setting up API Credentials
 Before running scraper utilities or evaluation runs, set up your local API keys:
+
 1. Copy the environment template file:
    ```bash
    cp .env.template .env
    ```
+
 2. Open `.env` and fill in your Flickr API keys, Mapillary access tokens, and Hugging Face tokens. The `.env` file is gitignored and remains local.
 
 ---
@@ -103,6 +108,7 @@ For detailed documentation, scripts, API queries, Nominatim geocoding, boundary 
 👉 **[Ingestion & Scraping Utilities Documentation](docs/pipeline/01_ingestion_scraping.md)**
 
 The `/scripts/scrapers/` folder contains automated shell orchestrators for batch search loops:
+
 * **Flickr Global/Local Search**: [`run_flickr_scraper.sh`](scripts/scrapers/run_flickr_scraper.sh)
 * **Mapillary Street View Search**: [`run_mapillary_scraper.sh`](scripts/scrapers/run_mapillary_scraper.sh)
 * **iNaturalist Species Observations**: [`run_inaturalist_scrapers.sh`](scripts/scrapers/run_inaturalist_scrapers.sh)
@@ -162,6 +168,7 @@ Please refer to the [official PyTorch installation guide](https://pytorch.org/ge
   pip3 install torch torchvision
   pip install faiss-gpu
   ```
+
 * **For CPU-only:**
   ```bash
   pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -188,6 +195,7 @@ The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is 
    sudo nvidia-ctk runtime configure --runtime=docker
    sudo systemctl restart docker
    ```
+
 3. **Running Docker without sudo (Non-root User Setup):**
    By default, the Docker daemon binds to a Unix socket owned by `root`. To allow `run_full_pipeline.sh` to launch VLM containers without prefixing commands with `sudo` (which prevents permission denied socket errors):
    ```bash
@@ -200,6 +208,7 @@ The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is 
    # Activate the group changes in the current shell session
    newgrp docker
    ```
+
 4. **Verify GPU Container Support (without sudo):**
    ```bash
    docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
@@ -232,6 +241,7 @@ Running `./run_full_pipeline.sh` hangs when stopping the server, or manual comma
 
 ### Solution (Implemented in Pipeline)
 To ensure the pipeline is portable and does not fail on non-Ubuntu systems (like macOS, Windows WSL2, or Red Hat):
+
 1. **Dynamic AppArmor Detection:** `run_full_pipeline.sh` checks if AppArmor is enabled on the host system at runtime by reading `/sys/module/apparmor/parameters/enabled`.
 2. **Conditional Unconfinement:** If AppArmor is active, the script automatically launches the container with `--security-opt apparmor=unconfined`. This prevents AppArmor from blocking the containerd namespace teardown when the script exits, enabling clean removal.
 3. **Fallback:** On non-Ubuntu systems, this flag is omitted to prevent "security option not supported" compatibility failures.
