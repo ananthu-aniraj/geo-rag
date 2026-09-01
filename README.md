@@ -72,7 +72,7 @@ This project uses **DVC (Data Version Control)** to manage and version large dat
 
 ### Downloading the Dataset
 
-To download the latest version of the dataset locally (requires SSH access to the `10.34.192.190` server):
+To download the latest version of the dataset locally (requires access to the storage server):
 
 1. Clone the repository
 2. Install DVC and SSH support:
@@ -81,10 +81,11 @@ To download the latest version of the dataset locally (requires SSH access to th
    pip install dvc dvc-ssh
    ```
 
-3. Configure your local server username:
+3. Configure your local storage remote URL and credentials:
 
    ```bash
-   dvc remote modify --local hdd_cache user <your_server_username>
+   dvc remote modify --local hdd_cache url <storage_server_ssh_url>
+   dvc remote modify --local hdd_cache user <your_username>
    ```
 
 4. Pull the dataset outputs:

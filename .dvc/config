@@ -2,5 +2,3 @@
     remote = hdd_cache
 [cache]
     type = hardlink,symlink
-['remote "hdd_cache"']
-    url = ssh://10.34.192.190/home/ananthu/Projects/data/dvc_cache
