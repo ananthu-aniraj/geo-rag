@@ -1,20 +1,23 @@
 # Geo-RAG
 
+[![Wiki / Docs](https://img.shields.io/badge/Docs-Interactive_Wiki-009688.svg?logo=materialformkdocs&logoColor=white)](https://ananthu-aniraj.github.io/geo-rag/)
+[![CI](https://github.com/ananthu-aniraj/geo-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/ananthu-aniraj/geo-rag/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 A global spatial-semantic mapping, clustering, and data engineering pipeline for geotagged ground-level imagery.
 
 ---
 
 ## 📖 Technical Documentation
 
-For in-depth architectural details, data ingestion specs, MLLM auto-labeling prompts, Land Use/Land Cover (LULC) taxonomies, and mathematical derivations for spatial block cluster validation, please refer to the main technical document:
+Visit our full interactive documentation and pipeline walkthroughs at:
+👉 **[Geo-RAG Interactive Wiki & Docs](https://ananthu-aniraj.github.io/geo-rag/)**
 
-👉 **[Data Engineering Documentation](docs/pipeline.md)**
-
-👉 **[Evaluation & Benchmarking Documentation](docs/evaluation.md)**
-
-👉 **[Dataset Structure & Loading Guide](docs/dataset.md)**
-
-👉 **[Changelog & Recent Updates](docs/changelog.md)**
+For direct browsing within this repository:
+- 👉 **[Data Engineering Documentation](docs/pipeline.md)**
+- 👉 **[Evaluation & Benchmarking Documentation](docs/evaluation.md)**
+- 👉 **[Dataset Structure & Loading Guide](docs/dataset.md)**
+- 👉 **[Changelog & Recent Updates](docs/changelog.md)**
 
 ---
 
