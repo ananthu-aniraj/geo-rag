@@ -287,6 +287,285 @@ class TestLabelClustersMLLM(unittest.TestCase):
         self.assertIn(2, selected)
         self.assertIn(3, selected)
 
+    def test_end_to_end_mllm_labeling_and_parquet_saving(self):
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from src.indexing.label_clusters_mllm import main
+        from src.utils.io import load_dataframe, save_dataframe
+
+        input_parquet = os.path.join(self.test_dir, "test_input_mllm.parquet")
+        output_parquet = os.path.join(self.test_dir, "test_output_mllm.parquet")
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": [str(i) for i in range(6)],
+                "Platform": ["flickr"] * 6,
+                "Latitude": [40.0, 40.1, 40.2, 50.0, 50.1, 50.2],
+                "Longitude": [-74.0, -74.1, -74.2, 2.0, 2.1, 2.2],
+                "Image_URL": [f"http://example.com/{i}.jpg" for i in range(6)],
+                "cluster_id": [0, 0, 0, 1, 1, 1],
+                "parent_cluster_id": [0, 0, 0, 0, 0, 0],
+            }
+        )
+        embs = np.zeros((6, 4), dtype=np.float32)
+        embs[:3, 0] = 1.0
+        embs[3:, 1] = 1.0
+        df["embedding"] = list(embs)
+        save_dataframe(df, input_parquet, representation_type="cls")
+
+        mock_img = Image.new("RGB", (100, 100), color="green")
+        mock_url_resp = MagicMock()
+        mock_url_resp.status = 200
+        mock_url_resp.__enter__.return_value = mock_url_resp
+
+        with (
+            patch("urllib.request.urlopen", return_value=mock_url_resp),
+            patch("src.indexing.label_clusters_mllm.load_image", return_value=mock_img),
+            patch(
+                "src.indexing.label_clusters_mllm.query_vlm_openai_api",
+                side_effect=[
+                    "Visual desc parent",
+                    "LABEL: ParentForest\nDESCRIPTION: Parent forest description.",
+                    "Visual desc child0",
+                    "LABEL: Forest\nDESCRIPTION: Child forest description.",
+                    "Visual desc child1",
+                    "LABEL: Agriculture\nDESCRIPTION: Child agriculture description.",
+                ],
+            ),
+        ):
+            test_args = [
+                "label_clusters_mllm.py",
+                "--in",
+                input_parquet,
+                "--out",
+                output_parquet,
+                "--label_method",
+                "mllm",
+                "--mllm_model",
+                "mock-model",
+                "--mllm_endpoint",
+                "http://localhost:8000",
+                "--num_medoids",
+                "2",
+                "--chunk_size",
+                "2",
+            ]
+            with patch.object(sys, "argv", test_args):
+                main()
+
+        df_out = load_dataframe(output_parquet)
+        self.assertEqual(len(df_out), 6)
+        self.assertIn("cluster_label", df_out.columns)
+        self.assertIn("cluster_description", df_out.columns)
+        self.assertIn("visual_description", df_out.columns)
+        self.assertIn("parent_cluster_label", df_out.columns)
+        self.assertIn("parent_cluster_description", df_out.columns)
+        self.assertIn("parent_visual_description", df_out.columns)
+
+        self.assertEqual(df_out["cluster_label"].iloc[0], "Forest")
+        self.assertEqual(df_out["cluster_label"].iloc[3], "Agriculture")
+        self.assertEqual(df_out["parent_cluster_label"].iloc[0], "ParentForest")
+        self.assertEqual(df_out["visual_description"].iloc[0], "Visual desc child0")
+        self.assertEqual(df_out["visual_description"].iloc[3], "Visual desc child1")
+        self.assertEqual(
+            df_out["parent_visual_description"].iloc[0], "Visual desc parent"
+        )
+
+    def test_end_to_end_single_medoid_in_place_saving(self):
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from src.indexing.label_clusters_mllm import main
+        from src.utils.io import load_dataframe, save_dataframe
+
+        input_parquet = os.path.join(self.test_dir, "test_input_single.parquet")
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": [str(i) for i in range(4)],
+                "Platform": ["flickr"] * 4,
+                "Latitude": [40.0, 40.1, 50.0, 50.1],
+                "Longitude": [-74.0, -74.1, 2.0, 2.1],
+                "Image_URL": [f"http://example.com/{i}.jpg" for i in range(4)],
+                "cluster_id": [0, 0, 1, 1],
+                "parent_cluster_id": [0, 0, 0, 0],
+            }
+        )
+        embs = np.zeros((4, 4), dtype=np.float32)
+        embs[:2, 0] = 1.0
+        embs[2:, 1] = 1.0
+        df["embedding"] = list(embs)
+        save_dataframe(df, input_parquet, representation_type="cls")
+
+        mock_img = Image.new("RGB", (100, 100), color="green")
+        mock_url_resp = MagicMock()
+        mock_url_resp.status = 200
+        mock_url_resp.__enter__.return_value = mock_url_resp
+
+        with (
+            patch("urllib.request.urlopen", return_value=mock_url_resp),
+            patch("src.indexing.label_clusters_mllm.load_image", return_value=mock_img),
+            patch(
+                "src.indexing.label_clusters_mllm.query_vlm_openai_api",
+                side_effect=[
+                    "Visual desc parent",
+                    "LABEL: ParentForest\nDESCRIPTION: Parent forest description.",
+                    "Visual desc child0",
+                    "LABEL: Forest\nDESCRIPTION: Child forest description.",
+                    "Visual desc child1",
+                    "LABEL: Agriculture\nDESCRIPTION: Child agriculture description.",
+                ],
+            ),
+        ):
+            test_args = [
+                "label_clusters_mllm.py",
+                "--in",
+                input_parquet,
+                "--num_medoids",
+                "1",
+                "--chunk_size",
+                "2",
+            ]
+            with patch.object(sys, "argv", test_args):
+                main()
+
+        df_in_place = load_dataframe(input_parquet)
+        self.assertEqual(len(df_in_place), 4)
+        self.assertEqual(df_in_place["cluster_label"].iloc[0], "Forest")
+        self.assertEqual(df_in_place["cluster_label"].iloc[2], "Agriculture")
+
+    def test_end_to_end_pickle_saving(self):
+        import pickle
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from src.indexing.label_clusters_mllm import main
+
+        pkl_input = os.path.join(self.test_dir, "test_input.pkl")
+        pkl_output = os.path.join(self.test_dir, "test_output.pkl")
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": [str(i) for i in range(4)],
+                "Platform": ["flickr"] * 4,
+                "Latitude": [40.0, 40.1, 50.0, 50.1],
+                "Longitude": [-74.0, -74.1, 2.0, 2.1],
+                "Image_URL": [f"http://example.com/{i}.jpg" for i in range(4)],
+                "cluster_id": [0, 0, 1, 1],
+                "parent_cluster_id": [0, 0, 0, 0],
+            }
+        )
+        embs = np.zeros((4, 4), dtype=np.float32)
+        embs[:2, 0] = 1.0
+        embs[2:, 1] = 1.0
+        df["embedding"] = list(embs)
+
+        with open(pkl_input, "wb") as f:
+            pickle.dump(df.to_dict("records"), f)
+        np.save(
+            os.path.join(self.test_dir, "test_input_cls_embeddings.npy"),
+            embs,
+        )
+
+        mock_img = Image.new("RGB", (100, 100), color="green")
+        mock_url_resp = MagicMock()
+        mock_url_resp.status = 200
+        mock_url_resp.__enter__.return_value = mock_url_resp
+
+        with (
+            patch("urllib.request.urlopen", return_value=mock_url_resp),
+            patch("src.indexing.label_clusters_mllm.load_image", return_value=mock_img),
+            patch(
+                "src.indexing.label_clusters_mllm.query_vlm_openai_api",
+                side_effect=[
+                    "Visual desc parent",
+                    "LABEL: ParentForest\nDESCRIPTION: Parent forest description.",
+                    "Visual desc child0",
+                    "LABEL: Forest\nDESCRIPTION: Child forest description.",
+                    "Visual desc child1",
+                    "LABEL: Agriculture\nDESCRIPTION: Child agriculture description.",
+                ],
+            ),
+        ):
+            test_args = [
+                "label_clusters_mllm.py",
+                "--in",
+                pkl_input,
+                "--out",
+                pkl_output,
+                "--num_medoids",
+                "2",
+                "--chunk_size",
+                "2",
+            ]
+            with patch.object(sys, "argv", test_args):
+                main()
+
+        with open(pkl_output, "rb") as f:
+            saved_data = pickle.load(f)
+        self.assertEqual(len(saved_data), 4)
+        self.assertEqual(saved_data[0]["cluster_label"], "Forest")
+        self.assertEqual(saved_data[2]["cluster_label"], "Agriculture")
+
+    def test_end_to_end_zeroshot_labeling_and_parquet_saving(self):
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from src.indexing.label_clusters_mllm import main
+        from src.utils.io import load_dataframe, save_dataframe
+
+        input_parquet = os.path.join(self.test_dir, "test_input_zeroshot.parquet")
+        output_parquet = os.path.join(self.test_dir, "test_output_zeroshot.parquet")
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": [str(i) for i in range(4)],
+                "Platform": ["flickr"] * 4,
+                "Latitude": [40.0, 40.1, 50.0, 50.1],
+                "Longitude": [-74.0, -74.1, 2.0, 2.1],
+                "Image_URL": [f"http://example.com/{i}.jpg" for i in range(4)],
+                "cluster_id": [0, 0, 1, 1],
+                "parent_cluster_id": [0, 0, 0, 0],
+            }
+        )
+        embs = np.zeros((4, 4), dtype=np.float32)
+        embs[:2, 0] = 1.0
+        embs[2:, 1] = 1.0
+        df["embedding"] = list(embs)
+        save_dataframe(df, input_parquet, representation_type="cls")
+
+        # Mock model for zero-shot text encoder
+        mock_model = MagicMock()
+        mock_model.to.return_value = mock_model
+        mock_tensor = MagicMock()
+        mock_tensor.cpu.return_value.numpy.return_value = np.tile(
+            np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32), (40, 1)
+        )
+        mock_model.encode_text.return_value = mock_tensor
+
+        with patch(
+            "src.indexing.label_clusters_mllm.AutoModel.from_pretrained",
+            return_value=mock_model,
+        ):
+            test_args = [
+                "label_clusters_mllm.py",
+                "--in",
+                input_parquet,
+                "--out",
+                output_parquet,
+                "--label_method",
+                "zeroshot",
+            ]
+            with patch.object(sys, "argv", test_args):
+                main()
+
+        df_out = load_dataframe(output_parquet)
+        self.assertEqual(len(df_out), 4)
+        self.assertIn("cluster_label", df_out.columns)
+        self.assertIn("parent_cluster_label", df_out.columns)
+        self.assertTrue(len(df_out["cluster_label"].iloc[0]) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()
