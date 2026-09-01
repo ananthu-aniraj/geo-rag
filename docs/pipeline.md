@@ -51,3 +51,4 @@ To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline
 * Thorndike, R. L. (1953). Who belongs in the family? *Psychometrika*, 18(4), 267–276.
 * Tobler, W. R. (1970). A computer movie simulating urban growth in the Detroit region. *Economic Geography*, 46(sup1), 234–240.
 * Beck, H. E., T. R. McVicar, N. Vergopolan, A. Berg, N. J. Lutsko, A. Dufour, Z. Zeng, X. Jiang, A. I. J. M. van Dijk, and D. G. Miralles. High-resolution (1 km) Köppen-Geiger maps for 1901–2099 based on constrained CMIP6 projections. Scientific Data 10, 724 (2023).
+* Vo, Huy V., et al. ‘Automatic Data Curation for Self-Supervised Learning: A Clustering-Based Approach’. *Transactions on Machine Learning Research*, 2024.
