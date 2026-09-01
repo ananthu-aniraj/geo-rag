@@ -1,0 +1,24 @@
+# Markdownlint configuration for Geo-RAG
+default: true
+
+# Disable stylistic rules that conflict with MkDocs & documentation practices
+MD013: false # Line length (allow long links, tables, equations)
+MD033: false # Inline HTML (allow <br>, <img>, HTML badges)
+MD024: false # Multiple headings with the same content across subsections
+MD041: false # First line in file must be a top-level heading
+MD036: false # Emphasis used as heading
+MD029: false # Ordered list prefix style
+MD026: false # Trailing punctuation in heading
+MD045: false # Images should have alternate text
+MD025: false # Multiple top-level headings in the same document
+MD040: false # Fenced code language required
+MD034: false # Bare URLs
+MD038: false # Spaces inside emphasis/code spans (e.g. mathjax)
+MD001: false # Heading level increment
+MD002: false # First heading level
+
+# Enforce & Auto-fix list and structural rules
+MD031: true  # Fenced code blocks should be surrounded by blank lines
+MD032: true  # Lists should be surrounded by blank lines
+MD030: true  # Spaces after list markers
+MD022: true  # Headings should be surrounded by blank lines

@@ -9,6 +9,7 @@ This roadmap outlines the best practices, legal considerations, and steps for pu
 Directly hosting and distributing raw scraped images is a common challenge in dataset publication due to copyright restrictions. To resolve this, the **Geo-RAG dataset uses a Hybrid Publication Strategy** that combines online downloading with offline archives:
 
 ### Part 1: Online Platforms (Flickr, Mapillary, iNaturalist, GBIF) -> Metadata & Embeddings Only
+
 For platforms where images are hosted publicly online but subject to copyright restrictions (e.g. "All Rights Reserved" Flickr photos):
 
 * **What to distribute**:
@@ -18,6 +19,7 @@ For platforms where images are hosted publicly online but subject to copyright r
 * **Benefits**: 100% legally safe; extremely lightweight; avoids hosting large image archives.
 
 ### Part 2: Offline & Rate-Limited Platforms (Wikimedia Commons, iWildCam) -> CC-Licensed Image Archives
+
 Some parts of the dataset have unique hosting constraints:
 
 * **Wikimedia Commons**: Wikimedia heavily rate-limits and blocks rapid automated API downloads, making direct scripting unreliable. Furthermore, the Wikimedia Commons subset is very large (approx. 102.5 GB).
@@ -47,6 +49,7 @@ graph TD
 ```
 
 ### Hugging Face Datasets (Unified Platform)
+
 * **What it is**: The gold standard for modern machine learning dataset sharing.
 * **Benefits**:
   * **Scalable Storage**: Supports Git LFS with no size ceilings, making it ideal for the 102.5 GB Wikimedia Commons chunks.
@@ -68,6 +71,7 @@ graph TD
 ---
 
 ## 📄 4. Attribution & Data Citations
+
 When scraping from platforms like **GBIF**, **iNaturalist**, and **Mapillary**, attribution sections must be included.
 
 * **Flickr/Mapillary**: Provide a link to the Terms of Service in the documentation.

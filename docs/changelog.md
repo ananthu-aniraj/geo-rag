@@ -9,6 +9,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [1.3.0] - 2026-09-01
 
 ### Added
+
 - **Multi-Medoid Film-Strip Collage Labeling**: Added support for vertically stacked, letterboxed collages of up to 4 diverse nearest-neighbor representative images per cluster instead of a single medoid. Stitched images are standardized to a $512 \times 256$ aspect ratio per cell with `#282828` dark gray padding inside a single $512 \times (256 \times M)$ JPEG collage. Enabled via `--num_medoids`.
 - **Aggregated Metadata Context Generator**: Added spatial-semantic metadata aggregator compiling geographic bounding boxes, centroids, unique countries/continents, climates (Köppen-Geiger codes & descriptions), and seasons across the multiple medoids for Stage 2 classification prompts.
 - **Shared Multi-Medoid Utility Helpers**: Created `src/indexing/multi_medoid_utils.py` containing modular functions for diverse sampling, letterboxing, vertical collage stitching, and metadata aggregation.
@@ -27,12 +28,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **End-to-End Cluster Labeling & DataFrame Saving Unit Tests**: Added unit tests in `tests/test_label_clusters_mllm.py` verifying full end-to-end dataset labeling, PyArrow streaming Parquet merges, in-place overwriting, pickle storage, and zero-shot taxonomy label updates across both parent and child clusters.
 
 ### Changed
+
 - **Zero-Copy Sliced Local Normalization**: Refactored the vision labeling search loops in both `label_clusters_mllm.py` and `relabel_failed_clusters.py` to keep the raw representation matrix memory-mapped (`mmap_mode="r"`) and perform slice-level normalization dynamically per cluster. This completely eliminates the need for allocating the 22 GB `embeddings_norm` matrix, saving 22 GB of RAM and preventing virtual memory paging/swapping bottlenecks on standard machines.
 - **Precomputed Parent-to-Children Mapping**: Grouped parent-to-child ID mappings into a dictionary mapping prior to parent cluster representative searches, replacing $O(\text{parents} \times \text{clusters})$ list comprehension bottlenecks inside parent loops in both labeling scripts.
 - **Parent Clustering Division Factor (`K // 20`)**: Switched the default parent cluster division ratio from `K // 80` to `K // 20` for superior parent semantic cohesion and tree-search branching.
 - **Dynamic Step-Ratio Mapping**: Refactored the parent-child index mapper in `cluster_images_global.py` to dynamically compute step ratios based on the resolved `k_parents` count rather than using hardcoded ratios.
 
 ### Fixed
+
 - **MLLM Labeling and Spatial-Semantic Indexing Tests**: Created `tests/test_label_clusters_mllm.py` and `tests/test_build_spatial_semantic_index.py` to cover image resizing, zero-shot categorizations, VLM prompt templating, and end-to-end multi-resolution H3 spatial aggregations.
 - **Global Clustering Test Suite**: Created a comprehensive test file `tests/test_cluster_images_global.py` containing unit and integration tests for `cluster_data()`, `sample_closest_points()`, and `map_resampled_parents_to_children()`, as well as end-to-end CPU fit mode runs to protect clustering scripts against arguments and index mismatches in the future.
 - **Global Clustering Missing Arguments Typo**: Fixed a `TypeError` in `cluster_images_global.py` where calling `map_resampled_parents_to_children()` was missing the required fifth positional argument `k_parents`.
@@ -48,11 +51,13 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [1.2.0] - 2026-08-24
 
 ### Added
+
 - **Dynamic Image Path Server Mapping in Dashboard**: Added an "Offline Image Server Mapping" control panel to the cluster dashboard HTML (`templates/cluster_dashboard.html`). The dashboard now automatically scans the data on page load to detect the original local file prefix path and provides a search-and-replace interface. This allows users to dynamically map local file paths (`file://...`) to remote loopback servers (`http://localhost:8000/`) over SSH port-forwarding tunnels, enabling remote image viewing without file modifications.
 - **Environment Token Security Overhaul**: Secured the entire pipeline from hardcoded API tokens. Modified `run_full_pipeline.sh` to automatically source environment variables from a gitignored `.env` file and forwarded `HF_TOKEN` dynamically to the SGLang Docker container. Removed all hardcoded fallback Mapillary API tokens across all Python pipeline modules (`label_clusters_mllm.py`, `relabel_failed_clusters.py`, `visualize_clusters.py`, `visualize_cluster_samples.py`, `backfill_embeddings.py`, `backfill_timestamps.py`, `backfill_licenses.py`, `process_scraped_data.py`, `test_local_retrieval_comparison.py`, `test_macro_filter.py`, `benchmark_representations.py`, and `download_images.py`), replacing them with dynamic OS environment variable lookups and local `.env` file parsing fallbacks.
 - **Core Pipeline Configuration Relocation**: Relocated the central configuration file `params.yaml` from the repository root to `config/pipeline/params.yaml`. Updated `run_full_pipeline.sh` and `validate_cluster_count.py` to target the new directory path, maintaining backward-compatible fallbacks. Cleaned up obsolete local config loading logic in `standardize_timestamps.py` and `relabel_failed_clusters.py`.
 
 ### Fixed
+
 - **H3 Index Missing Points Groupby Fix**: Resolved a major bug in `build_spatial_semantic_index.py` where rows with `NaN` in `parent_cluster_label` (unlabeled parent clusters) were silently discarded by Pandas `groupby` during index aggregation. This caused 98% of points to be missing from the generated spatial-semantic index. Fixed by filling NaN values in all label and description columns with default fallback values (e.g. `Parent Cluster <ID>`) and adding `dropna=False` to the groupby.
 - **MLLM Parent Label Streaming Mapping Key Fix**: Fixed a critical bug in the output Parquet streaming writer of `label_clusters_mllm.py` where parent labels and descriptions were being mapped against `cluster_id` instead of `parent_cluster_id`. Since parent labels are keyed 0–499 while child IDs go up to 39,999, this caused all parent columns to be written as `NaN` for 98.7% of the dataset.
 - **VLM Relabeler NaN Label Check Fix**: Resolved a bug in `relabel_failed_clusters.py` where pandas `NaN` values loaded from Parquet (representing missing/failed labels) were not identified as needing relabeling because they evaluate as `float('nan')` instead of `None` or empty strings. Fixed by adding `pd.isna()` checks to the cluster and parent labeling verification loops.
@@ -66,6 +71,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [1.1.2] - 2026-08-20
 
 ### Added
+
 - **Hierarchical EUNIS Level 1, 2, and 3 Spatial Retrieval**: Updated the EUNIS Ecosystem Map benchmark (`benchmark_eunis.py`) and the LUCAS overlay benchmark (`benchmark_lucas.py`) to run retrieval precision evaluations across Level 1 (Macro), Level 2 (Meso), and Level 3 (Exact) habitat definitions.
 - **Unified EUNIS 2024 Level 3 Dataset Integration**: Swapped out the legacy 2012 ecosystem map for the new 2024 Level 3 EUNIS dominant habitat raster map (`eunis_dominant.tif` and `eunis_legend_detailed.csv`).
 - **Dynamic Capping & Uniform Spatial Curation (`sample_by_h3.py`)**: Added `--target_size` CLI argument to automatically calculate the optimal geographic cap per H3 cell using binary search to achieve a target size with maximum spatial uniformity.
@@ -76,6 +82,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Sanitized Model-Specific Output Reports**: Appended clean model names to benchmark report text and CSV files (e.g. `lucas_report_google_tipsv2-b14.txt`), preventing concurrent runs from overwriting each other.
 
 ### Changed
+
 - **Consolidated EUNIS Mappings**: Replaced the complex and multi-level fallback DBF mapping logic with direct CSV legend parsing from `load_eunis_legend()`.
 - **Streamlined Model Inference**: Refactored the vision model loading and inference layer to focus strictly on `timm` and `TIPSv2` models, making the code much easier to maintain.
 - **Lazy Class Token Verification**: Implemented lazy checks to query and cache class token presence (`cls_token` or `num_prefix_tokens > 0`) on model instances during the first forward pass, enabling support for models without a standard CLS token.
@@ -85,6 +92,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [1.1.1] - 2026-08-18
 
 ### Added
+
 - **Centralized Secrets Environment**: Created a gitignored `.env` file in the project root to store Flickr, Mapillary, and Hugging Face tokens, along with a committed `.env.template` setup template.
 - **Scraper Configuration Decoupling**: Created a new `config/scrapers/` folder containing separate YAML parameters for all 7 scraping utilities.
 - **Refactored Scraper Scripts**: Updated all 7 scraper shell scripts in `scripts/scrapers/` to load their parameters from `config/scrapers/*.yaml` and credentials from `.env`, removing all fallback references to the main `params.yaml` file.
@@ -98,6 +106,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 ## [1.1.0] - 2026-08-17
 
 ### Added
+
 - **Directory Refactoring (Shell Scripts)**: Consolidated 11 of the 12 shell scripts from the repository root into functional subdirectories:
   - `/scripts/scrapers/` for scraping loops and density profilers.
   - `/scripts/evaluation/` for Places365, LUCAS, and spatial benchmarks.
@@ -109,11 +118,12 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Configurable API Arguments**: Added command-line arguments (`--api_key` and `--token`) to scrapers and density profilers to allow running them as standalone tools with explicit keys without modifying files.
 - **Profiler Shell Wrappers**: Added `run_flickr_density_profiler.sh` and `run_mapillary_density_profiler.sh` wrappers to easily configure and run density profiling scrapers from the command line with token fallbacks and command line location overrides.
 
-
 ### Changed
+
 - **Decoupled API Token Infrastructure**: Moved Mapillary token and Flickr API key out of source code files and into the centralized config file `params.yaml`. Updated shell wrappers (`run_flickr_scraper.sh`, `run_mapillary_scraper.sh`, and `run_full_pipeline.sh`) to automatically parse and export them.
 - **Key-Based Embedding Matching**: Completely eliminated legacy `embedding_idx` integers and migrated loaders/writers to match embeddings via the stable `photo_key` string column. Row dropping, filtering, and joining are now 100% safe from alignment drift.
 - **Enforced Parquet backfilling**: Refactored `backfill_embeddings.py` to save data utilizing `save_dataframe()`, automatically enforcing `.parquet` output extension, saving companion `.npy` matrices, and generating `.keys.parquet` index files.
 
 ### Fixed
+
 - **VLM Parent Cluster Path Resolution**: Fixed a bug in `label_clusters_mllm.py` where representative image tasks for parent clusters omitted `photo_id` and `platform` keys, which broke offline path resolution for parent cluster labeling.

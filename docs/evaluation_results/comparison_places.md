@@ -1,4 +1,5 @@
 # Comparative Benchmark Report: PLACES
+
 Generated: 2026-08-20 11:57:41
 
 ## Exact Place Comparison

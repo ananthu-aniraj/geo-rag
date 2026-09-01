@@ -1,4 +1,5 @@
 # Comparative Benchmark Report: LUCAS
+
 Generated: 2026-08-21 15:42:09
 
 ## EUNIS Class (CSV) Comparison

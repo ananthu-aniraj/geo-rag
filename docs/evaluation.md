@@ -20,6 +20,7 @@ This document outlines the evaluation and benchmarking suites in the Geo-RAG pip
 This script evaluates how accurately a Vision-Language Model (VLM) can describe a scene and classify it relative to the Places365 database categories.
 
 ### 🔍 Methodology
+
 1. **Places365 Label Mapping:** Loads Places365 macro-categories (indoor vs. outdoor natural/man-made), sub-categories, and specific class labels from an Excel mapping file.
 2. **MLLM Querying:** Queries a local VLM (via Ollama or custom server) in a two-step prompt:
    - **Step 1:** Extracts visual details (visible evidence, human activities, vegetation, land cover).
@@ -31,6 +32,7 @@ This script evaluates how accurately a Vision-Language Model (VLM) can describe 
    - **Visual Alignment (CLIP/TIPS):** Computes the cosine similarity of the generated caption text against the raw image embedding.
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.caption_test \
   --labels_path path/to/places365_mapping.xlsx \
@@ -40,6 +42,7 @@ python3 -m src.evaluation.caption_test \
 ```
 
 ### 📦 Outputs
+
 - `vlm_evaluation_summary_[model]_[prompt_version].txt`: Overall accuracy and similarity summaries.
 - `vlm_evaluation_results_[model]_[prompt_version].csv`: Detailed per-image predictions (excluding large embedding fields).
 - `vlm_retrieval_data_[model]_[prompt_version].pkl`: Pickled data containing image filename, VLM caption, and raw image embeddings (used for retrieval tests).
@@ -51,6 +54,7 @@ python3 -m src.evaluation.caption_test \
 This script benchmarks the VLM's ability to classify land cover, land use, and habitat types using ground-truth points from the **LUCAS 2018 (Land Use and Coverage Area frame Survey)** validation dataset.
 
 ### 🔍 Methodology
+
 1. **LUCAS Metadata Ingestion:** Loads LUCAS coordinate metadata, mapping point IDs to ground-truth labels (`lc_label`, `lu_label`, `eunis_class`).
 2. **VLM Classification:** Queries the MLLM to classify:
    - **Land Cover (LC):** e.g., Cropland, Woodland, Grassland, Shrubland.
@@ -61,6 +65,7 @@ This script benchmarks the VLM's ability to classify land cover, land use, and h
    - **Semantic Similarity Accuracy:** Computes cosine similarity of the VLM prediction's sentence embeddings against ground-truth class name embeddings to account for synonyms (e.g. "Woodland" matching "Forest").
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.evaluate_lucas \
   --csv_path path/to/lucas_metadata.csv \
@@ -70,6 +75,7 @@ python3 -m src.evaluation.evaluate_lucas \
 ```
 
 ### 📦 Outputs
+
 - `lucas_evaluation_summary_[model].txt`: Summarized exact matches and semantic similarity averages for LC, LU, and EUNIS.
 - `lucas_evaluation_results_[model].csv`: Row-by-row comparisons of VLM predictions vs. LUCAS ground-truth coordinates.
 
@@ -80,6 +86,7 @@ python3 -m src.evaluation.evaluate_lucas \
 This script performs cross-modal (Image-to-Text and Text-to-Image) retrieval benchmarks to evaluate how well our embedding models (standard **CLIP** vs. **TIPSv2**) align textual descriptions with visual features.
 
 ### 🔍 Methodology
+
 1. **Input Payload Ingestion:** Loads the pickled `.pkl` output containing image embeddings and VLM captions generated during the captioning test.
 2. **Text Embedding Generation:** Encodes the VLM captions and their individual components (`visible_evidence`, `human_activities`, `land_cover_usage`, `type_of_vegetation`) into a joint embedding space using CLIP or TIPSv2.
 3. **Retrieval Evaluations:**
@@ -88,6 +95,7 @@ This script performs cross-modal (Image-to-Text and Text-to-Image) retrieval ben
    - Conducts component-level ablation studies to find *which* textual details (e.g. vegetation type vs. human activities) are most aligned with the image's visual features.
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.evaluate_retrieval \
   --pkl path/to/vlm_retrieval_data.pkl \
@@ -103,18 +111,20 @@ python3 -m src.evaluation.evaluate_retrieval \
 This script benchmarks the semantic retrieval capability of different image representations (TIPSv2 CLS, average patch, and SegFormer-masked embeddings) on the **LUCAS 2018** dataset. It measures how well nearest-neighbor retrieval aligns with ground-truth land cover, land use, and habitat classes, as well as projected spatial-ecological zones.
 
 ### 🔍 Methodology
+
 1. **LUCAS Metadata Ingestion & Sampling:** Loads the validation CSV coordinates, matches local images using point ID grouping, and shuffles them.
 2. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by primary land cover category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining strict geographic segregation and preventing point-level leakage (such as directional views of the same surveyor field coordinate being split between query and database).
 3. **Spatial Raster Overlay:** Extracts the GPS coordinates (`lat`, `lon`) for each LUCAS point. If EUNIS and Metzger Environmental Zones GeoTIFF rasters are provided, it projects the coordinates to EPSG:3035 to query and append projected EUNIS ecosystem categories and biogeographical climate zones.
 3. **Batch Feature Extraction:** Computes embeddings in batches on the GPU. If loading a custom checkpoint (via `--tips_model_path`), it evaluates both `TIPSv2 1st CLS` (visual/semantic) and `TIPSv2 2nd CLS` (geographic) tokens against average patch and Seg-Masked embeddings. Otherwise, it defaults to Hugging Face `google/tipsv2-b14`.
 4. **Retrieval Metric Computation:** Queries the database using cosine similarity to retrieve the Top-10 nearest neighbors. It reports alignment metrics (P@1, P@5, P@10, mAP@10, and MRR@10) across five hierarchical/ecological levels:
-   * **Land Cover** (`lc_label`)
-   * **Land Use** (`lu_label`)
-   * **EUNIS Class** (`eunis_class` from CSV metadata)
-   * **EUNIS Ecosystem Raster Levels 1, 2, and 3** (`eunis_raster_l1`, `eunis_raster_l2`, `eunis_raster_l3` from raster overlay, optional)
-   * **Environmental Zone** (`env_zone_class` from raster overlay, optional)
+   - **Land Cover** (`lc_label`)
+   - **Land Use** (`lu_label`)
+   - **EUNIS Class** (`eunis_class` from CSV metadata)
+   - **EUNIS Ecosystem Raster Levels 1, 2, and 3** (`eunis_raster_l1`, `eunis_raster_l2`, `eunis_raster_l3` from raster overlay, optional)
+   - **Environmental Zone** (`env_zone_class` from raster overlay, optional)
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.benchmark_lucas \
   --csv path/to/Sen4Map_Metadata_test.csv \
@@ -130,6 +140,7 @@ python3 -m src.evaluation.benchmark_lucas \
 ```
 
 ### 📦 Outputs
+
 - `benchmark_results/lucas_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
 - `benchmark_results/lucas_results.csv`: A detailed CSV table containing the exact query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
 
@@ -140,11 +151,13 @@ python3 -m src.evaluation.benchmark_lucas \
 This script benchmarks the semantic retrieval performance of different representations on the **Places365** dataset. It maps images to categories using the hierarchy defined in `Scene_hierarchy.xlsx` to measure how well retrieval preserves visual and scene categories.
 
 ### 🔍 Methodology
+
 1. **Places Ingestion & Hierarchy Mapping:** Reads the test directory structure, matching each image to its folder name (exact place), mapping it to macro-category (indoor vs. outdoor) and sub-category.
 2. **GPU Feature Extraction:** Computes embeddings in batches. Supports loading official checkpoints (via `--tips_model_path`) comparing `TIPSv2 1st CLS` and `TIPSv2 2nd CLS` representations. You can optionally include CLIP (`--compare_clip`) and Hugging Face's `google/tipsv2-b14` model (`--compare_hf_tips`) in the comparison.
 3. **Retrieval Evaluations:** Cosine similarity retrieves the Top-10 nearest neighbors from the database pool. Accuracy metrics (P@1, P@5, P@10, mAP@10, and MRR@10) are reported across three hierarchical levels: **Exact Place Category**, **Sub-Category**, and **Macro Category**.
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.benchmark_places \
   --labels path/to/Scene_hierarchy.xlsx \
@@ -160,6 +173,7 @@ python3 -m src.evaluation.benchmark_places \
 ```
 
 ### 📦 Outputs
+
 Output filenames are formatted dynamically by appending the seed and query count (`_s[seed]_q[queries]`) to prevent overwriting results across experiments:
 
 - `benchmark_results/places_report_s42_q100.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.
@@ -172,6 +186,7 @@ Output filenames are formatted dynamically by appending the seed and query count
 This script performs geobotanical representation benchmarking on arbitrary geolocated images in Europe (e.g. scraped Flickr/Mapillary datasets). It overlays WGS84 coordinates on the 2024 **EUNIS Ecosystem GeoTIFF raster map** (`eunis_dominant.tif`) to extract the ecosystem type, evaluating whether nearest-neighbor retrieval aligns with European habitats across hierarchical levels.
 
 ### 🔍 Methodology
+
 1. **EUNIS Raster Coordinate Lookup:** Reads your scraped CSV metadata, transforms coordinates into EPSG:3035 using `pyproj`, and queries the local EUNIS GeoTIFF.
 2. **EUNIS Legend Parsing:** Reads the `eunis_legend_detailed.csv` legend file located alongside the raster to extract EUNIS Level 1 (Macro), Level 2 (Meso), and Level 3 (Exact) class labels.
 3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by EUNIS category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
@@ -179,6 +194,7 @@ This script performs geobotanical representation benchmarking on arbitrary geolo
 5. **Retrieval Evaluations:** Reports P@1, P@5, P@10, mAP@10, and MRR@10 across three hierarchical habitat levels: **EUNIS Level 1 (Macro)**, **EUNIS Level 2 (Meso)**, and **EUNIS Level 3 (Exact)**.
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.benchmark_eunis \
   --csv_path path/to/scraped_data.csv \
@@ -191,6 +207,7 @@ python3 -m src.evaluation.benchmark_eunis \
 ```
 
 ### 📦 Outputs
+
 - `benchmark_results/eunis_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and EUNIS levels.
 - `benchmark_results/eunis_results.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
 
@@ -201,6 +218,7 @@ python3 -m src.evaluation.benchmark_eunis \
 This script performs macro-scale biogeographical representation benchmarking on geolocated images in Europe. It overlays WGS84 coordinates on the **Environmental Zones of Europe (Metzger 2025)** GeoTIFF raster map to extract the climate/ecological zone class (1–19), evaluating whether representations capture continental-scale geographical and geobotanical stratification under retrieval.
 
 ### 🔍 Methodology
+
 1. **Environmental Zone Raster Lookup:** Reads scraped image CSV coordinates, projects them to EPSG:3035, and queries the Metzger 2025 GeoTIFF using `rasterio`.
 2. **Category Extraction:** Maps the sampled value to one of the 19 Environmental Zones (e.g. *Boreal*, *Continental*, *Arctic*).
 3. **Spatial Block Partitioning:** Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using **Greedy Block Stratification** (stratified by Environmental Zone category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).
@@ -208,6 +226,7 @@ This script performs macro-scale biogeographical representation benchmarking on 
 5. **Retrieval Evaluations:** Reports Precision@1, Precision@5, Precision@10, mAP@10, and MRR@10 on European Environmental Zones.
 
 ### 💻 Usage
+
 ```bash
 python3 -m src.evaluation.benchmark_environmental_zones \
   --csv_path path/to/scraped_data.csv \
@@ -224,21 +243,23 @@ python3 -m src.evaluation.benchmark_environmental_zones \
 To make evaluations easily reproducible and readable, the pipeline uses YAML files to manage configuration parameters, and provides two unified shell runners:
 
 ### 1. Offline Semantic Evaluation (LUCAS & Places365)
-* **Configuration**: `config/evaluation/params_offline.yaml`
-* **Shell Script**: `./scripts/evaluation/run_offline_eval_semantic.sh`
-* **Operation**: Reads parameters from the offline YAML file and runs `benchmark_lucas.py` and `benchmark_places.py` sequentially, saving results into `benchmark_results/`.
+
+- **Configuration**: `config/evaluation/params_offline.yaml`
+- **Shell Script**: `./scripts/evaluation/run_offline_eval_semantic.sh`
+- **Operation**: Reads parameters from the offline YAML file and runs `benchmark_lucas.py` and `benchmark_places.py` sequentially, saving results into `benchmark_results/`.
 
 ### 2. Spatial/Environmental Evaluation (Environmental Zones & EUNIS)
-* **Configuration**: `config/evaluation/params_online.yaml`
-* **Shell Script**: `./scripts/evaluation/run_offline_eval_spatial.sh`
-* **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
+
+- **Configuration**: `config/evaluation/params_online.yaml`
+- **Shell Script**: `./scripts/evaluation/run_offline_eval_spatial.sh`
+- **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
 
 ### 🎛️ Multi-Model Benchmarking (timm & TIPSv2)
 
 All 4 benchmark scripts support evaluating different vision representations. You can configure which model to load in the YAML configuration parameters:
 
-* **timm Models**: Set `model_name` to a timm identifier (e.g. `vit_base_patch14_dinov2.lvd142m` or `resnet50`). Standard models like DINOv2 or SigLIP are loaded through timm.
-* **TIPSv2 Models**: Set `model_name` to `google/tipsv2-b14` or a path to a local TIPSv2 checkpoint. These models employ the custom TIPSv2 feature extraction layout and MaskCLIP value attention tricks.
+- **timm Models**: Set `model_name` to a timm identifier (e.g. `vit_base_patch14_dinov2.lvd142m` or `resnet50`). Standard models like DINOv2 or SigLIP are loaded through timm.
+- **TIPSv2 Models**: Set `model_name` to `google/tipsv2-b14` or a path to a local TIPSv2 checkpoint. These models employ the custom TIPSv2 feature extraction layout and MaskCLIP value attention tricks.
 
 At runtime, the loader automatically queries `timm` to resolve the correct input resolution, normalization, and transforms for timm models, and defaults to custom preprocessing for TIPSv2. It also checks for prefix tokens (such as CLS and registers) via `model.num_prefix_tokens` to dynamically align patch tokens during spatial masking evaluations.
 
@@ -246,8 +267,8 @@ At runtime, the loader automatically queries `timm` to resolve the correct input
 
 To calculate the geobotanical `Seg-Masked` patch representations, the benchmark scripts load the **SegFormer** model (`nvidia/segformer-b0-finetuned-ade-512-512`) to identify and discard background/sky classes. Because running SegFormer inference on every batch introduces a non-trivial computational and memory overhead, you can turn it off to significantly speed up your evaluations:
 
-* **YAML Toggle**: Set `use_segformer: false` in `config/evaluation/params_offline.yaml` or `config/evaluation/params_online.yaml`.
-* **CLI Flag**: Run individual scripts with the `--no_segformer` command-line argument.
+- **YAML Toggle**: Set `use_segformer: false` in `config/evaluation/params_offline.yaml` or `config/evaluation/params_online.yaml`.
+- **CLI Flag**: Run individual scripts with the `--no_segformer` command-line argument.
 
 When disabled, SegFormer is not loaded into memory, background masks are not processed, and evaluation runs **several times faster**, extracting only the core visual representations (`CLS`, `Average Patch`, and concatenation combos).
 
@@ -256,6 +277,7 @@ When disabled, SegFormer is not loaded into memory, background masks are not pro
 If you want to evaluate multiple models side-by-side on a specific dataset without manually editing configuration files or copy-pasting tables, you can configure your target models in the YAML config and run the comparison script:
 
 1. **Set target models**: Define the list of model names inside **[`config/evaluation/compare_models.yaml`](../config/evaluation/compare_models.yaml)**:
+
    ```yaml
    models:
      - "google/tipsv2-b14"
@@ -264,11 +286,13 @@ If you want to evaluate multiple models side-by-side on a specific dataset witho
    ```
 
 2. **Execute comparison**: Run the orchestrator shell script specifying the target benchmark:
+
    ```bash
    ./scripts/evaluation/run_comparison.sh [lucas|places|eunis|env_zones]
    ```
 
 #### How it works:
+
 1. **Reads config**: Automatically reads dataset parameters (number of queries, dataset paths, SegFormer status, etc.) from `config/evaluation/params_offline.yaml` or `params_online.yaml` based on the selected benchmark.
 2. **Runs benchmarks sequentially**: Executes the underlying python benchmark for each model listed in `compare_models.yaml` in sequence, saving individual model reports safely with sanitized filenames (preventing them from overwriting each other).
 3. **Collates results**: Parses each generated text report, extracts the metrics (Precision@1, Precision@5, Precision@10, MAP@10, and MRR@10) across all representations, and consolidates them into a single markdown file (`benchmark_results/comparison_[benchmark].md`).

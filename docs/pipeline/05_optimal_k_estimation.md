@@ -61,6 +61,7 @@ $$
 ## 💻 Execution Example
 
 Run the validation script across a range of $k$ values ($k \in [10,000, 50,000]$):
+
 ```bash
 python3 -m src.utils.validate_cluster_count \
   --input "full_pipeline_output/geo_space_deduplicated.parquet" \
@@ -70,4 +71,5 @@ python3 -m src.utils.validate_cluster_count \
   --sample_limit 0 \
   --output_plot "cluster_count_validation.png"
 ```
+
 *(Setting `--sample_limit 0` ensures the script uses the entire dataset for partitioning rather than downsampling).*

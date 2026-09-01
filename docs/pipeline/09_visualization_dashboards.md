@@ -9,14 +9,17 @@ This document describes the visualization suite and dashboard mapping utilities 
 The pipeline outputs five interactive maps, dashboards, and projections to inspect data density, cluster qualities, and land usage:
 
 ### 1. H3 Occupancy Map (`generate_h3_occupancy_map.py`)
+
 * **Purpose**: Heatmap displaying image density across the globe.
 * **Toggles**: Single density layer.
 
 ### 2. Spatial-Semantic Index Map (`generate_h3_semantic_map.py`)
+
 * **Purpose**: Displays the dominant land use/land cover categories on a world map.
 * **Hover Details**: Tooltip displays the percentage breakdown of different semantic clusters within that cell (e.g., `Residential: 60%`, `Urban: 40%`).
 
 ### 3. Dynamic Statistics Map (`dataset_statistics.py`)
+
 * **Purpose**: Generates analytics, visual plots, and layered maps globally or for a specific location.
 * **Dynamic Resolution**: Adapts from global views (H3 res 4) to local city views (H3 res 8).
 * **Interactive Map Elements**:
@@ -25,6 +28,7 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
 * **Visual Plots**: Generates multi-panel summary plots (.png). Dynamically switches from a standard **2x2** grid to a **3x2** layout if climate or semantic categorization columns are present, adding plots for Köppen climate distribution and top 10 semantic parent category distribution.
 
 ### 4. Dynamic Cluster Dashboard (`visualize_cluster_samples.py`)
+
 * **Purpose**: Generates an interactive web dashboard (`cluster_samples.html`) showing representative images and outliers for each cluster.
 * **Key Features**:
   * **Two-Step VLM Descriptions**: Displays both the Step 1 visual description (objective catalog of visual details, styled in a warm-yellow box with an amber border) and the Step 2 ecological classification description (styled in a clean grey box with an indigo border).
@@ -35,11 +39,13 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
     If the dashboard is generated on a remote execution machine and you want to view it on a local PC (e.g. your laptop), you can securely stream the offline images without copying them:
 
     1. **Start Server on Remote PC**: Start a lightweight python file server pointing to your image directory:
+
        ```bash
        python3 -m http.server 8000 --directory /user/aaniraj/home/Documents/Projects/data/
        ```
 
     2. **Establish Tunnel on Local Laptop**: Run an SSH session with local port forwarding enabled:
+
        ```bash
        ssh -L 8000:localhost:8000 user@execution_pc_ip
        ```
@@ -47,6 +53,7 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
     3. **Map Path in Browser UI**: Copy the `cluster_samples.html` and `cluster_samples_data.js` to your laptop and open the HTML file. In the **Offline Image Server Mapping** panel at the top, paste `http://localhost:8000/` in the **Replace** box. The browser will dynamically stream the images from the remote disk over your SSH tunnel in real-time.
 
 ### 5. Centroid Semantic UMAP Projection (`visualize_cluster_scatter.py`)
+
 * **Purpose**: Computes a 2D UMAP projection on the average embeddings (centroids) of all 50,000 fine-grained visual clusters to visualize the global semantic manifold of the dataset.
 * **Dual Output**:
   * **Static Plot (`cluster_scatter.png`)**: High-resolution image showing the semantic distribution of centroids colored by their parent land-use category.

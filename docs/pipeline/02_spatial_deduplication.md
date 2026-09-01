@@ -9,6 +9,7 @@ This document describes the design and operation of `process_scraped_data.py`, w
 The script takes a raw scraped database, partitions coordinates into **H3 Resolution 11 parent cells** (each spanning ~2,000 m²), and performs spatial-temporal deduplication using TIPSv2 image embeddings to ensure uniform geographic coverage.
 
 ### 1. Multi-Representation & Precision Customization
+
 Through command-line options and the master `params.yaml`, the pipeline supports customizable representations and storage layouts:
 
 * **`--representation_type`**:
@@ -20,6 +21,7 @@ Through command-line options and the master `params.yaml`, the pipeline supports
   * `float16`: Half-precision float storage. This downcasts the final matrix right before writing to disk, reducing SSD storage footprint by **50%** (saving ~8 GB on a 16 GB database). Slicing/loading routines automatically upcast the segments back to `float32` in RAM for downstream model compatibility.
 
 ### 2. Single-Pass Feature Extraction
+
 When computing concatenated representations (`cls_avg_patch`), rather than running two separate forward passes, the script uses `extract_model_embeddings` from `src.models.vision_model_inference`. It executes transformer blocks $1$ through $11$ once and branches only at the $12\text{th}$ block, yielding both CLS and value attention patch projections in practically the cost of a single standard forward pass.
 
 ---
@@ -40,18 +42,22 @@ To prevent Parquet file bloating and RAM starvation, the database uses a decoupl
 The deduplication pipeline has been upgraded to support seamless ingestion of pre-computed offline datasets:
 
 ### 1. Unified Ingestion (CSV & Parquet)
+
 * The pipeline accepts both **`.csv`** and **`.parquet`** files in the input directories (`--dirs` and `--offline_dataset_dirs`).
 * Helper index files (`*.keys.parquet`), checkpoint files (`*_checkpoint.parquet`), and the output database itself (`{output_name}.parquet`) are automatically ignored during directory scanning to prevent circular ingestion.
 
 ### 2. Precomputed Embeddings Bypass
+
 * When loading input `.parquet` files, the loader automatically resolves and maps their companion `.npy` embeddings.
 * During cell-by-cell deduplication, images with matching precomputed embeddings **completely bypass image downloading and TIPSv2 GPU forward passes**, saving massive network bandwidth and compute resources.
 
 ### 3. Strict Representation Type Checking
+
 * Precomputed embeddings are validated against the requested `representation_type` (e.g. `cls`, `avg_patch`, `cls_avg_patch`).
 * Suffix verification (e.g., checking for `_cls_embeddings.npy` in the filename) prevents loading mismatched vector configurations. Mismatched or missing representation vectors are scheduled for re-inference.
 
 ### 4. Schema Normalization & Path Resolution
+
 * Columns from diverse datasets (such as lowercase/camelCase fields like `photo_id`, `Captured_At`, `latitude`) are normalized into the canonical PascalCase schema.
 * To prevent duplicate column name collisions (e.g. if a dataset has both `Image_Location` and `file_name` columns), a first-match fallback strategy is used for locating image URLs.
 
@@ -62,6 +68,7 @@ The deduplication pipeline has been upgraded to support seamless ingestion of pr
 To process datasets in the millions without Out-of-Memory (OOM) errors, the script dynamically identifies **active H3 cells** (cells containing new scraped images) and loads only their existing embeddings from the Parquet database using `pyarrow.dataset` (bypassing the other 99% in-memory). It then writes updates atomically using a custom `stream_update_parquet` streaming engine that filters, matches, and appends chunk-by-chunk. This streaming process is now **100% key-driven**, utilizing the unique `photo_key` strings and C-accelerated hash lookups to dynamically resolve embeddings. This makes updates completely immune to index-shift corruptions.
 
 ### Parallel Network Engine
+
 To optimize ingestion speed and minimize network bottlenecks:
 
 * **HTTP Connection Pooling**: A thread-safe global `requests.Session` with a connection adapter (128 maximum connections) keeps sockets alive across download threads, eliminating TCP/SSL handshake latency.
@@ -74,6 +81,7 @@ To optimize ingestion speed and minimize network bottlenecks:
 ## 🤖 Zero-Shot Noise Filters
 
 ### 1. Flickr Indoor/Outdoor Filter
+
 Filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts:
 
 * *"An indoor scene"*
@@ -82,7 +90,9 @@ Filters out indoor photos using zero-shot text-image classification with TIPSv2.
 If an image matches the indoor class, it is discarded. This filter applies **only to Flickr images** (since street-view platforms like Mapillary/KartaView are intrinsically outdoor, and iNaturalist observations are filtered by macro characteristics). Can be bypassed with the `--no_filter` flag.
 
 ### 2. Macro Filter (`--filter_macro`)
+
 Filters out macro close-up flora/fauna images (typically for iNaturalist data) using a zero-shot *"A macro/close-up photo of flowers, leaves, bark, or insects"* classifier.
 
 ### 3. Sky Filter (`--filter_sky`)
+
 Filters out empty sky views (typically for iNaturalist observations) using a zero-shot *"A view of empty sky, clouds, or flying objects"* classifier.

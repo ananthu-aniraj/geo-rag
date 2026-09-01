@@ -60,7 +60,9 @@ graph TD
 Always load the data using the provided backward-compatible utility functions in `src/utils/io.py` to ensure sidecars and embeddings are resolved and merged transparently.
 
 ### 1. Loading Metadata + Cluster Columns
+
 The helper automatically resolves path mappings, loads the base metadata, and merges the cluster sidecar columns transparently (the cluster count `k` is automatically extracted from the sidecar's filename):
+
 ```python
 from src.utils.io import load_dataset_with_clusters
 
@@ -74,7 +76,9 @@ print(df.shape)
 ```
 
 ### 2. Loading Embeddings Matrix
+
 The embeddings loader (`load_embeddings`) automatically resolves companion `.npy` paths. It loads the master file (e.g., `geo_space_cls_embeddings.npy`) and slices it dynamically by looking up the metadata `photo_key` (or reconstructing them from `Platform` and `Photo_ID`) against the companion `.keys.parquet` index file to return the aligned subset:
+
 ```python
 from src.utils.io import load_embeddings
 

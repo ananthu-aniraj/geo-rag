@@ -1,4 +1,5 @@
 # Comparative Benchmark Report: EUNIS
+
 Generated: 2026-08-24 02:23:54
 
 ## EUNIS Level 1 (Macro) Comparison

@@ -15,9 +15,11 @@ The script normalizes inconsistent date/time strings and Unix epochs across dive
 To prepare coordinates for downstream analysis, visualization, and VLM prompts, the script maps spatial characteristics:
 
 ### 1. Köppen-Geiger Climate Mapping
+
 If a Köppen-Geiger climate classification TIF map is provided (via `--koppen_tif` or parsed from `params.yaml`), coordinates are queried to assign each image a climate code (e.g. `BWh` for Hot Desert, `Csa` for Hot-Summer Mediterranean). The script utilizes `rasterio` and `pyproj` to dynamically handle raster projections.
 
 ### 2. Boundary Snapping (Country & Continent)
+
 If an administrative land boundary shapefile is provided (via `--land_shp`), the script performs a spatial polygon intersection join on the coordinates.
 
 To optimize performance and handle boundary limitations, the script implements:
@@ -30,6 +32,7 @@ To optimize performance and handle boundary limitations, the script implements:
 ## 📊 Derived Categorizations
 
 ### 1. Time of Day
+
 Captured hours are grouped into standard blocks:
 
 * **Dawn**: 05:00 – 08:00
@@ -39,6 +42,7 @@ Captured hours are grouped into standard blocks:
 * **Night**: 20:00 – 05:00
 
 ### 2. Seasons (Climate-Aware Zoning)
+
 Rather than using standard temperate astronomical calendars everywhere, seasons are mapped based on climate characteristics:
 
 * **Desert Climates (BWh, BWk)**: Fixed to `"Dry Season"` year-round.

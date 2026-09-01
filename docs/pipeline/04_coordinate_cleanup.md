@@ -43,6 +43,7 @@ pipeline:
 ```
 
 ### Command Line Arguments
+
 Alternatively, you can run the script manually with targeted flags:
 
 * `--platform`: Restricts detection and cleaning to a specific platform (e.g. `--platform mapillary`).
@@ -51,4 +52,5 @@ Alternatively, you can run the script manually with targeted flags:
 ---
 
 ## 🏎️ Performance & Type Resilience
+
 Both Parquet loading and CSV chunk writing perform defensive `pd.to_numeric` conversions on coordinates at startup to prevent float-string mixed schema exceptions during high-precision rounding operations.

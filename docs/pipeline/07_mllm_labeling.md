@@ -10,6 +10,7 @@ To run local vision-language model inference on GPUs, the master script `run_ful
 
 1. **Pre-Launch Cleanup**: Scan and kill any stale container bindings to clear Nvidia GPU memory and ports.
 2. **Container Launch**: Spawns the container with NVIDIA runtime support:
+
    ```bash
    docker run -d --gpus all -p 30000:30000 --name sglang-server ...
    ```
@@ -22,6 +23,7 @@ To run local vision-language model inference on GPUs, the master script `run_ful
 ## 🎞️ Multi-Medoid Film-Strip Collage Labeling
 
 ### Background & Objective
+
 Vision-Language Models (VLMs) can hallucinate or mislabel a cluster if the single medoid image chosen to represent it contains an anomaly (such as a close-up object, selfie, vehicle hood, or transient artifact). To make auto-labeling robust against web-scraping noise, Geo-RAG supports multi-medoid composite collages (configured via `--num_medoids`, default: 4).
 
 ```
@@ -39,6 +41,7 @@ Vision-Language Models (VLMs) can hallucinate or mislabel a cluster if the singl
 ```
 
 ### Technical Workflow
+
 1. **Diverse Nearest-Neighbor Sampling**:
    * For each cluster, `sample_diverse_medoids()` selects up to $N = 4$ nearest images to the cluster centroid while enforcing spatial coordinate and URL diversity thresholds (avoiding near-duplicate viewpoints).
 2. **Aspect-Ratio Preserving Letterboxing**:
@@ -48,24 +51,28 @@ Vision-Language Models (VLMs) can hallucinate or mislabel a cluster if the singl
    * The cells are stitched vertically into a single $512 \times (256 \times M)$ JPEG image (e.g. $512 \times 1024$ for 4 medoids, $< 80\text{ KB}$).
 4. **Multi-Medoid Prompt Prefix (Step 1)**:
    * When multi-medoid mode is enabled, the Step 1 prompt instructs the VLM to synthesize the common, dominant land-cover features across the vertical stack:
+
      ```text
      The input image contains a vertical stack of 4 representative photographs from the same local cluster; analyze the common land-cover features across these frames.
      ```
 
 5. **Composite Metadata Aggregation (Step 2)**:
    * Instead of relying on a single coordinate, metadata attributes across all selected medoids are aggregated:
-     - **Location**: Geographic bounding box and centroid across the medoids.
-     - **Country & Continent**: Deduplicated list of represented countries.
-     - **Climate & Season**: Deduplicated list of Köppen-Geiger climate codes and observed seasons.
+     * **Location**: Geographic bounding box and centroid across the medoids.
+     * **Country & Continent**: Deduplicated list of represented countries.
+     * **Climate & Season**: Deduplicated list of Köppen-Geiger climate codes and observed seasons.
 
 ---
 
 ## 🤖 Two-Step Prompting Strategy
+
 ### 📷 Step 1: Multimodal Visual Description
+
 * **Input**: The representative cluster image / vertical film-strip collage + `prompts/shared/prompt_step1.txt`
 * **Output**: A detailed, objective paragraph describing the physical scene features (no LULC labels).
 
 **Prompt Template (`prompts/shared/prompt_step1.txt`):**
+
 ```text
 You are analyzing a single ground-level photograph from a global land-survey campaign; the sample point may be anywhere on Earth (tropical, arid, temperate, boreal, alpine, wetland, or coastal). The camera stands at a sample point and looks outward; the land cover AT THE FOREGROUND/CENTER of the frame is the DOMINANT cover that must be characterized. Background elements (distant trees, buildings, hills) are CONTEXT only and must never override the dominant foreground cover.
 
@@ -88,10 +95,12 @@ Do not assign a LULC category code or label. Focus purely on describing what is 
 ---
 
 ### 🗺️ Step 2: Geographical LULC Classification (Text-Only)
+
 * **Input**: The visual description output from Step 1 + geographic/climatic metadata + the LULC category list + `prompts/shared/prompt_step2.txt`
 * **Output**: The final structured classification label and a consolidated description paragraph.
 
 **Prompt Template (`prompts/shared/prompt_step2.txt`):**
+
 ```text
 You are a geographical and ecological classifier. Your task is to classify the land cover/land use of a location based on a visual description of the scene and geographic/climatic metadata.
 
@@ -125,6 +134,7 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 ## 🗂️ Land Use / Land Cover (LULC) Classification Vocabulary
 
 ### Natural LULC Categories
+
 * **Broadleaved forest**: Deciduous or evergreen broad-leaf trees (oak, beech, maple, birch).
 * **Coniferous forest**: Evergreen needle-leaf trees (pine, spruce, fir, larch).
 * **Mixed forest**: Co-dominant broadleaved and coniferous trees.
@@ -151,6 +161,7 @@ DESCRIPTION: <A detailed, cohesive paragraph in fluent natural language describi
 * **Other natural land cover**: Any other natural land cover or landscape.
 
 ### Man-made LULC Categories
+
 * **Forest plantation**: Planted timber rows (e.g. eucalyptus, pine crop).
 * **Managed pasture**: Fenced grazing land or paddocks.
 * **Herbaceous cropland**: Annual cultivated crops (wheat, corn, barley, canola).
