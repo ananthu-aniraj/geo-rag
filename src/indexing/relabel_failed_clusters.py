@@ -579,10 +579,6 @@ def main():
     print(f"Loading Step 2 prompt template from {prompt_step2_path}")
     with open(prompt_step2_path, "r", encoding="utf-8") as f:
         prompt_step2_template = f.read()
-
-    # Convert data list of dicts to DataFrame to easily query fields for metadata aggregation
-    df = pd.DataFrame(data)
-
     # Pre-group indices by child_id for instant O(1) query lookups
     print("Pre-grouping cluster indices for fast lookup...")
     sort_idx = np.argsort(cluster_ids)
