@@ -20,7 +20,7 @@ echo "==========================================================================
 
 # Helper function to read yaml values using Python
 get_param() {
-    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml'))['$1']['$2'])"
+    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml')).get('$1', {}).get('$2', ''))"
 }
 
 # Load parameters from YAML
@@ -31,6 +31,8 @@ ENV_QUERIES=$(get_param "environmental_zones" "num_queries")
 ENV_DB=$(get_param "environmental_zones" "num_database")
 ENV_BATCH=$(get_param "environmental_zones" "batch_size")
 ENV_SEED=$(get_param "environmental_zones" "seed")
+ENV_QUERY_PLATFORM=$(get_param "environmental_zones" "query_platform")
+ENV_VIZ_SAMPLES=$(get_param "environmental_zones" "visualize_samples")
 ENV_OFFLINE=$(get_param "environmental_zones" "offline_dataset_dirs")
 ENV_USE_SEG=$(get_param "environmental_zones" "use_segformer")
 
@@ -41,6 +43,8 @@ EUNIS_QUERIES=$(get_param "eunis" "num_queries")
 EUNIS_DB=$(get_param "eunis" "num_database")
 EUNIS_BATCH=$(get_param "eunis" "batch_size")
 EUNIS_SEED=$(get_param "eunis" "seed")
+EUNIS_QUERY_PLATFORM=$(get_param "eunis" "query_platform")
+EUNIS_VIZ_SAMPLES=$(get_param "eunis" "visualize_samples")
 EUNIS_OFFLINE=$(get_param "eunis" "offline_dataset_dirs")
 EUNIS_USE_SEG=$(get_param "eunis" "use_segformer")
 
@@ -68,6 +72,26 @@ if [ "$EUNIS_USE_SEG" = "false" ] || [ "$EUNIS_USE_SEG" = "False" ]; then
     EUNIS_SEG_FLAG="--no_segformer"
 fi
 
+ENV_PLATFORM_FLAG=""
+if [ -n "$ENV_QUERY_PLATFORM" ] && [ "$ENV_QUERY_PLATFORM" != "None" ] && [ "$ENV_QUERY_PLATFORM" != "null" ] && [ "$ENV_QUERY_PLATFORM" != "all" ]; then
+    ENV_PLATFORM_FLAG="--query_platform $ENV_QUERY_PLATFORM"
+fi
+
+EUNIS_PLATFORM_FLAG=""
+if [ -n "$EUNIS_QUERY_PLATFORM" ] && [ "$EUNIS_QUERY_PLATFORM" != "None" ] && [ "$EUNIS_QUERY_PLATFORM" != "null" ] && [ "$EUNIS_QUERY_PLATFORM" != "all" ]; then
+    EUNIS_PLATFORM_FLAG="--query_platform $EUNIS_QUERY_PLATFORM"
+fi
+
+ENV_VIZ_FLAG=""
+if [ -n "$ENV_VIZ_SAMPLES" ] && [ "$ENV_VIZ_SAMPLES" != "None" ] && [ "$ENV_VIZ_SAMPLES" != "0" ] && [ "$ENV_VIZ_SAMPLES" != "false" ]; then
+    ENV_VIZ_FLAG="--output_html $OUTPUT_DIR/environmental_zones_visualizer_${ENV_MODEL_CLEAN}.html --visualize_samples $ENV_VIZ_SAMPLES"
+fi
+
+EUNIS_VIZ_FLAG=""
+if [ -n "$EUNIS_VIZ_SAMPLES" ] && [ "$EUNIS_VIZ_SAMPLES" != "None" ] && [ "$EUNIS_VIZ_SAMPLES" != "0" ] && [ "$EUNIS_VIZ_SAMPLES" != "false" ]; then
+    EUNIS_VIZ_FLAG="--output_html $OUTPUT_DIR/eunis_visualizer_${EUNIS_MODEL_CLEAN}.html --visualize_samples $EUNIS_VIZ_SAMPLES"
+fi
+
 MAPILLARY_FLAG=""
 if [ -n "$MAPILLARY_TOKEN" ]; then
     MAPILLARY_FLAG="--mapillary_token $MAPILLARY_TOKEN"
@@ -79,8 +103,12 @@ EUNIS_MODEL_CLEAN="${EUNIS_MODEL//\//_}"
 
 echo "Configuration (Loaded from config/evaluation/params_online.yaml):"
 echo "- Env Model: $ENV_MODEL"
+echo "- Env Query Platform: ${ENV_QUERY_PLATFORM:-all}"
+echo "- Env Visualizer Samples: ${ENV_VIZ_SAMPLES:-disabled}"
 echo "- Env SegFormer Active: $ENV_USE_SEG"
 echo "- EUNIS Model: $EUNIS_MODEL"
+echo "- EUNIS Query Platform: ${EUNIS_QUERY_PLATFORM:-all}"
+echo "- EUNIS Visualizer Samples: ${EUNIS_VIZ_SAMPLES:-disabled}"
 echo "- EUNIS SegFormer Active: $EUNIS_USE_SEG"
 echo "- Database path: $ENV_CSV"
 echo "- Env Zones Raster: $ENV_RASTER"
@@ -99,7 +127,8 @@ python3 -m src.evaluation.benchmark_environmental_zones \
   --num_database "$ENV_DB" \
   --batch_size "$ENV_BATCH" \
   --seed "$ENV_SEED" \
-  --query_platform "flickr" \
+  $ENV_PLATFORM_FLAG \
+  $ENV_VIZ_FLAG \
   --offline_dataset_dirs "$ENV_OFFLINE" \
   $ENV_SEG_FLAG \
   $MAPILLARY_FLAG \
@@ -116,7 +145,8 @@ python3 -m src.evaluation.benchmark_eunis \
   --num_database "$EUNIS_DB" \
   --batch_size "$EUNIS_BATCH" \
   --seed "$EUNIS_SEED" \
-  --query_platform "flickr" \
+  $EUNIS_PLATFORM_FLAG \
+  $EUNIS_VIZ_FLAG \
   --offline_dataset_dirs "$EUNIS_OFFLINE" \
   $EUNIS_SEG_FLAG \
   $MAPILLARY_FLAG \
@@ -125,7 +155,22 @@ python3 -m src.evaluation.benchmark_eunis \
 
 echo -e "\n================================================================================"
 echo "✅ Spatial evaluations completed successfully!"
-echo "Reports saved to:"
-echo "- $OUTPUT_DIR/environmental_zones_report_${ENV_MODEL_CLEAN}.txt"
-echo "- $OUTPUT_DIR/eunis_report_${EUNIS_MODEL_CLEAN}.txt"
+ENV_PLAT_LABEL="${ENV_QUERY_PLATFORM:-all}"
+if [ "$ENV_PLAT_LABEL" = "None" ] || [ "$ENV_PLAT_LABEL" = "null" ]; then
+    ENV_PLAT_LABEL="all"
+fi
+EUNIS_PLAT_LABEL="${EUNIS_QUERY_PLATFORM:-all}"
+if [ "$EUNIS_PLAT_LABEL" = "None" ] || [ "$EUNIS_PLAT_LABEL" = "null" ]; then
+    EUNIS_PLAT_LABEL="all"
+fi
+
+echo "Reports and visualizers saved to:"
+echo "- $OUTPUT_DIR/environmental_zones_report_${ENV_MODEL_CLEAN}_s${ENV_SEED}_q${ENV_QUERIES}_plat-${ENV_PLAT_LABEL}.txt"
+echo "- $OUTPUT_DIR/eunis_report_${EUNIS_MODEL_CLEAN}_s${EUNIS_SEED}_q${EUNIS_QUERIES}_plat-${EUNIS_PLAT_LABEL}.txt"
+if [ -n "$ENV_VIZ_FLAG" ]; then
+    echo "- $OUTPUT_DIR/environmental_zones_visualizer_${ENV_MODEL_CLEAN}_s${ENV_SEED}_q${ENV_QUERIES}_plat-${ENV_PLAT_LABEL}.html"
+fi
+if [ -n "$EUNIS_VIZ_FLAG" ]; then
+    echo "- $OUTPUT_DIR/eunis_visualizer_${EUNIS_MODEL_CLEAN}_s${EUNIS_SEED}_q${EUNIS_QUERIES}_plat-${EUNIS_PLAT_LABEL}.html"
+fi
 echo "================================================================================"

@@ -6,6 +6,26 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Interactive HTML Retrieval Visualizer**: Created `src/visualization/visualize_retrieval.py` providing `generate_retrieval_html`, `haversine_km`, and stratified class sampling. Generates standalone interactive HTML dashboards showing query images side-by-side with top-$K$ retrieved nearest neighbors, match badges (🟢 True Positive vs 🔴 False Positive), cosine similarity scores, physical distances in kilometers, diagnostic outcome filters, and offline local path remapping.
+- **Dedicated Retrieval Visualizer Unit Tests**: Added `tests/test_visualize_retrieval.py` testing great-circle geodesic distance calculation, stratified query sampling, and full HTML dashboard generation.
+- **Configurable Query Platform in Spatial Evaluations**: Added `query_platform` configuration parameter in `config/evaluation/params_online.yaml` under both `environmental_zones` and `eunis`, allowing dynamic filtering by platform (`flickr`, `mapillary`, etc.) or all platforms.
+- **Visualizer Integration in Benchmark Runners**: Added `--output_html` and `--visualize_samples` flags to `benchmark_environmental_zones.py`, `benchmark_eunis.py`, `run_offline_eval_spatial.sh`, and `compare_models.py`.
+- **Retrieval Dashboard Links in Model Comparisons**: Updated `src/evaluation/compare_models.py` to automatically pass visualization flags during batch model evaluation and link generated HTML dashboards in `comparison_<benchmark>.md`.
+- **Automated Markdown Linting Hook**: Added `.markdownlint.yaml` and integrated `markdownlint-cli` with `--fix` into `.pre-commit-config.yaml` to automatically format lists and headings upon commit.
+- **Website Documentation Dark Mode & Aligned Badges**: Configured dual light and dark palette switcher in `config/wiki/mkdocs.yml` with automatic system preference detection, and added matched-height badges in `README.md` for Wiki, CI, and Apache 2.0 license.
+
+### Changed
+
+- **Platform-Aware Output Filename Tagging**: Updated `benchmark_environmental_zones.py`, `benchmark_eunis.py`, `compare_models.py`, and `run_offline_eval_spatial.sh` to append `_plat-<platform>` to all generated report (`.txt`), query results (`.csv`), and visualizer (`.html`) filenames. Prevents filename collisions and prevents false cache hits during model comparisons when switching query platforms.
+- **Sanitized DVC Remote Storage IP**: Moved private SSH remote storage URLs from tracked `.dvc/config` into gitignored `.dvc/config.local`.
+
+### Fixed
+
+- **KeyError in Relabel Failed Clusters**: Fixed a `KeyError: 'cluster_id'` crash in `src/indexing/relabel_failed_clusters.py` where a leftover `df = pd.DataFrame(data)` re-instantiated a DataFrame from `DataFrameRowWrapper`, overwriting dataset columns. Added unit and integration tests in `tests/test_relabel_failed_clusters.py`.
+- **Markdown List Concatenation in Documentation**: Fixed missing blank lines preceding 49 list blocks across `docs/**/*.md` and `README.md` to prevent item concatenation under standard Python-Markdown parsers.
+
 ## [1.3.0] - 2026-09-01
 
 ### Added

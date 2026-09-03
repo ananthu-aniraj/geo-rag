@@ -36,6 +36,7 @@ BENCHMARKS = {
             ("--csv_path", "csv_path"),
             ("--raster", "raster"),
             ("--offline_dataset_dirs", "offline_dataset_dirs"),
+            ("--query_platform", "query_platform"),
         ],
     },
     "env_zones": {
@@ -47,6 +48,7 @@ BENCHMARKS = {
             ("--csv_path", "csv_path"),
             ("--raster", "raster"),
             ("--offline_dataset_dirs", "offline_dataset_dirs"),
+            ("--query_platform", "query_platform"),
         ],
     },
 }
@@ -209,6 +211,7 @@ def main():
                     env[k.strip()] = v.strip()
 
     all_results = []
+    visualizer_links = []
 
     # Run each model sequentially
     for idx, model in enumerate(args.models):
@@ -220,13 +223,23 @@ def main():
             f"./benchmark_results/{bench_config['report_prefix']}_{model_clean}.txt"
         )
         csv_path = f"./benchmark_results/{bench_config['report_prefix'].replace('report', 'results')}_{model_clean}.csv"
+        html_path = f"./benchmark_results/{bench_config['report_prefix'].replace('report', 'visualizer')}_{model_clean}.html"
 
         # Check if the outputs with the dynamic parameters suffix already exist to skip execution
         seed = str(params.get("seed", 42))
         num_queries = str(params.get("num_queries", 3000))
-        suffix = f"_s{seed}_q{num_queries}"
+        plat_val = str(params.get("query_platform", "")).lower().strip()
+        plat_suffix = ""
+        if args.benchmark in ["env_zones", "eunis"]:
+            plat_suffix = (
+                f"_plat-{plat_val}"
+                if plat_val and plat_val not in ["none", "null"]
+                else "_plat-all"
+            )
+        suffix = f"_s{seed}_q{num_queries}{plat_suffix}"
         actual_report_path = report_path.replace(".txt", f"{suffix}.txt")
         actual_csv_path = csv_path.replace(".csv", f"{suffix}.csv")
+        actual_html_path = html_path.replace(".html", f"{suffix}.html")
 
         if os.path.exists(actual_report_path) and os.path.exists(actual_csv_path):
             print(
@@ -234,6 +247,8 @@ def main():
             )
             model_results = parse_report_file(actual_report_path, model)
             all_results.extend(model_results)
+            if os.path.exists(actual_html_path):
+                visualizer_links.append((model, actual_html_path))
             continue
 
         cmd = [
@@ -256,6 +271,22 @@ def main():
             csv_path,
         ]
 
+        # Add HTML visualization flag if enabled in yaml and supported
+        viz_samples = params.get("visualize_samples")
+        if (
+            viz_samples
+            and viz_samples not in [0, "0", "false", False]
+            and args.benchmark in ["env_zones", "eunis"]
+        ):
+            cmd.extend(
+                [
+                    "--output_html",
+                    html_path,
+                    "--visualize_samples",
+                    str(viz_samples),
+                ]
+            )
+
         # Add benchmark-specific path arguments
         for cli_flag, yaml_name in bench_config["extra_args"]:
             if yaml_name in params:
@@ -271,6 +302,8 @@ def main():
         try:
             subprocess.run(cmd, env=env, check=True)
             print(f"Evaluation for {model} completed successfully.")
+            if os.path.exists(actual_html_path):
+                visualizer_links.append((model, actual_html_path))
         except subprocess.CalledProcessError as e:
             print(f"Error running benchmark for model {model}: {e}")
             continue
@@ -321,6 +354,15 @@ def main():
                 f.write(
                     f"| {r['Model']} | {r['Representation']} | {r['Precision']} | {r['P@1']} | {r['P@5']} | {r['P@10']} | {r['MAP@10']} | {r['MRR@10']} |\n"
                 )
+            f.write("\n")
+
+        if visualizer_links:
+            f.write("## Interactive Retrieval Visualizers\n\n")
+            f.write("| Model | Visualizer Dashboard |\n")
+            f.write("| :--- | :--- |\n")
+            for model_name, v_path in visualizer_links:
+                rel_path = os.path.basename(v_path)
+                f.write(f"| {model_name} | [{rel_path}]({rel_path}) |\n")
             f.write("\n")
 
     print("\n" + "=" * 90)

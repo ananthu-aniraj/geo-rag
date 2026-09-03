@@ -9,6 +9,8 @@ environmental_zones:
   num_database: 400000
   batch_size: 32
   seed: 42
+  query_platform: "flickr"
+  visualize_samples: 100
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
   use_segformer: true
 
@@ -21,5 +23,7 @@ eunis:
   num_database: 400000
   batch_size: 32
   seed: 42
+  query_platform: "flickr"
+  visualize_samples: 100
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
   use_segformer: true

@@ -141,6 +141,18 @@ def main():
         help="Path to write detailed query CSV results.",
     )
     parser.add_argument(
+        "--output_html",
+        type=str,
+        default=None,
+        help="Path to write an interactive HTML retrieval visualizer.",
+    )
+    parser.add_argument(
+        "--visualize_samples",
+        type=int,
+        default=100,
+        help="Number of queries to include in the HTML visualizer (set 0 or -1 for all).",
+    )
+    parser.add_argument(
         "--query_platform",
         type=str,
         default=None,
@@ -154,12 +166,23 @@ def main():
     )
     args = parser.parse_args()
 
-    # Format output names by appending seed and query size
+    # Format output names by appending seed, query size, and query platform
+    plat_suffix = (
+        f"_plat-{args.query_platform.lower()}"
+        if args.query_platform and args.query_platform.lower() not in ["none", "null"]
+        else "_plat-all"
+    )
+    suffix = f"_s{args.seed}_q{args.num_queries}{plat_suffix}"
+
     report_base, report_ext = os.path.splitext(args.output_report)
-    args.output_report = f"{report_base}_s{args.seed}_q{args.num_queries}{report_ext}"
+    args.output_report = f"{report_base}{suffix}{report_ext}"
 
     csv_base, csv_ext = os.path.splitext(args.output_csv)
-    args.output_csv = f"{csv_base}_s{args.seed}_q{args.num_queries}{csv_ext}"
+    args.output_csv = f"{csv_base}{suffix}{csv_ext}"
+
+    if args.output_html:
+        html_base, html_ext = os.path.splitext(args.output_html)
+        args.output_html = f"{html_base}{suffix}{html_ext}"
 
     # Dynamic override of Mapillary Token in shared utils module without altering source file
     m_token = args.mapillary_token
@@ -797,6 +820,7 @@ def main():
 
     results = {}
     detailed_rows = []
+    query_viz_records = []
 
     for rep_name, splits in representations.items():
         q_vectors = np.array(splits["query"])
@@ -880,6 +904,54 @@ def main():
                 }
             )
 
+            if args.output_html:
+                from src.visualization.visualize_retrieval import haversine_km
+
+                top_scores = [
+                    round(float(sim_matrix[q_idx, db_idx]), 4)
+                    for db_idx in sorted_db_indices[:10]
+                ]
+                query_viz_records.append(
+                    {
+                        "query_id": q_id,
+                        "query_url": q_item.get("url", ""),
+                        "query_platform": q_item.get("platform", "unknown"),
+                        "query_lat": q_item.get("lat"),
+                        "query_lon": q_item.get("lon"),
+                        "ground_truth": q_label,
+                        "p1": float(p1),
+                        "p5": float(p5),
+                        "p10": float(p10),
+                        "ap": float(ap),
+                        "retrieved": [
+                            {
+                                "rank": rank + 1,
+                                "id": (
+                                    f"{r_item.get('platform', 'unknown')}_{r_item.get('photo_id', '')}"
+                                    if r_item.get("photo_id")
+                                    else r_item.get("url", "")
+                                ),
+                                "url": r_item.get("url", ""),
+                                "platform": r_item.get("platform", "unknown"),
+                                "lat": r_item.get("lat"),
+                                "lon": r_item.get("lon"),
+                                "distance_km": haversine_km(
+                                    q_item.get("lat"),
+                                    q_item.get("lon"),
+                                    r_item.get("lat"),
+                                    r_item.get("lon"),
+                                ),
+                                "predicted_label": r_label,
+                                "similarity": top_scores[rank],
+                                "is_match": bool(r_label == q_label),
+                            }
+                            for rank, (r_item, r_label) in enumerate(
+                                zip(retrieved_items, retrieved_labels)
+                            )
+                        ],
+                    }
+                )
+
         # Normalize metrics by query count
         valid_queries = len(queries_meta)
         results[rep_name]["p@1"] = (results[rep_name]["p@1"] / valid_queries) * 100.0
@@ -945,6 +1017,23 @@ def main():
         df_detailed = pd.DataFrame(detailed_rows)
         df_detailed.to_csv(args.output_csv, index=False)
         print(f"Detailed query results saved to: {os.path.abspath(args.output_csv)}")
+
+    # Save interactive HTML retrieval visualizer
+    if args.output_html and query_viz_records:
+        from src.visualization.visualize_retrieval import generate_retrieval_html
+
+        rep_key = list(results.keys())[0] if results else "default"
+        rep_metrics = results.get(rep_key, {})
+        generate_retrieval_html(
+            args.output_html,
+            "Environmental Zones Representation Retrieval Visualizer",
+            args.model_name,
+            rep_metrics,
+            query_viz_records,
+            max_samples=args.visualize_samples
+            if args.visualize_samples > 0
+            else len(query_viz_records),
+        )
 
 
 if __name__ == "__main__":
