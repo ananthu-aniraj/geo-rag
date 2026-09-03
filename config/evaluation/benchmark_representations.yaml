@@ -1,0 +1,66 @@
+# Configuration for Representation & Layout Retrieval Benchmarking Suite (src/evaluation/benchmark_representations.py)
+
+model:
+  # Hugging Face model identifier or timm model name (e.g. google/tipsv2-b14, vit_base_patch14_dinov2.lvd142m)
+  name: "google/tipsv2-b14"
+  # Optional path to local model checkpoint (.npz or .pt)
+  checkpoint_path: null
+
+dataset:
+  # Path to database file (supports .parquet or .csv)
+  input_path: "full_pipeline_output/geo_space_deduplicated.parquet"
+  # Optional space-separated list of offline dataset directories
+  offline_dataset_dirs: ""
+  # Number of database images to sample (balanced across platforms if available)
+  num_images: 300
+  # Number of query evaluations to run
+  num_queries: 50
+  # Random seed for reproducible sampling and evaluation
+  seed: 42
+  # GPU batch size for feature extraction
+  batch_size: 16
+
+options:
+  # Enable PCA-based representations (AnyUp-PCA Snapped Mask and Global PCA Layout Histograms)
+  enable_pca: false
+  # Evaluate FP16 alongside FP32 for each representation
+  enable_fp16: true
+  # Enable SegFormer semantic segmentation masking
+  use_segformer: true
+  # Foreground attention filtering options (only computed if representation is selected)
+  fg_attn_threshold: 2.0     # Multiplier over uniform attention (1/N)
+  max_fg_ratio: 0.05         # 1/20 of all patch tokens (5%)
+
+output:
+  # Directory where report and plots are saved
+  output_dir: "./benchmark_results"
+  # Text report summary filename
+  output_report: "representations_report.txt"
+  # Detailed query results CSV filename
+  output_csv: "representations_results.csv"
+  # Whether to generate and save visualization PNG plots
+  save_plots: true
+
+# Select which representations to benchmark
+# Available options:
+#   - "cls"                        : Global CLS Token
+#   - "unmasked_avg"               : Unmasked Patch Average
+#   - "cls_attn_fg_removed"        : CLS Attention Foreground-Removed Patch Average
+#   - "cls_plus_fg_removed_concat" : CLS + Foreground-Removed Patch Average (Concat)
+#   - "segformer_masked"           : SegFormer ADE150 Masked Patch Average
+#   - "tips_ade_masked"            : TIPSv2 Zero-Shot ADE150 Masked Patch Average
+#   - "anyup_snapped"              : AnyUp-PCA Snapped Mask Average (requires enable_pca: true)
+#   - "cls_tips_ade_concat"        : CLS + TIPSv2 ADE20K-Masked (Concat)
+#   - "cls_unmasked_concat"        : CLS + Unmasked Average (Concat)
+#   - "hybrid_land_use"            : Hybrid Land Use (TIPSv2 ADE + Global PCA Layout Histogram) (requires enable_pca: true)
+representations:
+  - "cls"
+  - "unmasked_avg"
+  - "cls_attn_fg_removed"
+  - "cls_plus_fg_removed_concat"
+  - "segformer_masked"
+  - "tips_ade_masked"
+  - "cls_tips_ade_concat"
+  - "cls_unmasked_concat"
+  # - "anyup_snapped"
+  # - "hybrid_land_use"
