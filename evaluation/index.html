@@ -1,0 +1,2405 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../pipeline/09_visualization_dashboards/">
+      
+      
+        <link rel="next" href="../evaluation_results/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Evaluation - Geo-RAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#evaluation-benchmarking-methodology" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Geo-RAG" class="md-header__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Geo-RAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Evaluation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../dataset/" class="md-tabs__link">
+          
+  
+  
+  Dataset Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../pipeline/" class="md-tabs__link">
+          
+  
+  
+  Pipeline Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Evaluation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../evaluation_results/" class="md-tabs__link">
+          
+  
+  
+  Benchmark Results
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Geo-RAG" class="md-nav__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Geo-RAG
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Dataset Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset_publication_roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publication Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Pipeline Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/01_ingestion_scraping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Ingestion & Scraping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/02_spatial_deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Spatial Deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/03_timestamp_standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Timestamp Standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/04_coordinate_cleanup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/05_optimal_k_estimation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Optimal K Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/06_clustering_dynamic_drift/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Clustering & Drift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/07_mllm_labeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/08_spatial_semantic_indexing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Spatial-Semantic Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/09_visualization_dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-vlm-captioning-places365-classification-caption_testpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📊 1. VLM Captioning &amp; Places365 Classification (caption_test.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📊 1. VLM Captioning &amp; Places365 Classification (caption_test.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-lucas-2018-classification-benchmark-evaluate_lucaspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🌾 2. LUCAS 2018 Classification Benchmark (evaluate_lucas.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🌾 2. LUCAS 2018 Classification Benchmark (evaluate_lucas.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-cross-modal-image-caption-retrieval-evaluate_retrievalpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔄 3. Cross-Modal Image-Caption Retrieval (evaluate_retrieval.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔄 3. Cross-Modal Image-Caption Retrieval (evaluate_retrieval.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-lucas-semantic-retrieval-benchmarking-benchmark_lucaspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📈 4. LUCAS Semantic Retrieval Benchmarking (benchmark_lucas.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📈 4. LUCAS Semantic Retrieval Benchmarking (benchmark_lucas.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-places365-hierarchy-retrieval-benchmarking-benchmark_placespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⛰️ 5. Places365 Hierarchy Retrieval Benchmarking (benchmark_places.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⛰️ 5. Places365 Hierarchy Retrieval Benchmarking (benchmark_places.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-eunis-ecosystem-map-retrieval-benchmarking-benchmark_eunispy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (benchmark_eunis.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (benchmark_eunis.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-environmental-zones-of-europe-retrieval-benchmarking-benchmark_environmental_zonespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🌲 7. Environmental Zones of Europe Retrieval Benchmarking (benchmark_environmental_zones.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🌲 7. Environmental Zones of Europe Retrieval Benchmarking (benchmark_environmental_zones.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-evaluations-using-shell-orchestrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🏃 Running Evaluations using Shell Orchestrators
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🏃 Running Evaluations using Shell Orchestrators">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-offline-semantic-evaluation-lucas-places365" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Offline Semantic Evaluation (LUCAS &amp; Places365)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-spatialenvironmental-evaluation-environmental-zones-eunis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Spatial/Environmental Evaluation (Environmental Zones &amp; EUNIS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-model-benchmarking-timm-tipsv2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🎛️ Multi-Model Benchmarking (timm &amp; TIPSv2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-segformer-segmentation-speedup-toggle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ Optional SegFormer Segmentation (Speedup Toggle)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automated-multi-model-comparison-run_comparisonsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📊 Automated Multi-Model Comparison (run_comparison.sh)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📊 Automated Multi-Model Comparison (run_comparison.sh)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combined-evaluation-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📈 Combined Evaluation Flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-efficient-large-scale-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💾 Memory-Efficient Large-Scale Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmark Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_eunis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_lucas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LUCAS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_places/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Places Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-vlm-captioning-places365-classification-caption_testpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📊 1. VLM Captioning &amp; Places365 Classification (caption_test.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📊 1. VLM Captioning &amp; Places365 Classification (caption_test.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-lucas-2018-classification-benchmark-evaluate_lucaspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🌾 2. LUCAS 2018 Classification Benchmark (evaluate_lucas.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🌾 2. LUCAS 2018 Classification Benchmark (evaluate_lucas.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-cross-modal-image-caption-retrieval-evaluate_retrievalpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔄 3. Cross-Modal Image-Caption Retrieval (evaluate_retrieval.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔄 3. Cross-Modal Image-Caption Retrieval (evaluate_retrieval.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-lucas-semantic-retrieval-benchmarking-benchmark_lucaspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📈 4. LUCAS Semantic Retrieval Benchmarking (benchmark_lucas.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📈 4. LUCAS Semantic Retrieval Benchmarking (benchmark_lucas.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-places365-hierarchy-retrieval-benchmarking-benchmark_placespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⛰️ 5. Places365 Hierarchy Retrieval Benchmarking (benchmark_places.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⛰️ 5. Places365 Hierarchy Retrieval Benchmarking (benchmark_places.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-eunis-ecosystem-map-retrieval-benchmarking-benchmark_eunispy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (benchmark_eunis.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (benchmark_eunis.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📦 Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-environmental-zones-of-europe-retrieval-benchmarking-benchmark_environmental_zonespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🌲 7. Environmental Zones of Europe Retrieval Benchmarking (benchmark_environmental_zones.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🌲 7. Environmental Zones of Europe Retrieval Benchmarking (benchmark_environmental_zones.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#methodology_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔍 Methodology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💻 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-evaluations-using-shell-orchestrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🏃 Running Evaluations using Shell Orchestrators
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🏃 Running Evaluations using Shell Orchestrators">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-offline-semantic-evaluation-lucas-places365" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Offline Semantic Evaluation (LUCAS &amp; Places365)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-spatialenvironmental-evaluation-environmental-zones-eunis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Spatial/Environmental Evaluation (Environmental Zones &amp; EUNIS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-model-benchmarking-timm-tipsv2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🎛️ Multi-Model Benchmarking (timm &amp; TIPSv2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-segformer-segmentation-speedup-toggle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ Optional SegFormer Segmentation (Speedup Toggle)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automated-multi-model-comparison-run_comparisonsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📊 Automated Multi-Model Comparison (run_comparison.sh)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📊 Automated Multi-Model Comparison (run_comparison.sh)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combined-evaluation-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📈 Combined Evaluation Flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-efficient-large-scale-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💾 Memory-Efficient Large-Scale Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="evaluation-benchmarking-methodology">Evaluation &amp; Benchmarking Methodology</h1>
+<p>This document outlines the evaluation and benchmarking suites in the Geo-RAG pipeline. These scripts are designed to measure:</p>
+<ol>
+<li><strong>MLLM/VLM Captioning Quality &amp; Scene Classification (<code>caption_test.py</code>)</strong> - Zero-shot scene classification and text-image alignment on Places365.</li>
+<li><strong>LUCAS 2018 Classification Accuracy (<code>evaluate_lucas.py</code>)</strong> - Zero-shot VLM land cover, land use, and habitat prediction accuracy.</li>
+<li><strong>Cross-Modal Retrieval Performance (<code>evaluate_retrieval.py</code>)</strong> - Text-to-image and image-to-text retrieval using VLM captions.</li>
+<li><strong>LUCAS Semantic Retrieval Benchmarking (<code>benchmark_lucas.py</code>)</strong> - Retrieval precision, MRR, and mAP for land cover/use representation alignments.</li>
+<li><strong>Places365 Hierarchy Retrieval Benchmarking (<code>benchmark_places.py</code>)</strong> - Retrieval precision across exact place, sub-category, and macro-category levels.</li>
+<li><strong>EUNIS Ecosystem Map Retrieval Benchmarking (<code>benchmark_eunis.py</code>)</strong> - Image representation retrieval alignment with European terrestrial ecosystem classifications.</li>
+<li><strong>Environmental Zones of Europe Retrieval Benchmarking (<code>benchmark_environmental_zones.py</code>)</strong> - Image representation retrieval alignment with macro-scale European biogeographical climate zones.</li>
+</ol>
+<blockquote>
+<p>[!NOTE]
+For a detailed conceptual and mathematical explanation of all the evaluation, classification, and retrieval metrics used across these suites, please refer to the <strong><a href="../metrics/">Evaluation Metrics Guide</a></strong>.</p>
+</blockquote>
+<hr />
+<h2 id="1-vlm-captioning-places365-classification-caption_testpy">📊 1. VLM Captioning &amp; Places365 Classification (<code>caption_test.py</code>)</h2>
+<p>This script evaluates how accurately a Vision-Language Model (VLM) can describe a scene and classify it relative to the Places365 database categories.</p>
+<h3 id="methodology">🔍 Methodology</h3>
+<ol>
+<li><strong>Places365 Label Mapping:</strong> Loads Places365 macro-categories (indoor vs. outdoor natural/man-made), sub-categories, and specific class labels from an Excel mapping file.</li>
+<li><strong>MLLM Querying:</strong> Queries a local VLM (via Ollama or custom server) in a two-step prompt:
+   - <strong>Step 1:</strong> Extracts visual details (visible evidence, human activities, vegetation, land cover).
+   - <strong>Step 2:</strong> Predicts specific place classes, macro categories, and sub-categories using a structured JSON schema.</li>
+<li><strong>Evaluation Metrics:</strong>
+   - <strong>Places365 Class Similarity:</strong> Measures the cosine similarity between the sentence-embedding representation of the VLM prediction and the ground truth Places365 class name.
+   - <strong>Macro Accuracy:</strong> Binary accuracy on whether the model correctly identified if the image is Indoor, Outdoor Natural, or Outdoor Man-made.
+   - <strong>Sub-Category Similarity:</strong> Cosine similarity of predicted sub-categories against ground-truth classes.
+   - <strong>Visual Alignment (CLIP/TIPS):</strong> Computes the cosine similarity of the generated caption text against the raw image embedding.</li>
+</ol>
+<h3 id="usage">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.caption_test<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--labels_path<span class="w"> </span>path/to/places365_mapping.xlsx<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--images_dir<span class="w"> </span>path/to/test_images/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>llava:7b<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prompt_version<span class="w"> </span>v1
+</code></pre></div>
+<h3 id="outputs">📦 Outputs</h3>
+<ul>
+<li><code>vlm_evaluation_summary_[model]_[prompt_version].txt</code>: Overall accuracy and similarity summaries.</li>
+<li><code>vlm_evaluation_results_[model]_[prompt_version].csv</code>: Detailed per-image predictions (excluding large embedding fields).</li>
+<li><code>vlm_retrieval_data_[model]_[prompt_version].pkl</code>: Pickled data containing image filename, VLM caption, and raw image embeddings (used for retrieval tests).</li>
+</ul>
+<hr />
+<h2 id="2-lucas-2018-classification-benchmark-evaluate_lucaspy">🌾 2. LUCAS 2018 Classification Benchmark (<code>evaluate_lucas.py</code>)</h2>
+<p>This script benchmarks the VLM's ability to classify land cover, land use, and habitat types using ground-truth points from the <strong>LUCAS 2018 (Land Use and Coverage Area frame Survey)</strong> validation dataset.</p>
+<h3 id="methodology_1">🔍 Methodology</h3>
+<ol>
+<li><strong>LUCAS Metadata Ingestion:</strong> Loads LUCAS coordinate metadata, mapping point IDs to ground-truth labels (<code>lc_label</code>, <code>lu_label</code>, <code>eunis_class</code>).</li>
+<li><strong>VLM Classification:</strong> Queries the MLLM to classify:
+   - <strong>Land Cover (LC):</strong> e.g., Cropland, Woodland, Grassland, Shrubland.
+   - <strong>Land Use (LU):</strong> e.g., Agriculture, Forestry, Residential.
+   - <strong>EUNIS Habitat Class:</strong> Standard European habitat taxonomy.</li>
+<li><strong>Evaluation Metrics:</strong>
+   - <strong>Exact Match (EM) Accuracy:</strong> Strict string equality matches.
+   - <strong>Semantic Similarity Accuracy:</strong> Computes cosine similarity of the VLM prediction's sentence embeddings against ground-truth class name embeddings to account for synonyms (e.g. "Woodland" matching "Forest").</li>
+</ol>
+<h3 id="usage_1">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.evaluate_lucas<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--csv_path<span class="w"> </span>path/to/lucas_metadata.csv<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--images_dir<span class="w"> </span>path/to/lucas_images/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>llava<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_dir<span class="w"> </span>results/
+</code></pre></div>
+<h3 id="outputs_1">📦 Outputs</h3>
+<ul>
+<li><code>lucas_evaluation_summary_[model].txt</code>: Summarized exact matches and semantic similarity averages for LC, LU, and EUNIS.</li>
+<li><code>lucas_evaluation_results_[model].csv</code>: Row-by-row comparisons of VLM predictions vs. LUCAS ground-truth coordinates.</li>
+</ul>
+<hr />
+<h2 id="3-cross-modal-image-caption-retrieval-evaluate_retrievalpy">🔄 3. Cross-Modal Image-Caption Retrieval (<code>evaluate_retrieval.py</code>)</h2>
+<p>This script performs cross-modal (Image-to-Text and Text-to-Image) retrieval benchmarks to evaluate how well our embedding models (standard <strong>CLIP</strong> vs. <strong>TIPSv2</strong>) align textual descriptions with visual features.</p>
+<h3 id="methodology_2">🔍 Methodology</h3>
+<ol>
+<li><strong>Input Payload Ingestion:</strong> Loads the pickled <code>.pkl</code> output containing image embeddings and VLM captions generated during the captioning test.</li>
+<li><strong>Text Embedding Generation:</strong> Encodes the VLM captions and their individual components (<code>visible_evidence</code>, <code>human_activities</code>, <code>land_cover_usage</code>, <code>type_of_vegetation</code>) into a joint embedding space using CLIP or TIPSv2.</li>
+<li><strong>Retrieval Evaluations:</strong>
+   - Computes a global similarity matrix between all image embeddings and text embeddings.
+   - Evaluates <strong>Recall@1 (Top-1)</strong>, <strong>Recall@5 (Top-5)</strong>, and <strong>Mean Reciprocal Rank (MRR)</strong>.
+   - Conducts component-level ablation studies to find <em>which</em> textual details (e.g. vegetation type vs. human activities) are most aligned with the image's visual features.</li>
+</ol>
+<h3 id="usage_2">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.evaluate_retrieval<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--pkl<span class="w"> </span>path/to/vlm_retrieval_data.pkl<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_tips<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_prefix
+</code></pre></div>
+<blockquote>
+<p>[!TIP]
+Use the <code>--use_tips</code> flag to toggle between evaluation of standard CLIP embeddings and TIPSv2 aligned visual representations.</p>
+</blockquote>
+<h2 id="4-lucas-semantic-retrieval-benchmarking-benchmark_lucaspy">📈 4. LUCAS Semantic Retrieval Benchmarking (<code>benchmark_lucas.py</code>)</h2>
+<p>This script benchmarks the semantic retrieval capability of different image representations (TIPSv2 CLS, average patch, and SegFormer-masked embeddings) on the <strong>LUCAS 2018</strong> dataset. It measures how well nearest-neighbor retrieval aligns with ground-truth land cover, land use, and habitat classes, as well as projected spatial-ecological zones.</p>
+<h3 id="methodology_3">🔍 Methodology</h3>
+<ol>
+<li><strong>LUCAS Metadata Ingestion &amp; Sampling:</strong> Loads the validation CSV coordinates, matches local images using point ID grouping, and shuffles them.</li>
+<li><strong>Spatial Block Partitioning:</strong> Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using <strong>Greedy Block Stratification</strong> (stratified by primary land cover category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining strict geographic segregation and preventing point-level leakage (such as directional views of the same surveyor field coordinate being split between query and database).</li>
+<li><strong>Spatial Raster Overlay:</strong> Extracts the GPS coordinates (<code>lat</code>, <code>lon</code>) for each LUCAS point. If EUNIS and Metzger Environmental Zones GeoTIFF rasters are provided, it projects the coordinates to EPSG:3035 to query and append projected EUNIS ecosystem categories and biogeographical climate zones.</li>
+<li><strong>Batch Feature Extraction:</strong> Computes embeddings in batches on the GPU. If loading a custom checkpoint (via <code>--tips_model_path</code>), it evaluates both <code>TIPSv2 1st CLS</code> (visual/semantic) and <code>TIPSv2 2nd CLS</code> (geographic) tokens against average patch and Seg-Masked embeddings. Otherwise, it defaults to Hugging Face <code>google/tipsv2-b14</code>.</li>
+<li><strong>Retrieval Metric Computation:</strong> Queries the database using cosine similarity to retrieve the Top-10 nearest neighbors. It reports alignment metrics (P@1, P@5, P@10, mAP@10, and MRR@10) across five hierarchical/ecological levels:
+   - <strong>Land Cover</strong> (<code>lc_label</code>)
+   - <strong>Land Use</strong> (<code>lu_label</code>)
+   - <strong>EUNIS Class</strong> (<code>eunis_class</code> from CSV metadata)
+   - <strong>EUNIS Ecosystem Raster Levels 1, 2, and 3</strong> (<code>eunis_raster_l1</code>, <code>eunis_raster_l2</code>, <code>eunis_raster_l3</code> from raster overlay, optional)
+   - <strong>Environmental Zone</strong> (<code>env_zone_class</code> from raster overlay, optional)</li>
+</ol>
+<h3 id="usage_3">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.benchmark_lucas<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--csv<span class="w"> </span>path/to/Sen4Map_Metadata_test.csv<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--images_dir<span class="w"> </span>path/to/lucas_images/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--eunis_raster<span class="w"> </span>path/to/eunis_ecosystem.tif<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--env_zones_raster<span class="w"> </span>path/to/environmental_zones.tif<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_path<span class="w"> </span>path/to/checkpoint.npz<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_variant<span class="w"> </span>B<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_queries<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_database<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_report<span class="w"> </span>benchmark_results/lucas_report.txt<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_csv<span class="w"> </span>benchmark_results/lucas_results.csv
+</code></pre></div>
+<h3 id="outputs_2">📦 Outputs</h3>
+<ul>
+<li><code>benchmark_results/lucas_report.txt</code>: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.</li>
+<li><code>benchmark_results/lucas_results.csv</code>: A detailed CSV table containing the exact query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.</li>
+</ul>
+<hr />
+<h2 id="5-places365-hierarchy-retrieval-benchmarking-benchmark_placespy">⛰️ 5. Places365 Hierarchy Retrieval Benchmarking (<code>benchmark_places.py</code>)</h2>
+<p>This script benchmarks the semantic retrieval performance of different representations on the <strong>Places365</strong> dataset. It maps images to categories using the hierarchy defined in <code>Scene_hierarchy.xlsx</code> to measure how well retrieval preserves visual and scene categories.</p>
+<h3 id="methodology_4">🔍 Methodology</h3>
+<ol>
+<li><strong>Places Ingestion &amp; Hierarchy Mapping:</strong> Reads the test directory structure, matching each image to its folder name (exact place), mapping it to macro-category (indoor vs. outdoor) and sub-category.</li>
+<li><strong>GPU Feature Extraction:</strong> Computes embeddings in batches. Supports loading official checkpoints (via <code>--tips_model_path</code>) comparing <code>TIPSv2 1st CLS</code> and <code>TIPSv2 2nd CLS</code> representations. You can optionally include CLIP (<code>--compare_clip</code>) and Hugging Face's <code>google/tipsv2-b14</code> model (<code>--compare_hf_tips</code>) in the comparison.</li>
+<li><strong>Retrieval Evaluations:</strong> Cosine similarity retrieves the Top-10 nearest neighbors from the database pool. Accuracy metrics (P@1, P@5, P@10, mAP@10, and MRR@10) are reported across three hierarchical levels: <strong>Exact Place Category</strong>, <strong>Sub-Category</strong>, and <strong>Macro Category</strong>.</li>
+</ol>
+<h3 id="usage_4">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.benchmark_places<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--labels<span class="w"> </span>path/to/Scene_hierarchy.xlsx<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--img_dir<span class="w"> </span>path/to/places365_images/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_path<span class="w"> </span>path/to/checkpoint.npz<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_variant<span class="w"> </span>B<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--compare_clip<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--compare_hf_tips<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_queries<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_database<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_report<span class="w"> </span>benchmark_results/places_report.txt<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_csv<span class="w"> </span>benchmark_results/places_results.csv
+</code></pre></div>
+<h3 id="outputs_3">📦 Outputs</h3>
+<p>Output filenames are formatted dynamically by appending the seed and query count (<code>_s[seed]_q[queries]</code>) to prevent overwriting results across experiments:</p>
+<ul>
+<li><code>benchmark_results/places_report_s42_q100.txt</code>: A plain text report summary comparing retrieval accuracy metrics across all representations and labels.</li>
+<li><code>benchmark_results/places_results_s42_q100.csv</code>: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding metrics.</li>
+</ul>
+<hr />
+<h2 id="6-eunis-ecosystem-map-retrieval-benchmarking-benchmark_eunispy">🗺️ 6. EUNIS Ecosystem Map Retrieval Benchmarking (<code>benchmark_eunis.py</code>)</h2>
+<p>This script performs geobotanical representation benchmarking on arbitrary geolocated images in Europe (e.g. scraped Flickr/Mapillary datasets). It overlays WGS84 coordinates on the 2024 <strong>EUNIS Ecosystem GeoTIFF raster map</strong> (<code>eunis_dominant.tif</code>) to extract the ecosystem type, evaluating whether nearest-neighbor retrieval aligns with European habitats across hierarchical levels.</p>
+<h3 id="methodology_5">🔍 Methodology</h3>
+<ol>
+<li><strong>EUNIS Raster Coordinate Lookup:</strong> Reads your scraped CSV metadata, transforms coordinates into EPSG:3035 using <code>pyproj</code>, and queries the local EUNIS GeoTIFF.</li>
+<li><strong>EUNIS Legend Parsing:</strong> Reads the <code>eunis_legend_detailed.csv</code> legend file located alongside the raster to extract EUNIS Level 1 (Macro), Level 2 (Meso), and Level 3 (Exact) class labels.</li>
+<li><strong>Spatial Block Partitioning:</strong> Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using <strong>Greedy Block Stratification</strong> (stratified by EUNIS category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).</li>
+<li><strong>GPU Feature Extraction:</strong> Computes embeddings in batches. Supports loading custom checkpoints via <code>--tips_model_path</code> (evaluating both CLS tokens), defaulting to Hugging Face <code>google/tipsv2-b14</code> if omitted.</li>
+<li><strong>Retrieval Evaluations:</strong> Reports P@1, P@5, P@10, mAP@10, and MRR@10 across three hierarchical habitat levels: <strong>EUNIS Level 1 (Macro)</strong>, <strong>EUNIS Level 2 (Meso)</strong>, and <strong>EUNIS Level 3 (Exact)</strong>.</li>
+</ol>
+<h3 id="usage_5">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.benchmark_eunis<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--csv_path<span class="w"> </span>path/to/scraped_data.csv<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_path<span class="w"> </span>path/to/checkpoint.npz<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_variant<span class="w"> </span>B<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_queries<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_database<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_report<span class="w"> </span>benchmark_results/eunis_report.txt<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_csv<span class="w"> </span>benchmark_results/eunis_results.csv
+</code></pre></div>
+<h3 id="outputs_4">📦 Outputs</h3>
+<ul>
+<li><code>benchmark_results/eunis_report.txt</code>: A plain text report summary comparing retrieval accuracy metrics across all representations and EUNIS levels.</li>
+<li><code>benchmark_results/eunis_results.csv</code>: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.</li>
+</ul>
+<hr />
+<h2 id="7-environmental-zones-of-europe-retrieval-benchmarking-benchmark_environmental_zonespy">🌲 7. Environmental Zones of Europe Retrieval Benchmarking (<code>benchmark_environmental_zones.py</code>)</h2>
+<p>This script performs macro-scale biogeographical representation benchmarking on geolocated images in Europe. It overlays WGS84 coordinates on the <strong>Environmental Zones of Europe (Metzger 2025)</strong> GeoTIFF raster map to extract the climate/ecological zone class (1–19), evaluating whether representations capture continental-scale geographical and geobotanical stratification under retrieval.</p>
+<h3 id="methodology_6">🔍 Methodology</h3>
+<ol>
+<li><strong>Environmental Zone Raster Lookup:</strong> Reads scraped image CSV coordinates, projects them to EPSG:3035, and queries the Metzger 2025 GeoTIFF using <code>rasterio</code>.</li>
+<li><strong>Category Extraction:</strong> Maps the sampled value to one of the 19 Environmental Zones (e.g. <em>Boreal</em>, <em>Continental</em>, <em>Arctic</em>).</li>
+<li><strong>Spatial Block Partitioning:</strong> Maps each coordinate to an H3 Resolution 4 parent block (~11,000 km²). Unique blocks are partitioned using <strong>Greedy Block Stratification</strong> (stratified by Environmental Zone category): this ensures that every class (with at least 2 unique blocks) is represented in both the 20% query pool and 80% database search space, maintaining complete geographic segregation and preventing spatial sequence leakage (e.g. sequential streetscapes from the same photo track).</li>
+<li><strong>GPU Feature Extraction:</strong> Computes embeddings in batches. Supports loading custom checkpoints via <code>--tips_model_path</code> (evaluating both CLS tokens), defaulting to Hugging Face <code>google/tipsv2-b14</code> if omitted.</li>
+<li><strong>Retrieval Evaluations:</strong> Reports Precision@1, Precision@5, Precision@10, mAP@10, and MRR@10 on European Environmental Zones.</li>
+</ol>
+<h3 id="usage_6">💻 Usage</h3>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.evaluation.benchmark_environmental_zones<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--csv_path<span class="w"> </span>path/to/scraped_data.csv<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_path<span class="w"> </span>path/to/checkpoint.npz<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tips_model_variant<span class="w"> </span>B<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_queries<span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num_database<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_report<span class="w"> </span>benchmark_results/env_zones_report.txt<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_csv<span class="w"> </span>benchmark_results/env_zones_results.csv
+</code></pre></div>
+<h2 id="running-evaluations-using-shell-orchestrators">🏃 Running Evaluations using Shell Orchestrators</h2>
+<p>To make evaluations easily reproducible and readable, the pipeline uses YAML files to manage configuration parameters, and provides two unified shell runners:</p>
+<h3 id="1-offline-semantic-evaluation-lucas-places365">1. Offline Semantic Evaluation (LUCAS &amp; Places365)</h3>
+<ul>
+<li><strong>Configuration</strong>: <code>config/evaluation/params_offline.yaml</code></li>
+<li><strong>Shell Script</strong>: <code>./scripts/evaluation/run_offline_eval_semantic.sh</code></li>
+<li><strong>Operation</strong>: Reads parameters from the offline YAML file and runs <code>benchmark_lucas.py</code> and <code>benchmark_places.py</code> sequentially, saving results into <code>benchmark_results/</code>.</li>
+</ul>
+<h3 id="2-spatialenvironmental-evaluation-environmental-zones-eunis">2. Spatial/Environmental Evaluation (Environmental Zones &amp; EUNIS)</h3>
+<ul>
+<li><strong>Configuration</strong>: <code>config/evaluation/params_online.yaml</code></li>
+<li><strong>Shell Script</strong>: <code>./scripts/evaluation/run_offline_eval_spatial.sh</code></li>
+<li><strong>Operation</strong>: Reads parameters from the online YAML file and runs <code>benchmark_environmental_zones.py</code> and <code>benchmark_eunis.py</code> sequentially, saving results into <code>benchmark_results/</code>.</li>
+</ul>
+<h3 id="multi-model-benchmarking-timm-tipsv2">🎛️ Multi-Model Benchmarking (timm &amp; TIPSv2)</h3>
+<p>All 4 benchmark scripts support evaluating different vision representations. You can configure which model to load in the YAML configuration parameters:</p>
+<ul>
+<li><strong>timm Models</strong>: Set <code>model_name</code> to a timm identifier (e.g. <code>vit_base_patch14_dinov2.lvd142m</code> or <code>resnet50</code>). Standard models like DINOv2 or SigLIP are loaded through timm.</li>
+<li><strong>TIPSv2 Models</strong>: Set <code>model_name</code> to <code>google/tipsv2-b14</code> or a path to a local TIPSv2 checkpoint. These models employ the custom TIPSv2 feature extraction layout and MaskCLIP value attention tricks.</li>
+</ul>
+<p>At runtime, the loader automatically queries <code>timm</code> to resolve the correct input resolution, normalization, and transforms for timm models, and defaults to custom preprocessing for TIPSv2. It also checks for prefix tokens (such as CLS and registers) via <code>model.num_prefix_tokens</code> to dynamically align patch tokens during spatial masking evaluations.</p>
+<h3 id="optional-segformer-segmentation-speedup-toggle">⚡ Optional SegFormer Segmentation (Speedup Toggle)</h3>
+<p>To calculate the geobotanical <code>Seg-Masked</code> patch representations, the benchmark scripts load the <strong>SegFormer</strong> model (<code>nvidia/segformer-b0-finetuned-ade-512-512</code>) to identify and discard background/sky classes. Because running SegFormer inference on every batch introduces a non-trivial computational and memory overhead, you can turn it off to significantly speed up your evaluations:</p>
+<ul>
+<li><strong>YAML Toggle</strong>: Set <code>use_segformer: false</code> in <code>config/evaluation/params_offline.yaml</code> or <code>config/evaluation/params_online.yaml</code>.</li>
+<li><strong>CLI Flag</strong>: Run individual scripts with the <code>--no_segformer</code> command-line argument.</li>
+</ul>
+<p>When disabled, SegFormer is not loaded into memory, background masks are not processed, and evaluation runs <strong>several times faster</strong>, extracting only the core visual representations (<code>CLS</code>, <code>Average Patch</code>, and concatenation combos).</p>
+<h3 id="automated-multi-model-comparison-run_comparisonsh">📊 Automated Multi-Model Comparison (<code>run_comparison.sh</code>)</h3>
+<p>If you want to evaluate multiple models side-by-side on a specific dataset without manually editing configuration files or copy-pasting tables, you can configure your target models in the YAML config and run the comparison script:</p>
+<ol>
+<li><strong>Set target models</strong>: Define the list of model names inside <strong><a href="../config/evaluation/compare_models.yaml"><code>config/evaluation/compare_models.yaml</code></a></strong>:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="nt">models</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"google/tipsv2-b14"</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"vit_base_patch14_dinov2.lvd142m"</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"resnet50"</span>
+</code></pre></div>
+<ol start="2">
+<li><strong>Execute comparison</strong>: Run the orchestrator shell script specifying the target benchmark:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>./scripts/evaluation/run_comparison.sh<span class="w"> </span><span class="o">[</span>lucas<span class="p">|</span>places<span class="p">|</span>eunis<span class="p">|</span>env_zones<span class="o">]</span>
+</code></pre></div>
+<h4 id="how-it-works">How it works:</h4>
+<ol>
+<li><strong>Reads config</strong>: Automatically reads dataset parameters (number of queries, dataset paths, SegFormer status, etc.) from <code>config/evaluation/params_offline.yaml</code> or <code>params_online.yaml</code> based on the selected benchmark.</li>
+<li><strong>Runs benchmarks sequentially</strong>: Executes the underlying python benchmark for each model listed in <code>compare_models.yaml</code> in sequence, saving individual model reports safely with sanitized filenames (preventing them from overwriting each other).</li>
+<li><strong>Collates results</strong>: Parses each generated text report, extracts the metrics (Precision@1, Precision@5, Precision@10, MAP@10, and MRR@10) across all representations, and consolidates them into a single markdown file (<code>benchmark_results/comparison_[benchmark].md</code>).</li>
+<li><strong>Prints summary</strong>: Outputs the final collated comparison markdown table directly to your console.</li>
+</ol>
+<hr />
+<h2 id="combined-evaluation-flow">📈 Combined Evaluation Flow</h2>
+<p>To run an end-to-end evaluation cycle:</p>
+<ol>
+<li>Populate your dataset paths and parameters in <code>config/evaluation/params_offline.yaml</code> and <code>config/evaluation/params_online.yaml</code>.</li>
+<li>Run <code>./scripts/evaluation/run_offline_eval_semantic.sh</code> to benchmark semantic representation retrieval precision on local datasets.</li>
+<li>Run <code>./scripts/evaluation/run_offline_eval_spatial.sh</code> to measure geobotanical and climate alignment retrieval precision on geolocated databases.</li>
+<li>Run <code>caption_test.py</code> to caption a set of validation images and generate embeddings.</li>
+<li>Run <code>evaluate_retrieval.py</code> on the resulting pickle output to benchmark the retrieval metrics.</li>
+<li>Inspect text reports in the <code>benchmark_results/</code> directory (e.g. <code>lucas_report.txt</code>, <code>places_report.txt</code>, <code>eunis_report.txt</code>, <code>environmental_zones_report.txt</code>) for overall alignment summaries.</li>
+</ol>
+<hr />
+<h2 id="memory-efficient-large-scale-evaluation">💾 Memory-Efficient Large-Scale Evaluation</h2>
+<p>When evaluating large databases (e.g. <code>num_database</code> set up to 100,000 or more), holding all images simultaneously in RAM as PIL Image objects will cause system Out-Of-Memory (OOM) crashes. Both <code>benchmark_environmental_zones.py</code> and <code>benchmark_eunis.py</code> employ a stream-processing and memory-capped architecture:</p>
+<ol>
+<li><strong>Query Pre-load &amp; Free:</strong> Queries are downloaded and embedded first. Raw query images are then immediately closed and popped from RAM.</li>
+<li><strong>Chunked Database Processing:</strong> Database images are downloaded, embedded, and discarded in sequential chunks of <strong>1,000 images</strong>.</li>
+<li><strong>GPU VRAM Cleanup:</strong> Intermediate PyTorch tensors are deleted dynamically and local PIL streams are closed immediately at the end of each chunk.</li>
+<li><strong>Index Mismatch Protection:</strong> The scripts dynamically filter the database metadata list to match only successfully downloaded entries, preventing indexing mismatches during batched similarity evaluations.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../assets/js/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

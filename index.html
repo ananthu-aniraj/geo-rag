@@ -1,0 +1,1909 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+      
+        <link rel="next" href="dataset/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Geo-RAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#geo-rag" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="Geo-RAG" class="md-header__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Geo-RAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Home
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="dataset/" class="md-tabs__link">
+          
+  
+  
+  Dataset Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="pipeline/" class="md-tabs__link">
+          
+  
+  
+  Pipeline Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="evaluation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Evaluation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="evaluation_results/" class="md-tabs__link">
+          
+  
+  
+  Benchmark Results
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="Geo-RAG" class="md-nav__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Geo-RAG
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#technical-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📖 Technical Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📂 Project Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚀 Getting Started
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚀 Getting Started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#downloading-the-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloading the Dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#setting-up-api-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setting up API Credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingestion-scraping-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📡 Ingestion &amp; Scraping Scripts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-postprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ Data Postprocessing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation-environment-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🛠️ Installation &amp; Environment Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🛠️ Installation &amp; Environment Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-create-a-virtual-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Create a Virtual Environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-install-package-and-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Install Package and Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-install-pytorch-faiss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Install PyTorch &amp; FAISS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-docker-nvidia-container-toolkit-for-vlm-auto-labeling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Docker &amp; NVIDIA Container Toolkit (For VLM Auto-Labeling)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-unit-integration-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧪 Running Unit &amp; Integration Tests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧪 Running Unit &amp; Integration Tests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-tests-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Tests Locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cicd-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI/CD Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-ubuntu-apparmor-container-termination-hangs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚠️ Troubleshooting: Ubuntu AppArmor &amp; Container Termination hangs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚠️ Troubleshooting: Ubuntu AppArmor &amp; Container Termination hangs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symptom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symptom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#solution-implemented-in-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Solution (Implemented in Pipeline)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Dataset Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="dataset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="dataset_publication_roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publication Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Pipeline Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/01_ingestion_scraping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Ingestion & Scraping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/02_spatial_deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Spatial Deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/03_timestamp_standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Timestamp Standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/04_coordinate_cleanup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/05_optimal_k_estimation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Optimal K Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/06_clustering_dynamic_drift/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Clustering & Drift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/07_mllm_labeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/08_spatial_semantic_indexing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Spatial-Semantic Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pipeline/09_visualization_dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmark Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="evaluation_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="evaluation_results/comparison_eunis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="evaluation_results/comparison_lucas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LUCAS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="evaluation_results/comparison_places/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Places Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#technical-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📖 Technical Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📂 Project Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚀 Getting Started
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚀 Getting Started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#downloading-the-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloading the Dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#setting-up-api-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setting up API Credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingestion-scraping-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📡 Ingestion &amp; Scraping Scripts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-postprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ Data Postprocessing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation-environment-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🛠️ Installation &amp; Environment Setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🛠️ Installation &amp; Environment Setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-create-a-virtual-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Create a Virtual Environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-install-package-and-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Install Package and Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-install-pytorch-faiss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Install PyTorch &amp; FAISS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-docker-nvidia-container-toolkit-for-vlm-auto-labeling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Docker &amp; NVIDIA Container Toolkit (For VLM Auto-Labeling)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-unit-integration-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧪 Running Unit &amp; Integration Tests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧪 Running Unit &amp; Integration Tests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-tests-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Tests Locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cicd-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI/CD Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-ubuntu-apparmor-container-termination-hangs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚠️ Troubleshooting: Ubuntu AppArmor &amp; Container Termination hangs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚠️ Troubleshooting: Ubuntu AppArmor &amp; Container Termination hangs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symptom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symptom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#solution-implemented-in-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Solution (Implemented in Pipeline)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="geo-rag">Geo-RAG</h1>
+<p><a href="https://ananthu-aniraj.github.io/geo-rag/"><img alt="Wiki / Docs" src="https://img.shields.io/badge/Docs-Interactive_Wiki-009688.svg?logo=materialformkdocs&amp;logoColor=white" /></a>
+<a href="https://github.com/ananthu-aniraj/geo-rag/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ananthu-aniraj/geo-rag/actions/workflows/ci.yml/badge.svg" /></a>
+<a href="https://opensource.org/licenses/Apache-2.0"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" /></a></p>
+<p>A global spatial-semantic mapping, clustering, and data engineering pipeline for geotagged ground-level imagery.</p>
+<hr />
+<h2 id="technical-documentation">📖 Technical Documentation</h2>
+<p>Visit our full interactive documentation and pipeline walkthroughs at:
+👉 <strong><a href="https://ananthu-aniraj.github.io/geo-rag/">Geo-RAG Interactive Wiki &amp; Docs</a></strong></p>
+<p>For direct browsing within this repository:</p>
+<ul>
+<li>👉 <strong><a href="pipeline/">Data Engineering Documentation</a></strong></li>
+<li>👉 <strong><a href="evaluation/">Evaluation &amp; Benchmarking Documentation</a></strong></li>
+<li>👉 <strong><a href="dataset/">Dataset Structure &amp; Loading Guide</a></strong></li>
+<li>👉 <strong><a href="changelog/">Changelog &amp; Recent Updates</a></strong></li>
+</ul>
+<hr />
+<h2 id="project-structure">📂 Project Structure</h2>
+<div class="highlight"><pre><span></span><code>geo-rag/
+├── config/                       # Centralized parameter &amp; credentials files
+│   ├── evaluation/               # Evaluation parameters (params, compare_models.yaml)
+│   ├── pipeline/                 # Core pipeline parameters (params.yaml)
+│   ├── scrapers/                 # Scraper execution configs (YAML)
+│   └── wiki/                     # MkDocs wiki configuration (YAML)
+├── docs/                         # Technical Documentation &amp; Wiki pages
+│   ├── assets/                   # Website styling and frontend assets (MathJax, etc.)
+│   ├── evaluation_results/       # Collated benchmark comparison reports (EUNIS, LUCAS, Places)
+│   ├── pipeline/                 # Data engineering step-by-step pipeline stages
+│   │   ├── 01_ingestion_scraping.md
+│   │   ├── 02_spatial_deduplication.md
+│   │   ├── ...
+│   │   └── 09_visualization_dashboards.md
+│   ├── changelog.md              # Project history and release changes
+│   ├── dataset.md                # Dataset files, structures, &amp; loading guide
+│   ├── dataset_publication_roadmap.md # Best practices &amp; hosting steps for publishing
+│   ├── evaluation.md             # Benchmark evaluations &amp; retrieval suites
+│   ├── metrics.md                # Evaluation &amp; retrieval metrics definitions
+│   ├── pipeline.md               # Data engineering details &amp; architecture overview
+│   └── pipeline_flowchart_clean.jpg # Pipeline architecture flowchart diagram
+├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
+├── scripts/                      # Automated shell orchestrators
+│   ├── evaluation/               # Evaluation &amp; collated model comparison runners
+│   └── scrapers/                 # Data collection and profiling runner wrappers
+├── shapefiles/                   # GIS shapefiles (admin borders &amp; uncovered land polygons)
+├── src/                          # Core Python Package
+│   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
+│   ├── indexing/                 # K-Means clustering &amp; H3 spatial-semantic index builder
+│   ├── processing/               # Data cleaning, deduplication &amp; timestamp standardization
+│   ├── scrapers/                 # Data collection (Mapillary, Flickr, iNaturalist, GBIF)
+│   ├── utils/                    # LULC taxonomies, statistics, &amp; cluster validation
+│   └── visualization/            # Map generators, dashboard templates &amp; visualizers
+├── .env                          # Local credentials file (gitignored)
+├── .env.template                 # Template for API credentials configuration
+└── run_full_pipeline.sh          # Full end-to-end data processing pipeline
+</code></pre></div>
+<hr />
+<h2 id="getting-started">🚀 Getting Started</h2>
+<p>This project uses <strong>DVC (Data Version Control)</strong> to manage and version large datasets, visual embeddings, and visualization outputs generated by the pipeline, keeping the Git repository lightweight.</p>
+<h3 id="downloading-the-dataset">Downloading the Dataset</h3>
+<p>To download the latest version of the dataset locally (requires access to the storage server):</p>
+<ol>
+<li>Clone the repository</li>
+<li>Install DVC and SSH support:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>dvc<span class="w"> </span>dvc-ssh
+</code></pre></div>
+<ol start="3">
+<li>Configure your local storage remote URL and credentials:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>dvc<span class="w"> </span>remote<span class="w"> </span>modify<span class="w"> </span>--local<span class="w"> </span>hdd_cache<span class="w"> </span>url<span class="w"> </span>&lt;storage_server_ssh_url&gt;
+dvc<span class="w"> </span>remote<span class="w"> </span>modify<span class="w"> </span>--local<span class="w"> </span>hdd_cache<span class="w"> </span>user<span class="w"> </span>&lt;your_username&gt;
+</code></pre></div>
+<ol start="4">
+<li>Pull the dataset outputs:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>dvc<span class="w"> </span>pull<span class="w"> </span>full_pipeline_output.dvc
+</code></pre></div>
+<h3 id="setting-up-api-credentials">Setting up API Credentials</h3>
+<p>Before running scraper utilities or evaluation runs, set up your local API keys:</p>
+<ol>
+<li>Copy the environment template file:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>cp<span class="w"> </span>.env.template<span class="w"> </span>.env
+</code></pre></div>
+<ol start="2">
+<li>Open <code>.env</code> and fill in your Flickr API keys, Mapillary access tokens, and Hugging Face tokens. The <code>.env</code> file is gitignored and remains local.</li>
+</ol>
+<hr />
+<h2 id="ingestion-scraping-scripts">📡 Ingestion &amp; Scraping Scripts</h2>
+<p>For detailed documentation, scripts, API queries, Nominatim geocoding, boundary filtering, and spatial difference masks, please refer to:</p>
+<p>👉 <strong><a href="pipeline/01_ingestion_scraping/">Ingestion &amp; Scraping Utilities Documentation</a></strong></p>
+<p>The <code>/scripts/scrapers/</code> folder contains automated shell orchestrators for batch search loops:</p>
+<ul>
+<li><strong>Flickr Global/Local Search</strong>: <a href="scripts/scrapers/run_flickr_scraper.sh"><code>run_flickr_scraper.sh</code></a></li>
+<li><strong>Mapillary Street View Search</strong>: <a href="scripts/scrapers/run_mapillary_scraper.sh"><code>run_mapillary_scraper.sh</code></a></li>
+<li><strong>iNaturalist Species Observations</strong>: <a href="scripts/scrapers/run_inaturalist_scrapers.sh"><code>run_inaturalist_scrapers.sh</code></a></li>
+<li><strong>OpenStreetMap Boundaries Search</strong>: <a href="scripts/scrapers/run_osm_scraper.sh"><code>run_osm_scraper.sh</code></a></li>
+</ul>
+<hr />
+<h2 id="data-postprocessing">⚙️ Data Postprocessing</h2>
+<p>To postprocess scraped images, cluster them semantically, auto-label clusters, build spatial-semantic H3 indices, and generate interactive maps:</p>
+<div class="highlight"><pre><span></span><code>./run_full_pipeline.sh
+</code></pre></div>
+<hr />
+<h2 id="installation-environment-setup">🛠️ Installation &amp; Environment Setup</h2>
+<p>This project requires Python 3.10+ and conda/mamba or virtualenv.</p>
+<h3 id="1-create-a-virtual-environment">1. Create a Virtual Environment</h3>
+<p>We recommend using Conda to manage geographic dependencies (like <code>gdal</code> and <code>proj</code> required by <code>rasterio</code> and <code>geopandas</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Create and activate environment</span>
+conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>geo_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12<span class="w"> </span>-y
+conda<span class="w"> </span>activate<span class="w"> </span>geo_env
+
+<span class="c1"># Install gdal/geos/proj dependencies (conda makes this seamless)</span>
+conda<span class="w"> </span>install<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span>gdal<span class="w"> </span>proj<span class="w"> </span>-y
+</code></pre></div>
+<h3 id="2-install-package-and-dependencies">2. Install Package and Dependencies</h3>
+<p>Install the package in <strong>editable mode</strong> along with all core dependencies:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Clone the repository</span>
+git<span class="w"> </span>clone<span class="w"> </span>https://github.com/ananthu-aniraj/geo-rag.git
+<span class="nb">cd</span><span class="w"> </span>geo-rag
+
+<span class="c1"># Install core packages and register local package</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+
+<span class="c1"># (Optional) Install developer packages and configure Git pre-commit hooks</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
+pre-commit<span class="w"> </span>install
+</code></pre></div>
+<h3 id="3-install-pytorch-faiss">3. Install PyTorch &amp; FAISS</h3>
+<p>Install PyTorch and FAISS based on your hardware configuration:</p>
+<p>Please refer to the <a href="https://pytorch.org/get-started/locally/">official PyTorch installation guide</a> for the latest instructions.</p>
+<ul>
+<li><strong>For CUDA-enabled GPU (Highly Recommended for fast clustering):</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code>pip3<span class="w"> </span>install<span class="w"> </span>torch<span class="w"> </span>torchvision
+pip<span class="w"> </span>install<span class="w"> </span>faiss-gpu
+</code></pre></div>
+<ul>
+<li><strong>For CPU-only:</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code>pip3<span class="w"> </span>install<span class="w"> </span>torch<span class="w"> </span>torchvision<span class="w"> </span>--index-url<span class="w"> </span>https://download.pytorch.org/whl/cpu
+pip<span class="w"> </span>install<span class="w"> </span>faiss-cpu
+</code></pre></div>
+<h3 id="4-docker-nvidia-container-toolkit-for-vlm-auto-labeling">4. Docker &amp; NVIDIA Container Toolkit (For VLM Auto-Labeling)</h3>
+<p>The VLM cluster auto-labeling script (<code>src/indexing/label_clusters_mllm.py</code>) is controlled by <code>run_full_pipeline.sh</code>, which automatically launches an <strong>SGLang</strong> server inside a Docker container. To allow the Docker container to access the host GPU (required for VLM inference):</p>
+<ol>
+<li><strong>Install Docker Engine:</strong> Follow the official guide to install <a href="https://docs.docker.com/engine/install/">Docker Engine for your OS</a>.</li>
+<li><strong>Install NVIDIA Container Toolkit:</strong> This allows Docker containers to interface with host GPUs using <code>--gpus all</code>:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c1"># Configure the production repository</span>
+curl<span class="w"> </span>-fsSL<span class="w"> </span>https://nvidia.github.io/libnvidia-container/gpgkey<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>gpg<span class="w"> </span>--dearmor<span class="w"> </span>-o<span class="w"> </span>/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="o">&amp;&amp;</span><span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>-L<span class="w"> </span>https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>sed<span class="w"> </span><span class="s1">'s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>sudo<span class="w"> </span>tee<span class="w"> </span>/etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+<span class="c1"># Install the toolkit</span>
+sudo<span class="w"> </span>apt-get<span class="w"> </span>update
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>nvidia-container-toolkit
+
+<span class="c1"># Configure Docker to use the NVIDIA runtime</span>
+sudo<span class="w"> </span>nvidia-ctk<span class="w"> </span>runtime<span class="w"> </span>configure<span class="w"> </span>--runtime<span class="o">=</span>docker
+sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>docker
+</code></pre></div>
+<ol start="3">
+<li><strong>Running Docker without sudo (Non-root User Setup):</strong>
+   By default, the Docker daemon binds to a Unix socket owned by <code>root</code>. To allow <code>run_full_pipeline.sh</code> to launch VLM containers without prefixing commands with <code>sudo</code> (which prevents permission denied socket errors):</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c1"># Create the docker group (often already exists)</span>
+sudo<span class="w"> </span>groupadd<span class="w"> </span>docker
+
+<span class="c1"># Add your current user to the docker group</span>
+sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span>
+
+<span class="c1"># Activate the group changes in the current shell session</span>
+newgrp<span class="w"> </span>docker
+</code></pre></div>
+<ol start="4">
+<li><strong>Verify GPU Container Support (without sudo):</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--gpus<span class="w"> </span>all<span class="w"> </span>nvidia/cuda:12.0.0-base-ubuntu22.04<span class="w"> </span>nvidia-smi
+</code></pre></div>
+<hr />
+<h2 id="running-unit-integration-tests">🧪 Running Unit &amp; Integration Tests</h2>
+<p>The pipeline features a robust, fast unit testing suite to verify database transformations, schema changes, and semantic drift calculations before committing code.</p>
+<h3 id="running-tests-locally">Running Tests Locally</h3>
+<p>To execute the complete unit test suite, run:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>discover<span class="w"> </span>-s<span class="w"> </span>tests
+</code></pre></div>
+<h3 id="cicd-integration">CI/CD Integration</h3>
+<p>Tests are fully integrated into GitHub Actions CI (<code>.github/workflows/ci.yml</code>) and run automatically on every push or pull request to the <code>main</code> branch.</p>
+<hr />
+<h2 id="troubleshooting-ubuntu-apparmor-container-termination-hangs">⚠️ Troubleshooting: Ubuntu AppArmor &amp; Container Termination hangs</h2>
+<p>On modern Ubuntu releases (specifically Ubuntu 24.04 LTS), a conflict between AppArmor and the <code>containerd</code> runtime can prevent Docker containers from stopping or being deleted.</p>
+<h3 id="symptom">Symptom</h3>
+<p>Running <code>./run_full_pipeline.sh</code> hangs when stopping the server, or manual commands like <code>docker stop sglang-server</code> / <code>docker rm -f sglang-server</code> fail with:</p>
+<blockquote>
+<p><code>Error response from daemon: cannot stop container: sglang-server: permission denied</code></p>
+</blockquote>
+<h3 id="solution-implemented-in-pipeline">Solution (Implemented in Pipeline)</h3>
+<p>To ensure the pipeline is portable and does not fail on non-Ubuntu systems (like macOS, Windows WSL2, or Red Hat):</p>
+<ol>
+<li><strong>Dynamic AppArmor Detection:</strong> <code>run_full_pipeline.sh</code> checks if AppArmor is enabled on the host system at runtime by reading <code>/sys/module/apparmor/parameters/enabled</code>.</li>
+<li><strong>Conditional Unconfinement:</strong> If AppArmor is active, the script automatically launches the container with <code>--security-opt apparmor=unconfined</code>. This prevents AppArmor from blocking the containerd namespace teardown when the script exits, enabling clean removal.</li>
+<li><strong>Fallback:</strong> On non-Ubuntu systems, this flag is omitted to prevent "security option not supported" compatibility failures.</li>
+</ol>
+<p>If you continue to experience containerd lockups on your host machine, you can clean your systemd parser cache and restart the daemon:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>systemctl<span class="w"> </span>parser-cache<span class="w"> </span>--clean
+sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>docker
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "search.highlight"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="assets/js/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

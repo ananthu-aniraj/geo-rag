@@ -1,0 +1,1710 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../06_clustering_dynamic_drift/">
+      
+      
+        <link rel="next" href="../08_spatial_semantic_indexing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>7. MLLM Labeling - Geo-RAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#step-2b-2c-multi-modal-llm-auto-labeling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Geo-RAG" class="md-header__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Geo-RAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              7. MLLM Labeling
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../dataset/" class="md-tabs__link">
+          
+  
+  
+  Dataset Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Pipeline Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../evaluation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Evaluation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../evaluation_results/" class="md-tabs__link">
+          
+  
+  
+  Benchmark Results
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Geo-RAG" class="md-nav__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Geo-RAG
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Dataset Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dataset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dataset_publication_roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publication Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Pipeline Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01_ingestion_scraping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Ingestion & Scraping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02_spatial_deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Spatial Deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03_timestamp_standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Timestamp Standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04_coordinate_cleanup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05_optimal_k_estimation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Optimal K Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06_clustering_dynamic_drift/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Clustering & Drift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sglang-docker-lifecycle-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ SGLang Docker Lifecycle Management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-medoid-film-strip-collage-labeling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🎞️ Multi-Medoid Film-Strip Collage Labeling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🎞️ Multi-Medoid Film-Strip Collage Labeling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#background-objective" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background &amp; Objective
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#technical-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Technical Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-step-prompting-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🤖 Two-Step Prompting Strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🤖 Two-Step Prompting Strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-multimodal-visual-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📷 Step 1: Multimodal Visual Description
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-geographical-lulc-classification-text-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ Step 2: Geographical LULC Classification (Text-Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#land-use-land-cover-lulc-classification-vocabulary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗂️ Land Use / Land Cover (LULC) Classification Vocabulary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🗂️ Land Use / Land Cover (LULC) Classification Vocabulary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#natural-lulc-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Natural LULC Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#man-made-lulc-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Man-made LULC Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fallback-retry-safety-relabel_failed_clusterspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🩹 Fallback Retry Safety (relabel_failed_clusters.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08_spatial_semantic_indexing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Spatial-Semantic Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09_visualization_dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmark Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_eunis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_lucas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LUCAS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_places/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Places Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sglang-docker-lifecycle-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ SGLang Docker Lifecycle Management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-medoid-film-strip-collage-labeling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🎞️ Multi-Medoid Film-Strip Collage Labeling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🎞️ Multi-Medoid Film-Strip Collage Labeling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#background-objective" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background &amp; Objective
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#technical-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Technical Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-step-prompting-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🤖 Two-Step Prompting Strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🤖 Two-Step Prompting Strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-multimodal-visual-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📷 Step 1: Multimodal Visual Description
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-geographical-lulc-classification-text-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ Step 2: Geographical LULC Classification (Text-Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#land-use-land-cover-lulc-classification-vocabulary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗂️ Land Use / Land Cover (LULC) Classification Vocabulary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🗂️ Land Use / Land Cover (LULC) Classification Vocabulary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#natural-lulc-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Natural LULC Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#man-made-lulc-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Man-made LULC Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fallback-retry-safety-relabel_failed_clusterspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🩹 Fallback Retry Safety (relabel_failed_clusters.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="step-2b-2c-multi-modal-llm-auto-labeling">Step 2b &amp; 2c: Multi-Modal LLM Auto-Labeling</h1>
+<p>This document describes the design and prompting strategies of <code>label_clusters_mllm.py</code> and <code>relabel_failed_clusters.py</code>, which handle automated semantic labeling and fallback depth retries.</p>
+<hr />
+<h2 id="sglang-docker-lifecycle-management">⚙️ SGLang Docker Lifecycle Management</h2>
+<p>To run local vision-language model inference on GPUs, the master script <code>run_full_pipeline.sh</code> automatically manages the lifecycle of the SGLang container (<code>sglang-server</code>):</p>
+<ol>
+<li><strong>Pre-Launch Cleanup</strong>: Scan and kill any stale container bindings to clear Nvidia GPU memory and ports.</li>
+<li><strong>Container Launch</strong>: Spawns the container with NVIDIA runtime support:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--gpus<span class="w"> </span>all<span class="w"> </span>-p<span class="w"> </span><span class="m">30000</span>:30000<span class="w"> </span>--name<span class="w"> </span>sglang-server<span class="w"> </span>...
+</code></pre></div>
+<ol start="3">
+<li><strong>Health Checks</strong>: Polls the server <code>/health</code> endpoint and monitors container status until the backend is fully initialized.</li>
+<li><strong>Autonomous Teardown</strong>: Automatically kills and removes the container upon completion or pipeline interruption (via bash <code>trap</code> handlers).</li>
+</ol>
+<hr />
+<h2 id="multi-medoid-film-strip-collage-labeling">🎞️ Multi-Medoid Film-Strip Collage Labeling</h2>
+<h3 id="background-objective">Background &amp; Objective</h3>
+<p>Vision-Language Models (VLMs) can hallucinate or mislabel a cluster if the single medoid image chosen to represent it contains an anomaly (such as a close-up object, selfie, vehicle hood, or transient artifact). To make auto-labeling robust against web-scraping noise, Geo-RAG supports multi-medoid composite collages (configured via <code>--num_medoids</code>, default: 4).</p>
+<div class="highlight"><pre><span></span><code>┌─────────────────────────────────────────┐
+│     Vertical Film-Strip Collage         │
+├─────────────────────────────────────────┤
+│  Medoid 1: Primary Centroid Neighbor    │
+├─────────────────────────────────────────┤
+│  Medoid 2: Mutually Diverse Candidate   │
+├─────────────────────────────────────────┤
+│  Medoid 3: Temporal / Seasonal Variant  │
+├─────────────────────────────────────────┤
+│  Medoid 4: Spatial / Angle Variant      │
+└─────────────────────────────────────────┘
+</code></pre></div>
+<h3 id="technical-workflow">Technical Workflow</h3>
+<ol>
+<li><strong>Diverse Nearest-Neighbor Sampling</strong>:
+   * For each cluster, <code>sample_diverse_medoids()</code> selects up to <span class="arithmatex">\(N = 4\)</span> nearest images to the cluster centroid while enforcing spatial coordinate and URL diversity thresholds (avoiding near-duplicate viewpoints).</li>
+<li><strong>Aspect-Ratio Preserving Letterboxing</strong>:
+   * Each candidate image is resized to fit inside a standard <span class="arithmatex">\(512 \times 256\)</span> cell (<span class="arithmatex">\(2:1\)</span> aspect ratio), preserving original proportions without distortion.
+   * Empty space is padded with a neutral dark-gray background (<code>#282828</code>).</li>
+<li><strong>Vertical Film-Strip Stitching</strong>:
+   * The cells are stitched vertically into a single <span class="arithmatex">\(512 \times (256 \times M)\)</span> JPEG image (e.g. <span class="arithmatex">\(512 \times 1024\)</span> for 4 medoids, <span class="arithmatex">\(&lt; 80\text{ KB}\)</span>).</li>
+<li>
+<p><strong>Multi-Medoid Prompt Prefix (Step 1)</strong>:
+   * When multi-medoid mode is enabled, the Step 1 prompt instructs the VLM to synthesize the common, dominant land-cover features across the vertical stack:</p>
+<div class="highlight"><pre><span></span><code>The input image contains a vertical stack of 4 representative photographs from the same local cluster; analyze the common land-cover features across these frames.
+</code></pre></div>
+</li>
+<li>
+<p><strong>Composite Metadata Aggregation (Step 2)</strong>:
+   * Instead of relying on a single coordinate, metadata attributes across all selected medoids are aggregated:</p>
+<ul>
+<li><strong>Location</strong>: Geographic bounding box and centroid across the medoids.</li>
+<li><strong>Country &amp; Continent</strong>: Deduplicated list of represented countries.</li>
+<li><strong>Climate &amp; Season</strong>: Deduplicated list of Köppen-Geiger climate codes and observed seasons.</li>
+</ul>
+</li>
+</ol>
+<hr />
+<h2 id="two-step-prompting-strategy">🤖 Two-Step Prompting Strategy</h2>
+<h3 id="step-1-multimodal-visual-description">📷 Step 1: Multimodal Visual Description</h3>
+<ul>
+<li><strong>Input</strong>: The representative cluster image / vertical film-strip collage + <code>prompts/shared/prompt_step1.txt</code></li>
+<li><strong>Output</strong>: A detailed, objective paragraph describing the physical scene features (no LULC labels).</li>
+</ul>
+<p><strong>Prompt Template (<code>prompts/shared/prompt_step1.txt</code>):</strong></p>
+<div class="highlight"><pre><span></span><code>You are analyzing a single ground-level photograph from a global land-survey campaign; the sample point may be anywhere on Earth (tropical, arid, temperate, boreal, alpine, wetland, or coastal). The camera stands at a sample point and looks outward; the land cover AT THE FOREGROUND/CENTER of the frame is the DOMINANT cover that must be characterized. Background elements (distant trees, buildings, hills) are CONTEXT only and must never override the dominant foreground cover.
+
+Carefully observe and describe the following components in a single, detailed, and cohesive paragraph:
+1. image_medium: State clearly whether this is a real-world photograph, a painting/artwork, a map, an abstract drawing/illustration, a text graphic, or a close-up indoor sign/object.
+2. dominant_cover: The single land-cover type occupying most of the foreground/center (e.g. cereal crop, grassland, bare soil, broadleaved trees, built surface, sand, snow/ice, water, wetland).
+3. cover_fraction_estimate: Share of the visible ground area that is vegetation vs bare soil/rock vs sealed/built surface vs water/ice.
+4. visible_evidence &amp; salient_objects: Primary foreground objects, structures, architectural elements, vehicles, or natural formations visible. Describe them naturally as a human observer would.
+5. vegetation_detail: Height, leaf/frond shape, seed-head/flower form, rows or not (cereals, broadleaf/industrial crops, grassland, woody cover broadleaved vs coniferous vs palm).
+6. vegetation_condition &amp; phenological_stage: Vigor (vigorous-green, senescent, dead/brown) and growth stage (emerging, full-canopy, harvested/stubble).
+7. canopy_structure: Canopy closure (closed, open, scattered) and height (low shrub &lt;2m, small trees 2-5m, mature trees &gt;5m).
+8. soil_surface_state &amp; lithology: Exposed ground sealing (permeable, unsealed, sealed-impervious) and visibly exposed soil/rock texture and color.
+9. structure_and_pattern: Terrain slope, parcel boundaries, linear features (crop rows, tramlines, ditches, tracks), or recent disturbances.
+10. context_background: Elements visible in the distance or periphery (buildings, treelines, mountains, water bodies) that are not the sample point cover.
+11. human_evidence &amp; activities: Visible signs of human use (buildings, machinery, fences, planted rows, paths, irrigation, or a selfie where a person is visiting a landmark or hiking).
+
+Do not assign a LULC category code or label. Focus purely on describing what is visually supported.
+</code></pre></div>
+<hr />
+<h3 id="step-2-geographical-lulc-classification-text-only">🗺️ Step 2: Geographical LULC Classification (Text-Only)</h3>
+<ul>
+<li><strong>Input</strong>: The visual description output from Step 1 + geographic/climatic metadata + the LULC category list + <code>prompts/shared/prompt_step2.txt</code></li>
+<li><strong>Output</strong>: The final structured classification label and a consolidated description paragraph.</li>
+</ul>
+<p><strong>Prompt Template (<code>prompts/shared/prompt_step2.txt</code>):</strong></p>
+<div class="highlight"><pre><span></span><code>You are a geographical and ecological classifier. Your task is to classify the land cover/land use of a location based on a visual description of the scene and geographic/climatic metadata.
+
+[METADATA CONTEXT]
+Location coordinates/bounding box: {location}
+Region/Country: {country}
+Continent: {continent}
+Time of Day: {time_of_day}
+Season: {season}
+Köppen-Geiger Climate Code: {koppen_code} ({koppen_desc})
+
+[VISUAL DESCRIPTION]
+{visual_description}
+
+[CLASSIFICATION RULES]
+1. Use the climate code and season to resolve ambiguities (e.g. distinguishing tropical savanna from temperate grassland, or identifying agricultural crops vs natural vegetation).
+2. If the image medium is noted as a painting, artwork, illustration, drawing, sketch, map, diagram, close-up text graphic, or indoor sign, classify it as "None of the above / Noise".
+3. Selfies or tourist photos of people are fully acceptable as long as the background is visible; classify the scene based on the background cover and context.
+4. If any metadata attributes (such as Season, Time of Day, or Country/Continent) are specified as "Unknown", rely primarily on the visual description and other available metadata elements.
+
+Based on the metadata and visual description, classify this environment into EXACTLY one of the following LULC categories:
+{lulc_list}
+
+Format your output EXACTLY as follows:
+LABEL: &lt;Insert EXACTLY one category from the list above&gt;
+DESCRIPTION: &lt;A detailed, cohesive paragraph in fluent natural language describing the visual evidence, human activities, land cover, and vegetation. This paragraph must integrate all of the observed components and metadata naturally and concisely.&gt;
+</code></pre></div>
+<hr />
+<h2 id="land-use-land-cover-lulc-classification-vocabulary">🗂️ Land Use / Land Cover (LULC) Classification Vocabulary</h2>
+<h3 id="natural-lulc-categories">Natural LULC Categories</h3>
+<ul>
+<li><strong>Broadleaved forest</strong>: Deciduous or evergreen broad-leaf trees (oak, beech, maple, birch).</li>
+<li><strong>Coniferous forest</strong>: Evergreen needle-leaf trees (pine, spruce, fir, larch).</li>
+<li><strong>Mixed forest</strong>: Co-dominant broadleaved and coniferous trees.</li>
+<li><strong>Tropical forest</strong>: Equatorial rainforests, mangroves, or tropical dry forest.</li>
+<li><strong>Sparsely wooded / Savanna</strong>: Grassland with scattered trees (10-30% canopy cover).</li>
+<li><strong>Natural grassland</strong>: Meadows, wild steppes, alpine grasslands, or prairies.</li>
+<li><strong>Temperate shrubland / Scrub</strong>: Low woody scrub (heather, gorse, bramble).</li>
+<li><strong>Arid shrubland</strong>: Desert scrub, sagebrush, or dry savanna bushland.</li>
+<li><strong>Tundra</strong>: Low-growing polar vegetation (mosses, lichens, dwarf shrubs).</li>
+<li><strong>Sandy desert / Dunes</strong>: Sand sheets, active dunes, or sandy flats.</li>
+<li><strong>Rocky desert / Gravel plains</strong>: Stony hamadas, gravel plains, or barren volcanic ash fields.</li>
+<li><strong>Barren soil / Badlands</strong>: Highly eroded clay hills, bare dry earth, or dry salt flats.</li>
+<li><strong>Bare rock / Cliffs</strong>: Exposed bedrock, cliffs, or scree slopes.</li>
+<li><strong>Mountain peak / Alpine ridge</strong>: High-altitude rocky ridges, jagged summits, or mountain peaks.</li>
+<li><strong>Waterfall / Cascade</strong>: Water flowing vertically over a cliff or steep drop.</li>
+<li><strong>Volcanic terrain / Lava flow</strong>: Barren basalt fields, volcanic craters, or active geothermal areas.</li>
+<li><strong>Salt flat / Playa</strong>: Dry lake beds covered with salt crusts or mineral deposits.</li>
+<li><strong>Coastal beach / Spit</strong>: Sandy or pebbly sea coast.</li>
+<li><strong>Wetland / Marsh / Bog</strong>: Marshes, peat bogs, fens, reed beds, or swamps.</li>
+<li><strong>River / Stream</strong>: Flowing freshwater channels, creeks, or canals.</li>
+<li><strong>Lake / Pond</strong>: Standing inland water bodies or reservoirs.</li>
+<li><strong>Marine / Estuary</strong>: Coastal saltwater, ocean surf, bays, or intertidal flats.</li>
+<li><strong>Glacier / Permanent ice</strong>: Glaciers, ice caps, or permanent snowfields.</li>
+<li><strong>Other natural land cover</strong>: Any other natural land cover or landscape.</li>
+</ul>
+<h3 id="man-made-lulc-categories">Man-made LULC Categories</h3>
+<ul>
+<li><strong>Forest plantation</strong>: Planted timber rows (e.g. eucalyptus, pine crop).</li>
+<li><strong>Managed pasture</strong>: Fenced grazing land or paddocks.</li>
+<li><strong>Herbaceous cropland</strong>: Annual cultivated crops (wheat, corn, barley, canola).</li>
+<li><strong>Orchards &amp; Vineyards</strong>: Perennial woody crops (fruit orchards, grapevines).</li>
+<li><strong>Rice paddies / Flooded crops</strong>: Water-flooded agricultural basins.</li>
+<li><strong>Covered agriculture</strong>: Greenhouses, polytunnels, or nurseries.</li>
+<li><strong>High-density built-up</strong>: Urban centers, skyscrapers, and high-rise blocks.</li>
+<li><strong>Suburban / Low-density residential</strong>: Single-family homes, private yards, villas, and neighborhood streets.</li>
+<li><strong>Industrial / Commercial zone</strong>: Factories, warehouses, oil refineries, or retail parks.</li>
+<li><strong>Active construction site</strong>: Earthworks, building foundations, cranes, and scaffolding.</li>
+<li><strong>Transportation network</strong>: Highways, railways, runways, or shipping ports.</li>
+<li><strong>Mine / Quarry / Landfill</strong>: Open-pit mines, stone quarries, or landfill sites.</li>
+<li><strong>Urban green space</strong>: City parks, golf courses, botanical gardens, or sports fields.</li>
+<li><strong>Historical / Cultural monument / Archaeological site</strong>: Ancient ruins, historic temples, or archeological landmarks.</li>
+<li><strong>Other man-made surface</strong>: Any other artificial or managed land cover or surface.</li>
+</ul>
+<hr />
+<h2 id="fallback-retry-safety-relabel_failed_clusterspy">🩹 Fallback Retry Safety (<code>relabel_failed_clusters.py</code>)</h2>
+<p>Due to HTTP timeouts or server errors, certain clusters may fail MLLM processing (labeled as <code>"Error Labeling"</code> or <code>"Unlabeled"</code>).</p>
+<ul>
+<li>The script scans the metadata database and identifies failed clusters.</li>
+<li>For each failed cluster, it performs <strong>depth retries (up to <code>--fallback_depth 20</code>)</strong>, pulling sequentially further representative images in the cluster card and re-running the classification.</li>
+<li>This guarantees <span class="arithmatex">\(100\%\)</span> labeling coverage of all visual nodes.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../assets/js/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1913 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../metrics/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Changelog - Geo-RAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#changelog" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Geo-RAG" class="md-header__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Geo-RAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Changelog
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../dataset/" class="md-tabs__link">
+          
+  
+  
+  Dataset Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../pipeline/" class="md-tabs__link">
+          
+  
+  
+  Pipeline Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../evaluation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Evaluation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../evaluation_results/" class="md-tabs__link">
+          
+  
+  
+  Benchmark Results
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Geo-RAG" class="md-nav__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Geo-RAG
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Dataset Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset_publication_roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publication Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Pipeline Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/01_ingestion_scraping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Ingestion & Scraping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/02_spatial_deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Spatial Deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/03_timestamp_standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Timestamp Standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/04_coordinate_cleanup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/05_optimal_k_estimation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Optimal K Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/06_clustering_dynamic_drift/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Clustering & Drift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/07_mllm_labeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/08_spatial_semantic_indexing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Spatial-Semantic Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/09_visualization_dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmark Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_eunis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_lucas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LUCAS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_places/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Places Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unreleased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [Unreleased]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[Unreleased]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#130-2026-09-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.3.0] - 2026-09-01
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.3.0] - 2026-09-01">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#120-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.2.0] - 2026-08-24
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.2.0] - 2026-08-24">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#112-2026-08-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.1.2] - 2026-08-20
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.1.2] - 2026-08-20">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#111-2026-08-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.1.1] - 2026-08-18
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.1.1] - 2026-08-18">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#110-2026-08-17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.1.0] - 2026-08-17
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.1.0] - 2026-08-17">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unreleased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [Unreleased]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[Unreleased]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#130-2026-09-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.3.0] - 2026-09-01
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.3.0] - 2026-09-01">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#120-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.2.0] - 2026-08-24
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.2.0] - 2026-08-24">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#112-2026-08-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.1.2] - 2026-08-20
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.1.2] - 2026-08-20">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#111-2026-08-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.1.1] - 2026-08-18
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.1.1] - 2026-08-18">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#110-2026-08-17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [1.1.0] - 2026-08-17
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[1.1.0] - 2026-08-17">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="changelog">Changelog</h1>
+<p>All notable changes and updates to the Geo-RAG codebase are documented here.</p>
+<hr />
+<h2 id="unreleased">[Unreleased]</h2>
+<h3 id="added">Added</h3>
+<ul>
+<li><strong>Attention-Based Foreground Distractor Filtering</strong>: Added <code>cls_attn_fg_removed</code> and <code>cls_plus_fg_removed_concat</code> representations to <code>src/evaluation/benchmark_representations.py</code> and <code>config/evaluation/benchmark_representations.yaml</code>. Uses a dedicated, standalone attention extractor to detect salient foreground patches via final-layer <code>[CLS]</code>-to-patch self-attention weights and remove transient distractors occupying <span class="arithmatex">\(\le 1/20\)</span> (5%) of the image area without requiring external segmentation models.</li>
+<li><strong>Config-Driven Spatial Representation Benchmarking</strong>: Created <code>config/evaluation/benchmark_representations.yaml</code> to configure dataset parameters, toggles for optional PCA and FP16 evaluation, and explicitly select which representations (<code>cls</code>, <code>unmasked_avg</code>, <code>cls_attn_fg_removed</code>, <code>cls_plus_fg_removed_concat</code>, <code>segformer_masked</code>, <code>tips_ade_masked</code>, <code>anyup_snapped</code>, <code>cls_tips_ade_concat</code>, <code>cls_unmasked_concat</code>, <code>hybrid_land_use</code>) are evaluated.</li>
+<li><strong>Interactive HTML Retrieval Visualizer</strong>: Created <code>src/visualization/visualize_retrieval.py</code> providing <code>generate_retrieval_html</code>, <code>haversine_km</code>, and stratified class sampling. Generates standalone interactive HTML dashboards showing query images side-by-side with top-<span class="arithmatex">\(K\)</span> retrieved nearest neighbors, match badges (🟢 True Positive vs 🔴 False Positive), cosine similarity scores, physical distances in kilometers, diagnostic outcome filters, and offline local path remapping.</li>
+<li><strong>Dedicated Retrieval Visualizer Unit Tests</strong>: Added <code>tests/test_visualize_retrieval.py</code> testing great-circle geodesic distance calculation, stratified query sampling, and full HTML dashboard generation.</li>
+<li><strong>Configurable Query Platform in Spatial Evaluations</strong>: Added <code>query_platform</code> configuration parameter in <code>config/evaluation/params_online.yaml</code> under both <code>environmental_zones</code> and <code>eunis</code>, allowing dynamic filtering by platform (<code>flickr</code>, <code>mapillary</code>, etc.) or all platforms.</li>
+<li><strong>Visualizer Integration in Benchmark Runners</strong>: Added <code>--output_html</code> and <code>--visualize_samples</code> flags to <code>benchmark_environmental_zones.py</code>, <code>benchmark_eunis.py</code>, <code>run_offline_eval_spatial.sh</code>, and <code>compare_models.py</code>.</li>
+<li><strong>Retrieval Dashboard Links in Model Comparisons</strong>: Updated <code>src/evaluation/compare_models.py</code> to automatically pass visualization flags during batch model evaluation and link generated HTML dashboards in <code>comparison_&lt;benchmark&gt;.md</code>.</li>
+<li><strong>Automated Markdown Linting Hook</strong>: Added <code>.markdownlint.yaml</code> and integrated <code>markdownlint-cli</code> with <code>--fix</code> into <code>.pre-commit-config.yaml</code> to automatically format lists and headings upon commit.</li>
+<li><strong>Website Documentation Dark Mode &amp; Aligned Badges</strong>: Configured dual light and dark palette switcher in <code>config/wiki/mkdocs.yml</code> with automatic system preference detection, and added matched-height badges in <code>README.md</code> for Wiki, CI, and Apache 2.0 license.</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong>Decoupled &amp; Colocated Visualization Templates</strong>: Moved HTML and JS dashboard templates from the repository root <code>templates/</code> into <code>src/visualization/templates/</code>. Streamlined template loading across <code>visualize_retrieval.py</code>, <code>visualize_cluster_samples.py</code>, <code>visualize_clusters.py</code>, and <code>generate_h3_semantic_map.py</code> to direct relative path resolution (<code>os.path.join(os.path.dirname(__file__), "templates", ...)</code>), eliminating root tracing and working-directory dependency.</li>
+<li><strong>Model-Agnostic Representation Benchmarking &amp; Modernized Dataset I/O</strong>: Refactored <code>src/evaluation/benchmark_representations.py</code> to support any Hugging Face or <code>timm</code> vision model (e.g. <code>google/tipsv2-b14</code>, <code>vit_base_patch14_dinov2.lvd142m</code>, etc.) via <code>load_vision_model</code> and <code>extract_benchmark_features_single_pass</code>. Upgraded dataset loading to use <code>src.utils.io.load_dataframe</code> (supporting both modern Parquet and legacy CSV schemas) and <code>src.utils.io.download_image</code> (supporting offline image directories, local files, and authenticated Mapillary downloads). Made PCA feature extraction optional via <code>--enable_pca</code>/<code>--disable_pca</code> and config flags, dramatically reducing RAM and execution time when PCA is omitted.</li>
+<li><strong>Platform-Aware Output Filename Tagging</strong>: Updated <code>benchmark_environmental_zones.py</code>, <code>benchmark_eunis.py</code>, <code>compare_models.py</code>, and <code>run_offline_eval_spatial.sh</code> to append <code>_plat-&lt;platform&gt;</code> to all generated report (<code>.txt</code>), query results (<code>.csv</code>), and visualizer (<code>.html</code>) filenames. Prevents filename collisions and prevents false cache hits during model comparisons when switching query platforms.</li>
+<li><strong>Sanitized DVC Remote Storage IP</strong>: Moved private SSH remote storage URLs from tracked <code>.dvc/config</code> into gitignored <code>.dvc/config.local</code>.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong>KeyError in Relabel Failed Clusters</strong>: Fixed a <code>KeyError: 'cluster_id'</code> crash in <code>src/indexing/relabel_failed_clusters.py</code> where a leftover <code>df = pd.DataFrame(data)</code> re-instantiated a DataFrame from <code>DataFrameRowWrapper</code>, overwriting dataset columns. Added unit and integration tests in <code>tests/test_relabel_failed_clusters.py</code>.</li>
+<li><strong>Markdown List Concatenation in Documentation</strong>: Fixed missing blank lines preceding 49 list blocks across <code>docs/**/*.md</code> and <code>README.md</code> to prevent item concatenation under standard Python-Markdown parsers.</li>
+</ul>
+<h2 id="130-2026-09-01">[1.3.0] - 2026-09-01</h2>
+<h3 id="added_1">Added</h3>
+<ul>
+<li><strong>Multi-Medoid Film-Strip Collage Labeling</strong>: Added support for vertically stacked, letterboxed collages of up to 4 diverse nearest-neighbor representative images per cluster instead of a single medoid. Stitched images are standardized to a <span class="arithmatex">\(512 \times 256\)</span> aspect ratio per cell with <code>#282828</code> dark gray padding inside a single <span class="arithmatex">\(512 \times (256 \times M)\)</span> JPEG collage. Enabled via <code>--num_medoids</code>.</li>
+<li><strong>Aggregated Metadata Context Generator</strong>: Added spatial-semantic metadata aggregator compiling geographic bounding boxes, centroids, unique countries/continents, climates (Köppen-Geiger codes &amp; descriptions), and seasons across the multiple medoids for Stage 2 classification prompts.</li>
+<li><strong>Shared Multi-Medoid Utility Helpers</strong>: Created <code>src/indexing/multi_medoid_utils.py</code> containing modular functions for diverse sampling, letterboxing, vertical collage stitching, and metadata aggregation.</li>
+<li><strong>Support for Multi-Medoid Collage in Fallback Relabeler</strong>: Added <code>--num_medoids</code> support in <code>relabel_failed_clusters.py</code> that dynamically searches cluster/parent hierarchies to load and construct collages using only successfully downloaded candidate images.</li>
+<li><strong>Automated Pipeline Component Unit Testing</strong>: Added integration and unit tests for coordinate anomaly cleaning (<code>tests/test_coordinate_cleanup.py</code>), semantic drift validation (<code>tests/test_semantic_drift.py</code>), and regional/seasonal timestamp metadata standardization (<code>tests/test_standardize_timestamps.py</code>).</li>
+<li><strong>Support for Decoupled Databases in Semantic Drift Detector</strong>: Upgraded <code>check_semantic_drift.py</code> to support decoupled embedding structures by fetching representations dynamically using the unified <code>load_embeddings()</code> handler rather than seeking them directly inside the Parquet schema.</li>
+<li><strong>Automated PyArrow Streaming Update Unit Testing</strong>: Created a dedicated unit test suite (<code>tests/test_stream_update.py</code>) simulating PyArrow streaming parquet updates, checking copy safety, H3 cell exclusions, schema castings, and companion index allocations.</li>
+<li><strong>GitHub Actions CI/CD Integration</strong>: Expanded the CI/CD pipeline workflow (<code>.github/workflows/ci.yml</code>) to automatically install dependencies and run unit tests on all push and pull request activities.</li>
+<li><strong>Dynamic Ingestion Platform &amp; photo_key Standardization</strong>: Standardized <code>Platform</code> values to lowercase and generated the unique <code>photo_key</code> dynamically on the fly during file ingestion in <code>load_and_preprocess_csv</code>.</li>
+<li><strong>Memory-Optimized Resume Loader</strong>: Updated the resume loader to inspect the database schema using PyArrow. If <code>photo_key</code> is present, it loads <em>only</em> the <code>photo_key</code> and <code>H3_Cell</code> columns, resulting in near-zero memory footprint during pipeline resumption. Added backward-compatible generation fallbacks for legacy files.</li>
+<li><strong>Occupancy Map Lowercased Platform Breakdown</strong>: Updated <code>generate_h3_occupancy_map.py</code> to normalize and group platform statistics in lowercase, ensuring consistent and unified tooltips.</li>
+<li><strong>Multi-Model Support in Backfill Embeddings</strong>: Upgraded <code>backfill_embeddings.py</code> to support computing and saving embeddings for any Hugging Face or <code>timm</code> representation models using the unified <code>load_vision_model</code> helper.</li>
+<li><strong>Model-Specific Embedding Serialization</strong>: Updated <code>save_dataframe</code> and <code>load_embeddings</code> in <code>src/utils/io.py</code> to serialize companion <code>.npy</code> matrices using model-specific filenames (e.g. <code>{base_name}_{model_name}_{representation_type}_embeddings.npy</code>), preventing different model runs from overwriting each other's cache. Retained fully backward-compatible fallbacks to model-agnostic filenames if a model-specific file is not found.</li>
+<li><strong>Fast O(1) Child Index Pre-Grouping</strong>: Added a pure-NumPy grouping index pre-computation step in both <code>label_clusters_mllm.py</code> and <code>relabel_failed_clusters.py</code> that maps child and parent cluster IDs to original row index boundaries in under 1 second, speeding up lookup times to <span class="arithmatex">\(&lt;1\)</span> microsecond and removing <span class="arithmatex">\(O(N)\)</span> scanning bottlenecks.</li>
+<li><strong>Memory-Efficient Chunked Centroid Aggregation</strong>: Re-implemented the child cluster centroids computation to run in memory-efficient, chunked intervals (default size: <code>500,000</code> rows), keeping the peak RAM footprint below 2 GB.</li>
+<li><strong>End-to-End Cluster Labeling &amp; DataFrame Saving Unit Tests</strong>: Added unit tests in <code>tests/test_label_clusters_mllm.py</code> verifying full end-to-end dataset labeling, PyArrow streaming Parquet merges, in-place overwriting, pickle storage, and zero-shot taxonomy label updates across both parent and child clusters.</li>
+</ul>
+<h3 id="changed_1">Changed</h3>
+<ul>
+<li><strong>Zero-Copy Sliced Local Normalization</strong>: Refactored the vision labeling search loops in both <code>label_clusters_mllm.py</code> and <code>relabel_failed_clusters.py</code> to keep the raw representation matrix memory-mapped (<code>mmap_mode="r"</code>) and perform slice-level normalization dynamically per cluster. This completely eliminates the need for allocating the 22 GB <code>embeddings_norm</code> matrix, saving 22 GB of RAM and preventing virtual memory paging/swapping bottlenecks on standard machines.</li>
+<li><strong>Precomputed Parent-to-Children Mapping</strong>: Grouped parent-to-child ID mappings into a dictionary mapping prior to parent cluster representative searches, replacing <span class="arithmatex">\(O(\text{parents} \times \text{clusters})\)</span> list comprehension bottlenecks inside parent loops in both labeling scripts.</li>
+<li><strong>Parent Clustering Division Factor (<code>K // 20</code>)</strong>: Switched the default parent cluster division ratio from <code>K // 80</code> to <code>K // 20</code> for superior parent semantic cohesion and tree-search branching.</li>
+<li><strong>Dynamic Step-Ratio Mapping</strong>: Refactored the parent-child index mapper in <code>cluster_images_global.py</code> to dynamically compute step ratios based on the resolved <code>k_parents</code> count rather than using hardcoded ratios.</li>
+</ul>
+<h3 id="fixed_1">Fixed</h3>
+<ul>
+<li><strong>MLLM Labeling and Spatial-Semantic Indexing Tests</strong>: Created <code>tests/test_label_clusters_mllm.py</code> and <code>tests/test_build_spatial_semantic_index.py</code> to cover image resizing, zero-shot categorizations, VLM prompt templating, and end-to-end multi-resolution H3 spatial aggregations.</li>
+<li><strong>Global Clustering Test Suite</strong>: Created a comprehensive test file <code>tests/test_cluster_images_global.py</code> containing unit and integration tests for <code>cluster_data()</code>, <code>sample_closest_points()</code>, and <code>map_resampled_parents_to_children()</code>, as well as end-to-end CPU fit mode runs to protect clustering scripts against arguments and index mismatches in the future.</li>
+<li><strong>Global Clustering Missing Arguments Typo</strong>: Fixed a <code>TypeError</code> in <code>cluster_images_global.py</code> where calling <code>map_resampled_parents_to_children()</code> was missing the required fifth positional argument <code>k_parents</code>.</li>
+<li><strong>Consistently Include <code>model_name</code> in Companion Keys Filenames</strong>: Fixed a mismatch in <code>save_dataframe()</code> where specifying a <code>model_name</code> correctly added a model suffix to the <code>.npy</code> embeddings matrix but omitted it from the <code>.keys.parquet</code> index. The companion keys path is now derived directly from the <code>.npy</code> path, ensuring name alignment.</li>
+<li><strong>Prevented Checkpoint / Base Database Embedding Path Mixups</strong>: Resolved an early-break bug in <code>load_embeddings()</code> model-agnostic fallback resolution where checking for model-agnostic files broke early without inspecting core base name variations. Also restricted wildcard fallback matching to prevent matching checkpoint files when loading a base database (or vice versa).</li>
+<li><strong>Transactional Atomic Companion Updates</strong>: Configured <code>save_dataframe()</code> and <code>stream_update_parquet()</code> to write companion <code>.npy</code> and <code>.keys.parquet</code> files to temporary names, renaming them to their final paths only <em>after</em> the main database Parquet file successfully saves. This prevents out-of-sync states between Parquet files and companion matrices upon write crashes.</li>
+<li><strong>Checkpoint Resume Embeddings Restorer</strong>: Fixed a checkpointing bug in <code>process_scraped_data.py</code> where resuming from a checkpoint failed to load companion embeddings, causing <code>KeyError: 'embedding'</code> during subsequent checkpoint saves. It now automatically pulls and matches companion embeddings when resuming from a checkpoint.</li>
+<li><strong>Fixed None-Path TypeError in Timestamp Standardization</strong>: Added a null validation guard on shapefile parameters in <code>standardize_timestamps.py</code> to prevent crash triggers when executing without boundary maps.</li>
+<li><strong>Fixed NumPy 2.0 type name crash</strong>: Fixed a crash in <code>save_dataframe()</code> where modern NumPy float classes lack a <code>__name__</code> attribute.</li>
+<li><strong>Streaming Parquet Write Schema ArrowInvalid Crash</strong>: Resolved <code>ArrowInvalid</code> type-matching errors in <code>stream_update_parquet</code> by dynamically checking schema string widths (<code>large_string</code> vs <code>string</code>) and casting/aligning copied row groups before writing.</li>
+<li><strong>Clustering Argument Overriding Bug</strong>: Fixed a bug in <code>cluster_images_global.py</code> where the user-specified <code>--k_parents</code> configuration parameter was being silently overridden and reset.</li>
+</ul>
+<h2 id="120-2026-08-24">[1.2.0] - 2026-08-24</h2>
+<h3 id="added_2">Added</h3>
+<ul>
+<li><strong>Dynamic Image Path Server Mapping in Dashboard</strong>: Added an "Offline Image Server Mapping" control panel to the cluster dashboard HTML (<code>templates/cluster_dashboard.html</code>). The dashboard now automatically scans the data on page load to detect the original local file prefix path and provides a search-and-replace interface. This allows users to dynamically map local file paths (<code>file://...</code>) to remote loopback servers (<code>http://localhost:8000/</code>) over SSH port-forwarding tunnels, enabling remote image viewing without file modifications.</li>
+<li><strong>Environment Token Security Overhaul</strong>: Secured the entire pipeline from hardcoded API tokens. Modified <code>run_full_pipeline.sh</code> to automatically source environment variables from a gitignored <code>.env</code> file and forwarded <code>HF_TOKEN</code> dynamically to the SGLang Docker container. Removed all hardcoded fallback Mapillary API tokens across all Python pipeline modules (<code>label_clusters_mllm.py</code>, <code>relabel_failed_clusters.py</code>, <code>visualize_clusters.py</code>, <code>visualize_cluster_samples.py</code>, <code>backfill_embeddings.py</code>, <code>backfill_timestamps.py</code>, <code>backfill_licenses.py</code>, <code>process_scraped_data.py</code>, <code>test_local_retrieval_comparison.py</code>, <code>test_macro_filter.py</code>, <code>benchmark_representations.py</code>, and <code>download_images.py</code>), replacing them with dynamic OS environment variable lookups and local <code>.env</code> file parsing fallbacks.</li>
+<li><strong>Core Pipeline Configuration Relocation</strong>: Relocated the central configuration file <code>params.yaml</code> from the repository root to <code>config/pipeline/params.yaml</code>. Updated <code>run_full_pipeline.sh</code> and <code>validate_cluster_count.py</code> to target the new directory path, maintaining backward-compatible fallbacks. Cleaned up obsolete local config loading logic in <code>standardize_timestamps.py</code> and <code>relabel_failed_clusters.py</code>.</li>
+</ul>
+<h3 id="fixed_2">Fixed</h3>
+<ul>
+<li><strong>H3 Index Missing Points Groupby Fix</strong>: Resolved a major bug in <code>build_spatial_semantic_index.py</code> where rows with <code>NaN</code> in <code>parent_cluster_label</code> (unlabeled parent clusters) were silently discarded by Pandas <code>groupby</code> during index aggregation. This caused 98% of points to be missing from the generated spatial-semantic index. Fixed by filling NaN values in all label and description columns with default fallback values (e.g. <code>Parent Cluster &lt;ID&gt;</code>) and adding <code>dropna=False</code> to the groupby.</li>
+<li><strong>MLLM Parent Label Streaming Mapping Key Fix</strong>: Fixed a critical bug in the output Parquet streaming writer of <code>label_clusters_mllm.py</code> where parent labels and descriptions were being mapped against <code>cluster_id</code> instead of <code>parent_cluster_id</code>. Since parent labels are keyed 0–499 while child IDs go up to 39,999, this caused all parent columns to be written as <code>NaN</code> for 98.7% of the dataset.</li>
+<li><strong>VLM Relabeler NaN Label Check Fix</strong>: Resolved a bug in <code>relabel_failed_clusters.py</code> where pandas <code>NaN</code> values loaded from Parquet (representing missing/failed labels) were not identified as needing relabeling because they evaluate as <code>float('nan')</code> instead of <code>None</code> or empty strings. Fixed by adding <code>pd.isna()</code> checks to the cluster and parent labeling verification loops.</li>
+<li><strong>PyArrow Push-Down Filter Optimization</strong>: Optimized loading of the massive 46.8-million-row index file (<code>geo_space_h3_semantic_index.parquet</code>) in <code>generate_h3_semantic_map.py</code>, <code>query_geo_space.py</code>, <code>visualize_cluster_samples.py</code>, and <code>dataset_statistics.py</code>. The scripts now use PyArrow's push-down filters to load only the target resolution data, reducing memory usage by 90% (to ~3.5 GB) and speeding up loading times from minutes to under 2 seconds.</li>
+<li><strong>MLLM Labeling Array Bound Crash Fix</strong>: Resolved a traceback crash (<code>IndexError: boolean index did not match indexed array...</code>) in <code>label_clusters_mllm.py</code> during MLLM cluster labeling by allocating arrays based on <code>max(parent_ids.values()) + 1</code> to accommodate missing parent IDs from the resampling majority vote.</li>
+<li><strong>Duplicate Key Reindexing Protection</strong>: Gracefully handle duplicate photo keys in <code>load_embeddings</code> (<code>io.py</code>) and streaming indexers (<code>process_scraped_data.py</code>) by resolving indexing to their first unique occurrence, preventing <code>InvalidIndexError</code> when reindexing large datasets.</li>
+<li><strong>Lowercase Platform and photo_key Standardization</strong>: Standardized database and codebase casings for <code>Platform</code> columns and <code>photo_key</code> identifiers to lowercase globally (in <code>process_scraped_data.py</code> and <code>io.py</code>). This prevents duplicate entries when resuming scraping runs or merging datasets with mixed platform casings (e.g. 'Flickr' vs 'flickr').</li>
+<li><strong>EUNIS 2024 Code-Based Legend Resolution</strong>: Keyed the EUNIS 2024 legend mapping using the classification <code>Code</code> attribute rather than the row <code>Id</code> index in <code>spatial_overlays.py</code>. This resolves coordinate query errors where pixel codes (e.g. <code>8000</code>, <code>2113</code>) failed to map, fully restoring Level 1, 2, and 3 geobotanical retrieval evaluations.</li>
+<li><strong>Complete Checkpoint Purge</strong>: Updated the cleanup task handler at the end of <code>process_scraped_data.py</code> to completely purge companion <code>*.keys.parquet</code>, <code>.npy</code> files, and lingering <code>.tmp</code> files left over from checkpoints upon successful completion.</li>
+</ul>
+<h2 id="112-2026-08-20">[1.1.2] - 2026-08-20</h2>
+<h3 id="added_3">Added</h3>
+<ul>
+<li><strong>Hierarchical EUNIS Level 1, 2, and 3 Spatial Retrieval</strong>: Updated the EUNIS Ecosystem Map benchmark (<code>benchmark_eunis.py</code>) and the LUCAS overlay benchmark (<code>benchmark_lucas.py</code>) to run retrieval precision evaluations across Level 1 (Macro), Level 2 (Meso), and Level 3 (Exact) habitat definitions.</li>
+<li><strong>Unified EUNIS 2024 Level 3 Dataset Integration</strong>: Swapped out the legacy 2012 ecosystem map for the new 2024 Level 3 EUNIS dominant habitat raster map (<code>eunis_dominant.tif</code> and <code>eunis_legend_detailed.csv</code>).</li>
+<li><strong>Dynamic Capping &amp; Uniform Spatial Curation (<code>sample_by_h3.py</code>)</strong>: Added <code>--target_size</code> CLI argument to automatically calculate the optimal geographic cap per H3 cell using binary search to achieve a target size with maximum spatial uniformity.</li>
+<li><strong>Unified Spatial Query Helpers</strong>: Created unified coordinates lookup functions (<code>lookup_environmental_zone</code> and <code>lookup_eunis_levels</code>) inside <code>src/utils/spatial_overlays.py</code> to eliminate coordinate query code duplication across <code>benchmark_environmental_zones.py</code>, <code>benchmark_eunis.py</code>, and <code>benchmark_lucas.py</code>.</li>
+<li><strong>Automated Model Benchmarking Comparison</strong>: Created <code>compare_models.py</code> to automate running the benchmarking pipeline across multiple models sequentially, parsing the metrics, and collating them into a single markdown comparison report.</li>
+<li><strong>Interactive Project Wiki &amp; MathJax Support</strong>: Added a Material for MkDocs configuration (<code>config/wiki/mkdocs.yml</code>) with support for Mermaid diagrams and MathJax LaTeX equation rendering (delimiters: <code>$ ... $</code>, <code>$$ ... $$</code>). Relocated the changelog inside the <code>docs/</code> folder and created a site homepage.</li>
+<li><strong>Configurable CLIP Comparison</strong>: Added the <code>compare_clip</code> parameter to the Places365 config, allowing users to toggle CLIP baselines directly from the YAML.</li>
+<li><strong>Sanitized Model-Specific Output Reports</strong>: Appended clean model names to benchmark report text and CSV files (e.g. <code>lucas_report_google_tipsv2-b14.txt</code>), preventing concurrent runs from overwriting each other.</li>
+</ul>
+<h3 id="changed_2">Changed</h3>
+<ul>
+<li><strong>Consolidated EUNIS Mappings</strong>: Replaced the complex and multi-level fallback DBF mapping logic with direct CSV legend parsing from <code>load_eunis_legend()</code>.</li>
+<li><strong>Streamlined Model Inference</strong>: Refactored the vision model loading and inference layer to focus strictly on <code>timm</code> and <code>TIPSv2</code> models, making the code much easier to maintain.</li>
+<li><strong>Lazy Class Token Verification</strong>: Implemented lazy checks to query and cache class token presence (<code>cls_token</code> or <code>num_prefix_tokens &gt; 0</code>) on model instances during the first forward pass, enabling support for models without a standard CLS token.</li>
+<li><strong>Robust Boolean Parsing</strong>: Standardized bash wrappers to support both lowercase (<code>false</code>) and title-case (<code>False</code>) outputs from PyYAML parser lookups, correcting issues where flags like <code>use_segformer: false</code> were ignored.</li>
+<li><strong>Dynamic Mapillary API Keying in Evaluations</strong>: Replaced hardcoded Mapillary credential variables in the spatial evaluation scripts with dynamic <code>--mapillary_token</code> parameters populated from the <code>.env</code> environment.</li>
+</ul>
+<h2 id="111-2026-08-18">[1.1.1] - 2026-08-18</h2>
+<h3 id="added_4">Added</h3>
+<ul>
+<li><strong>Centralized Secrets Environment</strong>: Created a gitignored <code>.env</code> file in the project root to store Flickr, Mapillary, and Hugging Face tokens, along with a committed <code>.env.template</code> setup template.</li>
+<li><strong>Scraper Configuration Decoupling</strong>: Created a new <code>config/scrapers/</code> folder containing separate YAML parameters for all 7 scraping utilities.</li>
+<li><strong>Refactored Scraper Scripts</strong>: Updated all 7 scraper shell scripts in <code>scripts/scrapers/</code> to load their parameters from <code>config/scrapers/*.yaml</code> and credentials from <code>.env</code>, removing all fallback references to the main <code>params.yaml</code> file.</li>
+<li><strong>Evaluation Configuration Decoupling</strong>: Relocated root evaluation configs (<code>eval_params_offline.yaml</code> and <code>eval_params_online.yaml</code>) into a new <code>config/evaluation/</code> directory as <code>params_offline.yaml</code> and <code>params_online.yaml</code>, and created dedicated YAML parameter configurations for the LUCAS and Places365 visual model evaluation runners.</li>
+<li><strong>Refactored Evaluation Scripts</strong>: Updated all 4 evaluation shell runners in <code>scripts/evaluation/</code> to dynamically load parameters from the new <code>config/evaluation/</code> YAML files, fixing relative path bugs and imports.</li>
+<li><strong>Multi-Model Benchmarking Support</strong>: Added a unified <code>load_vision_model</code> helper supporting <code>timm</code> models and custom local/HF <code>TIPSv2</code> models, dynamically resolving input resolution, normalization, and transforms.</li>
+<li><strong>Dynamic Prefix and Patch Extraction</strong>: Updated the feature extraction pipelines in all 4 python benchmarks to automatically respect prefix tokens (using <code>model.num_prefix_tokens</code>) and dynamically compute grid sizes and patch boundaries at run-time (removing hardcoded patch-size expectations).</li>
+<li><strong>Configurable YAML Model Names</strong>: Exposed <code>model_name</code> attributes in the offline and online evaluation configs, enabling seamless comparisons across diverse representation models (like DINOv2, SigLIP, or CLIP via timm) by updating the YAML parameters.</li>
+<li><strong>Optional SegFormer Speedup Toggle</strong>: Added <code>--no_segformer</code> CLI argument and <code>use_segformer</code> YAML configuration support, enabling users to completely bypass SegFormer model loading and background segmentation checks for a massive (several times) performance speedup.</li>
+</ul>
+<h2 id="110-2026-08-17">[1.1.0] - 2026-08-17</h2>
+<h3 id="added_5">Added</h3>
+<ul>
+<li><strong>Directory Refactoring (Shell Scripts)</strong>: Consolidated 11 of the 12 shell scripts from the repository root into functional subdirectories:</li>
+<li><code>/scripts/scrapers/</code> for scraping loops and density profilers.</li>
+<li><code>/scripts/evaluation/</code> for Places365, LUCAS, and spatial benchmarks.</li>
+<li><strong>Relocatable Path Safety</strong>: Prepended auto-resolution headers to all migrated scripts (<code>SCRIPT_DIR</code> + <code>PROJECT_ROOT</code>) so they dynamically resolve imports and config relative to the project root directory, allowing safe execution from anywhere.</li>
+<li><strong>Unified Format Ingestion (CSV &amp; Parquet)</strong>: Updated <code>process_scraped_data.py</code> to accept both <code>.csv</code> and <code>.parquet</code> files as raw input scraping sources (found via <code>--dirs</code> and <code>--offline_dataset_dirs</code>). Included safety filtering to ignore keys, checkpoints, and output databases during ingestion.</li>
+<li><strong>Precomputed Embedding Bypass</strong>: If an ingested Parquet file has precomputed embeddings (e.g., from <code>backfill_embeddings.py</code>), <code>process_cell</code> dynamically loads them and bypasses both the image downloading and the GPU-based TIPSv2 model forward pass.</li>
+<li><strong>Strict Representation Type Checking</strong>: Added verification of filename representation suffixes (e.g. <code>_cls_embeddings.npy</code> vs <code>_avg_patch_</code>) in <code>load_embeddings()</code> to prevent loading mismatched vector configurations.</li>
+<li><strong>First-Match Column Fallbacks</strong>: Implemented first-match fallback column mapping (<code>local_path</code>, <code>Image_Location</code>, <code>file_name</code>, <code>path</code>) to prevent duplicate column collisions (e.g. when a dataset contains both <code>Image_Location</code> and <code>file_name</code>).</li>
+<li><strong>Configurable API Arguments</strong>: Added command-line arguments (<code>--api_key</code> and <code>--token</code>) to scrapers and density profilers to allow running them as standalone tools with explicit keys without modifying files.</li>
+<li><strong>Profiler Shell Wrappers</strong>: Added <code>run_flickr_density_profiler.sh</code> and <code>run_mapillary_density_profiler.sh</code> wrappers to easily configure and run density profiling scrapers from the command line with token fallbacks and command line location overrides.</li>
+</ul>
+<h3 id="changed_3">Changed</h3>
+<ul>
+<li><strong>Decoupled API Token Infrastructure</strong>: Moved Mapillary token and Flickr API key out of source code files and into the centralized config file <code>params.yaml</code>. Updated shell wrappers (<code>run_flickr_scraper.sh</code>, <code>run_mapillary_scraper.sh</code>, and <code>run_full_pipeline.sh</code>) to automatically parse and export them.</li>
+<li><strong>Key-Based Embedding Matching</strong>: Completely eliminated legacy <code>embedding_idx</code> integers and migrated loaders/writers to match embeddings via the stable <code>photo_key</code> string column. Row dropping, filtering, and joining are now 100% safe from alignment drift.</li>
+<li><strong>Enforced Parquet backfilling</strong>: Refactored <code>backfill_embeddings.py</code> to save data utilizing <code>save_dataframe()</code>, automatically enforcing <code>.parquet</code> output extension, saving companion <code>.npy</code> matrices, and generating <code>.keys.parquet</code> index files.</li>
+</ul>
+<h3 id="fixed_3">Fixed</h3>
+<ul>
+<li><strong>VLM Parent Cluster Path Resolution</strong>: Fixed a bug in <code>label_clusters_mllm.py</code> where representative image tasks for parent clusters omitted <code>photo_id</code> and <code>platform</code> keys, which broke offline path resolution for parent cluster labeling.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../assets/js/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
