@@ -100,22 +100,12 @@ def select_balanced_samples(
 
 
 def load_retrieval_dashboard_template() -> str:
-    """Loads the HTML template for the retrieval dashboard from templates/retrieval_dashboard.html."""
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    candidates = [
-        os.path.join(repo_root, "templates", "retrieval_dashboard.html"),
-        os.path.join(
-            os.path.dirname(__file__), "templates", "retrieval_dashboard.html"
-        ),
-        "templates/retrieval_dashboard.html",
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            with open(p, "r", encoding="utf-8") as f:
-                return f.read()
-    raise FileNotFoundError(
-        f"Could not find retrieval_dashboard.html in candidate paths: {candidates}"
+    """Loads the HTML template for the retrieval dashboard."""
+    template_path = os.path.join(
+        os.path.dirname(__file__), "templates", "retrieval_dashboard.html"
     )
+    with open(template_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 def generate_retrieval_html(

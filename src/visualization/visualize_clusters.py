@@ -84,11 +84,9 @@ def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
         data = df.to_dict("records")
 
     # Load marker popup template
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    popup_template_path = os.path.join(root_dir, "templates", "marker_popup.html")
-    if not os.path.exists(popup_template_path):
-        popup_template_path = "templates/marker_popup.html"
-
+    popup_template_path = os.path.join(
+        os.path.dirname(__file__), "templates", "marker_popup.html"
+    )
     with open(popup_template_path, "r", encoding="utf-8") as f:
         popup_template = f.read()
 
@@ -248,11 +246,9 @@ def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
         ).add_to(marker_cluster)
 
     # Inject global JS helper template from templates/image_error_handler.js
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    js_template_path = os.path.join(root_dir, "templates", "image_error_handler.js")
-    if not os.path.exists(js_template_path):
-        js_template_path = "templates/image_error_handler.js"
-
+    js_template_path = os.path.join(
+        os.path.dirname(__file__), "templates", "image_error_handler.js"
+    )
     with open(js_template_path, "r", encoding="utf-8") as f:
         js_code = f.read().replace("{{MAPILLARY_TOKEN}}", MAPILLARY_TOKEN)
 

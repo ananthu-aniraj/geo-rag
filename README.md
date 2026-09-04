@@ -57,8 +57,7 @@ geo-rag/
 │   ├── processing/               # Data cleaning, deduplication & timestamp standardization
 │   ├── scrapers/                 # Data collection (Mapillary, Flickr, iNaturalist, GBIF)
 │   ├── utils/                    # LULC taxonomies, statistics, & cluster validation
-│   └── visualization/            # Map generators & HTML dashboard builders
-├── templates/                    # Standalone HTML/JS frontend templates
+│   └── visualization/            # Map generators, dashboard templates & visualizers
 ├── .env                          # Local credentials file (gitignored)
 ├── .env.template                 # Template for API credentials configuration
 └── run_full_pipeline.sh          # Full end-to-end data processing pipeline

@@ -114,11 +114,9 @@ def main():
     )
 
     # Load JS tooltip builder template from templates/h3_semantic_tooltip.js
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    js_template_path = os.path.join(root_dir, "templates", "h3_semantic_tooltip.js")
-    if not os.path.exists(js_template_path):
-        js_template_path = "templates/h3_semantic_tooltip.js"
-
+    js_template_path = os.path.join(
+        os.path.dirname(__file__), "templates", "h3_semantic_tooltip.js"
+    )
     with open(js_template_path, "r", encoding="utf-8") as f:
         js_code_str = f.read().replace("{{RES}}", str(args.res))
     js_tooltip_builder = folium.utilities.JsCode(js_code_str)
