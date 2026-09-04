@@ -92,7 +92,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         ],
     }
 
-    path_to_try = config_path or DEFAULT_CONFIG_PATH
+    path_to_try = config_path
     if path_to_try and os.path.exists(path_to_try):
         try:
             with open(path_to_try, "r", encoding="utf-8") as f:
@@ -177,34 +177,41 @@ def extract_cls_attention_maps(model, batch_tensors, is_local=False):
     try:
         # Case 1: TIPSv2 (HF wrapper or local checkpoint)
         if is_local or hasattr(model, "vision_encoder"):
-            vision_encoder = (
-                model
-                if is_local
-                else (
-                    model.vision_encoder if hasattr(model, "vision_encoder") else model
+            with torch.no_grad():
+                vision_encoder = (
+                    model
+                    if is_local
+                    else (
+                        model.vision_encoder
+                        if hasattr(model, "vision_encoder")
+                        else model
+                    )
                 )
-            )
-            all_blocks = list(vision_encoder.blocks)
-            x = vision_encoder.prepare_tokens_with_masks(batch_tensors)
-            num_register = getattr(vision_encoder, "num_register_tokens", 1)
-            for blk in all_blocks[:-1]:
-                x = blk(x)
-            last_blk = all_blocks[-1]
-            x_normed = last_blk.norm1(x)
-            b_dim, n_dim, c_dim = x_normed.shape
-            num_heads = last_blk.attn.num_heads
-            head_dim = c_dim // num_heads
-            qkv = (
-                last_blk.attn.qkv(x_normed)
-                .reshape(b_dim, n_dim, 3, num_heads, head_dim)
-                .permute(2, 0, 3, 1, 4)
-            )
-            q_cls = qkv[0][:, :, 0:1, :]
-            k = qkv[1]
-            scale = 1.0 / math.sqrt(head_dim)
-            attn = F.softmax(torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1)
-            # Average across heads, take attention from CLS to patch tokens (after CLS + registers)
-            return attn[:, :, 0, 1 + num_register :].mean(dim=1).cpu().numpy()
+                all_blocks = list(vision_encoder.blocks)
+                x = vision_encoder.prepare_tokens_with_masks(batch_tensors)
+                num_register = getattr(vision_encoder, "num_register_tokens", 1)
+                for blk in all_blocks[:-1]:
+                    x = blk(x)
+                last_blk = all_blocks[-1]
+                x_normed = last_blk.norm1(x)
+                b_dim, n_dim, c_dim = x_normed.shape
+                num_heads = last_blk.attn.num_heads
+                head_dim = c_dim // num_heads
+                qkv = (
+                    last_blk.attn.qkv(x_normed)
+                    .reshape(b_dim, n_dim, 3, num_heads, head_dim)
+                    .permute(2, 0, 3, 1, 4)
+                )
+                q_cls = qkv[0][:, :, 0:1, :]
+                k = qkv[1]
+                scale = 1.0 / math.sqrt(head_dim)
+                attn = F.softmax(
+                    torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1
+                )
+                # Average across heads, take attention from CLS to patch tokens (after CLS + registers)
+                return (
+                    attn[:, :, 0, 1 + num_register :].mean(dim=1).detach().cpu().numpy()
+                )
 
         # Case 2: timm ViT models with blocks
         elif hasattr(model, "blocks") and len(model.blocks) > 0:
@@ -239,6 +246,35 @@ def extract_cls_attention_maps(model, batch_tensors, is_local=False):
         print(f"Warning: Failed to extract CLS attention weights: {e}")
 
     return None
+
+
+def setup_device() -> torch.device:
+    """Auto-detects compute device via torch.cuda.is_available() with CPU xformers compatibility."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # If running on CPU and xformers is installed, enable scaled_dot_product_attention fallback
+    # to prevent xformers NotImplementedError on CPU
+    if device.type == "cpu":
+        try:
+            import xformers.ops
+
+            _orig_mha = xformers.ops.memory_efficient_attention
+
+            def _safe_mha(q, k, v, attn_bias=None, p=0.0, scale=None):
+                if q.device.type == "cpu":
+                    q_t = q.permute(0, 2, 1, 3)
+                    k_t = k.permute(0, 2, 1, 3)
+                    v_t = v.permute(0, 2, 1, 3)
+                    return torch.nn.functional.scaled_dot_product_attention(
+                        q_t, k_t, v_t, attn_mask=attn_bias, dropout_p=p, scale=scale
+                    ).permute(0, 2, 1, 3)
+                return _orig_mha(q, k, v, attn_bias=attn_bias, p=p, scale=scale)
+
+            xformers.ops.memory_efficient_attention = _safe_mha
+        except (ImportError, AttributeError):
+            pass
+
+    return device
 
 
 def snap_mask_with_pca(seg_keep, pca_rgb, k_segments=4, use_gpu=True):
@@ -298,7 +334,7 @@ def main():
     parser.add_argument(
         "--config",
         type=str,
-        default=None,
+        default=DEFAULT_CONFIG_PATH,
         help="Path to YAML configuration file.",
     )
     parser.add_argument(
@@ -457,7 +493,7 @@ def main():
     save_plots = cfg["output"].get("save_plots", True)
 
     # Device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = setup_device()
     print("=" * 80)
     print("      Starting Representation & Layout Retrieval Benchmarking Suite")
     print("=" * 80)
@@ -918,7 +954,10 @@ def main():
                             hr_pca_t = (hr_pca_t - h_min) / (h_max - h_min + 1e-9)
                             pca_rgb = (hr_pca_t.cpu().numpy() * 255).astype(np.uint8)
                             snapped_keep = snap_mask_with_pca(
-                                keep_mask, pca_rgb, k_segments=4
+                                keep_mask,
+                                pca_rgb,
+                                k_segments=4,
+                                use_gpu=(device.type == "cuda"),
                             )
                         except Exception:
                             pca_rgb = (
