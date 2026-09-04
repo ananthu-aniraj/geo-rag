@@ -119,6 +119,9 @@ class TestVisualizeRetrieval(unittest.TestCase):
         self.assertIn("Alpine North", content)
         self.assertIn("flickr_101", content)
         self.assertIn("50.0%", content)
+        self.assertIn('id="query-data"', content)
+        self.assertNotIn("{{QUERY_DATA_JSON}}", content)
+        self.assertNotIn("{{TITLE}}", content)
 
 
 if __name__ == "__main__":
