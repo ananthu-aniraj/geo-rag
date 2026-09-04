@@ -12,12 +12,14 @@ dataset:
   input_path: "full_pipeline_output/geo_space_deduplicated.parquet"
   # Optional space-separated list of offline dataset directories
   offline_dataset_dirs: ""
+  # Optional platform filter for queries (e.g. "flickr", "mapillary", or null for all)
+  query_platform: "flickr"
   # Number of database images to sample (balanced across platforms if available)
-  num_images: 300
+  num_images: 3000
   # Number of query evaluations to run
   num_queries: 50
   # Random seed for reproducible sampling and evaluation
-  seed: 42
+  seed: 1
   # GPU batch size for feature extraction
   batch_size: 16
 
@@ -25,12 +27,14 @@ options:
   # Enable PCA-based representations (AnyUp-PCA Snapped Mask and Global PCA Layout Histograms)
   enable_pca: false
   # Evaluate FP16 alongside FP32 for each representation
-  enable_fp16: true
+  enable_fp16: false
   # Enable SegFormer semantic segmentation masking
   use_segformer: true
   # Foreground attention filtering options (only computed if representation is selected)
-  fg_attn_threshold: 2.0     # Multiplier over uniform attention (1/N)
-  max_fg_ratio: 0.05         # 1/20 of all patch tokens (5%)
+  fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
+  max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)
+  plot_only_fg: true         # Only plot diagnostic mask samples where foreground was detected
+  max_mask_plots: 3          # Max number of mask diagnostic sample rows to plot
 
 output:
   # Directory where report and plots are saved
@@ -59,9 +63,9 @@ representations:
   - "unmasked_avg"
   - "cls_attn_fg_removed"
   - "cls_plus_fg_removed_concat"
-  - "segformer_masked"
-  - "tips_ade_masked"
-  - "cls_tips_ade_concat"
-  - "cls_unmasked_concat"
+#  - "segformer_masked"
+#  - "tips_ade_masked"
+#  - "cls_tips_ade_concat"
+#  - "cls_unmasked_concat"
   # - "anyup_snapped"
   # - "hybrid_land_use"

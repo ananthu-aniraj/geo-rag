@@ -18,7 +18,6 @@ from transformers import (
 )
 
 from src.models.vision_model_inference import (
-    extract_benchmark_features_single_pass,
     load_vision_model,
 )
 from src.utils.io import download_image, load_dataframe
@@ -64,6 +63,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             "offline_dataset_dirs": "",
             "num_images": 300,
             "num_queries": 50,
+            "query_platform": None,
             "seed": 42,
             "batch_size": 16,
         },
@@ -73,6 +73,8 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             "use_segformer": True,
             "fg_attn_threshold": 2.0,
             "max_fg_ratio": 0.05,
+            "plot_only_fg": True,
+            "max_mask_plots": 3,
         },
         "output": {
             "output_dir": "./benchmark_results",
@@ -169,64 +171,148 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return standard_df
 
 
-def extract_cls_attention_maps(model, batch_tensors, is_local=False):
+def _extract_representation_features_tipsv2(
+    model, batch_tensors, is_local=False, extract_attention=False
+):
     """
-    Dedicated extraction of [CLS]-to-patch attention weights from the final transformer layer.
-    Only executed when foreground-filtering representations are explicitly requested.
+    Extracts standard CLS tokens, MaskCLIP value patch tokens, and optionally
+    CLS-to-patch attention maps from TIPSv2 in a single unified forward pass.
     """
-    try:
-        # Case 1: TIPSv2 (HF wrapper or local checkpoint)
-        if is_local or hasattr(model, "vision_encoder"):
-            with torch.no_grad():
-                vision_encoder = (
-                    model
-                    if is_local
-                    else (
-                        model.vision_encoder
-                        if hasattr(model, "vision_encoder")
-                        else model
-                    )
-                )
-                all_blocks = list(vision_encoder.blocks)
-                x = vision_encoder.prepare_tokens_with_masks(batch_tensors)
-                num_register = getattr(vision_encoder, "num_register_tokens", 1)
-                for blk in all_blocks[:-1]:
-                    x = blk(x)
-                last_blk = all_blocks[-1]
-                x_normed = last_blk.norm1(x)
-                b_dim, n_dim, c_dim = x_normed.shape
-                num_heads = last_blk.attn.num_heads
-                head_dim = c_dim // num_heads
-                qkv = (
-                    last_blk.attn.qkv(x_normed)
-                    .reshape(b_dim, n_dim, 3, num_heads, head_dim)
-                    .permute(2, 0, 3, 1, 4)
-                )
-                q_cls = qkv[0][:, :, 0:1, :]
-                k = qkv[1]
-                scale = 1.0 / math.sqrt(head_dim)
-                attn = F.softmax(
-                    torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1
-                )
-                # Average across heads, take attention from CLS to patch tokens (after CLS + registers)
-                return (
-                    attn[:, :, 0, 1 + num_register :].mean(dim=1).detach().cpu().numpy()
-                )
+    vision_encoder = (
+        model
+        if is_local
+        else (model.vision_encoder if hasattr(model, "vision_encoder") else model)
+    )
 
-        # Case 2: timm ViT models with blocks
-        elif hasattr(model, "blocks") and len(model.blocks) > 0:
-            captured_inputs = []
-            last_attn = model.blocks[-1].attn
-            hook = last_attn.register_forward_hook(
-                lambda mod, inp, out: captured_inputs.append(inp[0])
+    # 1. Prepare tokens
+    x = vision_encoder.prepare_tokens_with_masks(batch_tensors)
+    num_register = getattr(vision_encoder, "num_register_tokens", 1)
+
+    # 2. Forward through first N-1 blocks
+    all_blocks = list(vision_encoder.blocks)
+    for blk in all_blocks[:-1]:
+        x = blk(x)
+
+    # 3. Last block standard output (CLS token)
+    last_blk = all_blocks[-1]
+    x_standard = last_blk(x)
+    x_standard_norm = vision_encoder.norm(x_standard)
+
+    if is_local:
+        first_cls = model.head(x_standard_norm[:, :1])
+        if first_cls.ndim == 3:
+            first_cls = first_cls.squeeze(1)
+        first_cls = first_cls.detach().cpu().numpy()
+
+        second_cls = model.head(x_standard_norm[:, 1 : num_register + 1])
+        if second_cls.ndim == 3:
+            second_cls = second_cls.squeeze(1)
+        second_cls = second_cls.detach().cpu().numpy()
+
+        cls_out = (first_cls, second_cls)
+    else:
+        cls_token = x_standard_norm[:, 0]
+        if cls_token.ndim == 3:
+            cls_token = cls_token.squeeze(1)
+        cls_out = cls_token.detach().cpu().numpy()
+
+    # 4. Last block value attention projection (MaskCLIP values trick)
+    x_normed = last_blk.norm1(x)
+    b_dim, n_dim, c_dim = x_normed.shape
+    num_heads = last_blk.attn.num_heads
+    head_dim = c_dim // num_heads
+
+    qkv = (
+        last_blk.attn.qkv(x_normed)
+        .reshape(b_dim, n_dim, 3, num_heads, head_dim)
+        .permute(2, 0, 3, 1, 4)
+    )
+    v = qkv[2]
+    v_out = v.transpose(1, 2).reshape(b_dim, n_dim, c_dim)
+    v_out = last_blk.attn.proj(v_out)
+    v_out = last_blk.ls1(v_out)
+    x_val = v_out + x
+
+    y_val = last_blk.norm2(x_val)
+    y_val = last_blk.ls2(last_blk.mlp(y_val))
+    x_val = x_val + y_val
+
+    x_val_norm = vision_encoder.norm(x_val)
+    patch_tokens = x_val_norm[:, 1 + num_register :, :]
+    patch_tokens_vals = patch_tokens.detach().cpu().numpy()
+
+    # 5. Extract CLS attention if requested from the existing qkv projections (zero extra forward pass)
+    cls_attn = None
+    if extract_attention:
+        try:
+            q_cls = qkv[0][:, :, 0:1, :]
+            k = qkv[1]
+            scale = 1.0 / math.sqrt(head_dim)
+            attn = F.softmax(torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1)
+            cls_attn = (
+                attn[:, :, 0, 1 + num_register :].mean(dim=1).detach().cpu().numpy()
             )
-            try:
-                with torch.no_grad():
-                    model.forward_features(batch_tensors)
-            finally:
-                hook.remove()
+        except Exception as e:
+            print(
+                f"Warning: Failed to extract TIPSv2 CLS attention in single pass: {e}"
+            )
 
-            if captured_inputs:
+    return cls_out, patch_tokens_vals, cls_attn
+
+
+def _extract_representation_features_timm(
+    model, batch_tensors, extract_attention=False
+):
+    """
+    Extracts CLS tokens, patch tokens, and optional attention maps from timm models
+    in a single unified forward pass.
+    """
+    captured_inputs = []
+    hook = None
+    if extract_attention and hasattr(model, "blocks") and len(model.blocks) > 0:
+        last_attn = model.blocks[-1].attn
+        hook = last_attn.register_forward_hook(
+            lambda mod, inp, out: captured_inputs.append(inp[0])
+        )
+
+    try:
+        features = model.forward_features(batch_tensors)
+    finally:
+        if hook is not None:
+            hook.remove()
+
+    if features.ndim == 4:
+        cls_out = (
+            torch.nn.functional.adaptive_avg_pool2d(features, 1)
+            .flatten(1)
+            .detach()
+            .cpu()
+            .numpy()
+        )
+        b, c, h, w = features.shape
+        patch_tokens_vals = (
+            features.permute(0, 2, 3, 1).reshape(b, h * w, c).detach().cpu().numpy()
+        )
+        cls_attn = None
+    else:
+        has_cls = getattr(model, "has_cls_token", True)
+        if has_cls:
+            cls_out = features[:, 0].detach().cpu().numpy()
+            num_prefix = getattr(model, "num_prefix_tokens", 1)
+            patch_tokens_vals = features[:, num_prefix:].detach().cpu().numpy()
+        else:
+            cls_out = torch.mean(features, dim=1).detach().cpu().numpy()
+            patch_tokens_vals = features.detach().cpu().numpy()
+
+        cls_attn = None
+        if (
+            extract_attention
+            and captured_inputs
+            and hasattr(model, "blocks")
+            and len(model.blocks) > 0
+        ):
+            try:
+                last_attn = model.blocks[-1].attn
                 inp = captured_inputs[0]
                 B, N, C = inp.shape
                 qkv = (
@@ -241,11 +327,50 @@ def extract_cls_attention_maps(model, batch_tensors, is_local=False):
                     torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1
                 )
                 num_prefix = getattr(model, "num_prefix_tokens", 1)
-                return attn[:, :, 0, num_prefix:].mean(dim=1).cpu().numpy()
-    except Exception as e:
-        print(f"Warning: Failed to extract CLS attention weights: {e}")
+                cls_attn = attn[:, :, 0, num_prefix:].mean(dim=1).detach().cpu().numpy()
+            except Exception as e:
+                print(
+                    f"Warning: Failed to extract timm CLS attention in single pass: {e}"
+                )
 
-    return None
+    return cls_out, patch_tokens_vals, cls_attn
+
+
+def extract_representation_features_single_pass(
+    model, batch_tensors, is_local=False, extract_attention=False
+):
+    """
+    Dedicated feature extraction function for representation benchmarking.
+    Extracts CLS token, patch value tokens, and optionally CLS attention maps
+    in a SINGLE unified forward pass through the vision backbone.
+    """
+    if getattr(model, "has_cls_token", None) is None:
+        has_cls = (
+            (getattr(model, "cls_token", None) is not None)
+            or (getattr(model, "num_prefix_tokens", 0) > 0)
+            or (
+                hasattr(model, "vision_encoder")
+                and getattr(model.vision_encoder, "cls_token", None) is not None
+            )
+        )
+        model.has_cls_token = has_cls
+
+    if not is_local and hasattr(model, "forward_features"):
+        return _extract_representation_features_timm(
+            model, batch_tensors, extract_attention=extract_attention
+        )
+
+    return _extract_representation_features_tipsv2(
+        model, batch_tensors, is_local=is_local, extract_attention=extract_attention
+    )
+
+
+def extract_cls_attention_maps(model, batch_tensors, is_local=False):
+    """Legacy helper: extracts attention maps via single-pass representation extraction."""
+    _, _, cls_attn = extract_representation_features_single_pass(
+        model, batch_tensors, is_local=is_local, extract_attention=True
+    )
+    return cls_attn
 
 
 def setup_device() -> torch.device:
@@ -368,6 +493,12 @@ def main():
         help="Number of query evaluations to run. Overrides config.",
     )
     parser.add_argument(
+        "--query_platform",
+        type=str,
+        default=None,
+        help="Filter query images to only use this platform (e.g. 'flickr', 'mapillary'). Overrides config.",
+    )
+    parser.add_argument(
         "--batch_size",
         type=int,
         default=None,
@@ -414,6 +545,25 @@ def main():
         help="Maximum foreground ratio allowed to be removed (e.g. 0.05 for 1/20). Overrides config.",
     )
     parser.add_argument(
+        "--plot_only_fg",
+        dest="plot_only_fg",
+        action="store_true",
+        default=None,
+        help="Only plot mask diagnostic samples for images where foreground was detected (default: True).",
+    )
+    parser.add_argument(
+        "--plot_all_samples",
+        dest="plot_only_fg",
+        action="store_false",
+        help="Plot the first N diagnostic samples regardless of whether foreground was detected.",
+    )
+    parser.add_argument(
+        "--max_mask_plots",
+        type=int,
+        default=None,
+        help="Maximum number of diagnostic mask sample rows to plot (default: 3).",
+    )
+    parser.add_argument(
         "--offline_dataset_dirs",
         type=str,
         default=None,
@@ -451,6 +601,11 @@ def main():
         if args.num_queries is not None
         else cfg["dataset"].get("num_queries", 50)
     )
+    query_platform = (
+        args.query_platform
+        if args.query_platform is not None
+        else cfg["dataset"].get("query_platform", None)
+    )
     seed = args.seed if args.seed is not None else cfg["dataset"].get("seed", 42)
     batch_size = (
         args.batch_size
@@ -482,6 +637,16 @@ def main():
         if args.max_fg_ratio is not None
         else cfg["options"].get("max_fg_ratio", 0.05)
     )
+    plot_only_fg = (
+        args.plot_only_fg
+        if args.plot_only_fg is not None
+        else cfg["options"].get("plot_only_fg", True)
+    )
+    max_mask_plots = (
+        args.max_mask_plots
+        if args.max_mask_plots is not None
+        else int(cfg["options"].get("max_mask_plots", 3))
+    )
 
     output_dir = args.output_dir or cfg["output"].get(
         "output_dir", "./benchmark_results"
@@ -501,13 +666,18 @@ def main():
         f"Target Model: {model_name} ({'Local Checkpoint: ' + tips_model_path if tips_model_path else 'Hub/timm'})"
     )
     print(f"Target Database: {input_path}")
-    print(f"Images to Sample: {num_images} (Queries: {num_queries})")
+    print(
+        f"Images to Sample: {num_images} (Queries: {num_queries}, Query Platform: {query_platform or 'all'})"
+    )
     print(f"Batch Size: {batch_size}, Seed: {seed}")
     print(
         f"PCA Enabled: {enable_pca}, SegFormer Enabled: {use_segformer}, FP16: {enable_fp16}"
     )
     print(
         f"Foreground Filtering: Threshold Multiplier={fg_attn_threshold}x, Max Ratio={max_fg_ratio:.1%}"
+    )
+    print(
+        f"Diagnostic Plots: save_plots={save_plots}, plot_only_fg={plot_only_fg}, max_mask_plots={max_mask_plots}"
     )
 
     # Load Vision Model via unified loader
@@ -765,6 +935,7 @@ def main():
     features_dict = {r: [] for r in selected_reps}
     raw_patch_tokens_list = []
     tips_ade_keep_masks_list = []
+    candidate_viz_samples = []
     seg_viz_samples = []
 
     print("Extracting spatial representations in batches...")
@@ -772,25 +943,16 @@ def main():
         batch_keys = list(range(i, min(i + batch_size, len(images))))
         batch_imgs = [images[k] for k in batch_keys]
 
-        # Segformer pass if required
-        pred_masks = None
-        if seg_model and seg_processor:
-            inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
-            with torch.no_grad():
-                outputs = seg_model(**inputs)
-            logits = torch.nn.functional.interpolate(
-                outputs.logits,
-                size=(image_size, image_size),
-                mode="bilinear",
-                align_corners=False,
-            )
-            pred_masks = logits.argmax(dim=1).cpu().numpy()
-
-        # Model feature extractions
+        # 1. Model feature and attention extractions in a single unified pass
         img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
         with torch.no_grad():
-            cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(
-                vision_model, img_tensors, is_local=is_local
+            cls_out, patch_tokens_vals, cls_attn_batch = (
+                extract_representation_features_single_pass(
+                    vision_model,
+                    img_tensors,
+                    is_local=is_local,
+                    extract_attention=need_cls_attn,
+                )
             )
             if is_local:
                 cls_tokens = cls_out[0]
@@ -808,12 +970,31 @@ def main():
             )
             curr_patch_size = max(1, image_size // curr_grid_size)
 
-        # Dedicated CLS attention extraction (only if requested)
-        cls_attn_batch = None
-        if need_cls_attn:
-            cls_attn_batch = extract_cls_attention_maps(
-                vision_model, img_tensors, is_local=is_local
-            )
+        # 2. Segformer pass if required (vectorized patch pooling on GPU)
+        pred_keep_masks_np = None
+        batch_seg_patch_weights = None
+        if seg_model and seg_processor:
+            inputs = seg_processor(images=batch_imgs, return_tensors="pt").to(device)
+            with torch.no_grad():
+                outputs = seg_model(**inputs)
+                logits = torch.nn.functional.interpolate(
+                    outputs.logits,
+                    size=(image_size, image_size),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                pred_classes = logits.argmax(dim=1)
+                seg_keep_tensor = torch.ones_like(pred_classes, dtype=torch.float32)
+                for c in DISCARD_CLASSES:
+                    seg_keep_tensor[pred_classes == c] = 0.0
+
+                pooled_weights = torch.nn.functional.adaptive_avg_pool2d(
+                    seg_keep_tensor.unsqueeze(1), (curr_grid_size, curr_grid_size)
+                )
+                batch_seg_patch_weights = pooled_weights.squeeze(1).cpu().numpy()
+
+                if save_plots or (enable_pca and "anyup_snapped" in selected_reps):
+                    pred_keep_masks_np = seg_keep_tensor.cpu().numpy()
 
         # Process each image in batch
         for batch_i in range(len(batch_keys)):
@@ -843,39 +1024,42 @@ def main():
 
                 max_fg_patches = int(math.floor(max_fg_ratio * curr_num_patches))
 
-                if 1 <= num_fg <= max_fg_patches:
-                    fg_bool = np.zeros(curr_num_patches, dtype=bool)
+                fg_bool = np.zeros(curr_num_patches, dtype=bool)
+                if num_fg > 0:
                     fg_bool[fg_indices] = True
+
+                # Size-gated embedding calculation
+                if 1 <= num_fg <= max_fg_patches:
                     bg_indices = np.where(~fg_bool)[0]
                     bg_patch_avg = np.mean(patch_tokens[bg_indices], axis=0)
-                    fg_mask_grid = (~fg_bool).astype(float)
                 else:
                     bg_patch_avg = simple_avg
+
+                # Diagnostic mask grid: preserve detected foreground for visualization & candidate ranking
+                if num_fg > 0:
+                    fg_mask_grid = (~fg_bool).astype(float)
+                else:
                     fg_mask_grid = np.ones(curr_num_patches, dtype=float)
 
                 bg_patch_norm = bg_patch_avg / (np.linalg.norm(bg_patch_avg) + 1e-9)
                 if "cls_attn_fg_removed" in selected_reps:
                     features_dict["cls_attn_fg_removed"].append(bg_patch_norm)
 
-            # Segformer masking
-            keep_mask = None
-            patch_weights = None
-            if pred_masks is not None:
-                pred_mask = pred_masks[batch_i]
-                keep_mask = np.ones_like(pred_mask, dtype=float)
-                for c in DISCARD_CLASSES:
-                    keep_mask[pred_mask == c] = 0.0
-
-                patch_weights = np.zeros((curr_grid_size, curr_grid_size))
-                for r_idx in range(curr_grid_size):
-                    for c_idx in range(curr_grid_size):
-                        patch_weights[r_idx, c_idx] = np.mean(
-                            keep_mask[
-                                r_idx * curr_patch_size : (r_idx + 1) * curr_patch_size,
-                                c_idx * curr_patch_size : (c_idx + 1) * curr_patch_size,
-                            ]
-                        )
-                patch_weights_flat = patch_weights.flatten()[:, np.newaxis]
+            # Segformer masking (vectorized patch pooling)
+            keep_mask = (
+                pred_keep_masks_np[batch_i] if pred_keep_masks_np is not None else None
+            )
+            patch_weights = (
+                batch_seg_patch_weights[batch_i]
+                if batch_seg_patch_weights is not None
+                else None
+            )
+            patch_weights_flat = (
+                patch_weights.flatten()[:, np.newaxis]
+                if patch_weights is not None
+                else None
+            )
+            if patch_weights_flat is not None:
                 total_seg_weight = np.sum(patch_weights_flat)
                 seg_avg = (
                     np.sum(patch_tokens * patch_weights_flat, axis=0) / total_seg_weight
@@ -1006,24 +1190,69 @@ def main():
                 snapped_norm = snapped_avg / (np.linalg.norm(snapped_avg) + 1e-9)
                 features_dict["anyup_snapped"].append(snapped_norm)
 
-            # Store diagnostic visualization samples (up to 3)
-            if save_plots and len(seg_viz_samples) < 3:
-                seg_viz_samples.append(
-                    {
+            # Check if any foreground was detected in this sample
+            has_fg_cls = bool(fg_mask_grid is not None and np.any(fg_mask_grid == 0.0))
+            has_fg_seg = bool(
+                (keep_mask is not None and np.any(keep_mask == 0.0))
+                or (patch_weights is not None and np.any(patch_weights < 1.0))
+            )
+            has_fg_tips = bool(
+                tips_ade_keep_mask is not None and np.any(tips_ade_keep_mask == 0.0)
+            )
+            fg_detected = has_fg_cls or has_fg_seg or has_fg_tips
+
+            fg_score = 0.0
+            if has_fg_cls and fg_mask_grid is not None:
+                fg_score += 2.0 * float(np.mean(fg_mask_grid == 0.0))
+            if has_fg_seg:
+                if keep_mask is not None:
+                    fg_score += 1.0 * float(np.mean(keep_mask == 0.0))
+                elif patch_weights is not None:
+                    fg_score += 1.0 * float(np.mean(patch_weights < 1.0))
+            if has_fg_tips and tips_ade_keep_mask is not None:
+                fg_score += 1.0 * float(np.mean(tips_ade_keep_mask == 0.0))
+
+            # Store diagnostic visualization candidate samples
+            if save_plots:
+                if not plot_only_fg or fg_detected:
+                    candidate_sample = {
+                        "global_idx": batch_keys[batch_i],
                         "img": images[batch_keys[batch_i]],
                         "seg_keep": keep_mask,
-                        "fg_keep": fg_mask_grid.reshape(curr_grid_size, curr_grid_size)
-                        if fg_mask_grid is not None
-                        else None,
-                        "tips_ade_keep": tips_ade_keep_mask.reshape(
-                            curr_grid_size, curr_grid_size
-                        )
-                        if tips_ade_keep_mask is not None
-                        else None,
+                        "fg_keep": (
+                            fg_mask_grid.reshape(curr_grid_size, curr_grid_size)
+                            if fg_mask_grid is not None
+                            else None
+                        ),
+                        "tips_ade_keep": (
+                            tips_ade_keep_mask.reshape(curr_grid_size, curr_grid_size)
+                            if tips_ade_keep_mask is not None
+                            else None
+                        ),
                         "pca_rgb": pca_rgb,
                         "snapped_keep": snapped_keep,
+                        "fg_score": fg_score,
+                        "has_fg": fg_detected,
                     }
-                )
+                    max_candidates = max(20, max_mask_plots * 5)
+                    if len(candidate_viz_samples) < max_candidates:
+                        candidate_viz_samples.append(candidate_sample)
+                    else:
+                        min_idx = min(
+                            range(len(candidate_viz_samples)),
+                            key=lambda k: candidate_viz_samples[k]["fg_score"],
+                        )
+                        if fg_score > candidate_viz_samples[min_idx]["fg_score"]:
+                            candidate_viz_samples[min_idx] = candidate_sample
+
+    # Filter and rank visualization samples
+    if save_plots and candidate_viz_samples:
+        if plot_only_fg:
+            valid_candidates = [s for s in candidate_viz_samples if s["has_fg"]]
+            valid_candidates.sort(key=lambda s: s["fg_score"], reverse=True)
+            seg_viz_samples = valid_candidates[:max_mask_plots]
+        else:
+            seg_viz_samples = candidate_viz_samples[:max_mask_plots]
 
     # 4. Build active representation matrices
     representations = {}
@@ -1134,10 +1363,37 @@ def main():
         representations = expanded_representations
 
     # 6. Run Benchmarking Suite
-    print(f"\nRunning comparative benchmarks over {num_queries} queries...")
-    query_indices = np.random.choice(
-        len(sampled_df), min(num_queries, len(sampled_df)), replace=False
+    if query_platform and str(query_platform).strip().lower() not in [
+        "all",
+        "none",
+        "null",
+    ]:
+        qp_clean = str(query_platform).strip().lower()
+        valid_query_candidates = []
+        for idx, row in sampled_df.iterrows():
+            plat_str = str(row.get("Platform", "")).strip().lower()
+            url_str = str(row.get("Image_URL", "")).strip().lower()
+            if plat_str == qp_clean or qp_clean in url_str:
+                valid_query_candidates.append(idx)
+
+        if len(valid_query_candidates) == 0:
+            print(
+                f"Warning: No images matching query platform '{query_platform}' found in sampled dataset. Falling back to all sampled images."
+            )
+            candidate_pool = list(range(len(sampled_df)))
+        else:
+            print(
+                f"Filtered queries to platform '{query_platform}': {len(valid_query_candidates)} matching images available."
+            )
+            candidate_pool = valid_query_candidates
+    else:
+        candidate_pool = list(range(len(sampled_df)))
+
+    k_queries = min(num_queries, len(candidate_pool))
+    print(
+        f"\nRunning comparative benchmarks over {k_queries} queries (pool: {len(candidate_pool)} images)..."
     )
+    query_indices = np.random.choice(candidate_pool, k_queries, replace=False)
 
     results = {
         rep: {
@@ -1229,7 +1485,9 @@ def main():
     print("=" * 80)
     print(f"Model: {model_name}")
     print(f"Database Size: {len(sampled_df)} images")
-    print(f"Evaluation Queries: {len(query_indices)} diverse samples")
+    print(
+        f"Evaluation Queries: {len(query_indices)} diverse samples (Platform: {query_platform or 'all'})"
+    )
     print("-" * 80)
 
     row_format = "{:<44} | {:<12} | {:<12} | {:<12} | {:<12} | {:<12}"
@@ -1251,7 +1509,7 @@ def main():
         f"Model: {model_name}",
         f"Database: {resolved_path}",
         f"Database Size: {len(sampled_df)} images",
-        f"Evaluation Queries: {len(query_indices)} samples",
+        f"Evaluation Queries: {len(query_indices)} samples (Platform: {query_platform or 'all'})",
         "-" * 80,
         header_str,
         unit_str,
@@ -1464,8 +1722,14 @@ def main():
                     for idx_s, sample in enumerate(seg_viz_samples):
                         col_curr = 0
                         axes3[idx_s, col_curr].imshow(sample["img"])
+                        sample_num = (
+                            sample["global_idx"] + 1
+                            if "global_idx" in sample
+                            else idx_s + 1
+                        )
+                        title_extra = " (FG Detected)" if sample.get("has_fg") else ""
                         axes3[idx_s, col_curr].set_title(
-                            f"Image {idx_s + 1}", fontsize=10
+                            f"Image #{sample_num}{title_extra}", fontsize=10
                         )
                         axes3[idx_s, col_curr].axis("off")
                         col_curr += 1
@@ -1574,6 +1838,30 @@ def main():
                     plt.close()
                     print(
                         f"Saved segmentation visualization masks to: {os.path.abspath(seg_plot_path)}"
+                    )
+            elif save_plots and plot_only_fg:
+                has_mask_reps = any(
+                    r
+                    in [
+                        "cls_attn_fg_removed",
+                        "cls_plus_fg_removed_concat",
+                        "segformer_masked",
+                        "tips_ade_masked",
+                        "cls_tips_ade_concat",
+                        "anyup_snapped",
+                        "hybrid_land_use",
+                    ]
+                    for r in selected_reps
+                )
+                if not has_mask_reps:
+                    print(
+                        "Note: No mask-based representations (e.g. 'cls_attn_fg_removed', 'segformer_masked', 'tips_ade_masked') "
+                        "are enabled in 'representations'; skipping mask diagnostics plot."
+                    )
+                else:
+                    print(
+                        "Note: No images with detected foreground passed the gating criteria; skipping mask diagnostics plot. "
+                        "(Tip: Try increasing 'max_fg_ratio' to 0.20-0.30 or lowering 'fg_attn_threshold' to 1.3-1.5, or run with --plot_all_samples)."
                     )
 
         except Exception as e:
