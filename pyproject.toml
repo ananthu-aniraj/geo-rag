@@ -55,3 +55,6 @@ ignore = ["E501", "F841", "E741", "E722"]
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
 combine-as-imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

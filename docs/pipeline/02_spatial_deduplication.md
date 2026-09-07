@@ -43,7 +43,7 @@ The deduplication pipeline has been upgraded to support seamless ingestion of pr
 
 ### 1. Unified Ingestion (CSV & Parquet)
 
-* The pipeline accepts both **`.csv`** and **`.parquet`** files in the input directories (`--dirs` and `--offline_dataset_dirs`).
+* The pipeline accepts both **`.csv`** and **`.parquet`** files in the input arguments (`--dirs` and `--offline_dataset_dirs`), supporting both **directory paths** (which glob all valid `.csv`/`.parquet` files) and **direct file paths** (allowing ingestion of a specific target file).
 * Helper index files (`*.keys.parquet`), checkpoint files (`*_checkpoint.parquet`), and the output database itself (`{output_name}.parquet`) are automatically ignored during directory scanning to prevent circular ingestion.
 
 ### 2. Precomputed Embeddings Bypass
@@ -60,6 +60,11 @@ The deduplication pipeline has been upgraded to support seamless ingestion of pr
 
 * Columns from diverse datasets (such as lowercase/camelCase fields like `photo_id`, `Captured_At`, `latitude`) are normalized into the canonical PascalCase schema.
 * To prevent duplicate column name collisions (e.g. if a dataset has both `Image_Location` and `file_name` columns), a first-match fallback strategy is used for locating image URLs.
+
+### 5. Camera Trap & Platform Licensing Fallbacks
+
+* **Camera Trap Support**: Camera trap platforms (`SnapshotUSA`, `wildlife_insights`, `iWildCam`) are natively recognized and preserved as outdoor scene sensors (bypassing indoor Flickr filters and iNaturalist macro/sky filters).
+* **Automatic License Population**: Missing platform licenses are automatically populated with standard defaults if absent (`CC0` for Snapshot USA, `CDLA-Permissive-1.0` for iWildCam, `CC BY-SA 4.0` for Mapillary/KartaView, and `CC BY-NC 4.0` for iNaturalist).
 
 ---
 

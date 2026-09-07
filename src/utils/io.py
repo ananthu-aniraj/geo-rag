@@ -1,6 +1,9 @@
 import glob
+import hashlib
+import json
 import os
 import re
+import threading
 import time
 from io import BytesIO
 
@@ -544,6 +547,64 @@ def load_embeddings(
     )
 
 
+# Known censor/placeholder image hashes (e.g. Wildlife Insights "Human in frame" placeholder)
+KNOWN_PLACEHOLDER_MD5_HASHES = {
+    "6da31bd91c242aa98de0ddae4ad89e3c",  # Wildlife Insights 1600x1200 "Human in frame" PNG placeholder (8,535 bytes)
+}
+
+
+def is_valid_image_file(filepath_or_bytes, reject_placeholders=True):
+    """Checks if a file path or raw bytes contains valid image data (JPEG, PNG, GIF, WebP, TIFF)."""
+    full_bytes = None
+    file_path = None
+    if isinstance(filepath_or_bytes, (bytes, bytearray)):
+        data = filepath_or_bytes[:32]
+        full_bytes = filepath_or_bytes
+    elif isinstance(filepath_or_bytes, (str, os.PathLike)):
+        file_path = filepath_or_bytes
+        if not os.path.isfile(file_path) or os.path.getsize(file_path) < 100:
+            return False
+        try:
+            with open(file_path, "rb") as f:
+                data = f.read(32)
+        except Exception:
+            return False
+    else:
+        return False
+
+    if not data or len(data) < 4:
+        return False
+
+    # Check for known censor/placeholder images
+    if reject_placeholders:
+        try:
+            h = None
+            if full_bytes is not None:
+                h = hashlib.md5(full_bytes).hexdigest()
+            elif file_path is not None:
+                if os.path.getsize(file_path) == 8535:
+                    with open(file_path, "rb") as f:
+                        h = hashlib.md5(f.read()).hexdigest()
+            if h and h in KNOWN_PLACEHOLDER_MD5_HASHES:
+                return False
+        except Exception:
+            pass
+
+    # Check magic bytes for standard image formats
+    if data.startswith(b"\xff\xd8\xff"):  # JPEG
+        return True
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
+        return True
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):  # GIF
+        return True
+    if data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP":  # WebP
+        return True
+    if data.startswith(b"II*\x00") or data.startswith(b"MM\x00*"):  # TIFF
+        return True
+
+    return False
+
+
 def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=None):
     """
     Resolves an image URL/ID to a local path on disk by checking flat files,
@@ -651,6 +712,115 @@ def _get_http_session():
     return _http_session
 
 
+_wi_token = None
+_wi_token_lock = threading.Lock()
+
+
+def get_wildlife_insights_token(cookie=None, refresh=False):
+    """Fetches or refreshes a Wildlife Insights JWT token using the session cookie or environment variable."""
+    global _wi_token
+    with _wi_token_lock:
+        if _wi_token and not refresh:
+            return _wi_token
+        token = os.environ.get("WILDLIFE_INSIGHTS_TOKEN")
+        if token and not refresh:
+            _wi_token = token
+            return _wi_token
+        cookie = cookie or os.environ.get("WILDLIFE_INSIGHTS_COOKIE")
+        if not cookie:
+            return None
+        try:
+            r = requests.get(
+                "https://app.wildlifeinsights.org/explore",
+                headers={"Cookie": cookie, "User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            match = re.search(
+                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text
+            ) or re.search(r"__NEXT_DATA__\s*=\s*(.*?);__NEXT_LOADED_PAGES__", r.text)
+            if match:
+                data = json.loads(match.group(1))
+                token_val = (
+                    data.get("props", {})
+                    .get("initialState", {})
+                    .get("auth", {})
+                    .get("token")
+                )
+                if token_val:
+                    _wi_token = token_val
+                    return _wi_token
+        except Exception:
+            pass
+        return None
+
+
+def resolve_wildlife_insights_url(url, cookie=None, token=None, photo_id=None):
+    """Resolves a Wildlife Insights public web viewer URL into a signed Google Cloud Storage image URL."""
+    if not url or "wildlifeinsights.org" not in url:
+        return None
+
+    m_dl = re.search(r"/download/(\d+)", url)
+    m_proj = re.search(r"/project/(\d+)", url)
+    m_img = re.search(r"/data-files/([a-zA-Z0-9\-]+)", url)
+
+    dl_id = int(m_dl.group(1)) if m_dl else None
+    proj_id = int(m_proj.group(1)) if m_proj else None
+    img_uuid = m_img.group(1) if m_img else str(photo_id or "")
+
+    if not dl_id or not img_uuid:
+        return None
+
+    auth_token = token or get_wildlife_insights_token(cookie)
+    if not auth_token:
+        return None
+
+    gql_ep = "https://api.wildlifeinsights.org/graphql"
+    query = """query getDataFilePublicDownloadUrl($downloadId: Int!, $projectId: Int, $imageUUID: String!) {
+  getDataFilePublicDownloadUrl(downloadId: $downloadId, projectId: $projectId, imageUUID: $imageUUID) {
+    url
+  }
+}"""
+    variables = {
+        "downloadId": dl_id,
+        "projectId": proj_id,
+        "imageUUID": img_uuid,
+    }
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0",
+    }
+
+    try:
+        r = requests.post(
+            gql_ep,
+            json={"query": query, "variables": variables},
+            headers=headers,
+            timeout=10,
+        )
+        if r.status_code == 401:
+            auth_token = get_wildlife_insights_token(cookie, refresh=True)
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+                r = requests.post(
+                    gql_ep,
+                    json={"query": query, "variables": variables},
+                    headers=headers,
+                    timeout=10,
+                )
+        if r.status_code == 200:
+            res_data = r.json()
+            if (
+                "data" in res_data
+                and res_data["data"]
+                and res_data["data"].get("getDataFilePublicDownloadUrl")
+            ):
+                return res_data["data"]["getDataFilePublicDownloadUrl"].get("url")
+    except Exception:
+        pass
+    return None
+
+
 def download_image(
     url,
     mapillary_token,
@@ -705,13 +875,24 @@ def download_image(
                             or data.get("fileurlTh")
                             or data.get("fileurl")
                         )
+                # Wildlife Insights schema resolution
+                elif "wildlifeinsights.org" in url or (
+                    platform
+                    and str(platform).lower()
+                    in ["snapshotusa", "snapshot_usa", "wildlife_insights"]
+                ):
+                    url = resolve_wildlife_insights_url(url, photo_id=photo_id)
 
                 if url:
                     res = session.get(url, timeout=10)
                     if res.status_code == 200:
-                        img = Image.open(BytesIO(res.content)).convert("RGB")
-                        img_resized = img.resize((image_size, image_size))
-                        return img_resized
+                        c_type = res.headers.get("content-type", "").lower()
+                        if "text/html" not in c_type and is_valid_image_file(
+                            res.content
+                        ):
+                            img = Image.open(BytesIO(res.content)).convert("RGB")
+                            img_resized = img.resize((image_size, image_size))
+                            return img_resized
         except Exception:
             pass
 

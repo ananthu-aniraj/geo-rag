@@ -53,6 +53,12 @@ graph TD
 3. **Multi-Representation Extensibility:**
    Because the heavy visual features are decoupled from the metadata tables, this architecture natively supports multiple representation types (e.g. `patch_embeddings`, text features, or alternative vision backbones). Additional representation matrices of shape `(N, D_new)` can be saved as independent companion `.npy` files and aligned row-for-row using their matching keys index.
 
+4. **Offline Datasets & Camera Trap Archives:**
+   The pipeline seamlessly ingests self-contained offline image archives alongside online web-scraped data:
+   - **Offline Directory Layout**: Offline datasets (e.g. `snapshot_usa_2024`, `iwildcam_subset`) store local assets in structured subfolders (e.g. `images/<platform>/<photo_id>.jpg`) referenced by `Image_Location` in their companion `.parquet` or `.csv` metadata.
+   - **Dynamic Local Path Resolution**: During ingestion and evaluations, `resolve_offline_image_path` dynamically resolves local image paths across flat layouts, `train/` folders, platform subdirectories, and nested directory trees.
+   - **Automatic Platform Licensing**: Missing licenses for camera trap sensors are automatically backfilled (`CC0` for Snapshot USA, `CDLA-Permissive-1.0` for iWildCam).
+
 ---
 
 ## 🐍 Loading Data in Python

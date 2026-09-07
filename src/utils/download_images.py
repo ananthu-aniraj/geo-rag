@@ -1,7 +1,9 @@
 import argparse
 import concurrent.futures
+import hashlib
 import os
 import sys
+import threading
 
 import numpy as np
 import requests
@@ -10,23 +12,36 @@ from tqdm import tqdm
 from urllib3.util import Retry
 
 from src.utils.io import (
+    KNOWN_PLACEHOLDER_MD5_HASHES,
+    is_valid_image_file,
     load_dataframe,
     load_embeddings,
     resolve_offline_image_path,
+    resolve_wildlife_insights_url,
     save_dataframe,
 )
 
 # Try to load .env variables if not already set
-if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
+if os.path.exists(".env"):
     try:
         with open(".env", "r") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    if k.strip() == "MAPILLARY_TOKEN":
-                        os.environ["MAPILLARY_TOKEN"] = v.strip().strip('"').strip("'")
-                        break
+                    val = v.strip().strip('"').strip("'")
+                    if k.strip() == "MAPILLARY_TOKEN" and not os.environ.get(
+                        "MAPILLARY_TOKEN"
+                    ):
+                        os.environ["MAPILLARY_TOKEN"] = val
+                    elif k.strip() == "WILDLIFE_INSIGHTS_COOKIE" and not os.environ.get(
+                        "WILDLIFE_INSIGHTS_COOKIE"
+                    ):
+                        os.environ["WILDLIFE_INSIGHTS_COOKIE"] = val
+                    elif k.strip() == "WILDLIFE_INSIGHTS_TOKEN" and not os.environ.get(
+                        "WILDLIFE_INSIGHTS_TOKEN"
+                    ):
+                        os.environ["WILDLIFE_INSIGHTS_TOKEN"] = val
     except Exception:
         pass
 
@@ -42,23 +57,8 @@ def download_image(url, output_path, photo_id, platform, timeout=10):
     session.mount("http://", HTTPAdapter(max_retries=retries))
     session.mount("https://", HTTPAdapter(max_retries=retries))
 
-    try:
-        # 1. Try direct GET download
-        res = session.get(url, timeout=timeout, stream=True)
-        if res.status_code == 200:
-            with open(output_path, "wb") as f:
-                for chunk in res.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            return True
-    except Exception:
-        pass
-
-    # 2. Dynamic recovery for Mapillary or KartaView expired signatures
-    if not photo_id or not platform:
-        return False
-
-    platform_lower = str(platform).strip().lower()
-    photo_str = str(photo_id).strip()
+    platform_lower = str(platform).strip().lower() if platform else ""
+    photo_str = str(photo_id).strip() if photo_id else ""
     if photo_str.endswith(".0"):
         photo_str = photo_str[:-2]
 
@@ -68,20 +68,81 @@ def download_image(url, output_path, photo_id, platform, timeout=10):
     is_kartaview = (
         platform_lower == "kartaview" or "kartaview" in url or "openstreetcam" in url
     )
+    is_wildlife = (
+        platform_lower in ["snapshotusa", "snapshot_usa", "wildlife_insights"]
+        or "wildlifeinsights.org" in url
+    )
 
-    if not (is_mapillary or is_kartaview):
+    def try_fetch(target_url, headers=None):
+        if not target_url:
+            return False
+        try:
+            res = session.get(target_url, headers=headers, timeout=timeout, stream=True)
+            if res.status_code == 200:
+                c_type = res.headers.get("content-type", "").lower()
+                if "text/html" in c_type:
+                    return False
+
+                chunk_iter = res.iter_content(chunk_size=8192)
+                first_chunk = next(chunk_iter, None)
+                if not first_chunk or not is_valid_image_file(first_chunk):
+                    return False
+
+                temp_path = f"{output_path}.tmp_{os.getpid()}_{threading.get_ident()}"
+                hasher = hashlib.md5()
+                hasher.update(first_chunk)
+                with open(temp_path, "wb") as f:
+                    f.write(first_chunk)
+                    for chunk in chunk_iter:
+                        hasher.update(chunk)
+                        f.write(chunk)
+
+                # Reject known censor/placeholder images (e.g. Wildlife Insights "Human in frame")
+                if hasher.hexdigest() in KNOWN_PLACEHOLDER_MD5_HASHES:
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+                    return False
+
+                os.replace(temp_path, output_path)
+                return True
+        except Exception:
+            pass
         return False
 
-    try:
-        fresh_url = None
-        if is_mapillary:
-            api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
-            headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
+    # 1. For Wildlife Insights: NEVER direct GET the web viewer URL
+    if is_wildlife:
+        if not ("storage.googleapis.com" in url or "googleusercontent.com" in url):
+            fresh_url = resolve_wildlife_insights_url(url, photo_id=photo_str)
+            if fresh_url and try_fetch(fresh_url):
+                return True
+        else:
+            if try_fetch(url):
+                return True
+        return False
+
+    # 2. Standard direct image URLs (Flickr, direct CDN, etc.)
+    if not (url.startswith("mapillary://") or url.startswith("kartaview://")):
+        if try_fetch(url):
+            return True
+
+    # 3. Dynamic recovery for Mapillary or KartaView expired signatures
+    if is_mapillary and photo_str:
+        api_url = f"https://graph.mapillary.com/{photo_str}?fields=thumb_1024_url"
+        headers = {"Authorization": f"OAuth {MAPILLARY_TOKEN}"}
+        try:
             api_res = session.get(api_url, headers=headers, timeout=timeout)
             if api_res.status_code == 200:
                 fresh_url = api_res.json().get("thumb_1024_url")
-        elif is_kartaview:
-            api_url = f"https://api.openstreetcam.org/2.0/photo/{photo_str}"
+                if fresh_url and try_fetch(fresh_url):
+                    return True
+        except Exception:
+            pass
+
+    elif is_kartaview and photo_str:
+        api_url = f"https://api.openstreetcam.org/2.0/photo/{photo_str}"
+        try:
             api_res = session.get(api_url, timeout=timeout)
             if api_res.status_code == 200:
                 data = api_res.json().get("result", {}).get("data", {})
@@ -90,16 +151,10 @@ def download_image(url, output_path, photo_id, platform, timeout=10):
                     or data.get("fileurlTh")
                     or data.get("fileurl")
                 )
-
-        if fresh_url:
-            res = session.get(fresh_url, timeout=timeout, stream=True)
-            if res.status_code == 200:
-                with open(output_path, "wb") as f:
-                    for chunk in res.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return True
-    except Exception:
-        pass
+                if fresh_url and try_fetch(fresh_url):
+                    return True
+        except Exception:
+            pass
 
     return False
 
@@ -147,7 +202,24 @@ def main():
         choices=["float32", "float16"],
         help="Floating point precision format for stored embeddings (float32 or float16).",
     )
+    parser.add_argument(
+        "--wildlife_cookie",
+        type=str,
+        default=None,
+        help="Wildlife Insights session cookie (connect.sid=...) for camera trap downloads.",
+    )
+    parser.add_argument(
+        "--wildlife_token",
+        type=str,
+        default=None,
+        help="Wildlife Insights JWT authorization token.",
+    )
     args = parser.parse_args()
+
+    if args.wildlife_cookie:
+        os.environ["WILDLIFE_INSIGHTS_COOKIE"] = args.wildlife_cookie
+    if args.wildlife_token:
+        os.environ["WILDLIFE_INSIGHTS_TOKEN"] = args.wildlife_token
 
     if not os.path.exists(args.input):
         print(f"Error: Input file not found: {args.input}")
@@ -159,33 +231,36 @@ def main():
     print(f" -> Loaded {len(df):,} metadata records.")
 
     # 2. Load Embeddings
-    print("Loading companion embeddings matrix...")
+    print("Checking companion embeddings matrix...")
+    embeddings = None
     try:
         embeddings = load_embeddings(
             args.input, representation_type=args.representation_type
         )
         print(f" -> Loaded embeddings shape: {embeddings.shape}")
     except Exception as e:
-        print(f"Error loading companion embeddings: {e}")
-        sys.exit(1)
-
-    # Validate row alignment
-    if "embedding_idx" in df.columns:
-        valid_mask = (df["embedding_idx"] >= 0) & (
-            df["embedding_idx"] < len(embeddings)
+        print(
+            f" -> No companion embeddings found ({e}). Proceeding with metadata-only download."
         )
-        if not valid_mask.all():
-            print(
-                f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Slicing embeddings..."
+
+    # Validate row alignment if embeddings exist
+    if embeddings is not None:
+        if "embedding_idx" in df.columns:
+            valid_mask = (df["embedding_idx"] >= 0) & (
+                df["embedding_idx"] < len(embeddings)
             )
-            df = df.iloc[valid_mask.values].reset_index(drop=True)
-            embeddings = embeddings[df["embedding_idx"].values]
-    else:
-        if len(df) != len(embeddings):
-            print(
-                f"Error: Shape mismatch. Metadata has {len(df)} rows, but embeddings has {len(embeddings)} rows."
-            )
-            sys.exit(1)
+            if not valid_mask.all():
+                print(
+                    f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Slicing embeddings..."
+                )
+                df = df.iloc[valid_mask.values].reset_index(drop=True)
+                embeddings = embeddings[df["embedding_idx"].values]
+        else:
+            if len(df) != len(embeddings):
+                print(
+                    f"Error: Shape mismatch. Metadata has {len(df)} rows, but embeddings has {len(embeddings)} rows."
+                )
+                sys.exit(1)
 
     # 3. Identify images to download
     print("Checking local image cache...")
@@ -206,13 +281,18 @@ def main():
         photo_id = getattr(row, "Photo_ID", "")
         platform = getattr(row, "Platform", "")
 
-        # Check if already exists in check_dirs
+        # Check if already exists in check_dirs and is a valid image
         existing_path = resolve_offline_image_path(
             url, check_dirs, photo_id=photo_id, platform=platform
         )
-        if existing_path:
+        if existing_path and is_valid_image_file(existing_path):
             successful_indices.append(i)
         else:
+            if existing_path and os.path.isfile(existing_path):
+                try:
+                    os.remove(existing_path)
+                except Exception:
+                    pass
             # Build target output path
             platform_str = str(platform).strip().lower() or "unknown"
             photo_str = str(photo_id).strip()
@@ -263,7 +343,9 @@ def main():
     )
 
     df_clean = df.iloc[successful_indices].copy()
-    embeddings_clean = embeddings[successful_indices]
+    embeddings_clean = (
+        embeddings[successful_indices] if embeddings is not None else None
+    )
 
     # Resolve output paths
     if args.output:
@@ -310,22 +392,26 @@ def main():
     if "url" in df_clean.columns:
         df_clean["url"] = local_locations
 
-    # Drop existing embedding_idx so save_dataframe will rebuild it for the new 1-to-1 matrix
-    if "embedding_idx" in df_clean.columns:
-        df_clean = df_clean.drop(columns=["embedding_idx"])
-
-    # Re-insert embedding to let save_dataframe decouple it dynamically
-    df_clean["embedding"] = list(embeddings_clean)
-
-    # Leverage the tested save_dataframe logic by writing to a temporary parquet file (which handles the .npy decoupling)
     temp_parquet_path = os.path.join(out_dir, f"{out_base}.parquet")
-    print("Utilizing save_dataframe() to decouple companion embeddings matrix...")
-    save_dataframe(
-        df_clean,
-        temp_parquet_path,
-        representation_type=args.representation_type,
-        precision=args.precision,
-    )
+    if embeddings_clean is not None:
+        # Drop existing embedding_idx so save_dataframe will rebuild it for the new 1-to-1 matrix
+        if "embedding_idx" in df_clean.columns:
+            df_clean = df_clean.drop(columns=["embedding_idx"])
+
+        # Re-insert embedding to let save_dataframe decouple it dynamically
+        df_clean["embedding"] = list(embeddings_clean)
+
+        # Leverage the tested save_dataframe logic by writing to a temporary parquet file (which handles the .npy decoupling)
+        print("Utilizing save_dataframe() to decouple companion embeddings matrix...")
+        save_dataframe(
+            df_clean,
+            temp_parquet_path,
+            representation_type=args.representation_type,
+            precision=args.precision,
+        )
+    else:
+        print(f"Saving updated offline metadata to {temp_parquet_path}...")
+        save_dataframe(df_clean, temp_parquet_path)
 
     # Load back the decoupled dataframe containing the generated 'embedding_idx' column
     df_decoupled = load_dataframe(temp_parquet_path)

@@ -15,6 +15,7 @@ The pipeline processes diverse geotagged image sources, unifies their schemas, a
 | **KartaView** | Crowdsourced street-level imagery | Coordinates & H3 cells (Global Streetscapes) | Standardized local datetimes (`datetime_local`) |
 | **Wikimedia Commons** | Educational/illustrative media (landscapes, flora/fauna) | Latitude / Longitude coordinates | Naive or standardized timestamps (`extmetadata`) |
 | **iWildCam** | Camera trap wildlife observations | Station coordinates | Naive local timestamps |
+| **Snapshot USA / Wildlife Insights** | Camera trap wildlife & habitat observations | Deployment station coordinates (`deployments.csv`) | Standardized ISO 8601 timestamps (`YYYY-MM-DDTHH:MM:SSZ`) |
 | **iNaturalist** | Species observations | Coordinates (filtered for sky/macro) | Standardized observation datetimes |
 
 > [!NOTE]
@@ -51,6 +52,86 @@ Prior to entering the main data engineering pipeline, raw data is harvested usin
 * **`src/scrapers/osm_polygon_scraper.py`**: Scrapes geotagged files inside defined boundaries exclusively from **KartaView** (extracting timestamps, track parameters, and licenses, defaulting to CC BY-SA 4.0). Partitioning uses an optimized **3.5km x 3.5km grid** to stay within KartaView's strict server-enforced $0.04^{\circ}$ bounding box limit per request without recursive splitting.
 * **`scripts/scrapers/run_osm_scraper.sh`**: Orchestrates sequential batch scraping of the boundary grid chunks, loading configuration from `config/scrapers/osm_scraper.yaml`.
 
+### 5. Camera Trap Dataset Preparation (Snapshot USA / Wildlife Insights)
+
+* **`src/processing/prepare_wildlife_insights.py`**: Prepares and filters raw, massive camera trap metadata downloads (such as Snapshot USA 2024 across 13 chunked CSVs totaling ~6M rows) down to a balanced, stratified subset ready for ingestion by `process_scraped_data.py`.
+  * **Stratified Temporal Sampling**: Bins captures by meteorological season (`summer`, `fall`, `winter`, `spring`) and sensor modality / time of day (`day`: 07:00–18:59 vs. `night`: 19:00–06:59).
+  * **Per-Camera Allocation**: Allocates candidates round-robin up to `--max_images_per_camera` (default: `4`, yielding ~3.9 images per camera, consistent with `iwildcam_subset`).
+  * **Wildlife Prioritization & Human Exclusion**: Prioritizes identified wildlife over blanks (`common_name == 'Blank'`) while automatically filtering out human encounters (`Human`, `Human-Camera Trapper`, `Human - Biker`, etc.) and degraded/fuzzed GPS coordinates (`fuzzed == True`).
+  * **Burst Deduplication**: Ensures unique `sequence_id`s and distinct calendar dates across selected images for each camera.
+  * **Direct Ingestion Schema**: Aligns station GPS coordinates from `deployments.csv` and outputs standardized Parquet and CSV files with standard columns (`Photo_ID`, `Platform="SnapshotUSA"`, `Latitude`, `Longitude`, `Image_URL`, `Captured_At`, `License="CC0"`, `photo_key`).
+
+#### Step-by-Step Workflow
+
+##### Step 1: Stratified Temporal Filtering
+
+Filter raw multi-file CSV downloads from Wildlife Insights into a unified, balanced subset:
+
+```bash
+PYTHONPATH=. python3 src/processing/prepare_wildlife_insights.py \
+  --data_dir /path/to/wildlife-insights_all-platform-data \
+  --output /path/to/snapshot_usa_2024_filtered.parquet \
+  --max_images_per_camera 4
+```
+
+This creates both `.parquet` and `.csv` metadata files standardized to the Geo-RAG schema.
+
+##### Step 2: Obtaining the Wildlife Insights Session Cookie
+
+Wildlife Insights public image download links (`https://app.wildlifeinsights.org/download/...`) require an authenticated session to generate signed Google Cloud Storage asset URLs via their GraphQL API.
+
+To obtain your session cookie:
+
+1. Log into your account at [app.wildlifeinsights.org](https://app.wildlifeinsights.org).
+2. Open your browser's Developer Tools (`F12` or right-click $\rightarrow$ **Inspect**), and switch to the **Network** tab.
+3. Browse any project page or refresh the Explore view.
+4. Filter by requests to `app.wildlifeinsights.org` or `api.wildlifeinsights.org`.
+5. Under **Request Headers**, copy the value of the `Cookie` header containing `connect.sid=s%3A...` (or right-click the network request $\rightarrow$ **Copy** $\rightarrow$ **Copy as cURL**, and find the `-b 'connect.sid=...'` flag).
+6. Add this cookie to your `.env` file:
+
+   ```bash
+   WILDLIFE_INSIGHTS_COOKIE="connect.sid=s%3A..."
+   ```
+
+   *(Alternatively, you can extract and set `WILDLIFE_INSIGHTS_TOKEN="<Bearer JWT>"` or pass `--wildlife_cookie` / `--wildlife_token` directly via the CLI).*
+
+##### Step 3: Bulk Downloading Images for Offline Reuse
+
+Download the camera trap imagery locally to build a self-contained offline dataset:
+
+```bash
+PYTHONPATH=. python3 src/utils/download_images.py \
+  --input /path/to/snapshot_usa_2024_filtered.parquet \
+  --output_dir /path/to/snapshot_usa_2024/images \
+  --output /path/to/snapshot_usa_2024/snapshot_usa_2024_metadata.parquet \
+  --threads 24
+```
+
+This utility:
+
+* Queries the Wildlife Insights GraphQL API (`getDataFilePublicDownloadUrl`) to dynamically retrieve signed Google Cloud Storage URLs.
+* Downloads images concurrently with automatic retries, exponential backoff, and atomic temporary writes.
+* Verifies image binaries via magic-byte checking (`is_valid_image_file`), rejecting any HTML login walls or corrupted streams.
+* Updates metadata records with relative local image file paths (`Image_Location = ./images/snapshotusa/<photo_id>.jpg`) and CC0 license attributes.
+
+##### Step 4: Ingesting into the Core Pipeline
+
+The offline dataset directory can be fed directly into `process_scraped_data.py`:
+
+```bash
+PYTHONPATH=. python3 src/processing/process_scraped_data.py \
+  --dirs /path/to/snapshot_usa_2024 \
+  --output_dir /path/to/pipeline_output
+```
+
+Or by specifying the parquet file path directly:
+
+```bash
+PYTHONPATH=. python3 src/processing/process_scraped_data.py \
+  --dirs /path/to/snapshot_usa_2024/snapshot_usa_2024_metadata.parquet \
+  --output_dir /path/to/pipeline_output
+```
+
 ---
 
 ## ⚙️ Configuration & Secrets Management
@@ -63,8 +144,9 @@ All sensitive credentials must be set in a `.env` file in the repository root (c
 
 * `FLICKR_API_KEY`: Sourced by Flickr scrapers and profilers.
 * `MAPILLARY_TOKEN`: Sourced by Mapillary scrapers and profilers.
+* `WILDLIFE_INSIGHTS_COOKIE` / `WILDLIFE_INSIGHTS_TOKEN`: Sourced by Wildlife Insights download utilities to authenticate with the GraphQL API and resolve signed Google Cloud Storage image URLs.
 
-The scraper shell scripts automatically source `.env` at startup to export these variables to the runtime environment.
+The scraper shell scripts and Python utilities automatically source `.env` at startup to export these variables to the runtime environment.
 
 ### 2. Scraper Parameters (`config/scrapers/`)
 

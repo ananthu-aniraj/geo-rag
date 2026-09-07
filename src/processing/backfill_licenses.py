@@ -425,6 +425,16 @@ def main():
             f" -> Backfilled {iwildcam_mask.sum()} iWildCam records with 'CDLA-Permissive-1.0'"
         )
 
+    # Snapshot USA / Wildlife Insights
+    snapshot_mask = (
+        platform_lower.isin(["snapshotusa", "snapshot_usa", "wildlife_insights"])
+        | platform_lower.str.contains("snapshot")
+    ) & df["License"].isna()
+    if snapshot_mask.any():
+        df.loc[snapshot_mask, "License"] = "CC0"
+        modified = True
+        print(f" -> Backfilled {snapshot_mask.sum()} SnapshotUSA records with 'CC0'")
+
     # iNaturalist
     inat_mask = (
         platform_lower.str.contains("inaturalist") | (platform_lower == "inat")

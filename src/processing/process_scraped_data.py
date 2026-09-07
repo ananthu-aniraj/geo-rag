@@ -806,6 +806,13 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
         if iwildcam_mask.any():
             df.loc[iwildcam_mask, "License"] = "CDLA-Permissive-1.0"
 
+        snapshot_mask = (
+            platform_lower.isin(["snapshotusa", "snapshot_usa", "wildlife_insights"])
+            | platform_lower.str.contains("snapshot")
+        ) & (df["License"].isna() | (df["License"] == ""))
+        if snapshot_mask.any():
+            df.loc[snapshot_mask, "License"] = "CC0"
+
         inat_mask = (
             platform_lower.str.contains("inaturalist") | (platform_lower == "inat")
         ) & (df["License"].isna() | (df["License"] == ""))
@@ -977,21 +984,33 @@ def main():
         return True
 
     for d in args.dirs:
-        files = glob.glob(os.path.join(d, "*.csv")) + glob.glob(
-            os.path.join(d, "*.parquet")
-        )
-        csv_files.extend([f for f in files if is_valid_input_file(f)])
-
-    if args.offline_dataset_dirs:
-        for d in args.offline_dataset_dirs:
+        if os.path.isfile(d):
+            if is_valid_input_file(d) and (
+                d.endswith(".csv") or d.endswith(".parquet")
+            ):
+                csv_files.append(d)
+        elif os.path.isdir(d):
             files = glob.glob(os.path.join(d, "*.csv")) + glob.glob(
                 os.path.join(d, "*.parquet")
             )
-            offline_files = [f for f in files if is_valid_input_file(f)]
-            print(
-                f"Found {len(offline_files)} CSV/Parquet files in offline directory '{d}'."
-            )
-            csv_files.extend(offline_files)
+            csv_files.extend([f for f in files if is_valid_input_file(f)])
+
+    if args.offline_dataset_dirs:
+        for d in args.offline_dataset_dirs:
+            if os.path.isfile(d):
+                if is_valid_input_file(d) and (
+                    d.endswith(".csv") or d.endswith(".parquet")
+                ):
+                    csv_files.append(d)
+            elif os.path.isdir(d):
+                files = glob.glob(os.path.join(d, "*.csv")) + glob.glob(
+                    os.path.join(d, "*.parquet")
+                )
+                offline_files = [f for f in files if is_valid_input_file(f)]
+                print(
+                    f"Found {len(offline_files)} CSV/Parquet files in offline directory '{d}'."
+                )
+                csv_files.extend(offline_files)
 
     print(f"Found {len(csv_files)} total input files (CSVs/Parquets) to process.")
 
