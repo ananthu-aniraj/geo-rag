@@ -68,7 +68,8 @@ nav:
   - Evaluation: evaluation.md
   - Benchmark Results:
       - Overview: evaluation_results/index.md
-      - EUNIS Comparison: evaluation_results/comparison_eunis.md
+      - EUNIS (All Platforms): evaluation_results/comparison_eunis.md
+      - EUNIS (Flickr Queries): evaluation_results/comparison_eunis_plat_flickr.md
       - LUCAS Comparison: evaluation_results/comparison_lucas.md
       - Places Comparison: evaluation_results/comparison_places.md
   - Metrics: metrics.md

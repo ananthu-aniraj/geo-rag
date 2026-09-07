@@ -4,10 +4,14 @@
 
 ### 📊 Evaluation Reports
 
-**[EUNIS](comparison_eunis.md)**
+**[EUNIS: all platforms](comparison_eunis.md)**
 
 * Dataset: <https://zenodo.org/records/16985100>
 * Evaluates vision representation accuracy on the **European Nature Information System (EUNIS) Dominant Habitat Map** (2024 Level 1, 2, and 3 dominant ecosystem classifications). It measures how well model features can retrieve and identify corresponding geobotanical classifications for query coordinate locations.
+
+**[EUNIS: flickr queries](comparison_eunis_plat_flickr.md)**
+
+* EUNIS benchmark restricted to **Flickr** queries only, evaluating model performance on the EUNIS Dominant Habitat Map using only Flickr-sourced images.
 
 **[LUCAS (Land Use and Coverage Area frame Survey (LUCAS))](comparison_lucas.md)**
 
