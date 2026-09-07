@@ -3,7 +3,7 @@
 
 model:
   # Hugging Face model identifier or timm model name (e.g. google/tipsv2-b14, vit_base_patch14_dinov2.lvd142m)
-  name: "google/tipsv2-b14"
+  name: "vit_base_patch16_dinov3.lvd1689m"
   # Optional path to local model checkpoint (.npz or .pt)
   checkpoint_path: null
 
