@@ -1,6 +1,8 @@
 import argparse
 import math
 import os
+import re
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Optional
@@ -21,6 +23,34 @@ from src.models.vision_model_inference import (
     load_vision_model,
 )
 from src.utils.io import download_image, load_dataframe
+from src.visualization.visualize_retrieval import generate_retrieval_html
+
+
+def get_rep_slug(rep_name: str, model_label: str = "") -> str:
+    """Generates a clean filesystem-friendly slug for a representation name."""
+    clean = rep_name
+    for prefix in [model_label, "TIPSv2", "TIPS"]:
+        if prefix and clean.startswith(prefix):
+            clean = clean[len(prefix) :].strip()
+    clean = (
+        clean.replace("Unmasked Patch Average", "unmasked_avg")
+        .replace("CLS-Attn FG-Removed Average", "cls_attn_fg_removed")
+        .replace("CLS + FG-Removed Average (Concat)", "cls_plus_fg_removed_concat")
+        .replace("Segformer-Masked Average", "segformer_masked")
+        .replace("Zero-Shot ADE150-Masked Average", "tips_ade_masked")
+        .replace("AnyUp-PCA Snapped Mask Average", "anyup_snapped")
+        .replace("CLS + Zero-Shot ADE150-Masked (Concat)", "cls_tips_ade_concat")
+        .replace("CLS + Unmasked Average (Concat)", "cls_unmasked_concat")
+        .replace("Hybrid Land Use Signature", "hybrid_land_use")
+        .replace(" (Concat)", "")
+        .replace("Average Patch", "avg_patch")
+        .replace("Avg Patch", "avg_patch")
+        .replace("FG-Removed Average", "fg_removed")
+        .replace("FG-Removed", "fg_removed")
+    )
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", clean.lower()).strip("_")
+    return slug or "rep"
+
 
 # Try to load .env variables if not already set
 if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
@@ -80,6 +110,9 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             "output_dir": "./benchmark_results",
             "output_report": "representations_report.txt",
             "output_csv": "representations_results.csv",
+            "output_html": "representations_visualizer.html",
+            "visualize_samples": 100,
+            "max_retrieval_plots": 5,
             "save_plots": True,
         },
         "representations": [
@@ -569,6 +602,29 @@ def main():
         default=None,
         help="Space-separated paths to local image dirs (e.g. iWildCam).",
     )
+    parser.add_argument(
+        "--output_html",
+        type=str,
+        default=None,
+        help="Path or filename to save the interactive HTML retrieval visualizers (default: representations_visualizer.html in output_dir).",
+    )
+    parser.add_argument(
+        "--visualize_samples",
+        type=int,
+        default=None,
+        help="Maximum number of query samples to include in each HTML dashboard (default: 100).",
+    )
+    parser.add_argument(
+        "--max_retrieval_plots",
+        type=int,
+        default=None,
+        help="Maximum number of retrieval query examples to plot in static PNG comparison grids (default: 5).",
+    )
+    parser.add_argument(
+        "--no_html",
+        action="store_true",
+        help="Disable generating interactive HTML retrieval visualizers.",
+    )
     args = parser.parse_args()
 
     # Load configuration
@@ -655,6 +711,22 @@ def main():
         "output_report", "representations_report.txt"
     )
     output_csv_file = cfg["output"].get("output_csv", "representations_results.csv")
+    output_html_file = (
+        args.output_html
+        if args.output_html is not None
+        else cfg.get("output", {}).get("output_html", "representations_visualizer.html")
+    )
+    visualize_samples = (
+        args.visualize_samples
+        if args.visualize_samples is not None
+        else int(cfg.get("output", {}).get("visualize_samples", 100))
+    )
+    max_retrieval_plots = (
+        args.max_retrieval_plots
+        if args.max_retrieval_plots is not None
+        else int(cfg.get("output", {}).get("max_retrieval_plots", 5))
+    )
+    generate_html = not args.no_html and bool(output_html_file)
     save_plots = cfg["output"].get("save_plots", True)
 
     # Device
@@ -677,7 +749,7 @@ def main():
         f"Foreground Filtering: Threshold Multiplier={fg_attn_threshold}x, Max Ratio={max_fg_ratio:.1%}"
     )
     print(
-        f"Diagnostic Plots: save_plots={save_plots}, plot_only_fg={plot_only_fg}, max_mask_plots={max_mask_plots}"
+        f"Visualization: HTML Dashboards={generate_html} (samples={visualize_samples}), Qualitative Plots={max_retrieval_plots}, Mask Plots={max_mask_plots}, save_plots={save_plots}"
     )
 
     # Load Vision Model via unified loader
@@ -1403,18 +1475,28 @@ def main():
             "r_5_5km": 0,
             "r_1_50km": 0,
             "r_5_50km": 0,
+            "r_10_50km": 0,
             "country_match": 0,
             "cross_platform_success": 0,
             "cross_platform_total": 0,
         }
         for rep in representations
     }
+    rep_viz_records = {rep: [] for rep in representations}
+    rep_ap_scores = {rep: [] for rep in representations}
+    rep_rr_scores = {rep: [] for rep in representations}
+    detailed_rows = []
 
     for q_idx in query_indices:
         q_row = sampled_df.iloc[q_idx]
         q_lat, q_lon = q_row["Latitude"], q_row["Longitude"]
         q_plat = str(q_row["Platform"]).lower()
         q_country = q_row.get("country", "Unknown")
+        q_photo_id = str(q_row.get("Photo_ID", ""))
+        q_id = f"{q_plat}_{q_photo_id}" if q_photo_id else f"query_{q_idx}"
+        q_gt_label = (
+            q_country if q_country != "Unknown" else f"{q_lat:.2f}°, {q_lon:.2f}°"
+        )
 
         db_mask = np.ones(len(sampled_df), dtype=bool)
         db_mask[q_idx] = False
@@ -1459,6 +1541,8 @@ def main():
                 results[rep_name]["r_1_50km"] += 1
             if np.any(top_5_dists <= 50.0):
                 results[rep_name]["r_5_50km"] += 1
+            if np.any(top_10_dists <= 50.0):
+                results[rep_name]["r_10_50km"] += 1
 
             if (
                 q_country != "Unknown"
@@ -1478,6 +1562,101 @@ def main():
                     first_cross_idx = np.where(sorted_db_plats != q_plat)[0][0]
                     if db_distances[sorted_indices[first_cross_idx]] <= 50.0:
                         results[rep_name]["cross_platform_success"] += 1
+
+            # Compute precision, AP, and RR for visualization & diagnostics
+            matches_10 = [bool(d <= 50.0) for d in top_10_dists]
+            top_1_match = matches_10[0]
+            p1_val = 1.0 if top_1_match else 0.0
+            p5_val = float(np.mean(matches_10[:5]))
+            p10_val = float(np.mean(matches_10[:10]))
+
+            num_hits = 0.0
+            ap_sum = 0.0
+            for rank_i, is_m in enumerate(matches_10):
+                if is_m:
+                    num_hits += 1.0
+                    ap_sum += num_hits / (rank_i + 1.0)
+            ap_val = ap_sum / min(10, max(1.0, num_hits)) if num_hits > 0 else 0.0
+            rep_ap_scores[rep_name].append(ap_val)
+
+            rr_val = 0.0
+            for rank_i, is_m in enumerate(matches_10):
+                if is_m:
+                    rr_val = 1.0 / (rank_i + 1.0)
+                    break
+            rep_rr_scores[rep_name].append(rr_val)
+
+            retrieved_cards = []
+            for rank, db_pos in enumerate(sorted_indices[:10]):
+                r_row = db_df.iloc[db_pos]
+                r_dist = float(db_distances[db_pos])
+                r_plat = str(r_row.get("Platform", "unknown"))
+                r_photo_id = str(r_row.get("Photo_ID", ""))
+                r_id = f"{r_plat}_{r_photo_id}" if r_photo_id else f"db_{db_pos}"
+                r_url = str(r_row.get("Image_URL", ""))
+                r_lat = float(r_row.get("Latitude", 0.0))
+                r_lon = float(r_row.get("Longitude", 0.0))
+                r_country = str(r_row.get("country", "Unknown"))
+                pred_label = (
+                    r_country
+                    if r_country != "Unknown"
+                    else f"{r_lat:.2f}°, {r_lon:.2f}°"
+                )
+                sim_score = (
+                    float(similarities[db_pos])
+                    if "Hybrid" not in rep_name
+                    else float(1.0 - blended_dist[db_pos])
+                )
+
+                retrieved_cards.append(
+                    {
+                        "rank": rank + 1,
+                        "id": r_id,
+                        "url": r_url,
+                        "platform": r_plat,
+                        "lat": r_lat,
+                        "lon": r_lon,
+                        "distance_km": round(r_dist, 1),
+                        "predicted_label": pred_label,
+                        "similarity": round(sim_score, 4),
+                        "is_match": bool(r_dist <= 50.0),
+                    }
+                )
+
+            rep_viz_records[rep_name].append(
+                {
+                    "query_id": q_id,
+                    "representation": rep_name,
+                    "query_url": str(q_row.get("Image_URL", "")),
+                    "query_platform": q_plat,
+                    "query_lat": float(q_lat),
+                    "query_lon": float(q_lon),
+                    "ground_truth": q_gt_label,
+                    "p1": p1_val,
+                    "p5": p5_val * 100.0,
+                    "p10": p10_val * 100.0,
+                    "ap": ap_val,
+                    "retrieved": retrieved_cards,
+                }
+            )
+
+            detailed_rows.append(
+                {
+                    "Query_ID": q_id,
+                    "Query_Platform": q_plat,
+                    "Query_Country": q_country,
+                    "Representation": rep_name,
+                    "Top_1_ID": retrieved_cards[0]["id"],
+                    "Top_1_Platform": retrieved_cards[0]["platform"],
+                    "Top_1_Distance_km": retrieved_cards[0]["distance_km"],
+                    "Top_1_Match_50km": top_1_match,
+                    "Top_1_Match_5km": bool(top_1_dist <= 5.0),
+                    "Cosine_Similarity": retrieved_cards[0]["similarity"],
+                    "P@1": p1_val,
+                    "AP@10": round(ap_val, 4),
+                    "RR@10": round(rr_val, 4),
+                }
+            )
 
     # 7. Print and Save Benchmark Report
     print("\n" + "=" * 80)
@@ -1582,7 +1761,87 @@ def main():
     df_results.to_csv(csv_out_path, index=False)
     print(f"Saved benchmark results CSV to: {os.path.abspath(csv_out_path)}")
 
-    # 8. Generate Visualization Plots
+    # Save detailed CSV results
+    if detailed_rows:
+        detailed_csv_fname = f"representations_detailed_{model_clean}.csv"
+        detailed_csv_path = os.path.join(output_dir, detailed_csv_fname)
+        df_detailed = pd.DataFrame(detailed_rows)
+        df_detailed.to_csv(detailed_csv_path, index=False)
+        print(
+            f"Saved detailed query retrieval CSV to: {os.path.abspath(detailed_csv_path)}"
+        )
+
+    # 8. Save Interactive HTML Retrieval Visualizers per Representation
+    if generate_html and rep_viz_records:
+        html_dir = output_dir
+        html_filename = os.path.basename(output_html_file)
+        if html_filename == "representations_visualizer.html":
+            html_filename = f"representations_visualizer_{model_clean}.html"
+        primary_html_path = os.path.join(html_dir, html_filename)
+        html_base, html_ext = os.path.splitext(primary_html_path)
+
+        first_rep = True
+        total_q = len(query_indices)
+        max_s = visualize_samples if visualize_samples > 0 else total_q
+        print(
+            f"\nGenerating interactive HTML retrieval visualizers per representation (max samples: {max_s})..."
+        )
+
+        for rep_name, records in rep_viz_records.items():
+            if not records:
+                continue
+
+            rep_slug = get_rep_slug(rep_name, model_label)
+            rep_html_path = f"{html_base}_{rep_slug}{html_ext}"
+
+            r_1_50_pct = (
+                (results[rep_name]["r_1_50km"] / total_q) * 100.0 if total_q else 0.0
+            )
+            r_5_50_pct = (
+                (results[rep_name]["r_5_50km"] / total_q) * 100.0 if total_q else 0.0
+            )
+            p10_pct = (
+                (results[rep_name]["r_10_50km"] / total_q) * 100.0 if total_q else 0.0
+            )
+            map10_pct = (
+                float(np.mean(rep_ap_scores.get(rep_name, [0.0]))) * 100.0
+                if rep_ap_scores.get(rep_name)
+                else 0.0
+            )
+            mrr10_pct = (
+                float(np.mean(rep_rr_scores.get(rep_name, [0.0]))) * 100.0
+                if rep_rr_scores.get(rep_name)
+                else 0.0
+            )
+
+            rep_summary_metrics = {
+                "p@1": r_1_50_pct,
+                "p@5": r_5_50_pct,
+                "p@10": p10_pct,
+                "map@10": map10_pct,
+                "mrr@10": mrr10_pct,
+            }
+
+            title = f"Geographic Retrieval Visualizer ({rep_name})"
+            display_model = f"{model_name} [{rep_name}]"
+
+            generate_retrieval_html(
+                rep_html_path,
+                title,
+                display_model,
+                rep_summary_metrics,
+                records,
+                max_samples=max_s,
+            )
+
+            if first_rep and rep_html_path != primary_html_path:
+                shutil.copyfile(rep_html_path, primary_html_path)
+                print(
+                    f" -> Primary visualizer dashboard saved to: {os.path.abspath(primary_html_path)}"
+                )
+                first_rep = False
+
+    # 9. Generate Visualization Plots
     if save_plots and len(results) > 0:
         try:
             import matplotlib.pyplot as plt
@@ -1622,73 +1881,106 @@ def main():
             plt.close()
             print(f"Saved metrics comparison plot to: {os.path.abspath(plot_path)}")
 
-            # Plot 2: Qualitative Query Sample Comparison Grid
-            if len(query_indices) > 0:
-                q_idx = query_indices[0]
-                q_row = sampled_df.iloc[q_idx]
-                q_img = images[q_idx]
+            # Plot 2: Qualitative Query Sample Comparison Grids
+            if len(query_indices) > 0 and max_retrieval_plots > 0:
+                num_plots = min(max_retrieval_plots, len(query_indices))
+                print(
+                    f"Rendering {num_plots} qualitative retrieval example comparison grids..."
+                )
                 reps_to_visualize = list(representations.keys())
 
-                fig2, axes2 = plt.subplots(
-                    len(reps_to_visualize), 4, figsize=(16, 3 * len(reps_to_visualize))
-                )
-                if len(reps_to_visualize) == 1:
-                    axes2 = np.expand_dims(axes2, axis=0)
+                for sample_i in range(num_plots):
+                    q_idx = query_indices[sample_i]
+                    q_row = sampled_df.iloc[q_idx]
+                    q_img = images.get(q_idx)
+                    if q_img is None:
+                        continue
 
-                db_mask = np.ones(len(sampled_df), dtype=bool)
-                db_mask[q_idx] = False
-                db_df = sampled_df[db_mask]
-                db_distances = haversine_distance(
-                    q_row["Latitude"],
-                    q_row["Longitude"],
-                    db_df["Latitude"].values,
-                    db_df["Longitude"].values,
-                )
-
-                for row_i, rep_name in enumerate(reps_to_visualize):
-                    rep_mat = representations[rep_name]
-                    q_vec = rep_mat[q_idx]
-                    db_vecs = rep_mat[db_mask]
-
-                    if "Hybrid" in rep_name:
-                        distances = np.sum(np.abs(db_vecs - q_vec), axis=1)
-                        sorted_idx = np.argsort(distances)
-                    else:
-                        sims = np.dot(db_vecs, q_vec)
-                        sorted_idx = np.argsort(sims)[::-1]
-
-                    axes2[row_i, 0].imshow(q_img)
-                    axes2[row_i, 0].set_title(
-                        f"Query ({q_row['Platform']})", fontsize=10
+                    fig2, axes2 = plt.subplots(
+                        len(reps_to_visualize),
+                        4,
+                        figsize=(16, 3 * len(reps_to_visualize)),
                     )
-                    axes2[row_i, 0].axis("off")
+                    if len(reps_to_visualize) == 1:
+                        axes2 = np.expand_dims(axes2, axis=0)
 
-                    for col_j in range(1, 4):
-                        retrieved_db_idx = sorted_idx[col_j - 1]
-                        retrieved_img_idx = db_df.index[retrieved_db_idx]
-                        retrieved_img = images[retrieved_img_idx]
-                        retrieved_row = db_df.iloc[retrieved_db_idx]
-                        dist_err = db_distances[retrieved_db_idx]
+                    db_mask = np.ones(len(sampled_df), dtype=bool)
+                    db_mask[q_idx] = False
+                    db_df = sampled_df[db_mask]
+                    db_distances = haversine_distance(
+                        q_row["Latitude"],
+                        q_row["Longitude"],
+                        db_df["Latitude"].values,
+                        db_df["Longitude"].values,
+                    )
 
-                        clean_title = rep_name.replace(" (L1 Dist)", "").replace(
-                            " (Concat)", "\n(Concat)"
+                    for row_i, rep_name in enumerate(reps_to_visualize):
+                        rep_mat = representations[rep_name]
+                        q_vec = rep_mat[q_idx]
+                        db_vecs = rep_mat[db_mask]
+
+                        if "Hybrid" in rep_name:
+                            distances = np.sum(np.abs(db_vecs - q_vec), axis=1)
+                            sorted_idx = np.argsort(distances)
+                        else:
+                            sims = np.dot(db_vecs, q_vec)
+                            sorted_idx = np.argsort(sims)[::-1]
+
+                        axes2[row_i, 0].imshow(q_img)
+                        q_country_str = (
+                            f" - {q_row['country']}"
+                            if q_row.get("country", "Unknown") != "Unknown"
+                            else ""
                         )
-                        axes2[row_i, col_j].imshow(retrieved_img)
-                        axes2[row_i, col_j].set_title(
-                            f"{clean_title} Top-{col_j}\n({retrieved_row['Platform']}) {dist_err:.1f}km",
-                            fontsize=8,
+                        axes2[row_i, 0].set_title(
+                            f"Query #{sample_i + 1} ({q_row['Platform']}{q_country_str})",
+                            fontsize=9,
                         )
-                        axes2[row_i, col_j].axis("off")
+                        axes2[row_i, 0].axis("off")
 
-                plt.tight_layout()
-                grid_plot_path = os.path.join(
-                    output_dir, f"benchmark_retrieval_{model_clean}.png"
-                )
-                plt.savefig(grid_plot_path, dpi=150)
-                plt.close()
-                print(
-                    f"Saved qualitative retrieval example grid to: {os.path.abspath(grid_plot_path)}"
-                )
+                        for col_j in range(1, 4):
+                            retrieved_db_idx = sorted_idx[col_j - 1]
+                            retrieved_img_idx = db_df.index[retrieved_db_idx]
+                            retrieved_img = images.get(retrieved_img_idx)
+                            retrieved_row = db_df.iloc[retrieved_db_idx]
+                            dist_err = db_distances[retrieved_db_idx]
+
+                            clean_title = rep_name.replace(" (L1 Dist)", "").replace(
+                                " (Concat)", "\n(Concat)"
+                            )
+                            if retrieved_img is not None:
+                                axes2[row_i, col_j].imshow(retrieved_img)
+                            r_country_str = (
+                                f" {retrieved_row['country']}"
+                                if retrieved_row.get("country", "Unknown") != "Unknown"
+                                else ""
+                            )
+                            axes2[row_i, col_j].set_title(
+                                f"{clean_title} Top-{col_j}\n({retrieved_row['Platform']}{r_country_str}) {dist_err:.1f}km",
+                                fontsize=8,
+                            )
+                            axes2[row_i, col_j].axis("off")
+
+                    plt.tight_layout()
+                    if sample_i == 0:
+                        grid_plot_path = os.path.join(
+                            output_dir, f"benchmark_retrieval_{model_clean}.png"
+                        )
+                        plt.savefig(grid_plot_path, dpi=150)
+                        grid_plot_path_indexed = os.path.join(
+                            output_dir, f"benchmark_retrieval_{model_clean}_q1.png"
+                        )
+                        plt.savefig(grid_plot_path_indexed, dpi=150)
+                    else:
+                        grid_plot_path = os.path.join(
+                            output_dir,
+                            f"benchmark_retrieval_{model_clean}_q{sample_i + 1}.png",
+                        )
+                        plt.savefig(grid_plot_path, dpi=150)
+                    plt.close()
+                    print(
+                        f"Saved qualitative retrieval example grid to: {os.path.abspath(grid_plot_path)}"
+                    )
 
             # Plot 3: Segmentation & Attention Mask Diagnostics
             if len(seg_viz_samples) > 0:
