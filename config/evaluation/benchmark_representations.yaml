@@ -15,9 +15,9 @@ dataset:
   # Optional platform filter for queries (e.g. "flickr", "mapillary", or null for all)
   query_platform: "flickr"
   # Number of database images to sample (balanced across platforms if available)
-  num_images: 3000
+  num_images: 30000
   # Number of query evaluations to run
-  num_queries: 50
+  num_queries: 500
   # Random seed for reproducible sampling and evaluation
   seed: 1
   # GPU batch size for feature extraction

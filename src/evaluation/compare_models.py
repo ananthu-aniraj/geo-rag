@@ -28,6 +28,10 @@ def find_visualizers_for_model(actual_html_path):
         return []
 
     slug_labels = [
+        ("_1st_cls_fg_removed", "1st CLS + FG-Removed"),
+        ("_2nd_cls_fg_removed", "2nd CLS + FG-Removed"),
+        ("_cls_fg_removed", "CLS + FG-Removed"),
+        ("_fg_removed", "FG-Removed Average"),
         ("_1st_cls_avg_patch", "1st CLS + Avg Patch"),
         ("_2nd_cls_avg_patch", "2nd CLS + Avg Patch"),
         ("_cls_avg_patch", "CLS + Avg Patch"),
@@ -188,7 +192,13 @@ def deduplicate_cnn_rows(results):
             for r in rows:
                 if r is avg_row:
                     continue
-                if r["Representation"] in ["CLS", "CLS + Avg Patch"]:
+                if r["Representation"] in [
+                    "CLS",
+                    "CLS + Avg Patch",
+                    "FG-Removed Average",
+                    "CLS + FG-Removed Avg",
+                    "CLS + FG-Removed Average",
+                ]:
                     metrics_match = (
                         r["P@1"] == avg_row["P@1"]
                         and r["P@5"] == avg_row["P@5"]
@@ -346,6 +356,12 @@ def main():
             cmd.append("--no_segformer")
         if params.get("compare_clip") is True:
             cmd.append("--compare_clip")
+        if params.get("use_fg_removal") is False:
+            cmd.append("--no_fg_removal")
+        if "fg_attn_threshold" in params and params["fg_attn_threshold"] is not None:
+            cmd.extend(["--fg_attn_threshold", str(params["fg_attn_threshold"])])
+        if "max_fg_ratio" in params and params["max_fg_ratio"] is not None:
+            cmd.extend(["--max_fg_ratio", str(params["max_fg_ratio"])])
 
         # Run benchmark
         try:

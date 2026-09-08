@@ -297,6 +297,25 @@ To calculate the geobotanical `Seg-Masked` patch representations, the benchmark 
 
 When disabled, SegFormer is not loaded into memory, background masks are not processed, and evaluation runs **several times faster**, extracting only the core visual representations (`CLS`, `Average Patch`, and concatenation combos).
 
+### 🎯 Attention-Based Foreground Distractor Removal (`FG-Removed`)
+
+To isolate persistent environmental features and eliminate transient foreground objects (such as vehicles, animals, or pedestrians) without the heavy inference overhead of external semantic segmentation models, all evaluation benchmarks (`benchmark_eunis.py`, `benchmark_environmental_zones.py`, `benchmark_lucas.py`, and `benchmark_places.py`) support **CLS-attention based foreground distractor removal**:
+
+- **Mechanism**: Extracts the final-layer `[CLS]`-to-patch self-attention map directly from the vision backbone (supported across `timm` ViTs and TIPSv2). If salient foreground patches exceed `fg_attn_threshold` (default: $2.0\times$ uniform attention) while remaining bounded below `max_fg_ratio` (default: $0.05$ or 5% of total patch count), those patches are masked out and the remaining background patch tokens are averaged. If no distractors or excessive foreground areas are detected, it cleanly falls back to the unmasked average patch representation.
+- **Representations Evaluated**:
+  - `FG-Removed Average`: Foreground-filtered average patch representation.
+  - `CLS + FG-Removed Average` (or `1st/2nd CLS + FG-Removed Avg`): Concatenation of the CLS token with the foreground-filtered patch average.
+- **YAML Controls**:
+
+  ```yaml
+  use_fg_removal: true      # Toggle generation of FG-Removed representations
+  fg_attn_threshold: 2.0    # Salience threshold multiplier above uniform attention
+  max_fg_ratio: 0.05        # Maximum patch budget for transient foregrounds (5%)
+  ```
+
+- **CLI Flags**: `--no_fg_removal` to disable; `--fg_attn_threshold` and `--max_fg_ratio` to adjust gating sensitivity.
+- **Per-Representation Visualizers**: In spatial benchmarks (EUNIS & Environmental Zones), dedicated HTML visualizers (`_fg_removed.html` and `_cls_fg_removed.html`) are generated and automatically indexed in `compare_models.py`.
+
 ### 📊 Automated Multi-Model Comparison (`run_comparison.sh`)
 
 If you want to evaluate multiple models side-by-side on a specific dataset without manually editing configuration files or copy-pasting tables, you can configure your target models in the YAML config and run the comparison script:

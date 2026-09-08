@@ -13,6 +13,9 @@ environmental_zones:
   visualize_samples: 100
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
   use_segformer: true
+  use_fg_removal: true
+  fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
+  max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)
 
 eunis:
   model_name: "google/tipsv2-b14"
@@ -27,3 +30,6 @@ eunis:
   visualize_samples: 100
   offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark"
   use_segformer: true
+  use_fg_removal: true
+  fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
+  max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)

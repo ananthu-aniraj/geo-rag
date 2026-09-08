@@ -22,6 +22,7 @@ from src.models import tips_image_encoder as image_encoder
 
 # Load from HF or timm via unified helper
 from src.models.vision_model_inference import (
+    compute_cls_attn_fg_removed_patch,
     extract_benchmark_features_single_pass,
     load_vision_model,
 )
@@ -225,6 +226,23 @@ def main():
         default="./benchmark_results/places_results.csv",
         help="Path to write detailed query CSV results.",
     )
+    parser.add_argument(
+        "--no_fg_removal",
+        action="store_true",
+        help="Disable CLS-attention based foreground distractor removal representations.",
+    )
+    parser.add_argument(
+        "--fg_attn_threshold",
+        type=float,
+        default=2.0,
+        help="Attention threshold multiplier above uniform attention for foreground detection (default: 2.0).",
+    )
+    parser.add_argument(
+        "--max_fg_ratio",
+        type=float,
+        default=0.05,
+        help="Maximum ratio of image patches allowed to be classified as transient foreground (default: 0.05 = 5%).",
+    )
     args = parser.parse_args()
 
     # Format output paths dynamically by appending seed and num_queries
@@ -406,6 +424,19 @@ def main():
                 f"{model_label} 1st CLS + Avg Patch": {"query": [], "db": []},
             }
         )
+        if not args.no_fg_removal:
+            representations[f"{model_label} FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
+            representations[f"{model_label} 1st CLS + FG-Removed Avg"] = {
+                "query": [],
+                "db": [],
+            }
+            representations[f"{model_label} 2nd CLS + FG-Removed Avg"] = {
+                "query": [],
+                "db": [],
+            }
         if not args.no_segformer:
             representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
     else:
@@ -416,6 +447,15 @@ def main():
                 f"{model_label} CLS + Avg Patch": {"query": [], "db": []},
             }
         )
+        if not args.no_fg_removal:
+            representations[f"{model_label} FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
+            representations[f"{model_label} CLS + FG-Removed Avg"] = {
+                "query": [],
+                "db": [],
+            }
         if not args.no_segformer:
             representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
 
@@ -495,9 +535,21 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(
-                    model, img_tensors, is_local=is_local
-                )
+                need_attn = not args.no_fg_removal
+                if need_attn:
+                    cls_out, patch_tokens_vals, cls_attn_batch = (
+                        extract_benchmark_features_single_pass(
+                            model,
+                            img_tensors,
+                            is_local=is_local,
+                            extract_attention=True,
+                        )
+                    )
+                else:
+                    cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(
+                        model, img_tensors, is_local=is_local
+                    )
+                    cls_attn_batch = None
                 patch_tokens_vals = patch_tokens_vals.reshape(
                     len(batch_imgs), -1, patch_tokens_vals.shape[-1]
                 )
@@ -539,6 +591,32 @@ def main():
                     representations[f"{model_label} CLS + Avg Patch"][split_key].append(
                         np.concatenate([cls_val, avg_patch])
                     )
+
+                # CLS-Attention Foreground Distractor Removal
+                if not args.no_fg_removal:
+                    patch_attn = (
+                        cls_attn_batch[idx] if cls_attn_batch is not None else None
+                    )
+                    fg_removed_patch = compute_cls_attn_fg_removed_patch(
+                        patch_tokens,
+                        patch_attn=patch_attn,
+                        fg_attn_threshold=args.fg_attn_threshold,
+                        max_fg_ratio=args.max_fg_ratio,
+                    )
+                    representations[f"{model_label} FG-Removed Average"][
+                        split_key
+                    ].append(fg_removed_patch)
+                    if args.tips_model_path:
+                        representations[f"{model_label} 1st CLS + FG-Removed Avg"][
+                            split_key
+                        ].append(np.concatenate([first_cls[idx], fg_removed_patch]))
+                        representations[f"{model_label} 2nd CLS + FG-Removed Avg"][
+                            split_key
+                        ].append(np.concatenate([second_cls[idx], fg_removed_patch]))
+                    else:
+                        representations[f"{model_label} CLS + FG-Removed Avg"][
+                            split_key
+                        ].append(np.concatenate([cls_tokens[idx], fg_removed_patch]))
 
                 # Seg-Masked
                 if not args.no_segformer:

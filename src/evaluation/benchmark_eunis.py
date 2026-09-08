@@ -21,6 +21,7 @@ from transformers import (
 from src.evaluation.metrics import compute_ap, compute_precision_at_k, compute_rr
 from src.models import tips_image_encoder as image_encoder
 from src.models.vision_model_inference import (
+    compute_cls_attn_fg_removed_patch,
     extract_benchmark_features_single_pass,
     load_vision_model,
 )
@@ -162,6 +163,23 @@ def main():
         type=str,
         default=None,
         help="Mapillary API access token to override default/environment settings.",
+    )
+    parser.add_argument(
+        "--no_fg_removal",
+        action="store_true",
+        help="Disable CLS-attention based foreground distractor removal representations.",
+    )
+    parser.add_argument(
+        "--fg_attn_threshold",
+        type=float,
+        default=2.0,
+        help="Attention threshold multiplier above uniform attention for foreground detection (default: 2.0).",
+    )
+    parser.add_argument(
+        "--max_fg_ratio",
+        type=float,
+        default=0.05,
+        help="Maximum ratio of image patches allowed to be classified as transient foreground (default: 0.05 = 5%).",
     )
     args = parser.parse_args()
 
@@ -613,6 +631,19 @@ def main():
             f"{model_label} 1st CLS + Average Patch": {"query": [], "db": []},
             f"{model_label} 2nd CLS + Average Patch": {"query": [], "db": []},
         }
+        if not args.no_fg_removal:
+            representations[f"{model_label} FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
+            representations[f"{model_label} 1st CLS + FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
+            representations[f"{model_label} 2nd CLS + FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
         if not args.no_segformer:
             representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
     else:
@@ -621,6 +652,15 @@ def main():
             f"{model_label} Average Patch": {"query": [], "db": []},
             f"{model_label} CLS + Average Patch": {"query": [], "db": []},
         }
+        if not args.no_fg_removal:
+            representations[f"{model_label} FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
+            representations[f"{model_label} CLS + FG-Removed Average"] = {
+                "query": [],
+                "db": [],
+            }
         if not args.no_segformer:
             representations[f"{model_label} Seg-Masked"] = {"query": [], "db": []}
 
@@ -674,9 +714,22 @@ def main():
             img_tensors = torch.stack([transform(img) for img in batch_imgs]).to(device)
             with torch.no_grad():
                 is_local = bool(args.tips_model_path)
-                cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(
-                    tipsv2, img_tensors, is_local=is_local
-                )
+                need_attn = not args.no_fg_removal
+                if need_attn:
+                    cls_out, patch_tokens_vals, cls_attn_batch = (
+                        extract_benchmark_features_single_pass(
+                            tipsv2,
+                            img_tensors,
+                            is_local=is_local,
+                            extract_attention=True,
+                        )
+                    )
+                else:
+                    cls_out, patch_tokens_vals = extract_benchmark_features_single_pass(
+                        tipsv2, img_tensors, is_local=is_local
+                    )
+                    cls_attn_batch = None
+
                 patch_tokens_vals = patch_tokens_vals.reshape(
                     len(batch_imgs), -1, patch_tokens_vals.shape[-1]
                 )
@@ -722,6 +775,32 @@ def main():
                     representations[f"{model_label} CLS + Average Patch"][
                         split_key
                     ].append(np.concatenate([cls_token, avg_patch]))
+
+                # CLS-Attention Foreground Distractor Removal
+                if not args.no_fg_removal:
+                    patch_attn = (
+                        cls_attn_batch[idx] if cls_attn_batch is not None else None
+                    )
+                    fg_removed_patch = compute_cls_attn_fg_removed_patch(
+                        patch_tokens,
+                        patch_attn=patch_attn,
+                        fg_attn_threshold=args.fg_attn_threshold,
+                        max_fg_ratio=args.max_fg_ratio,
+                    )
+                    representations[f"{model_label} FG-Removed Average"][
+                        split_key
+                    ].append(fg_removed_patch)
+                    if is_local:
+                        representations[f"{model_label} 1st CLS + FG-Removed Average"][
+                            split_key
+                        ].append(np.concatenate([first_cls_token, fg_removed_patch]))
+                        representations[f"{model_label} 2nd CLS + FG-Removed Average"][
+                            split_key
+                        ].append(np.concatenate([second_cls_token, fg_removed_patch]))
+                    else:
+                        representations[f"{model_label} CLS + FG-Removed Average"][
+                            split_key
+                        ].append(np.concatenate([cls_token, fg_removed_patch]))
 
                 # Seg-Masked
                 if not args.no_segformer:
@@ -1075,8 +1154,11 @@ def main():
             for prefix in [model_label, "TIPSv2", "TIPS"]:
                 if clean.startswith(prefix):
                     clean = clean[len(prefix) :].strip()
-            clean = clean.replace("Average Patch", "avg_patch").replace(
-                "Avg Patch", "avg_patch"
+            clean = (
+                clean.replace("Average Patch", "avg_patch")
+                .replace("Avg Patch", "avg_patch")
+                .replace("FG-Removed Average", "fg_removed")
+                .replace("FG-Removed", "fg_removed")
             )
             rep_slug = re.sub(r"[^a-zA-Z0-9]+", "_", clean.lower()).strip("_")
             if not rep_slug:

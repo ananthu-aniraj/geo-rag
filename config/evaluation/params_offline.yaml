@@ -11,6 +11,9 @@ lucas:
   batch_size: 128
   seed: 42
   use_segformer: false
+  use_fg_removal: true
+  fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
+  max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)
 
 places:
   model_name: "vit_base_patch16_dinov3.lvd1689m"
@@ -22,3 +25,6 @@ places:
   seed: 42
   use_segformer: false
   compare_clip: false
+  use_fg_removal: true
+  fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
+  max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)

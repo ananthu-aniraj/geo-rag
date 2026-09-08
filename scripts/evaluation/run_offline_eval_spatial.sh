@@ -35,6 +35,9 @@ ENV_QUERY_PLATFORM=$(get_param "environmental_zones" "query_platform")
 ENV_VIZ_SAMPLES=$(get_param "environmental_zones" "visualize_samples")
 ENV_OFFLINE=$(get_param "environmental_zones" "offline_dataset_dirs")
 ENV_USE_SEG=$(get_param "environmental_zones" "use_segformer")
+ENV_USE_FG=$(get_param "environmental_zones" "use_fg_removal")
+ENV_FG_THRESH=$(get_param "environmental_zones" "fg_attn_threshold")
+ENV_MAX_FG=$(get_param "environmental_zones" "max_fg_ratio")
 
 EUNIS_MODEL=$(get_param "eunis" "model_name")
 EUNIS_CSV=$(get_param "eunis" "csv_path")
@@ -47,6 +50,9 @@ EUNIS_QUERY_PLATFORM=$(get_param "eunis" "query_platform")
 EUNIS_VIZ_SAMPLES=$(get_param "eunis" "visualize_samples")
 EUNIS_OFFLINE=$(get_param "eunis" "offline_dataset_dirs")
 EUNIS_USE_SEG=$(get_param "eunis" "use_segformer")
+EUNIS_USE_FG=$(get_param "eunis" "use_fg_removal")
+EUNIS_FG_THRESH=$(get_param "eunis" "fg_attn_threshold")
+EUNIS_MAX_FG=$(get_param "eunis" "max_fg_ratio")
 
 OUTPUT_DIR="./benchmark_results"
 mkdir -p "$OUTPUT_DIR"
@@ -70,6 +76,22 @@ fi
 EUNIS_SEG_FLAG=""
 if [ "$EUNIS_USE_SEG" = "false" ] || [ "$EUNIS_USE_SEG" = "False" ]; then
     EUNIS_SEG_FLAG="--no_segformer"
+fi
+
+ENV_FG_FLAG=""
+if [ "$ENV_USE_FG" = "false" ] || [ "$ENV_USE_FG" = "False" ]; then
+    ENV_FG_FLAG="--no_fg_removal"
+else
+    [ -n "$ENV_FG_THRESH" ] && [ "$ENV_FG_THRESH" != "None" ] && ENV_FG_FLAG="$ENV_FG_FLAG --fg_attn_threshold $ENV_FG_THRESH"
+    [ -n "$ENV_MAX_FG" ] && [ "$ENV_MAX_FG" != "None" ] && ENV_FG_FLAG="$ENV_FG_FLAG --max_fg_ratio $ENV_MAX_FG"
+fi
+
+EUNIS_FG_FLAG=""
+if [ "$EUNIS_USE_FG" = "false" ] || [ "$EUNIS_USE_FG" = "False" ]; then
+    EUNIS_FG_FLAG="--no_fg_removal"
+else
+    [ -n "$EUNIS_FG_THRESH" ] && [ "$EUNIS_FG_THRESH" != "None" ] && EUNIS_FG_FLAG="$EUNIS_FG_FLAG --fg_attn_threshold $EUNIS_FG_THRESH"
+    [ -n "$EUNIS_MAX_FG" ] && [ "$EUNIS_MAX_FG" != "None" ] && EUNIS_FG_FLAG="$EUNIS_FG_FLAG --max_fg_ratio $EUNIS_MAX_FG"
 fi
 
 ENV_PLATFORM_FLAG=""
@@ -106,10 +128,12 @@ echo "- Env Model: $ENV_MODEL"
 echo "- Env Query Platform: ${ENV_QUERY_PLATFORM:-all}"
 echo "- Env Visualizer Samples: ${ENV_VIZ_SAMPLES:-disabled}"
 echo "- Env SegFormer Active: $ENV_USE_SEG"
+echo "- Env FG-Removal Active: ${ENV_USE_FG:-true}"
 echo "- EUNIS Model: $EUNIS_MODEL"
 echo "- EUNIS Query Platform: ${EUNIS_QUERY_PLATFORM:-all}"
 echo "- EUNIS Visualizer Samples: ${EUNIS_VIZ_SAMPLES:-disabled}"
 echo "- EUNIS SegFormer Active: $EUNIS_USE_SEG"
+echo "- EUNIS FG-Removal Active: ${EUNIS_USE_FG:-true}"
 echo "- Database path: $ENV_CSV"
 echo "- Env Zones Raster: $ENV_RASTER"
 echo "- EUNIS Raster: $EUNIS_RASTER"
@@ -131,6 +155,7 @@ python3 -m src.evaluation.benchmark_environmental_zones \
   $ENV_VIZ_FLAG \
   --offline_dataset_dirs "$ENV_OFFLINE" \
   $ENV_SEG_FLAG \
+  $ENV_FG_FLAG \
   $MAPILLARY_FLAG \
   --output_report "$OUTPUT_DIR/environmental_zones_report_${ENV_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/environmental_zones_results_${ENV_MODEL_CLEAN}.csv"
@@ -149,6 +174,7 @@ python3 -m src.evaluation.benchmark_eunis \
   $EUNIS_VIZ_FLAG \
   --offline_dataset_dirs "$EUNIS_OFFLINE" \
   $EUNIS_SEG_FLAG \
+  $EUNIS_FG_FLAG \
   $MAPILLARY_FLAG \
   --output_report "$OUTPUT_DIR/eunis_report_${EUNIS_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/eunis_results_${EUNIS_MODEL_CLEAN}.csv"

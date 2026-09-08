@@ -101,20 +101,23 @@ def extract_model_embeddings(model, batch_tensors, representation_type="cls"):
         return cls_token.cpu().numpy()
 
 
-def extract_benchmark_features_single_pass(model, batch_tensors, is_local=False):
+def extract_benchmark_features_single_pass(
+    model, batch_tensors, is_local=False, extract_attention=False
+):
     """
     Extracts standard CLS tokens (and second CLS token if local) and the MaskCLIP
-    value attention patch tokens in a single optimized forward pass.
+    value attention patch tokens in a single optimized forward pass. Optionally extracts
+    CLS-to-patch attention maps for attention-based foreground distractor filtering.
 
     Args:
         model: TIPSv2 model instance, local checkpoint, or standard timm/HF model.
         batch_tensors (torch.Tensor): Preprocessed image batch tensor of shape (B, 3, H, W).
         is_local (bool): True if using local check-pointed ImageEncoder, False if Hugging Face.
+        extract_attention (bool): True to extract CLS-to-patch attention maps in the same pass.
 
     Returns:
-        tuple: (cls_out, patch_tokens_vals) where:
-            - cls_out is either (first_cls, second_cls) or a single cls_token array.
-            - patch_tokens_vals is the MaskCLIP value attention patch tokens array.
+        tuple: (cls_out, patch_tokens_vals) if extract_attention is False,
+               or (cls_out, patch_tokens_vals, cls_attn) if extract_attention is True.
     """
     # Verify and cache class token presence check on the model instance on the first pass
     if getattr(model, "has_cls_token", None) is None:
@@ -130,16 +133,34 @@ def extract_benchmark_features_single_pass(model, batch_tensors, is_local=False)
 
     # Case 1: timm Model Integration
     if not is_local and hasattr(model, "forward_features"):
-        return _extract_features_timm(model, batch_tensors)
+        return _extract_features_timm(
+            model, batch_tensors, extract_attention=extract_attention
+        )
 
     # Case 2: TIPSv2 model (local or Hugging Face wrapper)
-    return _extract_features_tipsv2(model, batch_tensors, is_local)
+    return _extract_features_tipsv2(
+        model, batch_tensors, is_local, extract_attention=extract_attention
+    )
 
 
-def _extract_features_timm(model, batch_tensors):
-    """Extracts features from a timm model."""
-    features = model.forward_features(batch_tensors)
+def _extract_features_timm(model, batch_tensors, extract_attention=False):
+    """Extracts features from a timm model with optional CLS attention extraction."""
+    captured_inputs = []
+    hook = None
+    if extract_attention and hasattr(model, "blocks") and len(model.blocks) > 0:
+        last_attn = getattr(model.blocks[-1], "attn", None)
+        if last_attn is not None:
+            hook = last_attn.register_forward_hook(
+                lambda mod, inp, out: captured_inputs.append(inp[0])
+            )
 
+    try:
+        features = model.forward_features(batch_tensors)
+    finally:
+        if hook is not None:
+            hook.remove()
+
+    cls_attn = None
     if features.ndim == 4:
         # CNN output: pool spatial dims for CLS, reshape for patches
         cls_out = (
@@ -163,11 +184,42 @@ def _extract_features_timm(model, batch_tensors):
             # Transformer output without CLS: average pool patches for CLS representation
             cls_out = torch.mean(features, dim=1).cpu().numpy()
             patch_tokens_vals = features.cpu().numpy()
+
+        if (
+            extract_attention
+            and captured_inputs
+            and hasattr(model, "blocks")
+            and len(model.blocks) > 0
+        ):
+            try:
+                last_attn = model.blocks[-1].attn
+                inp = captured_inputs[0]
+                B, N, C = inp.shape
+                qkv = (
+                    last_attn.qkv(inp)
+                    .reshape(B, N, 3, last_attn.num_heads, last_attn.head_dim)
+                    .permute(2, 0, 3, 1, 4)
+                )
+                q_cls = qkv[0][:, :, 0:1, :]
+                k = qkv[1]
+                scale = getattr(last_attn, "scale", 1.0 / math.sqrt(last_attn.head_dim))
+                attn = F.softmax(
+                    torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1
+                )
+                num_prefix = getattr(model, "num_prefix_tokens", 1)
+                cls_attn = attn[:, :, 0, num_prefix:].mean(dim=1).detach().cpu().numpy()
+            except Exception as e:
+                print(
+                    f"Warning: Failed to extract timm CLS attention in single pass: {e}"
+                )
+
+    if extract_attention:
+        return cls_out, patch_tokens_vals, cls_attn
     return cls_out, patch_tokens_vals
 
 
-def _extract_features_tipsv2(model, batch_tensors, is_local):
-    """Extracts features from a TIPSv2 model (local or HF)."""
+def _extract_features_tipsv2(model, batch_tensors, is_local, extract_attention=False):
+    """Extracts features from a TIPSv2 model (local or HF) with optional CLS attention extraction."""
     vision_encoder = (
         model
         if is_local
@@ -184,7 +236,8 @@ def _extract_features_tipsv2(model, batch_tensors, is_local):
         x = blk(x)
 
     # 3. Last block standard output (CLS token)
-    x_standard = all_blocks[-1](x)
+    last_blk = all_blocks[-1]
+    x_standard = last_blk(x)
     x_standard_norm = vision_encoder.norm(x_standard)
 
     if is_local:
@@ -206,35 +259,96 @@ def _extract_features_tipsv2(model, batch_tensors, is_local):
         cls_out = cls_token.cpu().numpy()
 
     # 4. Last block value attention projection (MaskCLIP values trick)
-    x_normed = all_blocks[-1].norm1(x)
+    x_normed = last_blk.norm1(x)
     b_dim, n_dim, c_dim = x_normed.shape
+    num_heads = last_blk.attn.num_heads
+    head_dim = c_dim // num_heads
+
     qkv = (
-        all_blocks[-1]
-        .attn.qkv(x_normed)
+        last_blk.attn.qkv(x_normed)
         .reshape(
             b_dim,
             n_dim,
             3,
-            all_blocks[-1].attn.num_heads,
-            c_dim // all_blocks[-1].attn.num_heads,
+            num_heads,
+            head_dim,
         )
         .permute(2, 0, 3, 1, 4)
     )
     v = qkv[2]
     v_out = v.transpose(1, 2).reshape(b_dim, n_dim, c_dim)
-    v_out = all_blocks[-1].attn.proj(v_out)
-    v_out = all_blocks[-1].ls1(v_out)
+    v_out = last_blk.attn.proj(v_out)
+    v_out = last_blk.ls1(v_out)
     x_val = v_out + x
 
-    y_val = all_blocks[-1].norm2(x_val)
-    y_val = all_blocks[-1].ls2(all_blocks[-1].mlp(y_val))
+    y_val = last_blk.norm2(x_val)
+    y_val = last_blk.ls2(last_blk.mlp(y_val))
     x_val = x_val + y_val
 
     x_val_norm = vision_encoder.norm(x_val)
     patch_tokens = x_val_norm[:, 1 + num_register :, :]
     patch_tokens_vals = patch_tokens.cpu().numpy()
 
+    cls_attn = None
+    if extract_attention:
+        try:
+            q_cls = qkv[0][:, :, 0:1, :]
+            k = qkv[1]
+            scale = 1.0 / math.sqrt(head_dim)
+            attn = F.softmax(torch.matmul(q_cls, k.transpose(-2, -1)) * scale, dim=-1)
+            cls_attn = (
+                attn[:, :, 0, 1 + num_register :].mean(dim=1).detach().cpu().numpy()
+            )
+        except Exception as e:
+            print(
+                f"Warning: Failed to extract TIPSv2 CLS attention in single pass: {e}"
+            )
+
+    if extract_attention:
+        return cls_out, patch_tokens_vals, cls_attn
     return cls_out, patch_tokens_vals
+
+
+def compute_cls_attn_fg_removed_patch(
+    patch_tokens, patch_attn=None, fg_attn_threshold=2.0, max_fg_ratio=0.05
+):
+    """
+    Applies size-gated CLS-attention foreground distractor removal to patch tokens.
+    Removes high-attention foreground patches occupying <= max_fg_ratio of the image area.
+    Falls back to simple unmasked average patch if attention is missing or foreground
+    exceeds max_fg_ratio.
+
+    Args:
+        patch_tokens (np.ndarray): Array of patch feature vectors of shape (num_patches, D).
+        patch_attn (np.ndarray, optional): Array of CLS-to-patch attention weights (num_patches,).
+        fg_attn_threshold (float): Multiplier above uniform attention to classify as foreground.
+        max_fg_ratio (float): Maximum allowed ratio of foreground patches (e.g. 0.05 = 5%).
+
+    Returns:
+        np.ndarray: Vector of shape (D,) representing the foreground-filtered average patch.
+    """
+    curr_num_patches = patch_tokens.shape[0]
+    simple_avg = np.mean(patch_tokens, axis=0)
+
+    if patch_attn is None or curr_num_patches == 0:
+        return simple_avg
+
+    norm_attn = patch_attn / (np.sum(patch_attn) + 1e-9)
+    uniform_attn = 1.0 / curr_num_patches
+    fg_thresh = fg_attn_threshold * uniform_attn
+    fg_indices = np.where(norm_attn > fg_thresh)[0]
+    num_fg = len(fg_indices)
+
+    max_fg_patches = int(math.floor(max_fg_ratio * curr_num_patches))
+
+    if 1 <= num_fg <= max_fg_patches:
+        fg_bool = np.zeros(curr_num_patches, dtype=bool)
+        fg_bool[fg_indices] = True
+        bg_indices = np.where(~fg_bool)[0]
+        if len(bg_indices) > 0:
+            return np.mean(patch_tokens[bg_indices], axis=0)
+
+    return simple_avg
 
 
 def load_vision_model(model_name, device):

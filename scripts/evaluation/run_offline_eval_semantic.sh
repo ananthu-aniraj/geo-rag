@@ -20,7 +20,7 @@ echo "==========================================================================
 
 # Helper function to read yaml values using Python
 get_param() {
-    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_offline.yaml'))['$1']['$2'])"
+    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_offline.yaml')).get('$1', {}).get('$2', ''))"
 }
 
 # Load parameters from YAML
@@ -32,6 +32,9 @@ LUCAS_DB=$(get_param "lucas" "num_database")
 LUCAS_BATCH=$(get_param "lucas" "batch_size")
 LUCAS_SEED=$(get_param "lucas" "seed")
 LUCAS_USE_SEG=$(get_param "lucas" "use_segformer")
+LUCAS_USE_FG=$(get_param "lucas" "use_fg_removal")
+LUCAS_FG_THRESH=$(get_param "lucas" "fg_attn_threshold")
+LUCAS_MAX_FG=$(get_param "lucas" "max_fg_ratio")
 
 PLACES_MODEL=$(get_param "places" "model_name")
 PLACES_LABELS=$(get_param "places" "labels")
@@ -42,6 +45,9 @@ PLACES_BATCH=$(get_param "places" "batch_size")
 PLACES_SEED=$(get_param "places" "seed")
 PLACES_USE_SEG=$(get_param "places" "use_segformer")
 PLACES_COMP_CLIP=$(get_param "places" "compare_clip")
+PLACES_USE_FG=$(get_param "places" "use_fg_removal")
+PLACES_FG_THRESH=$(get_param "places" "fg_attn_threshold")
+PLACES_MAX_FG=$(get_param "places" "max_fg_ratio")
 
 OUTPUT_DIR="./benchmark_results"
 mkdir -p "$OUTPUT_DIR"
@@ -68,6 +74,22 @@ if [ "$PLACES_USE_SEG" = "false" ] || [ "$PLACES_USE_SEG" = "False" ]; then
     PLACES_SEG_FLAG="--no_segformer"
 fi
 
+LUCAS_FG_FLAG=""
+if [ "$LUCAS_USE_FG" = "false" ] || [ "$LUCAS_USE_FG" = "False" ]; then
+    LUCAS_FG_FLAG="--no_fg_removal"
+else
+    [ -n "$LUCAS_FG_THRESH" ] && [ "$LUCAS_FG_THRESH" != "None" ] && LUCAS_FG_FLAG="$LUCAS_FG_FLAG --fg_attn_threshold $LUCAS_FG_THRESH"
+    [ -n "$LUCAS_MAX_FG" ] && [ "$LUCAS_MAX_FG" != "None" ] && LUCAS_FG_FLAG="$LUCAS_FG_FLAG --max_fg_ratio $LUCAS_MAX_FG"
+fi
+
+PLACES_FG_FLAG=""
+if [ "$PLACES_USE_FG" = "false" ] || [ "$PLACES_USE_FG" = "False" ]; then
+    PLACES_FG_FLAG="--no_fg_removal"
+else
+    [ -n "$PLACES_FG_THRESH" ] && [ "$PLACES_FG_THRESH" != "None" ] && PLACES_FG_FLAG="$PLACES_FG_FLAG --fg_attn_threshold $PLACES_FG_THRESH"
+    [ -n "$PLACES_MAX_FG" ] && [ "$PLACES_MAX_FG" != "None" ] && PLACES_FG_FLAG="$PLACES_FG_FLAG --max_fg_ratio $PLACES_MAX_FG"
+fi
+
 PLACES_CLIP_FLAG=""
 if [ "$PLACES_COMP_CLIP" = "true" ] || [ "$PLACES_COMP_CLIP" = "True" ]; then
     PLACES_CLIP_FLAG="--compare_clip"
@@ -82,12 +104,14 @@ echo "- LUCAS Model: $LUCAS_MODEL"
 echo "- LUCAS Metadata: $LUCAS_CSV"
 echo "- LUCAS Image Dir: $LUCAS_IMG_DIR"
 echo "- LUCAS SegFormer Active: $LUCAS_USE_SEG"
+echo "- LUCAS FG-Removal Active: ${LUCAS_USE_FG:-true}"
 echo "- EUNIS Raster: $EUNIS_RASTER"
 echo "- Env Zones Raster: $ENV_RASTER"
 echo "- Places365 Model: $PLACES_MODEL"
 echo "- Places365 Hierarchy: $PLACES_LABELS"
 echo "- Places365 Image Dir: $PLACES_IMG_DIR"
 echo "- Places365 SegFormer Active: $PLACES_USE_SEG"
+echo "- Places365 FG-Removal Active: ${PLACES_USE_FG:-true}"
 echo "- Places365 Compare CLIP: $PLACES_COMP_CLIP"
 echo "================================================================================"
 
@@ -104,6 +128,7 @@ python3 -m src.evaluation.benchmark_lucas \
   --eunis_raster "$EUNIS_RASTER" \
   --env_zones_raster "$ENV_RASTER" \
   $LUCAS_SEG_FLAG \
+  $LUCAS_FG_FLAG \
   --output_report "$OUTPUT_DIR/lucas_report_${LUCAS_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/lucas_results_${LUCAS_MODEL_CLEAN}.csv"
 
@@ -119,6 +144,7 @@ python3 -m src.evaluation.benchmark_places \
   --seed "$PLACES_SEED" \
   $PLACES_CLIP_FLAG \
   $PLACES_SEG_FLAG \
+  $PLACES_FG_FLAG \
   --output_report "$OUTPUT_DIR/places_report_${PLACES_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/places_results_${PLACES_MODEL_CLEAN}.csv"
 
