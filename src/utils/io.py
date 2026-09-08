@@ -99,7 +99,9 @@ def save_dataframe(
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
-            core_name = get_core_base_name(base_name)
+            core_name = (
+                base_name if "_filtered" in base_name else get_core_base_name(base_name)
+            )
 
             embs = np.vstack(df["embedding"].values)
             dim = embs.shape[1]
