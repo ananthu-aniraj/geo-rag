@@ -841,9 +841,12 @@ def main():
 
     results = {}
     detailed_rows = []
-    query_viz_records = []
+    rep_viz_records = {}
 
     for rep_name, splits in representations.items():
+        if args.output_html:
+            rep_viz_records[rep_name] = []
+
         q_vectors = np.array(splits["query"])
         db_vectors = np.array(splits["db"])
 
@@ -937,9 +940,10 @@ def main():
                             round(float(sim_matrix[q_idx, db_idx]), 4)
                             for db_idx in sorted_db_indices[:10]
                         ]
-                        query_viz_records.append(
+                        rep_viz_records[rep_name].append(
                             {
                                 "query_id": q_id,
+                                "representation": rep_name,
                                 "query_url": q_item.get("url", ""),
                                 "query_platform": q_item.get("platform", "unknown"),
                                 "query_lat": q_item.get("lat"),
@@ -1052,22 +1056,58 @@ def main():
         df_detailed.to_csv(args.output_csv, index=False)
         print(f"Detailed query results saved to: {os.path.abspath(args.output_csv)}")
 
-    # Save interactive HTML retrieval visualizer
-    if args.output_html and query_viz_records:
+    # Save interactive HTML retrieval visualizers per representation
+    if args.output_html and rep_viz_records:
+        import re
+        import shutil
+
         from src.visualization.visualize_retrieval import generate_retrieval_html
 
-        rep_key = list(results.keys())[0] if results else "default"
-        rep_metrics = results.get(rep_key, {}).get("eunis_l3", {})
-        generate_retrieval_html(
-            args.output_html,
-            "EUNIS Ecosystems Representation Retrieval Visualizer",
-            args.model_name,
-            rep_metrics,
-            query_viz_records,
-            max_samples=args.visualize_samples
-            if args.visualize_samples > 0
-            else len(query_viz_records),
-        )
+        html_base, html_ext = os.path.splitext(args.output_html)
+        first_rep = True
+
+        for rep_name, records in rep_viz_records.items():
+            if not records:
+                continue
+
+            # Generate clean representation slug (e.g. 'cls', 'avg_patch', 'cls_avg_patch')
+            clean = rep_name
+            for prefix in [model_label, "TIPSv2", "TIPS"]:
+                if clean.startswith(prefix):
+                    clean = clean[len(prefix) :].strip()
+            clean = clean.replace("Average Patch", "avg_patch").replace(
+                "Avg Patch", "avg_patch"
+            )
+            rep_slug = re.sub(r"[^a-zA-Z0-9]+", "_", clean.lower()).strip("_")
+            if not rep_slug:
+                rep_slug = re.sub(r"[^a-zA-Z0-9]+", "_", rep_name.lower()).strip("_")
+
+            rep_html_path = f"{html_base}_{rep_slug}{html_ext}"
+            rep_metrics = results.get(rep_name, {}).get("eunis_l3", {})
+
+            title = f"EUNIS Ecosystems Retrieval Visualizer ({rep_name})"
+            display_model = f"{args.model_name} [{rep_name}]"
+
+            max_samples = (
+                args.visualize_samples if args.visualize_samples > 0 else len(records)
+            )
+
+            generate_retrieval_html(
+                rep_html_path,
+                title,
+                display_model,
+                rep_metrics,
+                records,
+                max_samples=max_samples,
+            )
+
+            # Copy primary representation to default args.output_html path
+            if first_rep:
+                shutil.copyfile(rep_html_path, args.output_html)
+                print(
+                    f" -> Primary ({rep_name}) visualizer copied to default path: {os.path.abspath(args.output_html)}"
+                )
+                first_rep = False
 
 
 if __name__ == "__main__":

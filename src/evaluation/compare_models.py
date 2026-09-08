@@ -1,11 +1,59 @@
 import argparse
 import datetime
+import glob
 import os
 import re
 import subprocess
 import sys
 
 import yaml
+
+
+def find_visualizers_for_model(actual_html_path):
+    """
+    Finds all generated HTML visualizers for a given model run,
+    including per-representation files (_cls.html, _avg_patch.html, etc.).
+    Returns a list of tuples: (display_label, file_path).
+    """
+    if not actual_html_path:
+        return []
+
+    html_dir = os.path.dirname(os.path.abspath(actual_html_path))
+    html_base = os.path.splitext(os.path.basename(actual_html_path))[0]
+    html_ext = os.path.splitext(actual_html_path)[1]
+
+    pattern = os.path.join(html_dir, f"{html_base}*{html_ext}")
+    matches = sorted(glob.glob(pattern))
+    if not matches:
+        return []
+
+    slug_labels = [
+        ("_1st_cls_avg_patch", "1st CLS + Avg Patch"),
+        ("_2nd_cls_avg_patch", "2nd CLS + Avg Patch"),
+        ("_cls_avg_patch", "CLS + Avg Patch"),
+        ("_1st_cls", "1st CLS"),
+        ("_2nd_cls", "2nd CLS"),
+        ("_cls", "CLS"),
+        ("_avg_patch", "Average Patch"),
+        ("_seg_masked", "Seg-Masked"),
+    ]
+
+    found = []
+    has_specific_reps = False
+    for f in matches:
+        for suffix, label in slug_labels:
+            if f.endswith(f"{suffix}{html_ext}"):
+                found.append((label, f))
+                has_specific_reps = True
+                break
+
+    if not has_specific_reps:
+        for f in matches:
+            if f == actual_html_path:
+                found.append(("Dashboard", f))
+
+    return found
+
 
 BENCHMARKS = {
     "lucas": {
@@ -247,8 +295,9 @@ def main():
             )
             model_results = parse_report_file(actual_report_path, model)
             all_results.extend(model_results)
-            if os.path.exists(actual_html_path):
-                visualizer_links.append((model, actual_html_path))
+            viz_files = find_visualizers_for_model(actual_html_path)
+            if viz_files:
+                visualizer_links.append((model, viz_files))
             continue
 
         cmd = [
@@ -301,9 +350,9 @@ def main():
         # Run benchmark
         try:
             subprocess.run(cmd, env=env, check=True)
-            print(f"Evaluation for {model} completed successfully.")
-            if os.path.exists(actual_html_path):
-                visualizer_links.append((model, actual_html_path))
+            viz_files = find_visualizers_for_model(actual_html_path)
+            if viz_files:
+                visualizer_links.append((model, viz_files))
         except subprocess.CalledProcessError as e:
             print(f"Error running benchmark for model {model}: {e}")
             continue
@@ -358,11 +407,14 @@ def main():
 
         if visualizer_links:
             f.write("## Interactive Retrieval Visualizers\n\n")
-            f.write("| Model | Visualizer Dashboard |\n")
-            f.write("| :--- | :--- |\n")
-            for model_name, v_path in visualizer_links:
-                rel_path = os.path.basename(v_path)
-                f.write(f"| {model_name} | [{rel_path}]({rel_path}) |\n")
+            f.write("| Model | Representation | Visualizer Dashboard |\n")
+            f.write("| :--- | :--- | :--- |\n")
+            for model_name, v_files in visualizer_links:
+                for rep_label, v_path in v_files:
+                    rel_path = os.path.basename(v_path)
+                    f.write(
+                        f"| {model_name} | {rep_label} | [{rel_path}]({rel_path}) |\n"
+                    )
             f.write("\n")
 
     print("\n" + "=" * 90)
