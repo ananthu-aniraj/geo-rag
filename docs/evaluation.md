@@ -197,19 +197,32 @@ This script performs geobotanical representation benchmarking on arbitrary geolo
 
 ```bash
 python3 -m src.evaluation.benchmark_eunis \
-  --csv_path path/to/scraped_data.csv \
+  --csv_path path/to/scraped_data.parquet \
   --tips_model_path path/to/checkpoint.npz \
   --tips_model_variant B \
   --num_queries 100 \
   --num_database 500 \
+  --query_platform flickr \
   --output_report benchmark_results/eunis_report.txt \
-  --output_csv benchmark_results/eunis_results.csv
+  --output_csv benchmark_results/eunis_results.csv \
+  --output_html benchmark_results/eunis_visualizer.html \
+  --visualize_samples 100
 ```
 
 ### 📦 Outputs
 
-- `benchmark_results/eunis_report.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and EUNIS levels.
-- `benchmark_results/eunis_results.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
+Output filenames are formatted dynamically by appending the seed, query count, and query platform (`_s[seed]_q[queries]_plat-[platform]`) to prevent overwriting results across experiments:
+
+- `benchmark_results/eunis_report_s42_q100_plat-flickr.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and EUNIS levels.
+- `benchmark_results/eunis_results_s42_q100_plat-flickr.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
+- `benchmark_results/eunis_visualizer_s42_q100_plat-flickr.html`: The primary representation visualizer dashboard (copied from the primary baseline, typically CLS).
+- `benchmark_results/eunis_visualizer_s42_q100_plat-flickr_[representation].html`: Dedicated, per-representation standalone HTML retrieval visualizers generated for each evaluated representation (e.g. `_cls.html`, `_avg_patch.html`, `_cls_avg_patch.html`, `_seg_masked.html`). Each dashboard displays:
+  - Query images side-by-side with top-10 retrieved database matches.
+  - Representation-specific accuracy banner metrics matching the query cards 1-to-1.
+  - Visual match indicators (🟢 True Positive vs 🔴 False Positive).
+  - Cosine similarity scores and geodesic physical distance in kilometers.
+  - Diagnostic outcome filter toggles (All Queries, True Positives only, False Positives only).
+  - An offline image path remapping control panel to dynamically remap local paths to remote loopback servers over SSH tunnels.
 
 ---
 
@@ -229,14 +242,26 @@ This script performs macro-scale biogeographical representation benchmarking on 
 
 ```bash
 python3 -m src.evaluation.benchmark_environmental_zones \
-  --csv_path path/to/scraped_data.csv \
+  --csv_path path/to/scraped_data.parquet \
   --tips_model_path path/to/checkpoint.npz \
   --tips_model_variant B \
   --num_queries 100 \
   --num_database 500 \
+  --query_platform flickr \
   --output_report benchmark_results/env_zones_report.txt \
-  --output_csv benchmark_results/env_zones_results.csv
+  --output_csv benchmark_results/env_zones_results.csv \
+  --output_html benchmark_results/environmental_zones_visualizer.html \
+  --visualize_samples 100
 ```
+
+### 📦 Outputs
+
+Output filenames are formatted dynamically by appending the seed, query count, and query platform (`_s[seed]_q[queries]_plat-[platform]`):
+
+- `benchmark_results/env_zones_report_s42_q100_plat-flickr.txt`: A plain text report summary comparing retrieval accuracy metrics across all representations and Environmental Zones.
+- `benchmark_results/env_zones_results_s42_q100_plat-flickr.csv`: A detailed CSV table containing query images, retrieved top-1 matches, and corresponding P@1, P@5, P@10, AP@10, and RR@10 scores.
+- `benchmark_results/environmental_zones_visualizer_s42_q100_plat-flickr.html`: The primary representation visualizer dashboard (copied from the primary baseline, typically CLS).
+- `benchmark_results/environmental_zones_visualizer_s42_q100_plat-flickr_[representation].html`: Dedicated, per-representation standalone HTML retrieval visualizers generated for each evaluated representation (`_cls.html`, `_avg_patch.html`, `_cls_avg_patch.html`, `_seg_masked.html`) with 1-to-1 matching banner metrics, diagnostic filters, cosine similarities, and geodesic distances.
 
 ## 🏃 Running Evaluations using Shell Orchestrators
 
@@ -252,7 +277,7 @@ To make evaluations easily reproducible and readable, the pipeline uses YAML fil
 
 - **Configuration**: `config/evaluation/params_online.yaml`
 - **Shell Script**: `./scripts/evaluation/run_offline_eval_spatial.sh`
-- **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving results into `benchmark_results/`.
+- **Operation**: Reads parameters from the online YAML file and runs `benchmark_environmental_zones.py` and `benchmark_eunis.py` sequentially, saving report summaries, query CSVs, and interactive per-representation HTML dashboards into `benchmark_results/`. Supports configuring query platform filtering (`query_platform`) and visualizer sample count (`visualize_samples`).
 
 ### 🎛️ Multi-Model Benchmarking (timm & TIPSv2)
 
@@ -293,10 +318,11 @@ If you want to evaluate multiple models side-by-side on a specific dataset witho
 
 #### How it works:
 
-1. **Reads config**: Automatically reads dataset parameters (number of queries, dataset paths, SegFormer status, etc.) from `config/evaluation/params_offline.yaml` or `params_online.yaml` based on the selected benchmark.
+1. **Reads config**: Automatically reads dataset parameters (number of queries, dataset paths, SegFormer status, platform filtering, visualizer sampling, etc.) from `config/evaluation/params_offline.yaml` or `params_online.yaml` based on the selected benchmark.
 2. **Runs benchmarks sequentially**: Executes the underlying python benchmark for each model listed in `compare_models.yaml` in sequence, saving individual model reports safely with sanitized filenames (preventing them from overwriting each other).
-3. **Collates results**: Parses each generated text report, extracts the metrics (Precision@1, Precision@5, Precision@10, MAP@10, and MRR@10) across all representations, and consolidates them into a single markdown file (`benchmark_results/comparison_[benchmark].md`).
-4. **Prints summary**: Outputs the final collated comparison markdown table directly to your console.
+3. **Discovers per-representation visualizers**: If visualizers were generated, automatically scans the output directory using `find_visualizers_for_model()` to locate all per-representation HTML dashboards (`_cls.html`, `_avg_patch.html`, `_cls_avg_patch.html`, `_seg_masked.html`, etc.).
+4. **Collates results**: Parses each generated text report, extracts the metrics (Precision@1, Precision@5, Precision@10, MAP@10, and MRR@10) across all representations, and consolidates them into a single markdown file (`benchmark_results/comparison_[benchmark].md`). It also generates an **Interactive Retrieval Visualizers** table listing markdown links for each model and each visual representation.
+5. **Prints summary**: Outputs the final collated comparison markdown table directly to your console.
 
 ---
 
