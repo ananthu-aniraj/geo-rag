@@ -362,6 +362,9 @@ def main():
             cmd.extend(["--fg_attn_threshold", str(params["fg_attn_threshold"])])
         if "max_fg_ratio" in params and params["max_fg_ratio"] is not None:
             cmd.extend(["--max_fg_ratio", str(params["max_fg_ratio"])])
+        if "discard_classes" in params and params["discard_classes"] is not None:
+            cmd.append("--discard_classes")
+            cmd.extend([str(c) for c in params["discard_classes"]])
 
         # Run benchmark
         try:

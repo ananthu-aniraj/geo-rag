@@ -20,6 +20,12 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Wildlife Insights Project & Licensing Metadata Parsing**: Added automatic detection and parsing of `projects.csv` in `prepare_wildlife_insights.py` (`load_projects`), capturing `project_id`, `project_name`, `project_short_name`, `metadata_license`, `image_license`, and `data_citation`. Aligns project attribution with deployment records and appends them to final Parquet and CSV outputs.
 - **Adaptive License Fallback**: Added dynamic license fallback in `prepare_wildlife_insights.py` to adopt the project's declared `image_license` (e.g. `CC-BY`) when image records lack explicit row-level licenses, avoiding erroneous default assumptions of `CC0`.
 - **Safe Unsequenced Camera Trap Fallback**: Enhanced sequence deduplication in `prepare_wildlife_insights.py` to safely fallback `sequence_id` to `image_id` when sequence groupings are null/NaN, ensuring unsequenced camera trap events are never falsely discarded by burst diversity filters.
+- **Configurable Segmentation Discard Classes**: Decoupled `DISCARD_CLASSES` from hardcoded sets in evaluation scripts (`benchmark_representations.py`, `benchmark_places.py`, `benchmark_lucas.py`, `benchmark_environmental_zones.py`, `benchmark_eunis.py`, `test_iwildcam_retrieval_comparison.py`, `test_local_retrieval_comparison.py`) into centralized evaluation configuration files:
+  - Added `discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]` to `config/evaluation/benchmark_representations.yaml` (under `options:`).
+  - Added `discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]` to `config/evaluation/params_offline.yaml` (under `places:` and `lucas:`).
+  - Added `discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]` to `config/evaluation/params_online.yaml` (under `environmental_zones:` and `eunis:`).
+  - Added `--discard_classes` CLI argument across all evaluation scripts, with automatic fallback to respective YAML configurations and module-level defaults.
+  - Updated batch runners `scripts/evaluation/run_offline_eval_semantic.sh`, `scripts/evaluation/run_offline_eval_spatial.sh`, and `src/evaluation/compare_models.py` to parse and forward `discard_classes` dynamically.
 
 ### Changed
 

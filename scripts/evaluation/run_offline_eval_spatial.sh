@@ -119,6 +119,18 @@ if [ -n "$MAPILLARY_TOKEN" ]; then
     MAPILLARY_FLAG="--mapillary_token $MAPILLARY_TOKEN"
 fi
 
+ENV_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_online.yaml')).get('environmental_zones', {}).get('discard_classes', []))))" 2>/dev/null)
+ENV_DISCARD_FLAG=""
+if [ -n "$ENV_DISCARD" ]; then
+    ENV_DISCARD_FLAG="--discard_classes $ENV_DISCARD"
+fi
+
+EUNIS_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_online.yaml')).get('eunis', {}).get('discard_classes', []))))" 2>/dev/null)
+EUNIS_DISCARD_FLAG=""
+if [ -n "$EUNIS_DISCARD" ]; then
+    EUNIS_DISCARD_FLAG="--discard_classes $EUNIS_DISCARD"
+fi
+
 # Sanitize model names to prevent directory traversal issues in filenames
 ENV_MODEL_CLEAN="${ENV_MODEL//\//_}"
 EUNIS_MODEL_CLEAN="${EUNIS_MODEL//\//_}"
@@ -156,6 +168,7 @@ python3 -m src.evaluation.benchmark_environmental_zones \
   --offline_dataset_dirs "$ENV_OFFLINE" \
   $ENV_SEG_FLAG \
   $ENV_FG_FLAG \
+  $ENV_DISCARD_FLAG \
   $MAPILLARY_FLAG \
   --output_report "$OUTPUT_DIR/environmental_zones_report_${ENV_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/environmental_zones_results_${ENV_MODEL_CLEAN}.csv"
@@ -175,6 +188,7 @@ python3 -m src.evaluation.benchmark_eunis \
   --offline_dataset_dirs "$EUNIS_OFFLINE" \
   $EUNIS_SEG_FLAG \
   $EUNIS_FG_FLAG \
+  $EUNIS_DISCARD_FLAG \
   $MAPILLARY_FLAG \
   --output_report "$OUTPUT_DIR/eunis_report_${EUNIS_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/eunis_results_${EUNIS_MODEL_CLEAN}.csv"

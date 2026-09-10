@@ -19,7 +19,7 @@ DEFAULT_IMAGES_DIR = "./iwildcam_subset/train"
 DEFAULT_OUTPUT_DIR = "./iwildcam_exps"
 
 # Discard classes (same as ADE20K configurations)
-DISCARD_CLASSES = {
+DEFAULT_DISCARD_CLASSES = [
     2,
     12,
     20,
@@ -28,7 +28,8 @@ DISCARD_CLASSES = {
     83,
     102,
     127,
-}  # sky, person, car, sign, bus, truck, van, bike
+]  # sky, person, car, sign, bus, truck, van, bike
+DISCARD_CLASSES = set(DEFAULT_DISCARD_CLASSES)
 
 
 def main():
@@ -59,7 +60,19 @@ def main():
         default=8,
         help="Row index of the query image in the subset.",
     )
+    parser.add_argument(
+        "--discard_classes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of class IDs to discard during segmentation masking (e.g. ADE20K indices).",
+    )
     args = parser.parse_args()
+    discard_classes = (
+        set(args.discard_classes)
+        if args.discard_classes is not None
+        else DISCARD_CLASSES
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading metadata from {args.csv_path}...")
@@ -175,7 +188,7 @@ def main():
                     ]
                     classes, counts = np.unique(patch_pixels, return_counts=True)
                     dominant_class = classes[np.argmax(counts)]
-                    if dominant_class in DISCARD_CLASSES:
+                    if dominant_class in discard_classes:
                         patch_weights[r, c] = 0.0
 
             patch_weights_flat = patch_weights.flatten()[:, np.newaxis]
@@ -273,7 +286,7 @@ def main():
                 ]
                 classes, counts = np.unique(patch_pixels, return_counts=True)
                 dominant_class = classes[np.argmax(counts)]
-                if dominant_class in DISCARD_CLASSES:
+                if dominant_class in discard_classes:
                     patch_weights[r, c] = 0.0
 
         mask_overlay = np.zeros((448, 448, 3), dtype=np.uint8)

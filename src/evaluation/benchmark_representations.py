@@ -67,7 +67,7 @@ if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
         pass
 
 MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
-DISCARD_CLASSES = {
+DEFAULT_DISCARD_CLASSES = [
     2,
     12,
     20,
@@ -76,7 +76,8 @@ DISCARD_CLASSES = {
     83,
     102,
     127,
-}  # sky, person, car, sign, bus, truck, van, bike
+]  # sky, person, car, sign, bus, truck, van, bike
+DISCARD_CLASSES = set(DEFAULT_DISCARD_CLASSES)
 
 DEFAULT_CONFIG_PATH = "config/evaluation/benchmark_representations.yaml"
 
@@ -105,6 +106,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             "max_fg_ratio": 0.05,
             "plot_only_fg": True,
             "max_mask_plots": 3,
+            "discard_classes": list(DEFAULT_DISCARD_CLASSES),
         },
         "output": {
             "output_dir": "./benchmark_results",
@@ -566,6 +568,13 @@ def main():
         help="Skip SegFormer semantic segmentation masking.",
     )
     parser.add_argument(
+        "--discard_classes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of class IDs to discard during segmentation masking (e.g. ADE20K indices). Overrides config.",
+    )
+    parser.add_argument(
         "--fg_attn_threshold",
         type=float,
         default=None,
@@ -702,6 +711,11 @@ def main():
         args.max_mask_plots
         if args.max_mask_plots is not None
         else int(cfg["options"].get("max_mask_plots", 3))
+    )
+    discard_classes = set(
+        args.discard_classes
+        if args.discard_classes is not None
+        else cfg["options"].get("discard_classes", DEFAULT_DISCARD_CLASSES)
     )
 
     output_dir = args.output_dir or cfg["output"].get(
@@ -1057,7 +1071,7 @@ def main():
                 )
                 pred_classes = logits.argmax(dim=1)
                 seg_keep_tensor = torch.ones_like(pred_classes, dtype=torch.float32)
-                for c in DISCARD_CLASSES:
+                for c in discard_classes:
                     seg_keep_tensor[pred_classes == c] = 0.0
 
                 pooled_weights = torch.nn.functional.adaptive_avg_pool2d(
@@ -1152,7 +1166,7 @@ def main():
                 best_ade_idx = np.argmax(patch_ade_sim, axis=1)
 
                 tips_ade_keep_mask = np.ones(curr_num_patches, dtype=float)
-                for c in DISCARD_CLASSES:
+                for c in discard_classes:
                     tips_ade_keep_mask[best_ade_idx == c] = 0.0
                 tips_ade_keep_masks_list.append(tips_ade_keep_mask)
 

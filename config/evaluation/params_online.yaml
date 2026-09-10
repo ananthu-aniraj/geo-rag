@@ -16,6 +16,9 @@ environmental_zones:
   use_fg_removal: true
   fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
   max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)
+  # ADE20K semantic segmentation classes to discard during background masking
+  # (2: sky, 12: person, 20: car, 43: sign, 80: bus, 83: truck, 102: van, 127: bike)
+  discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
 
 eunis:
   model_name: "google/tipsv2-b14"
@@ -33,3 +36,6 @@ eunis:
   use_fg_removal: true
   fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
   max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)
+  # ADE20K semantic segmentation classes to discard during background masking
+  # (2: sky, 12: person, 20: car, 43: sign, 80: bus, 83: truck, 102: van, 127: bike)
+  discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]

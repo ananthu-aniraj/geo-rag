@@ -27,7 +27,7 @@ from src.models.vision_model_inference import (
     load_vision_model,
 )
 
-DISCARD_CLASSES = {
+DEFAULT_DISCARD_CLASSES = [
     2,
     12,
     20,
@@ -36,7 +36,8 @@ DISCARD_CLASSES = {
     83,
     102,
     127,
-}  # sky, person, car, sign, bus, truck, van, bike
+]  # sky, person, car, sign, bus, truck, van, bike
+DISCARD_CLASSES = set(DEFAULT_DISCARD_CLASSES)
 
 
 def load_places365_labels(filepath):
@@ -241,9 +242,33 @@ def main():
         "--max_fg_ratio",
         type=float,
         default=0.05,
-        help="Maximum ratio of image patches allowed to be classified as transient foreground (default: 0.05 = 5%).",
+        help="Maximum ratio of image patches allowed to be classified as transient foreground (default: 0.05 = 5%%).",
+    )
+    parser.add_argument(
+        "--discard_classes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of class IDs to discard during segmentation masking (e.g. ADE20K indices). Overrides config.",
     )
     args = parser.parse_args()
+
+    if args.discard_classes is not None:
+        discard_classes = set(args.discard_classes)
+    else:
+        discard_classes = set(DEFAULT_DISCARD_CLASSES)
+        config_path = "config/evaluation/params_offline.yaml"
+        if os.path.exists(config_path):
+            try:
+                import yaml
+
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f)
+                loaded_classes = cfg.get("places", {}).get("discard_classes")
+                if loaded_classes is not None:
+                    discard_classes = set(loaded_classes)
+            except Exception:
+                pass
 
     # Format output paths dynamically by appending seed and num_queries
     report_base, report_ext = os.path.splitext(args.output_report)
@@ -622,7 +647,7 @@ def main():
                 if not args.no_segformer:
                     pred_mask = pred_masks[idx]
                     keep_mask = np.ones_like(pred_mask, dtype=float)
-                    for c in DISCARD_CLASSES:
+                    for c in discard_classes:
                         keep_mask[pred_mask == c] = 0.0
 
                     # Downsample keep mask to grid_size x grid_size patch resolution

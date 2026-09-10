@@ -35,6 +35,9 @@ options:
   max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)
   plot_only_fg: true         # Only plot diagnostic mask samples where foreground was detected
   max_mask_plots: 3          # Max number of mask diagnostic sample rows to plot
+  # ADE20K semantic segmentation classes to discard during background masking
+  # (2: sky, 12: person, 20: car, 43: sign, 80: bus, 83: truck, 102: van, 127: bike)
+  discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
 
 output:
   # Directory where report and plots are saved
@@ -67,9 +70,9 @@ output:
 representations:
   - "cls"
   - "unmasked_avg"
-  - "cls_attn_fg_removed"
-  - "cls_plus_fg_removed_concat"
-  # - "segformer_masked"
+  - "segformer_masked"
+  #-  "cls_attn_fg_removed"
+  #-  "cls_plus_fg_removed_concat"
   # - "tips_ade_masked"
   # - "cls_tips_ade_concat"
   # - "cls_unmasked_concat"

@@ -95,6 +95,18 @@ if [ "$PLACES_COMP_CLIP" = "true" ] || [ "$PLACES_COMP_CLIP" = "True" ]; then
     PLACES_CLIP_FLAG="--compare_clip"
 fi
 
+LUCAS_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_offline.yaml')).get('lucas', {}).get('discard_classes', []))))" 2>/dev/null)
+LUCAS_DISCARD_FLAG=""
+if [ -n "$LUCAS_DISCARD" ]; then
+    LUCAS_DISCARD_FLAG="--discard_classes $LUCAS_DISCARD"
+fi
+
+PLACES_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_offline.yaml')).get('places', {}).get('discard_classes', []))))" 2>/dev/null)
+PLACES_DISCARD_FLAG=""
+if [ -n "$PLACES_DISCARD" ]; then
+    PLACES_DISCARD_FLAG="--discard_classes $PLACES_DISCARD"
+fi
+
 # Sanitize model names to prevent directory traversal issues in filenames
 LUCAS_MODEL_CLEAN="${LUCAS_MODEL//\//_}"
 PLACES_MODEL_CLEAN="${PLACES_MODEL//\//_}"
@@ -129,6 +141,7 @@ python3 -m src.evaluation.benchmark_lucas \
   --env_zones_raster "$ENV_RASTER" \
   $LUCAS_SEG_FLAG \
   $LUCAS_FG_FLAG \
+  $LUCAS_DISCARD_FLAG \
   --output_report "$OUTPUT_DIR/lucas_report_${LUCAS_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/lucas_results_${LUCAS_MODEL_CLEAN}.csv"
 
@@ -145,6 +158,7 @@ python3 -m src.evaluation.benchmark_places \
   $PLACES_CLIP_FLAG \
   $PLACES_SEG_FLAG \
   $PLACES_FG_FLAG \
+  $PLACES_DISCARD_FLAG \
   --output_report "$OUTPUT_DIR/places_report_${PLACES_MODEL_CLEAN}.txt" \
   --output_csv "$OUTPUT_DIR/places_results_${PLACES_MODEL_CLEAN}.csv"
 

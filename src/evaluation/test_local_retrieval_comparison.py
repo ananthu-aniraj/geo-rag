@@ -36,7 +36,7 @@ if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
         pass
 
 MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
-DISCARD_CLASSES = {
+DEFAULT_DISCARD_CLASSES = [
     2,
     12,
     20,
@@ -45,7 +45,8 @@ DISCARD_CLASSES = {
     83,
     102,
     127,
-}  # sky, person, car, sign, bus, truck, van, bike
+]  # sky, person, car, sign, bus, truck, van, bike
+DISCARD_CLASSES = set(DEFAULT_DISCARD_CLASSES)
 
 
 def download_image(url, photo_id=None):
@@ -156,7 +157,19 @@ def main():
         default=16,
         help="Batch size for Segformer and TIPSv2 inference.",
     )
+    parser.add_argument(
+        "--discard_classes",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of class IDs to discard during segmentation masking (e.g. ADE20K indices).",
+    )
     args = parser.parse_args()
+    discard_classes = (
+        set(args.discard_classes)
+        if args.discard_classes is not None
+        else DISCARD_CLASSES
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading metadata from {args.csv_path}...")
@@ -357,7 +370,7 @@ def main():
             patch_tokens = patch_tokens_vals[batch_i]
 
             keep_mask = np.ones_like(pred_mask, dtype=float)
-            for c in DISCARD_CLASSES:
+            for c in discard_classes:
                 keep_mask[pred_mask == c] = 0.0
 
             patch_size = 14
