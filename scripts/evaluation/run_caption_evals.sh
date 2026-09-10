@@ -13,7 +13,11 @@ conda activate ananthu_venv
 YAML_PATH="config/evaluation/caption_evals.yaml"
 # Helper function to read yaml values using Python (with local overrides)
 get_param() {
-    python3 -m src.utils.config get "$YAML_PATH" "eval" "$1"
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "caption_evals" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "eval" "$1")
+    fi
+    echo "$VAL"
 }
 
 PYTHON_SCRIPT=$(get_param "python_script")

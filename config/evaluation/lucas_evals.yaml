@@ -1,5 +1,5 @@
 # LUCAS Evaluation parameters
-eval:
+lucas_evals:
   python_script: "src.evaluation.evaluate_lucas"
   img_dir: "/home/ananthu/DATA/data_ananthu/LUCAS2018"
   csv_file: "/home/ananthu/DATA/data_ananthu/LUCAS2018/Sen4Map_Metadata_test.csv"

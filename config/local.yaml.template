@@ -64,6 +64,18 @@ evaluation:
     #   use_segformer: true
     #   discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
 
+  # LUCAS VLM Benchmark Batch Job (config/evaluation/lucas_evals.yaml)
+  lucas_evals:
+    # img_dir: "/path/to/your/LUCAS2018"
+    # csv_file: "/path/to/your/LUCAS2018/Sen4Map_Metadata_test.csv"
+    # max_images: 1000
+
+  # Caption VLM Benchmark Batch Job (config/evaluation/caption_evals.yaml)
+  caption_evals:
+    # img_dir: "/path/to/your/places365/val"
+    # labels_file: "/path/to/your/places365/Scene_hierarchy.xlsx"
+    # max_images: 1000
+
 # ------------------------------------------------------------------------------
 # 2. Main Data Processing & Clustering Pipeline (config/pipeline/params.yaml)
 # ------------------------------------------------------------------------------

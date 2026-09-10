@@ -42,6 +42,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Changed
 
+- **Disambiguated Evaluation Configuration Keys**: Renamed the generic root `eval:` key in `config/evaluation/caption_evals.yaml` to `caption_evals:` and in `config/evaluation/lucas_evals.yaml` to `lucas_evals:`. This eliminates collisions between the two files under `config/local.yaml`, prevents overlap with `lucas:` in `params_offline.yaml`, and retains fallback compatibility for `eval:`.
 - **Standardized Default Platform Identifier**: Changed the default `--platform_name` in `prepare_wildlife_insights.py` from `"SnapshotUSA"` to `"wildlife_insights"` and updated default output resolution to `<data_dir>/<platform_name>_filtered.parquet`.
 
 ## [1.4.0] - 2026-09-08
