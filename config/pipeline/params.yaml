@@ -17,7 +17,7 @@ pipeline:
   cell_chunk_size: 64
   base_name: "geo_space"
   # Target output folder on the external HDD
-  output_dir: "/home/ananthu/Projects/data/full_pipeline_output"
+  output_dir: "/path/to/full_pipeline_output"
   # New MLLM clustering settings
   label_method: "mllm"
   mllm_backend: "sglang"
@@ -25,17 +25,17 @@ pipeline:
   chunk_size: 64
   num_medoids: 4             # Number of representative medoids to stack for collage auto-labeling (1 to disable / use single-medoid)
   # Input directories passed as a space-separated string
-  input_dirs: "/home/ananthu/Projects/data/flickr_scrape_rand_9 /home/ananthu/Projects/data/mapillary_scrape_rand_9 /home/ananthu/Projects/data/osm_scrape_rand_3"
+  input_dirs: "/path/to/flickr_scrape /path/to/mapillary_scrape /path/to/osm_scrape"
 
   # Zero-shot filters for iNaturalist data (true/false)
   filter_macro: true
   filter_sky: true
 
   # Optional local offline dataset directories (space-separated paths)
-  offline_dataset_dirs: "/home/ananthu/DATA/data_ananthu/iwildcam_subset /home/ananthu/DATA/google-landmark /home/ananthu/Projects/data/snapshot_usa_2024"
+  offline_dataset_dirs: "/path/to/offline_dataset_1 /path/to/offline_dataset_2 /path/to/offline_dataset_3"
 
   # Köppen-Geiger climate classification GeoTIFF path
-  koppen_geiger_tif: "/home/ananthu/DATA/data_ananthu/koppen_geiger_tif/1991_2020/koppen_geiger_0p00833333.tif"
+  koppen_geiger_tif: "/path/to/koppen_geiger_0p00833333.tif"
 
   # Land boundaries shapefile for region mapping (country & continent)
   land_shp: "shapefiles/ne_10m_admin_0_countries.shp"
@@ -43,5 +43,6 @@ pipeline:
   # Public Hugging Face Datasets packaging options
   relativize_paths: true
   relativize_mappings:
-    - "/home/ananthu/DATA/google-landmark/train:wikimedia_commons"
-    - "/home/ananthu/DATA/data_ananthu/iwildcam_subset:iwildcam_subset"
+    - "/path/to/offline_dataset_1:offline_dataset_1"
+    - "/path/to/offline_dataset_2:offline_dataset_2"
+    - "/path/to/offline_dataset_3:offline_dataset_3"

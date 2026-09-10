@@ -112,8 +112,20 @@ def _extract_section_for_file(
 
     # 3. Match top-level keys of base_cfg directly at root of local_cfg (e.g. lucas: ..., pipeline: ...)
     for base_key in base_cfg.keys():
-        if base_key != stem and base_key in local_cfg:
-            merged_override[base_key] = copy.deepcopy(local_cfg[base_key])
+        if (
+            base_key != stem
+            and base_key in local_cfg
+            and local_cfg[base_key] is not None
+        ):
+            if isinstance(base_cfg[base_key], dict):
+                if isinstance(local_cfg[base_key], dict):
+                    if base_key not in merged_override or not isinstance(
+                        merged_override[base_key], dict
+                    ):
+                        merged_override[base_key] = {}
+                    deep_merge(merged_override[base_key], local_cfg[base_key])
+            else:
+                merged_override[base_key] = copy.deepcopy(local_cfg[base_key])
 
     # 4. If base_cfg has a single dict key (e.g. "scraper", "pipeline", "eval") and merged_override
     # has flat keys matching base_cfg[sole_key], wrap them under sole_key

@@ -88,9 +88,13 @@ evaluation:
 pipeline:
   # output_dir: "/path/to/your/full_pipeline_output"
   # input_dirs: "/path/to/your/flickr_scrape /path/to/your/mapillary_scrape"
-  # offline_dataset_dirs: "/path/to/your/iwildcam_subset /path/to/your/google-landmark"
+  # offline_dataset_dirs: "/path/to/your/offline_dataset_1 /path/to/your/offline_dataset_2"
   # koppen_geiger_tif: "/path/to/your/koppen_geiger.tif"
   # batch_size: 64
+  # relativize_paths: true
+  # relativize_mappings:
+  #   - "/path/to/your/offline_dataset_1:offline_dataset_1"
+  #   - "/path/to/your/offline_dataset_2:offline_dataset_2"
 
 # ------------------------------------------------------------------------------
 # 3. Scrapers (config/scrapers/)
