@@ -5,6 +5,9 @@ import os
 import re
 import subprocess
 import sys
+from typing import Dict
+
+from src.utils.types import BenchmarkConfig
 
 
 def find_visualizers_for_model(actual_html_path):
@@ -57,7 +60,7 @@ def find_visualizers_for_model(actual_html_path):
     return found
 
 
-BENCHMARKS = {
+BENCHMARKS: Dict[str, BenchmarkConfig] = {
     "lucas": {
         "module": "src.evaluation.benchmark_lucas",
         "yaml_key": "lucas",
@@ -248,7 +251,8 @@ def main():
         print(f"Error: YAML configuration file not found at: {yaml_path}")
         sys.exit(1)
 
-    params = config_data.get(bench_config["yaml_key"], {})
+    yaml_key: str = bench_config["yaml_key"]
+    params = config_data.get(yaml_key, {})
 
     print("=" * 90)
     print(f"Starting Collated Model Comparison for benchmark: {args.benchmark.upper()}")
