@@ -116,6 +116,7 @@ scrapers:
   #   output: "data/scraped/wildobs_data.parquet"
   #   image_dir: "data/scraped/wildobs_images"
   #   max_images_per_camera: 4
+  #   project_prefixes: ["WA_"]
   # flickr_profiler:
   #   out_file: "output/flickr_density_profile.csv"
   # mapillary_profiler:

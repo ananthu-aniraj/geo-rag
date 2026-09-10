@@ -131,6 +131,14 @@ def is_shareable_project(proj_doc: Dict[str, Any]) -> bool:
     return has_open_pref and has_valid_raid
 
 
+def matches_project_prefix(project_id: str, prefixes: Optional[List[str]]) -> bool:
+    """Checks if project_id starts with any of the specified prefixes (case-insensitive)."""
+    if not prefixes:
+        return True
+    pid_lower = project_id.lower()
+    return any(pid_lower.startswith(p.strip().lower()) for p in prefixes if p.strip())
+
+
 def get_all_projects(
     session: requests.Session, only_shareable: bool = True
 ) -> List[Dict[str, Any]]:
@@ -603,6 +611,13 @@ def main():
         help="One or more specific WildObs project IDs to scrape.",
     )
     parser.add_argument(
+        "--project_prefixes",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Filter projects whose IDs start with one or more prefixes (e.g. 'WA_', 'QA_').",
+    )
+    parser.add_argument(
         "--all_open",
         action="store_true",
         help="Scrape all open & shareable projects in the database.",
@@ -708,6 +723,13 @@ def main():
     if args.list_projects:
         print("Querying WildObs projects catalog...")
         all_projs = get_all_projects(session, only_shareable=False)
+        if args.project_prefixes:
+            all_projs = [
+                p
+                for p in all_projs
+                if matches_project_prefix(p.get("id", ""), args.project_prefixes)
+            ]
+            print(f"Filtered by prefix(es): {', '.join(args.project_prefixes)}")
         print_project_summary(all_projs, session)
         sys.exit(0)
 
@@ -725,11 +747,17 @@ def main():
                 print(
                     f" [!] Warning: Project '{pid}' was not found in WildObs metadata."
                 )
-    elif args.all_open:
-        target_projs = get_all_projects(session, only_shareable=True)
     else:
         # Default: scrape all open shareable projects
         target_projs = get_all_projects(session, only_shareable=True)
+
+    if args.project_prefixes:
+        target_projs = [
+            p
+            for p in target_projs
+            if matches_project_prefix(p.get("id", ""), args.project_prefixes)
+        ]
+        print(f"Filtered by prefix(es): {', '.join(args.project_prefixes)}")
 
     if not target_projs:
         print(" [!] No matching shareable projects to process.")

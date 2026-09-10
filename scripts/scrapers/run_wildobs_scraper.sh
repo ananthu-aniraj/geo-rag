@@ -42,6 +42,12 @@ if project_ids:
 elif cfg.get('all_open', True):
     cmd.append('--all_open')
 
+project_prefixes = cfg.get('project_prefixes', [])
+if isinstance(project_prefixes, str):
+    project_prefixes = [project_prefixes]
+if project_prefixes:
+    cmd.extend(['--project_prefixes'] + [str(p) for p in project_prefixes])
+
 max_per_cam = cfg.get('max_images_per_camera')
 if max_per_cam is not None:
     cmd.extend(['--max_images_per_camera', str(max_per_cam)])

@@ -10,6 +10,10 @@ wildobs_scraper:
   # Leave empty to automatically discover and scrape all open, shareable projects.
   project_ids: []
 
+  # Optional list of project ID prefixes to filter (e.g. ["WA_"] for Western Australia, ["QA_"] for Queensland).
+  # Matches projects whose IDs start with any of the specified prefixes (case-insensitive).
+  project_prefixes: []
+
   # Automatically scrape all public, open datasets passing the Three-Gate Rule
   all_open: true
 
