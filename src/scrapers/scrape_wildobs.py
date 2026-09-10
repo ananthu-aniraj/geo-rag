@@ -511,6 +511,22 @@ def scrape_wildobs_project(
     print(
         f" -> Scanned {total_media_scanned:,} media records | Selected {len(selected_records):,} stratified images across {len(cam_bins)} cameras."
     )
+    if total_media_scanned == 0:
+        sample_priv = query_wildobs(
+            session,
+            collection="media",
+            filter_dict={"projectName": project_id},
+            limit=1,
+        )
+        if sample_priv:
+            print(
+                f"    [!] Note: Media records exist in WildObs ({sample_priv[0].get('filePath', 'not_publicly_accessible')}) "
+                f"but are marked private/embargoed by data custodians (filePublic: False)."
+            )
+        else:
+            print(
+                f"    [!] Note: No media records found in WildObs database for '{project_id}'."
+            )
     return selected_records
 
 
