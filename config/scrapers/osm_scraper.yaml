@@ -4,5 +4,5 @@ osm_scraper:
   osm_query: "Montpellier, France"
   osm_relation: ""
   platforms: "kartaview"
-  base_dir: "/home/ananthu/Projects/data/osm_scrape_rand_3"
+  base_dir: "/path/to/osm_scraper_outputs"
   total_chunks: 10000

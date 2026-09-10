@@ -29,8 +29,8 @@ wildobs_scraper:
   taxa: []                       # Target scientific names to filter (empty = all detected wildlife)
 
   # Output options
-  output: "data/scraped/wildobs_data.parquet"
+  output: "path/to/wildobs_data.parquet"  # Output Parquet file path for scraped metadata
   no_csv: false                  # Whether to suppress companion CSV generation
   download_images: true         # Set true to download full-resolution image files locally
-  image_dir: "data/scraped/wildobs_images"
+  image_dir: "path/to/wildobs_images"
   threads: 16                    # Thread pool size for concurrent image downloads
