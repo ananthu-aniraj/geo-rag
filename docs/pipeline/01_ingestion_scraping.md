@@ -54,27 +54,29 @@ Prior to entering the main data engineering pipeline, raw data is harvested usin
 
 ### 5. Camera Trap Dataset Preparation (Snapshot USA / Wildlife Insights)
 
-* **`src/processing/prepare_wildlife_insights.py`**: Prepares and filters raw, massive camera trap metadata downloads (such as Snapshot USA 2024 across 13 chunked CSVs totaling ~6M rows) down to a balanced, stratified subset ready for ingestion by `process_scraped_data.py`.
+* **`src/processing/prepare_wildlife_insights.py`**: Prepares and filters raw camera trap metadata downloads from Wildlife Insights (supporting both multi-chunk archives such as Snapshot USA 2024 across 13 CSVs totaling ~6M rows and single-file project exports `images.csv`) down to a balanced, stratified subset ready for ingestion by `process_scraped_data.py`.
+  * **Automated File Discovery**: Detects whether the dataset contains multi-chunk archives (`images_*.csv`) or a single export (`images.csv`) out of the box.
+  * **Project & Licensing Extraction**: Ingests project metadata from `projects.csv` if present, capturing `project_name`, `project_short_name`, `metadata_license`, `image_license`, and `data_citation`, and dynamically applies the project's image license (e.g. `CC-BY` or `CC0`) when row-level licenses are omitted.
   * **Stratified Temporal Sampling**: Bins captures by meteorological season (`summer`, `fall`, `winter`, `spring`) and sensor modality / time of day (`day`: 07:00–18:59 vs. `night`: 19:00–06:59).
   * **Per-Camera Allocation**: Allocates candidates round-robin up to `--max_images_per_camera` (default: `4`, yielding ~3.9 images per camera, consistent with `iwildcam_subset`).
   * **Wildlife Prioritization & Human Exclusion**: Prioritizes identified wildlife over blanks (`common_name == 'Blank'`) while automatically filtering out human encounters (`Human`, `Human-Camera Trapper`, `Human - Biker`, etc.) and degraded/fuzzed GPS coordinates (`fuzzed == True`).
-  * **Burst Deduplication**: Ensures unique `sequence_id`s and distinct calendar dates across selected images for each camera.
-  * **Direct Ingestion Schema**: Aligns station GPS coordinates from `deployments.csv` and outputs standardized Parquet and CSV files with standard columns (`Photo_ID`, `Platform="SnapshotUSA"`, `Latitude`, `Longitude`, `Image_URL`, `Captured_At`, `License="CC0"`, `photo_key`).
+  * **Burst Deduplication**: Ensures unique `sequence_id`s and distinct calendar dates across selected images for each camera, safely falling back to `image_id` when burst sequences are unassigned (NaN).
+  * **Direct Ingestion Schema**: Aligns station GPS coordinates from `deployments.csv` and outputs standardized Parquet and CSV files with standard columns (`Photo_ID`, `Platform="wildlife_insights"`, `Latitude`, `Longitude`, `Image_URL`, `Captured_At`, `License`, `photo_key`, plus project and taxon metadata).
 
 #### Step-by-Step Workflow
 
 ##### Step 1: Stratified Temporal Filtering
 
-Filter raw multi-file CSV downloads from Wildlife Insights into a unified, balanced subset:
+Filter raw multi-file or single-file CSV downloads from Wildlife Insights into a unified, balanced subset:
 
 ```bash
 PYTHONPATH=. python3 src/processing/prepare_wildlife_insights.py \
   --data_dir /path/to/wildlife-insights_all-platform-data \
-  --output /path/to/snapshot_usa_2024_filtered.parquet \
+  --platform_name wildlife_insights \
   --max_images_per_camera 4
 ```
 
-This creates both `.parquet` and `.csv` metadata files standardized to the Geo-RAG schema.
+This creates both `.parquet` and `.csv` metadata files standardized to the Geo-RAG schema (defaulting to `<data_dir>/<platform_name>_filtered.parquet`).
 
 ##### Step 2: Obtaining the Wildlife Insights Session Cookie
 
@@ -112,7 +114,7 @@ This utility:
 * Queries the Wildlife Insights GraphQL API (`getDataFilePublicDownloadUrl`) to dynamically retrieve signed Google Cloud Storage URLs.
 * Downloads images concurrently with automatic retries, exponential backoff, and atomic temporary writes.
 * Verifies image binaries via magic-byte checking (`is_valid_image_file`), rejecting any HTML login walls or corrupted streams.
-* Updates metadata records with relative local image file paths (`Image_Location = ./images/snapshotusa/<photo_id>.jpg`) and CC0 license attributes.
+* Updates metadata records with relative local image file paths (`Image_Location = ./images/<platform>/<photo_id>.jpg`) and license attributes (e.g. CC-BY or CC0).
 
 ##### Step 4: Ingesting into the Core Pipeline
 

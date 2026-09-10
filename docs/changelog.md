@@ -6,6 +6,17 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **General Wildlife Insights Export Support**: Upgraded `src/processing/prepare_wildlife_insights.py` to support arbitrary Wildlife Insights exports out of the box. Automatically detects both single-file project exports (`images.csv`) and chunked multi-file archives (`images_*.csv`).
+- **Wildlife Insights Project & Licensing Metadata Parsing**: Added automatic detection and parsing of `projects.csv` in `prepare_wildlife_insights.py` (`load_projects`), capturing `project_id`, `project_name`, `project_short_name`, `metadata_license`, `image_license`, and `data_citation`. Aligns project attribution with deployment records and appends them to final Parquet and CSV outputs.
+- **Adaptive License Fallback**: Added dynamic license fallback in `prepare_wildlife_insights.py` to adopt the project's declared `image_license` (e.g. `CC-BY`) when image records lack explicit row-level licenses, avoiding erroneous default assumptions of `CC0`.
+- **Safe Unsequenced Camera Trap Fallback**: Enhanced sequence deduplication in `prepare_wildlife_insights.py` to safely fallback `sequence_id` to `image_id` when sequence groupings are null/NaN, ensuring unsequenced camera trap events are never falsely discarded by burst diversity filters.
+
+### Changed
+
+- **Standardized Default Platform Identifier**: Changed the default `--platform_name` in `prepare_wildlife_insights.py` from `"SnapshotUSA"` to `"wildlife_insights"` and updated default output resolution to `<data_dir>/<platform_name>_filtered.parquet`.
+
 ## [1.4.0] - 2026-09-08
 
 ### Added

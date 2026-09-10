@@ -54,8 +54,47 @@ def get_time_of_day(
             return "night"
 
 
+def load_projects(projects_path: str) -> pd.DataFrame:
+    """Loads projects.csv if available to attach project name, licensing, and citation metadata."""
+    if not projects_path or not os.path.exists(projects_path):
+        return pd.DataFrame()
+    print(f"Loading project metadata from: {projects_path}")
+    try:
+        df_proj = pd.read_csv(projects_path)
+        proj_cols = [
+            c
+            for c in [
+                "project_id",
+                "project_name",
+                "project_short_name",
+                "metadata_license",
+                "image_license",
+                "data_citation",
+            ]
+            if c in df_proj.columns
+        ]
+        if proj_cols:
+            df_proj = df_proj[proj_cols].drop_duplicates(subset=["project_id"])
+            for _, row in df_proj.iterrows():
+                p_id = row.get("project_id", "")
+                p_name = row.get("project_name", "")
+                p_short = row.get("project_short_name", "")
+                m_lic = row.get("metadata_license", "")
+                i_lic = row.get("image_license", "")
+                print(
+                    f" -> Found project [{p_id}]: {p_name} ({p_short}) | Image License: {i_lic}, Metadata License: {m_lic}"
+                )
+            return df_proj
+    except Exception as e:
+        print(f" -> Warning: Failed to load projects.csv: {e}")
+    return pd.DataFrame()
+
+
 def load_deployments(
-    deployments_path: str, exclude_fuzzed: bool = True, only_functioning: bool = True
+    deployments_path: str,
+    projects_path: str = None,
+    exclude_fuzzed: bool = True,
+    only_functioning: bool = True,
 ) -> pd.DataFrame:
     """
     Loads deployments.csv, extracts high-precision functioning camera coordinates,
@@ -93,6 +132,17 @@ def load_deployments(
         df_dep = df_dep[func_mask]
         print(f" -> Excluded {non_func_count} non-functioning deployments.")
 
+    # Optionally attach project metadata if projects.csv is found
+    if not projects_path:
+        default_proj = os.path.join(os.path.dirname(deployments_path), "projects.csv")
+        if os.path.exists(default_proj):
+            projects_path = default_proj
+
+    if projects_path and os.path.exists(projects_path):
+        df_proj = load_projects(projects_path)
+        if not df_proj.empty and "project_id" in df_dep.columns:
+            df_dep = df_dep.merge(df_proj, on="project_id", how="left")
+
     print(f" -> {len(df_dep)} valid deployments retained.")
 
     keep_cols = [
@@ -104,6 +154,12 @@ def load_deployments(
         "feature_type",
         "camera_functioning",
         "camera_id",
+        "project_id",
+        "project_name",
+        "project_short_name",
+        "metadata_license",
+        "image_license",
+        "data_citation",
     ]
     avail_cols = [c for c in keep_cols if c in df_dep.columns]
     return df_dep[avail_cols].drop_duplicates(subset=["deployment_id"])
@@ -118,10 +174,11 @@ def natural_sort_key(s: str):
 def prepare_wildlife_insights(
     data_dir: str,
     deployments_path: str = None,
+    projects_path: str = None,
     images_glob: str = None,
     output_path: str = None,
     save_csv: bool = True,
-    platform_name: str = "SnapshotUSA",
+    platform_name: str = "wildlife_insights",
     samples_per_bin: int = 2,
     max_images_per_camera: int = 4,
     tod_mode: str = "day_night",
@@ -133,31 +190,56 @@ def prepare_wildlife_insights(
     chunksize: int = 250000,
 ) -> pd.DataFrame:
     """
-    Main pipeline to process chunked Wildlife Insights image CSVs, stratify per camera,
+    Main pipeline to process chunked or single Wildlife Insights image CSVs, stratify per camera,
     and save a standardized dataset for process_scraped_data.py.
     """
     t_start = time.time()
 
     if not deployments_path:
         deployments_path = os.path.join(data_dir, "deployments.csv")
-    if not images_glob:
-        images_glob = os.path.join(data_dir, "images_*.csv")
+    if not projects_path:
+        default_proj = os.path.join(data_dir, "projects.csv")
+        if os.path.exists(default_proj):
+            projects_path = default_proj
     if not output_path:
-        output_path = os.path.join(data_dir, "snapshot_usa_2024_filtered.parquet")
+        clean_name = re.sub(r"[^\w\-]", "_", platform_name.strip().lower())
+        output_path = os.path.join(data_dir, f"{clean_name}_filtered.parquet")
 
     # 1. Load valid deployments
     df_deployments = load_deployments(
         deployments_path,
+        projects_path=projects_path,
         exclude_fuzzed=exclude_fuzzed,
         only_functioning=only_functioning,
     )
     valid_dep_ids = set(df_deployments["deployment_id"].dropna().unique())
 
-    # 2. Discover image chunk files
-    img_files = sorted(glob.glob(images_glob), key=natural_sort_key)
-    if not img_files:
-        raise FileNotFoundError(f"No image CSV files found matching: {images_glob}")
-    print(f"Found {len(img_files)} image chunk CSV files to scan.")
+    # 2. Discover image files (supports both chunked images_*.csv and single images.csv)
+    if not images_glob:
+        chunked = sorted(
+            glob.glob(os.path.join(data_dir, "images_*.csv")), key=natural_sort_key
+        )
+        single = os.path.join(data_dir, "images.csv")
+        if chunked:
+            img_files = chunked
+        elif os.path.exists(single):
+            img_files = [single]
+        else:
+            raise FileNotFoundError(
+                f"No image CSV files found in: {data_dir} (searched for images_*.csv and images.csv)"
+            )
+    else:
+        img_files = sorted(glob.glob(images_glob), key=natural_sort_key)
+        if not img_files:
+            raise FileNotFoundError(f"No image CSV files found matching: {images_glob}")
+    print(f"Found {len(img_files)} image CSV file(s) to scan.")
+
+    # Determine default image license (fallback to projects.csv's image_license if available, else 'CC-BY')
+    default_img_license = "CC-BY"
+    if "image_license" in df_deployments.columns:
+        proj_lics = df_deployments["image_license"].dropna().unique()
+        if len(proj_lics) > 0 and str(proj_lics[0]).strip():
+            default_img_license = str(proj_lics[0]).strip()
 
     # 3. Stratified Candidate Collector
     # cam_bins[dep_id][(season, tod)] = list of candidate records
@@ -243,11 +325,12 @@ def prepare_wildlife_insights(
             # Extract standard fields
             dep_vals = chunk["deployment_id"].tolist()
             img_vals = chunk["image_id"].tolist()
-            seq_vals = (
-                chunk["sequence_id"].tolist()
-                if "sequence_id" in chunk.columns
-                else img_vals
-            )
+            if "sequence_id" in chunk.columns:
+                seq_vals = (
+                    chunk["sequence_id"].fillna(chunk["image_id"]).astype(str).tolist()
+                )
+            else:
+                seq_vals = [str(x) for x in img_vals]
             fname_vals = (
                 chunk["filename"].tolist()
                 if "filename" in chunk.columns
@@ -339,7 +422,7 @@ def prepare_wildlife_insights(
 
                 # Diversity check: avoid duplicate sequences within the entire camera
                 existing_seqs = {r["sequence_id"] for b in slots.values() for r in b}
-                if seq_id in existing_seqs and len(current_in_bin) > 0:
+                if str(seq_id) in existing_seqs and len(current_in_bin) > 0:
                     continue
 
                 existing_dates = {r["date"] for r in current_in_bin}
@@ -351,7 +434,7 @@ def prepare_wildlife_insights(
                     "Captured_At": iso_ts,
                     "License": str(lic)
                     if pd.notna(lic) and str(lic).strip()
-                    else "CC0",
+                    else default_img_license,
                     "photo_key": f"{platform_name}_{img_id}",
                     "deployment_id": dep,
                     "sequence_id": str(seq_id),
@@ -460,7 +543,7 @@ def prepare_wildlife_insights(
 
     total_time = time.time() - t_start
     print("\n" + "=" * 50)
-    print("Snapshot USA / Wildlife Insights Preparation Complete")
+    print("Wildlife Insights Preparation Complete")
     print("=" * 50)
     print(f"Total cameras processed:     {df_result['deployment_id'].nunique():,}")
     print(f"Total filtered images:       {len(df_result):,}")
@@ -481,13 +564,13 @@ def prepare_wildlife_insights(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Filter and prepare Wildlife Insights / Snapshot USA 2024 camera trap metadata."
+        description="Filter and prepare Wildlife Insights (Snapshot USA or custom exports) camera trap metadata."
     )
     parser.add_argument(
         "--data_dir",
         type=str,
         default="/user/aaniraj/home/Documents/Projects/data/wildlife-insights_a884a154-046e-41bd-85c8-d4e76cba3435_all-platform-data",
-        help="Directory containing deployments.csv and images_*.csv files.",
+        help="Directory containing deployments.csv and images.csv (or images_*.csv).",
     )
     parser.add_argument(
         "--deployments_file",
@@ -496,16 +579,22 @@ def main():
         help="Path to deployments.csv (defaults to <data_dir>/deployments.csv).",
     )
     parser.add_argument(
+        "--projects_file",
+        type=str,
+        default=None,
+        help="Path to projects.csv (defaults to <data_dir>/projects.csv if present).",
+    )
+    parser.add_argument(
         "--images_glob",
         type=str,
         default=None,
-        help="Glob pattern for image chunk CSVs (defaults to <data_dir>/images_*.csv).",
+        help="Glob pattern or path for image CSVs (defaults to <data_dir>/images_*.csv or <data_dir>/images.csv).",
     )
     parser.add_argument(
         "--output_path",
         type=str,
         default=None,
-        help="Output path for filtered Parquet (defaults to <data_dir>/snapshot_usa_2024_filtered.parquet).",
+        help="Output path for filtered Parquet (defaults to <data_dir>/<platform_name>_filtered.parquet).",
     )
     parser.add_argument(
         "--no_csv",
@@ -515,8 +604,8 @@ def main():
     parser.add_argument(
         "--platform_name",
         type=str,
-        default="SnapshotUSA",
-        help="Platform identifier (default: SnapshotUSA).",
+        default="wildlife_insights",
+        help="Platform identifier (default: wildlife_insights).",
     )
     parser.add_argument(
         "--samples_per_bin",
@@ -576,6 +665,7 @@ def main():
     prepare_wildlife_insights(
         data_dir=args.data_dir,
         deployments_path=args.deployments_file,
+        projects_path=args.projects_file,
         images_glob=args.images_glob,
         output_path=args.output_path,
         save_csv=not args.no_csv,
