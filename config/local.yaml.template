@@ -1,0 +1,88 @@
+# ==============================================================================
+# Geo-RAG Local PC / Workstation Configuration Template
+# ==============================================================================
+# Copy this file to 'config/local.yaml' to set your local workstation overrides:
+#   cp config/local.yaml.template config/local.yaml
+#
+# NOTES:
+# - 'config/local.yaml' is ignored by Git and will NEVER be committed.
+# - You can override ANY parameter at any level of the configuration hierarchy
+#   (paths, batch sizes, flags, sample limits, discard classes, etc.).
+# - Any parameter omitted here will automatically keep its default value
+#   from the tracked repository configs.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Evaluation Benchmarks (config/evaluation/)
+# ------------------------------------------------------------------------------
+evaluation:
+  lucas:
+    # img_dir: "/path/to/your/LUCAS2018"
+    # csv: "/path/to/your/LUCAS2018/Sen4Map_Metadata_test.csv"
+    # eunis_raster: "/path/to/your/eunis_dominant.tif"
+    # env_zones_raster: "/path/to/your/eea_r_3035_100_m_EnvZ-Metzger_2025_v1_r00.tif"
+    # batch_size: 32
+    # num_queries: 100
+    # use_segformer: false
+    # discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
+
+  places:
+    # img_dir: "/path/to/your/places365/val"
+    # labels: "/path/to/your/places365/Scene_hierarchy.xlsx"
+    # batch_size: 32
+    # num_queries: 100
+    # use_segformer: false
+    # discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
+
+  environmental_zones:
+    # csv_path: "/path/to/your/geo_space_deduplicated.parquet"
+    # raster: "/path/to/your/eea_r_3035_100_m_EnvZ-Metzger_2025_v1_r00.tif"
+    # offline_dataset_dirs: "/path/to/your/iwildcam_subset /path/to/your/google-landmark"
+    # batch_size: 32
+    # num_queries: 100
+    # num_database: 10000
+    # discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
+
+  eunis:
+    # csv_path: "/path/to/your/geo_space_deduplicated.parquet"
+    # raster: "/path/to/your/eunis_dominant.tif"
+    # offline_dataset_dirs: "/path/to/your/iwildcam_subset /path/to/your/google-landmark"
+    # batch_size: 32
+    # num_queries: 100
+    # num_database: 10000
+    # discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
+
+  benchmark_representations:
+    # dataset:
+    #   input_path: "/path/to/your/geo_space_deduplicated.parquet"
+    #   offline_dataset_dirs: "/path/to/your/iwildcam_subset"
+    #   batch_size: 16
+    #   num_images: 1000
+    #   num_queries: 50
+    # options:
+    #   enable_pca: false
+    #   use_segformer: true
+    #   discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
+
+# ------------------------------------------------------------------------------
+# 2. Main Data Processing & Clustering Pipeline (config/pipeline/params.yaml)
+# ------------------------------------------------------------------------------
+pipeline:
+  # output_dir: "/path/to/your/full_pipeline_output"
+  # input_dirs: "/path/to/your/flickr_scrape /path/to/your/mapillary_scrape"
+  # offline_dataset_dirs: "/path/to/your/iwildcam_subset /path/to/your/google-landmark"
+  # koppen_geiger_tif: "/path/to/your/koppen_geiger.tif"
+  # batch_size: 64
+
+# ------------------------------------------------------------------------------
+# 3. Scrapers (config/scrapers/)
+# ------------------------------------------------------------------------------
+scrapers:
+  # mapillary_scraper:
+  #   base_dir: "/path/to/your/mapillary_scrape"
+  # flickr_scraper:
+  #   base_dir: "/path/to/your/flickr_scrape"
+  # wildobs_scraper:
+  #   output: "data/scraped/wildobs_data.parquet"
+  #   image_dir: "data/scraped/wildobs_images"
+  #   max_images_per_camera: 4

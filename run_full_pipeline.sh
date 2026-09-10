@@ -28,43 +28,99 @@ if [ ! -f "$PARAMS_YAML" ]; then
 fi
 
 echo "Loading parameters from $PARAMS_YAML..."
-K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
-AUTO_FIND_K=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('auto_find_k', False)).lower())" 2>/dev/null || echo "false")
-K_MIN=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_min', 10000))" 2>/dev/null || echo "10000")
-K_MAX=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_max', 50000))" 2>/dev/null || echo "50000")
-K_STEP=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_step', 10000))" 2>/dev/null || echo "10000")
-CLEANUP_ANOMALIES=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cleanup_anomalies', False)).lower())" 2>/dev/null || echo "false")
-CLEANUP_PLATFORM=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cleanup_platform', ''))" 2>/dev/null || echo "")
-CLEANUP_CONTINENT=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cleanup_continent', ''))" 2>/dev/null || echo "")
-MAX_MARKERS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('max_markers', 10000))" 2>/dev/null || echo "10000")
-LIMIT_CELLS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('limit_cells', 0))" 2>/dev/null || echo "0")
-CHECKPOINT_INTERVAL=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('checkpoint_interval', 1800))" 2>/dev/null || echo "1800")
-BATCH_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('batch_size', 64))" 2>/dev/null || echo "64")
-CELL_CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('cell_chunk_size', 64))" 2>/dev/null || echo "64")
-BASE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('base_name', 'geo_space'))" 2>/dev/null || echo "geo_space")
-OUTPUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('output_dir', '/home/ananthu/DATA/data_ananthu/full_pipeline_output'))" 2>/dev/null || echo "/home/ananthu/DATA/data_ananthu/full_pipeline_output")
-REPRESENTATION_TYPE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('representation_type', 'cls'))" 2>/dev/null || echo "cls")
-PRECISION=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('precision', 'float32'))" 2>/dev/null || echo "float32")
+get_param() {
+    python3 -m src.utils.config get "$PARAMS_YAML" "pipeline" "$1"
+}
+
+K_CLUSTERS=$(get_param "k_clusters")
+[ -z "$K_CLUSTERS" ] && K_CLUSTERS=40000
+
+AUTO_FIND_K=$(get_param "auto_find_k")
+[ -z "$AUTO_FIND_K" ] && AUTO_FIND_K="false"
+
+K_MIN=$(get_param "k_min")
+[ -z "$K_MIN" ] && K_MIN=10000
+
+K_MAX=$(get_param "k_max")
+[ -z "$K_MAX" ] && K_MAX=50000
+
+K_STEP=$(get_param "k_step")
+[ -z "$K_STEP" ] && K_STEP=10000
+
+CLEANUP_ANOMALIES=$(get_param "cleanup_anomalies")
+[ -z "$CLEANUP_ANOMALIES" ] && CLEANUP_ANOMALIES="false"
+
+CLEANUP_PLATFORM=$(get_param "cleanup_platform")
+CLEANUP_CONTINENT=$(get_param "cleanup_continent")
+
+MAX_MARKERS=$(get_param "max_markers")
+[ -z "$MAX_MARKERS" ] && MAX_MARKERS=10000
+
+LIMIT_CELLS=$(get_param "limit_cells")
+[ -z "$LIMIT_CELLS" ] && LIMIT_CELLS=0
+
+CHECKPOINT_INTERVAL=$(get_param "checkpoint_interval")
+[ -z "$CHECKPOINT_INTERVAL" ] && CHECKPOINT_INTERVAL=1800
+
+BATCH_SIZE=$(get_param "batch_size")
+[ -z "$BATCH_SIZE" ] && BATCH_SIZE=64
+
+CELL_CHUNK_SIZE=$(get_param "cell_chunk_size")
+[ -z "$CELL_CHUNK_SIZE" ] && CELL_CHUNK_SIZE=64
+
+BASE_NAME=$(get_param "base_name")
+[ -z "$BASE_NAME" ] && BASE_NAME="geo_space"
+
+OUTPUT_DIR=$(get_param "output_dir")
+[ -z "$OUTPUT_DIR" ] && OUTPUT_DIR="/home/ananthu/DATA/data_ananthu/full_pipeline_output"
+
+REPRESENTATION_TYPE=$(get_param "representation_type")
+[ -z "$REPRESENTATION_TYPE" ] && REPRESENTATION_TYPE="cls"
+
+PRECISION=$(get_param "precision")
+[ -z "$PRECISION" ] && PRECISION="float32"
 
 # Input dirs
-INPUT_DIRS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('input_dirs', ''))" 2>/dev/null || echo "")
-OFFLINE_DATASET_DIRS=$(python3 -c "import yaml; p=yaml.safe_load(open('$PARAMS_YAML'))['pipeline']; print(p.get('offline_dataset_dirs') or p.get('iwildcam_dir', ''))" 2>/dev/null || echo "")
-KOPPEN_GEIGER_TIF=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('koppen_geiger_tif', ''))" 2>/dev/null || echo "")
-LAND_SHP=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('land_shp', ''))" 2>/dev/null || echo "")
+INPUT_DIRS=$(get_param "input_dirs")
+OFFLINE_DATASET_DIRS=$(get_param "offline_dataset_dirs")
+[ -z "$OFFLINE_DATASET_DIRS" ] && OFFLINE_DATASET_DIRS=$(get_param "iwildcam_dir")
+KOPPEN_GEIGER_TIF=$(get_param "koppen_geiger_tif")
+LAND_SHP=$(get_param "land_shp")
 
 # MLLM config
-LABEL_METHOD=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('label_method', 'mllm'))" 2>/dev/null || echo "mllm")
-MLLM_BACKEND=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_backend', 'sglang'))" 2>/dev/null || echo "sglang")
-MLLM_MODEL=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('mllm_model', 'google/gemma-4-E4B-it'))" 2>/dev/null || echo "google/gemma-4-E4B-it")
-CHUNK_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('chunk_size', 64))" 2>/dev/null || echo "64")
-NUM_MEDOIDS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('num_medoids', 1))" 2>/dev/null || echo "1")
+LABEL_METHOD=$(get_param "label_method")
+[ -z "$LABEL_METHOD" ] && LABEL_METHOD="mllm"
+
+MLLM_BACKEND=$(get_param "mllm_backend")
+[ -z "$MLLM_BACKEND" ] && MLLM_BACKEND="sglang"
+
+MLLM_MODEL=$(get_param "mllm_model")
+[ -z "$MLLM_MODEL" ] && MLLM_MODEL="google/gemma-4-E4B-it"
+
+CHUNK_SIZE=$(get_param "chunk_size")
+[ -z "$CHUNK_SIZE" ] && CHUNK_SIZE=64
+
+NUM_MEDOIDS=$(get_param "num_medoids")
+[ -z "$NUM_MEDOIDS" ] && NUM_MEDOIDS=1
+
 # Zero-shot filters for iNaturalist data (true/false)
-FILTER_MACRO=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_macro', False)).lower())" 2>/dev/null || echo "false")
-FILTER_SKY=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('filter_sky', False)).lower())" 2>/dev/null || echo "false")
+FILTER_MACRO=$(get_param "filter_macro")
+[ -z "$FILTER_MACRO" ] && FILTER_MACRO="false"
+
+FILTER_SKY=$(get_param "filter_sky")
+[ -z "$FILTER_SKY" ] && FILTER_SKY="false"
 
 # Path Relativization Config
-RELATIVIZE_PATHS=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('relativize_paths', False)).lower())" 2>/dev/null || echo "false")
-RELATIVIZE_MAPPINGS=$(python3 -c "import yaml; p=yaml.safe_load(open('$PARAMS_YAML'))['pipeline']; print(' '.join(f'-r {m}' for m in p.get('relativize_mappings', [])))" 2>/dev/null || echo "")
+RELATIVIZE_PATHS=$(get_param "relativize_paths")
+[ -z "$RELATIVIZE_PATHS" ] && RELATIVIZE_PATHS="false"
+
+REL_MAPPINGS_RAW=$(get_param "relativize_mappings")
+RELATIVIZE_MAPPINGS=""
+if [ -n "$REL_MAPPINGS_RAW" ]; then
+    for m in $REL_MAPPINGS_RAW; do
+        RELATIVIZE_MAPPINGS="$RELATIVIZE_MAPPINGS -r $m"
+    done
+fi
 
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
@@ -189,7 +245,8 @@ if [ "$AUTO_FIND_K" = "true" ]; then
 
     # Reload the newly estimated K_CLUSTERS value from params.yaml
     echo "Reloading k_clusters parameter..."
-    K_CLUSTERS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PARAMS_YAML'))['pipeline'].get('k_clusters', 40000))" 2>/dev/null || echo "40000")
+    K_CLUSTERS=$(get_param "k_clusters")
+    [ -z "$K_CLUSTERS" ] && K_CLUSTERS=40000
     echo "Optimal k determined: $K_CLUSTERS"
 
     # Update target clustered parquet path with the new K_CLUSTERS

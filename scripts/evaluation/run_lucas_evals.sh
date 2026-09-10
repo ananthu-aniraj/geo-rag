@@ -11,28 +11,21 @@ conda activate ananthu_venv
 # CONFIGURATION
 # ==========================================
 YAML_PATH="config/evaluation/lucas_evals.yaml"
-PYTHON_SCRIPT=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('python_script', 'src.evaluation.evaluate_lucas'))" 2>/dev/null)
-IMG_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('img_dir', ''))" 2>/dev/null)
-CSV_FILE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('csv_file', ''))" 2>/dev/null)
-MAX_IMAGES=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['eval'].get('max_images', 1000))" 2>/dev/null)
+# Helper function to read yaml values using Python (with local overrides)
+get_param() {
+    python3 -m src.utils.config get "$YAML_PATH" "eval" "$1"
+}
 
-# Load models array
-MODELS_STR=$(python3 -c "
-import yaml
-with open('$YAML_PATH') as f:
-    models = yaml.safe_load(f)['eval'].get('models', [])
-    print(' '.join(['\"' + m + '\"' for m in models]))
-" 2>/dev/null)
-eval "MODELS=($MODELS_STR)"
+PYTHON_SCRIPT=$(get_param "python_script")
+[ -z "$PYTHON_SCRIPT" ] && PYTHON_SCRIPT="src.evaluation.evaluate_lucas"
+IMG_DIR=$(get_param "img_dir")
+CSV_FILE=$(get_param "csv_file")
+MAX_IMAGES=$(get_param "max_images")
+[ -z "$MAX_IMAGES" ] && MAX_IMAGES=1000
 
-# Load versions array
-VERSIONS_STR=$(python3 -c "
-import yaml
-with open('$YAML_PATH') as f:
-    versions = yaml.safe_load(f)['eval'].get('versions', [])
-    print(' '.join(['\"' + v + '\"' for v in versions]))
-" 2>/dev/null)
-eval "VERSIONS=($VERSIONS_STR)"
+# Load models and versions array
+read -r -a MODELS <<< "$(get_param "models")"
+read -r -a VERSIONS <<< "$(get_param "versions")"
 
 # ==========================================
 # PRE-FLIGHT CHECKS

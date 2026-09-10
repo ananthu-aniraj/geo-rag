@@ -18,9 +18,9 @@ echo "==========================================================================
 echo "      Starting Spatial Representation Evaluation (Env Zones & EUNIS)            "
 echo "================================================================================"
 
-# Helper function to read yaml values using Python
+# Helper function to read yaml values using Python (with local overrides)
 get_param() {
-    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_online.yaml')).get('$1', {}).get('$2', ''))"
+    python3 -m src.utils.config get "config/evaluation/params_online.yaml" "$1" "$2"
 }
 
 # Load parameters from YAML
@@ -119,13 +119,13 @@ if [ -n "$MAPILLARY_TOKEN" ]; then
     MAPILLARY_FLAG="--mapillary_token $MAPILLARY_TOKEN"
 fi
 
-ENV_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_online.yaml')).get('environmental_zones', {}).get('discard_classes', []))))" 2>/dev/null)
+ENV_DISCARD=$(get_param "environmental_zones" "discard_classes")
 ENV_DISCARD_FLAG=""
 if [ -n "$ENV_DISCARD" ]; then
     ENV_DISCARD_FLAG="--discard_classes $ENV_DISCARD"
 fi
 
-EUNIS_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_online.yaml')).get('eunis', {}).get('discard_classes', []))))" 2>/dev/null)
+EUNIS_DISCARD=$(get_param "eunis" "discard_classes")
 EUNIS_DISCARD_FLAG=""
 if [ -n "$EUNIS_DISCARD" ]; then
     EUNIS_DISCARD_FLAG="--discard_classes $EUNIS_DISCARD"

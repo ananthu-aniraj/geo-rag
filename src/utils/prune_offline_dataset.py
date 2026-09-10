@@ -5,7 +5,6 @@ import os
 
 import pandas as pd
 import pyarrow.parquet as pq
-import yaml
 from tqdm import tqdm
 
 from src.utils.io import resolve_offline_image_path
@@ -86,8 +85,9 @@ def main():
     params_path = args.params_path
     offline_dirs = []
     if os.path.exists(params_path):
-        with open(params_path, "r") as f:
-            params = yaml.safe_load(f)
+        from src.utils.config import load_config
+
+        params = load_config(params_path)
         pipeline_params = params.get("pipeline", {}) if isinstance(params, dict) else {}
         offline_dirs_str = ""
         if isinstance(pipeline_params, dict):

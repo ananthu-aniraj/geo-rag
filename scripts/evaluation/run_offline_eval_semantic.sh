@@ -18,9 +18,9 @@ echo "==========================================================================
 echo "      Starting Semantic Representation Evaluation (LUCAS & Places365)           "
 echo "================================================================================"
 
-# Helper function to read yaml values using Python
+# Helper function to read yaml values using Python (with local overrides)
 get_param() {
-    python3 -c "import yaml; print(yaml.safe_load(open('config/evaluation/params_offline.yaml')).get('$1', {}).get('$2', ''))"
+    python3 -m src.utils.config get "config/evaluation/params_offline.yaml" "$1" "$2"
 }
 
 # Load parameters from YAML
@@ -95,13 +95,13 @@ if [ "$PLACES_COMP_CLIP" = "true" ] || [ "$PLACES_COMP_CLIP" = "True" ]; then
     PLACES_CLIP_FLAG="--compare_clip"
 fi
 
-LUCAS_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_offline.yaml')).get('lucas', {}).get('discard_classes', []))))" 2>/dev/null)
+LUCAS_DISCARD=$(get_param "lucas" "discard_classes")
 LUCAS_DISCARD_FLAG=""
 if [ -n "$LUCAS_DISCARD" ]; then
     LUCAS_DISCARD_FLAG="--discard_classes $LUCAS_DISCARD"
 fi
 
-PLACES_DISCARD=$(python3 -c "import yaml; print(' '.join(map(str, yaml.safe_load(open('config/evaluation/params_offline.yaml')).get('places', {}).get('discard_classes', []))))" 2>/dev/null)
+PLACES_DISCARD=$(get_param "places" "discard_classes")
 PLACES_DISCARD_FLAG=""
 if [ -n "$PLACES_DISCARD" ]; then
     PLACES_DISCARD_FLAG="--discard_classes $PLACES_DISCARD"

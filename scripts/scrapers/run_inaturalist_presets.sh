@@ -13,19 +13,24 @@ cd "$PROJECT_ROOT" || exit 1
 # Load parameters from config/scrapers/inaturalist_presets.yaml
 YAML_PATH="config/scrapers/inaturalist_presets.yaml"
 
-# Load presets array using Python helper
-PRESETS_STR=$(python3 -c "
-import yaml
-with open('$YAML_PATH') as f:
-    presets = yaml.safe_load(f)['scraper'].get('presets', [])
-    print(' '.join(['\"' + p + '\"' for p in presets]))
-" 2>/dev/null)
-eval "PRESETS=($PRESETS_STR)"
+get_param() {
+    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+}
 
-LIMIT=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('limit', 200))" 2>/dev/null)
-EXCLUDE_FLYING=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('exclude_flying', False)).lower())" 2>/dev/null)
-SCRAPE_WIKI=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('scrape_wiki', False)).lower())" 2>/dev/null)
-OUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('out_dir', './inaturalist_preset_outputs'))" 2>/dev/null)
+# Load presets array
+read -r -a PRESETS <<< "$(get_param "presets")"
+
+LIMIT=$(get_param "limit")
+[ -z "$LIMIT" ] && LIMIT=200
+
+EXCLUDE_FLYING=$(get_param "exclude_flying")
+[ -z "$EXCLUDE_FLYING" ] && EXCLUDE_FLYING="false"
+
+SCRAPE_WIKI=$(get_param "scrape_wiki")
+[ -z "$SCRAPE_WIKI" ] && SCRAPE_WIKI="false"
+
+OUT_DIR=$(get_param "out_dir")
+[ -z "$OUT_DIR" ] && OUT_DIR="./inaturalist_preset_outputs"
 
 mkdir -p "$OUT_DIR"
 

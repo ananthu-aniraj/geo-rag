@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-import yaml
 from PIL import Image
 from tqdm import tqdm
 from transformers import (
@@ -130,21 +129,24 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     }
 
     path_to_try = config_path
-    if path_to_try and os.path.exists(path_to_try):
+    if path_to_try:
         try:
-            with open(path_to_try, "r", encoding="utf-8") as f:
-                loaded = yaml.safe_load(f)
-                if isinstance(loaded, dict):
-                    for section, values in loaded.items():
-                        if (
-                            isinstance(values, dict)
-                            and section in cfg
-                            and isinstance(cfg[section], dict)
-                        ):
-                            cfg[section].update(values)
-                        else:
-                            cfg[section] = values
-            print(f"Loaded configuration from: {path_to_try}")
+            from src.utils.config import load_config as load_merged_config
+
+            loaded = load_merged_config(path_to_try)
+            if isinstance(loaded, dict) and loaded:
+                for section, values in loaded.items():
+                    if (
+                        isinstance(values, dict)
+                        and section in cfg
+                        and isinstance(cfg[section], dict)
+                    ):
+                        cfg[section].update(values)
+                    else:
+                        cfg[section] = values
+                print(
+                    f"Loaded configuration from: {path_to_try} (with local overrides)"
+                )
         except Exception as e:
             print(
                 f"Warning: Failed to parse configuration file '{path_to_try}': {e}. Using defaults."

@@ -28,10 +28,10 @@ echo "============================================================"
 echo "Config: $YAML_PATH"
 
 python3 -c "
-import yaml, subprocess, sys, os
+import subprocess, sys, os
+from src.utils.config import load_config
 
-with open('$YAML_PATH') as f:
-    cfg = yaml.safe_load(f).get('scraper', {})
+cfg = load_config('$YAML_PATH').get('scraper', {})
 
 cmd = [sys.executable, 'src/scrapers/scrape_wildobs.py']
 

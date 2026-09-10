@@ -2,7 +2,6 @@ import glob
 import os
 
 import pandas as pd
-import yaml
 from tqdm import tqdm
 
 from src.utils.io import resolve_offline_image_path
@@ -15,8 +14,9 @@ def main():
         return
 
     print(f"Reading configuration from {params_path}...")
-    with open(params_path, "r") as f:
-        params = yaml.safe_load(f)
+    from src.utils.config import load_config
+
+    params = load_config(params_path)
 
     # Support both nested 'pipeline' block and root level config
     pipeline_params = params.get("pipeline", {}) if isinstance(params, dict) else {}

@@ -58,6 +58,9 @@ benchmark_results/
 
 # Secrets and environment configurations
 .env
+config/local.yaml
+*.local.yaml
+config/**/*.local.yaml
 
 # Do not ignore
 !templates/*.html

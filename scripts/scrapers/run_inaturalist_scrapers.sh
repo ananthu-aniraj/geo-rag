@@ -13,21 +13,30 @@ cd "$PROJECT_ROOT" || exit 1
 # Load parameters from config/scrapers/inaturalist_scraper.yaml
 YAML_PATH="config/scrapers/inaturalist_scraper.yaml"
 
-# Load countries array using Python helper
-COUNTRIES_STR=$(python3 -c "
-import yaml
-with open('$YAML_PATH') as f:
-    countries = yaml.safe_load(f)['scraper'].get('countries', [])
-    print(' '.join(['\"' + c + '\"' for c in countries]))
-" 2>/dev/null)
-eval "COUNTRIES=($COUNTRIES_STR)"
+get_param() {
+    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+}
 
-LIMIT=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('limit', 5000))" 2>/dev/null)
-NUM_SPECIES=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('num_species', 10))" 2>/dev/null)
-TARGET_TAXON=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('target_taxon', 'plants'))" 2>/dev/null)
-EXCLUDE_FLYING=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('exclude_flying', True)).lower())" 2>/dev/null)
-SCRAPE_WIKI=$(python3 -c "import yaml; print(str(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('scrape_wiki', False)).lower())" 2>/dev/null)
-OUT_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('out_dir', './inaturalist_outputs'))" 2>/dev/null)
+# Load countries array
+read -r -a COUNTRIES <<< "$(get_param "countries")"
+
+LIMIT=$(get_param "limit")
+[ -z "$LIMIT" ] && LIMIT=5000
+
+NUM_SPECIES=$(get_param "num_species")
+[ -z "$NUM_SPECIES" ] && NUM_SPECIES=10
+
+TARGET_TAXON=$(get_param "target_taxon")
+[ -z "$TARGET_TAXON" ] && TARGET_TAXON="plants"
+
+EXCLUDE_FLYING=$(get_param "exclude_flying")
+[ -z "$EXCLUDE_FLYING" ] && EXCLUDE_FLYING="true"
+
+SCRAPE_WIKI=$(get_param "scrape_wiki")
+[ -z "$SCRAPE_WIKI" ] && SCRAPE_WIKI="false"
+
+OUT_DIR=$(get_param "out_dir")
+[ -z "$OUT_DIR" ] && OUT_DIR="./inaturalist_outputs"
 
 mkdir -p "$OUT_DIR"
 

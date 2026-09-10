@@ -27,6 +27,7 @@ For direct browsing within this repository:
 ```text
 geo-rag/
 ├── config/                       # Centralized parameter & credentials files
+│   ├── local.yaml.template       # Template for machine-specific overrides (gitignored)
 │   ├── evaluation/               # Evaluation parameters (params, compare_models.yaml)
 │   ├── pipeline/                 # Core pipeline parameters (params.yaml)
 │   ├── scrapers/                 # Scraper execution configs (YAML)
@@ -56,8 +57,9 @@ geo-rag/
 │   ├── indexing/                 # K-Means clustering & H3 spatial-semantic index builder
 │   ├── processing/               # Data cleaning, deduplication & timestamp standardization
 │   ├── scrapers/                 # Data collection (Mapillary, Flickr, iNaturalist, GBIF)
-│   ├── utils/                    # LULC taxonomies, statistics, & cluster validation
+│   ├── utils/                    # Config manager, LULC taxonomies, & cluster validation
 │   └── visualization/            # Map generators, dashboard templates & visualizers
+├── tests/                        # Automated unit and integration test suite
 ├── .env                          # Local credentials file (gitignored)
 ├── .env.template                 # Template for API credentials configuration
 └── run_full_pipeline.sh          # Full end-to-end data processing pipeline
@@ -104,6 +106,39 @@ Before running scraper utilities or evaluation runs, set up your local API keys:
    ```
 
 2. Open `.env` and fill in your Flickr API keys, Mapillary access tokens, and Hugging Face tokens. The `.env` file is gitignored and remains local.
+
+### Machine-Specific Configuration (`config/local.yaml`)
+
+To adapt local dataset paths (e.g. image directories), GPU batch sizes, or query counts to your specific machine without dirtying tracked Git configuration files:
+
+1. Copy the local configuration template:
+
+   ```bash
+   cp config/local.yaml.template config/local.yaml
+   ```
+
+2. Edit `config/local.yaml` to specify your machine's overrides:
+
+   ```yaml
+   evaluation:
+     lucas:
+       img_dir: "/path/to/your/local/LUCAS2018"
+       batch_size: 64
+     places:
+       img_dir: "/path/to/your/local/places365"
+   ```
+
+`config/local.yaml` is gitignored and automatically deep-merges over all base configurations across Python evaluation benchmarks and shell runner scripts.
+
+You can also query or inspect merged configurations directly using the built-in configuration utility:
+
+```bash
+# Query any parameter with local overrides applied:
+python3 -m src.utils.config get config/evaluation/params_offline.yaml lucas img_dir
+
+# View the full merged YAML configuration:
+python3 -m src.utils.config show config/evaluation/params_offline.yaml
+```
 
 ---
 
@@ -233,13 +268,21 @@ The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is 
 
 ## 🧪 Running Unit & Integration Tests
 
-The pipeline features a robust, fast unit testing suite to verify database transformations, schema changes, and semantic drift calculations before committing code.
+The repository features a comprehensive test suite to verify configuration loading, database transformations, spatial deduplication, retrieval visualizers, and drift calculations before committing code.
 
 ### Running Tests Locally
 
-To execute the complete unit test suite, run:
+To execute the test suite using `pytest` or `unittest`:
 
 ```bash
+# Run all unit tests
+pytest
+
+# Or run specific test modules (e.g. centralized config loader)
+pytest tests/test_config.py
+pytest tests/test_visualize_retrieval.py
+
+# Alternatively, using standard library unittest:
 PYTHONPATH=. python3 -m unittest discover -s tests
 ```
 

@@ -197,19 +197,15 @@ def main():
     else:
         discard_classes = set(DEFAULT_DISCARD_CLASSES)
         config_path = "config/evaluation/params_online.yaml"
-        if os.path.exists(config_path):
-            try:
-                import yaml
+        try:
+            from src.utils.config import load_config
 
-                with open(config_path, "r", encoding="utf-8") as f:
-                    cfg = yaml.safe_load(f)
-                loaded_classes = cfg.get("environmental_zones", {}).get(
-                    "discard_classes"
-                )
-                if loaded_classes is not None:
-                    discard_classes = set(loaded_classes)
-            except Exception:
-                pass
+            cfg = load_config(config_path)
+            loaded_classes = cfg.get("environmental_zones", {}).get("discard_classes")
+            if loaded_classes is not None:
+                discard_classes = set(loaded_classes)
+        except Exception:
+            pass
 
     # Format output names by appending seed, query size, and query platform
     plat_suffix = (

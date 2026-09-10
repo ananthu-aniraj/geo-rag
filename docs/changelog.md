@@ -26,6 +26,19 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Added `discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]` to `config/evaluation/params_online.yaml` (under `environmental_zones:` and `eunis:`).
   - Added `--discard_classes` CLI argument across all evaluation scripts, with automatic fallback to respective YAML configurations and module-level defaults.
   - Updated batch runners `scripts/evaluation/run_offline_eval_semantic.sh`, `scripts/evaluation/run_offline_eval_spatial.sh`, and `src/evaluation/compare_models.py` to parse and forward `discard_classes` dynamically.
+- **Centralized Configuration Loader & Local Machine Overrides**: Added `src/utils/config.py` providing a centralized, hierarchical configuration manager (`load_config`, `get_param`, `format_for_shell`, and CLI commands `get` and `show`).
+  - **Zero-Git-Pollution Local Overrides**: Machine-specific paths (e.g. `/home/ananthu/...` vs `/home/aaniraj/...`), batch sizes, query counts, and any arbitrary parameters can now be overridden in gitignored `config/local.yaml` without modifying tracked repository files.
+  - **Hierarchical Discovery Order**: Deep-merges overrides from:
+    1. Central `config/local.yaml` (spanning `evaluation`, `pipeline`, and `scrapers` namespaces or flat stems).
+    2. Directory-level `local.yaml` (e.g. `config/evaluation/local.yaml`).
+    3. File-specific `[name].local.yaml` (e.g. `config/evaluation/params_offline.local.yaml`).
+    4. Explicit `--local_config` overrides.
+  - **Template & Unit Test Suite**: Added `config/local.yaml.template` with documented override examples, `.gitignore` entries for `config/local.yaml` and `*.local.yaml`, and unit tests in `tests/test_config.py`.
+  - **Repository-Wide Integration**: Integrated `src/utils/config.py` across:
+    - Main data engineering & clustering pipeline: `run_full_pipeline.sh` (reading `config/pipeline/params.yaml` with local overrides for `output_dir`, `input_dirs`, `batch_size`, etc.).
+    - All scraper and profiler runners in `scripts/scrapers/`: `run_flickr_scraper.sh`, `run_mapillary_scraper.sh`, `run_inaturalist_scrapers.sh`, `run_inaturalist_presets.sh`, `run_osm_scraper.sh`, `run_wildobs_scraper.sh`, `run_flickr_density_profiler.sh`, and `run_mapillary_density_profiler.sh`.
+    - Evaluation shell batch runners: `scripts/evaluation/run_offline_eval_semantic.sh`, `scripts/evaluation/run_offline_eval_spatial.sh`, `scripts/evaluation/run_lucas_evals.sh`, and `scripts/evaluation/run_caption_evals.sh`.
+    - Python evaluation benchmarks & tools: `src/evaluation/benchmark_representations.py`, `src/evaluation/benchmark_lucas.py`, `src/evaluation/benchmark_places.py`, `src/evaluation/benchmark_environmental_zones.py`, `src/evaluation/benchmark_eunis.py`, `src/evaluation/compare_models.py`, `src/utils/check_offline_images.py`, and `src/utils/prune_offline_dataset.py`.
 
 ### Changed
 

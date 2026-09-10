@@ -258,17 +258,15 @@ def main():
     else:
         discard_classes = set(DEFAULT_DISCARD_CLASSES)
         config_path = "config/evaluation/params_offline.yaml"
-        if os.path.exists(config_path):
-            try:
-                import yaml
+        try:
+            from src.utils.config import load_config
 
-                with open(config_path, "r", encoding="utf-8") as f:
-                    cfg = yaml.safe_load(f)
-                loaded_classes = cfg.get("places", {}).get("discard_classes")
-                if loaded_classes is not None:
-                    discard_classes = set(loaded_classes)
-            except Exception:
-                pass
+            cfg = load_config(config_path)
+            loaded_classes = cfg.get("places", {}).get("discard_classes")
+            if loaded_classes is not None:
+                discard_classes = set(loaded_classes)
+        except Exception:
+            pass
 
     # Format output paths dynamically by appending seed and num_queries
     report_base, report_ext = os.path.splitext(args.output_report)

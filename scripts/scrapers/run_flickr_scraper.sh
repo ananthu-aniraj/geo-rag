@@ -20,11 +20,25 @@ API_KEY="$FLICKR_API_KEY"
 
 # Load parameters from config/scrapers/flickr_scraper.yaml
 YAML_PATH="config/scrapers/flickr_scraper.yaml"
-TOTAL_CHUNKS=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('total_chunks', 10000))" 2>/dev/null)
-STEP_KM=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('step_km', 5))" 2>/dev/null)
-MAX_PHOTOS_PER_BOX=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('max_photos_per_box', 100))" 2>/dev/null)
-UNCOVERED_SHAPEFILE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('uncovered_shapefile', 'shapefiles/uncovered_land_areas_test.shp'))" 2>/dev/null)
-BASE_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('base_dir', 'output/flickr_scrape'))" 2>/dev/null)
+
+get_param() {
+    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+}
+
+TOTAL_CHUNKS=$(get_param "total_chunks")
+[ -z "$TOTAL_CHUNKS" ] && TOTAL_CHUNKS=10000
+
+STEP_KM=$(get_param "step_km")
+[ -z "$STEP_KM" ] && STEP_KM=5
+
+MAX_PHOTOS_PER_BOX=$(get_param "max_photos_per_box")
+[ -z "$MAX_PHOTOS_PER_BOX" ] && MAX_PHOTOS_PER_BOX=100
+
+UNCOVERED_SHAPEFILE=$(get_param "uncovered_shapefile")
+[ -z "$UNCOVERED_SHAPEFILE" ] && UNCOVERED_SHAPEFILE="shapefiles/uncovered_land_areas_test.shp"
+
+BASE_DIR=$(get_param "base_dir")
+[ -z "$BASE_DIR" ] && BASE_DIR="output/flickr_scrape"
 
 SCRIPT_NAME="src.scrapers.flickr_5km_grid_search"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"

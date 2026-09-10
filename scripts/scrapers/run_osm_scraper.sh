@@ -10,12 +10,27 @@ cd "$PROJECT_ROOT" || exit 1
 
 # Load parameters from config/scrapers/osm_scraper.yaml
 YAML_PATH="config/scrapers/osm_scraper.yaml"
-MODE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('mode', 'global'))" 2>/dev/null)
-OSM_QUERY=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('osm_query', 'Montpellier, France'))" 2>/dev/null)
-OSM_RELATION=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('osm_relation', ''))" 2>/dev/null)
-PLATFORMS=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('platforms', 'kartaview'))" 2>/dev/null)
-BASE_DIR=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('base_dir', 'output/osm_scrape'))" 2>/dev/null)
-TOTAL_CHUNKS=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('total_chunks', 10000))" 2>/dev/null)
+
+get_param() {
+    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+}
+
+MODE=$(get_param "mode")
+[ -z "$MODE" ] && MODE="global"
+
+OSM_QUERY=$(get_param "osm_query")
+[ -z "$OSM_QUERY" ] && OSM_QUERY="Montpellier, France"
+
+OSM_RELATION=$(get_param "osm_relation")
+
+PLATFORMS=$(get_param "platforms")
+[ -z "$PLATFORMS" ] && PLATFORMS="kartaview"
+
+BASE_DIR=$(get_param "base_dir")
+[ -z "$BASE_DIR" ] && BASE_DIR="output/osm_scrape"
+
+TOTAL_CHUNKS=$(get_param "total_chunks")
+[ -z "$TOTAL_CHUNKS" ] && TOTAL_CHUNKS=10000
 
 SCRIPT_NAME="src.scrapers.osm_polygon_scraper"
 

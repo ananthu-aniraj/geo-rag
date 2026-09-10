@@ -6,8 +6,6 @@ import re
 import subprocess
 import sys
 
-import yaml
-
 
 def find_visualizers_for_model(actual_html_path):
     """
@@ -241,14 +239,14 @@ def main():
 
     bench_config = BENCHMARKS[args.benchmark]
 
-    # Load configuration parameters from YAML
+    # Load configuration parameters from YAML (with local overrides)
     yaml_path = bench_config["yaml_file"]
-    if not os.path.exists(yaml_path):
+    from src.utils.config import load_config
+
+    config_data = load_config(yaml_path)
+    if not config_data:
         print(f"Error: YAML configuration file not found at: {yaml_path}")
         sys.exit(1)
-
-    with open(yaml_path, "r") as f:
-        config_data = yaml.safe_load(f)
 
     params = config_data.get(bench_config["yaml_key"], {})
 

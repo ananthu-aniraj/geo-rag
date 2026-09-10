@@ -21,13 +21,28 @@ ACCESS_TOKEN="$MAPILLARY_TOKEN"
 
 # Load parameters from config/scrapers/mapillary_profiler.yaml
 YAML_PATH="config/scrapers/mapillary_profiler.yaml"
-LOCATION=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('location', ''))" 2>/dev/null)
-BBOX=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('bbox', ''))" 2>/dev/null)
-GRID_SIZE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('grid_size', 5.0))" 2>/dev/null)
-LIMIT_PER_BOX=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('limit_per_box', 100))" 2>/dev/null)
-LIMIT_GLOBAL=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('limit_global', 500))" 2>/dev/null)
-DELAY=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('delay', 3.0))" 2>/dev/null)
-OUT_FILE=$(python3 -c "import yaml; print(yaml.safe_load(open('$YAML_PATH'))['scraper'].get('out_file', 'output/mapillary_density_profile.csv'))" 2>/dev/null)
+
+get_param() {
+    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+}
+
+LOCATION=$(get_param "location")
+BBOX=$(get_param "bbox")
+
+GRID_SIZE=$(get_param "grid_size")
+[ -z "$GRID_SIZE" ] && GRID_SIZE=5.0
+
+LIMIT_PER_BOX=$(get_param "limit_per_box")
+[ -z "$LIMIT_PER_BOX" ] && LIMIT_PER_BOX=100
+
+LIMIT_GLOBAL=$(get_param "limit_global")
+[ -z "$LIMIT_GLOBAL" ] && LIMIT_GLOBAL=500
+
+DELAY=$(get_param "delay")
+[ -z "$DELAY" ] && DELAY=3.0
+
+OUT_FILE=$(get_param "out_file")
+[ -z "$OUT_FILE" ] && OUT_FILE="output/mapillary_density_profile.csv"
 
 # Override LOCATION if a command line argument is provided
 if [ -n "$1" ]; then

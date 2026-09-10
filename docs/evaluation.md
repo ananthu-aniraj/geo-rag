@@ -341,7 +341,72 @@ If you want to evaluate multiple models side-by-side on a specific dataset witho
 2. **Runs benchmarks sequentially**: Executes the underlying python benchmark for each model listed in `compare_models.yaml` in sequence, saving individual model reports safely with sanitized filenames (preventing them from overwriting each other).
 3. **Discovers per-representation visualizers**: If visualizers were generated, automatically scans the output directory using `find_visualizers_for_model()` to locate all per-representation HTML dashboards (`_cls.html`, `_avg_patch.html`, `_cls_avg_patch.html`, `_seg_masked.html`, etc.).
 4. **Collates results**: Parses each generated text report, extracts the metrics (Precision@1, Precision@5, Precision@10, MAP@10, and MRR@10) across all representations, and consolidates them into a single markdown file (`benchmark_results/comparison_[benchmark].md`). It also generates an **Interactive Retrieval Visualizers** table listing markdown links for each model and each visual representation.
-5. **Prints summary**: Outputs the final collated comparison markdown table directly to your console.
+
+---
+
+## ⚙️ Configuration & Local Overrides
+
+Evaluation benchmarks read baseline parameters from tracked YAML configurations under `config/evaluation/`:
+
+- `params_offline.yaml`: Parameters for offline semantic benchmarks (`lucas`, `places`).
+- `params_online.yaml`: Parameters for geobotanical spatial benchmarks (`environmental_zones`, `eunis`).
+- `benchmark_representations.yaml`: Multi-representation benchmark options.
+- `compare_models.yaml`: Multi-model batch comparison queue.
+
+### 🛡️ Zero-Git-Pollution Local Overrides (`config/local.yaml`)
+
+To adapt paths (such as local image directories on your machine or GPU cluster), batch sizes, query counts, or discard classes without dirtying tracked Git configuration files:
+
+1. Copy the local configuration template:
+
+   ```bash
+   cp config/local.yaml.template config/local.yaml
+   ```
+
+2. Specify any parameters you wish to override locally:
+
+   ```yaml
+   evaluation:
+     lucas:
+       img_dir: "/path/to/local/LUCAS2018"
+       batch_size: 64
+       num_queries: 1000
+       discard_classes: [2, 12, 20]
+     places:
+       img_dir: "/path/to/local/places365"
+     environmental_zones:
+       num_queries: 500
+   ```
+
+`config/local.yaml` is gitignored. The centralized configuration manager (`src.utils.config.load_config`) automatically deep-merges local overrides into the base tracked configurations across all Python benchmark scripts and shell batch runners.
+
+You can inspect or query any configuration key from the CLI:
+
+```bash
+# Query a single key with local overrides applied:
+python3 -m src.utils.config get config/evaluation/params_offline.yaml lucas img_dir
+
+# View full merged configuration:
+python3 -m src.utils.config show config/evaluation/params_offline.yaml
+```
+
+### 🏷️ Segmentation Discard Classes (`discard_classes`)
+
+When evaluating segmentation-masked representations (such as SegFormer masking in `benchmark_lucas.py`, `benchmark_places.py`, `benchmark_eunis.py`, `benchmark_environmental_zones.py`, and `benchmark_representations.py`), transient or non-environmental objects can distort habitat or land-cover feature extraction.
+
+- **Default Discard List**: `[2, 12, 20, 43, 80, 83, 102, 127]` in the ADE20K taxonomy (corresponding to person, car, rider, box, vehicle parts, and indoor furniture items).
+- **YAML Configuration**: Configured via `discard_classes` in `params_offline.yaml`, `params_online.yaml`, `benchmark_representations.yaml`, or `config/local.yaml`:
+
+  ```yaml
+  lucas:
+    discard_classes: [2, 12, 20, 43, 80, 83, 102, 127]
+  ```
+
+- **CLI Flag**: Override at runtime on any benchmark script using `--discard_classes`:
+
+  ```bash
+  python3 -m src.evaluation.benchmark_lucas --discard_classes 2 12 20 43
+  ```
 
 ---
 
