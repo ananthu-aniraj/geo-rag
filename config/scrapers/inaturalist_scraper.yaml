@@ -1,5 +1,5 @@
 # iNaturalist Batch Scraper Parameters
-scraper:
+inaturalist_scraper:
   limit: 5000
   num_species: 10
   target_taxon: "plants"

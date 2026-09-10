@@ -31,7 +31,8 @@ python3 -c "
 import subprocess, sys, os
 from src.utils.config import load_config
 
-cfg = load_config('$YAML_PATH').get('scraper', {})
+loaded_cfg = load_config('$YAML_PATH')
+cfg = loaded_cfg.get('wildobs_scraper') or loaded_cfg.get('scraper', {})
 
 cmd = [sys.executable, 'src/scrapers/scrape_wildobs.py']
 

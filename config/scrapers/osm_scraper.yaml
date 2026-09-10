@@ -1,5 +1,5 @@
 # OpenStreetMap Boundary Scraper Parameters
-scraper:
+osm_scraper:
   mode: "global"
   osm_query: "Montpellier, France"
   osm_relation: ""

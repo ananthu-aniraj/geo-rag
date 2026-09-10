@@ -23,7 +23,11 @@ ACCESS_TOKEN="$MAPILLARY_TOKEN"
 YAML_PATH="config/scrapers/mapillary_profiler.yaml"
 
 get_param() {
-    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "mapillary_profiler" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
 }
 
 LOCATION=$(get_param "location")

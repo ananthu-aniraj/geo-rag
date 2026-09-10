@@ -73,11 +73,20 @@ def _extract_section_for_file(
         sub_dict = local_cfg[subfolder]
         # Match exact file stem (e.g. evaluation.params_offline, scrapers.flickr_scraper)
         if stem in sub_dict and isinstance(sub_dict[stem], dict):
-            deep_merge(merged_override, sub_dict[stem])
+            if stem in base_cfg:
+                if stem not in merged_override or not isinstance(
+                    merged_override[stem], dict
+                ):
+                    merged_override[stem] = {}
+                deep_merge(merged_override[stem], sub_dict[stem])
+            else:
+                deep_merge(merged_override, sub_dict[stem])
         # Match top-level keys of base_cfg directly inside subfolder (e.g. evaluation.lucas)
         for base_key in base_cfg.keys():
-            if base_key in sub_dict and isinstance(
-                sub_dict[base_key], (dict, list, int, float, str, bool)
+            if (
+                base_key != stem
+                and base_key in sub_dict
+                and isinstance(sub_dict[base_key], (dict, list, int, float, str, bool))
             ):
                 merged_override[base_key] = copy.deepcopy(sub_dict[base_key])
         # If base_cfg has a single dict key equal to subfolder (e.g. pipeline: { ... })
@@ -92,11 +101,18 @@ def _extract_section_for_file(
 
     # 2. Match file stem directly at root of local_cfg (e.g. params_offline: ..., flickr_scraper: ...)
     if stem in local_cfg and isinstance(local_cfg[stem], dict):
-        deep_merge(merged_override, local_cfg[stem])
+        if stem in base_cfg:
+            if stem not in merged_override or not isinstance(
+                merged_override[stem], dict
+            ):
+                merged_override[stem] = {}
+            deep_merge(merged_override[stem], local_cfg[stem])
+        else:
+            deep_merge(merged_override, local_cfg[stem])
 
     # 3. Match top-level keys of base_cfg directly at root of local_cfg (e.g. lucas: ..., pipeline: ...)
     for base_key in base_cfg.keys():
-        if base_key in local_cfg:
+        if base_key != stem and base_key in local_cfg:
             merged_override[base_key] = copy.deepcopy(local_cfg[base_key])
 
     # 4. If base_cfg has a single dict key (e.g. "scraper", "pipeline", "eval") and merged_override

@@ -23,7 +23,11 @@ API_KEY="$FLICKR_API_KEY"
 YAML_PATH="config/scrapers/flickr_profiler.yaml"
 
 get_param() {
-    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "flickr_profiler" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
 }
 
 LOCATION=$(get_param "location")

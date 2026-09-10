@@ -107,7 +107,7 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(format_for_shell(None), "")
 
     def test_pipeline_and_scrapers_local_yaml_override(self):
-        """Verify overrides work for single-key schemas (pipeline and scrapers)."""
+        """Verify overrides work for single-key schemas (pipeline and scrapers with stem-based key)."""
         # Pipeline config setup
         pipe_dir = os.path.join(self.config_dir, "pipeline")
         os.makedirs(pipe_dir, exist_ok=True)
@@ -115,12 +115,12 @@ class TestConfigLoader(unittest.TestCase):
         with open(pipe_yaml, "w", encoding="utf-8") as f:
             yaml.dump({"pipeline": {"output_dir": "/orig/out", "batch_size": 128}}, f)
 
-        # Scraper config setup
+        # Scraper config setup with stem-based key
         scraper_dir = os.path.join(self.config_dir, "scrapers")
         os.makedirs(scraper_dir, exist_ok=True)
         scraper_yaml = os.path.join(scraper_dir, "flickr_scraper.yaml")
         with open(scraper_yaml, "w", encoding="utf-8") as f:
-            yaml.dump({"scraper": {"base_dir": "/orig/flickr", "step_km": 5}}, f)
+            yaml.dump({"flickr_scraper": {"base_dir": "/orig/flickr", "step_km": 5}}, f)
 
         # Global local.yaml overrides
         local_yaml = os.path.join(self.config_dir, "local.yaml")
@@ -138,8 +138,87 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(cfg_pipe["pipeline"]["batch_size"], 128)
 
         cfg_scraper = load_config(scraper_yaml, repo_root=self.test_dir)
-        self.assertEqual(cfg_scraper["scraper"]["base_dir"], "/local/flickr")
-        self.assertEqual(cfg_scraper["scraper"]["step_km"], 5)
+        self.assertEqual(cfg_scraper["flickr_scraper"]["base_dir"], "/local/flickr")
+        self.assertEqual(cfg_scraper["flickr_scraper"]["step_km"], 5)
+        # Ensure no extraneous top-level keys
+        self.assertEqual(list(cfg_scraper.keys()), ["flickr_scraper"])
+
+    def test_legacy_scraper_key_compatibility(self):
+        """Verify legacy configs using generic 'scraper:' key still accept overrides."""
+        scraper_dir = os.path.join(self.config_dir, "scrapers")
+        os.makedirs(scraper_dir, exist_ok=True)
+        legacy_yaml = os.path.join(scraper_dir, "legacy_scraper.yaml")
+        with open(legacy_yaml, "w", encoding="utf-8") as f:
+            yaml.dump({"scraper": {"base_dir": "/orig/legacy", "step_km": 10}}, f)
+
+        local_yaml = os.path.join(self.config_dir, "local.yaml")
+        with open(local_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {
+                    "scrapers": {"legacy_scraper": {"base_dir": "/local/legacy"}},
+                },
+                f,
+            )
+
+        cfg = load_config(legacy_yaml, repo_root=self.test_dir)
+        self.assertEqual(cfg["scraper"]["base_dir"], "/local/legacy")
+        self.assertEqual(cfg["scraper"]["step_km"], 10)
+
+    def test_benchmark_representations_override(self):
+        """Verify benchmark_representations root key override works cleanly."""
+        bench_yaml = os.path.join(self.eval_dir, "benchmark_representations.yaml")
+        with open(bench_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {
+                    "benchmark_representations": {
+                        "model": {"name": "orig_model"},
+                        "dataset": {"batch_size": 16},
+                    }
+                },
+                f,
+            )
+
+        local_yaml = os.path.join(self.config_dir, "local.yaml")
+        with open(local_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {
+                    "evaluation": {
+                        "benchmark_representations": {"dataset": {"batch_size": 32}}
+                    }
+                },
+                f,
+            )
+
+        cfg = load_config(bench_yaml, repo_root=self.test_dir)
+        self.assertEqual(cfg["benchmark_representations"]["dataset"]["batch_size"], 32)
+        self.assertEqual(
+            cfg["benchmark_representations"]["model"]["name"], "orig_model"
+        )
+        self.assertEqual(list(cfg.keys()), ["benchmark_representations"])
+
+    def test_compare_models_override(self):
+        """Verify compare_models overrides work with new root key and format_for_shell."""
+        comp_yaml = os.path.join(self.eval_dir, "compare_models.yaml")
+        with open(comp_yaml, "w", encoding="utf-8") as f:
+            yaml.dump({"compare_models": {"models": ["m1", "m2"]}}, f)
+
+        local_yaml = os.path.join(self.config_dir, "local.yaml")
+        with open(local_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {
+                    "evaluation": {
+                        "compare_models": {"models": ["custom_m1", "custom_m2"]}
+                    }
+                },
+                f,
+            )
+
+        cfg = load_config(comp_yaml, repo_root=self.test_dir)
+        self.assertEqual(cfg["compare_models"]["models"], ["custom_m1", "custom_m2"])
+        self.assertEqual(
+            format_for_shell(cfg["compare_models"]["models"]),
+            "custom_m1 custom_m2",
+        )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # iNaturalist Biome Presets Scraper Parameters
-scraper:
+inaturalist_presets:
   limit: 200
   exclude_flying: false
   scrape_wiki: false

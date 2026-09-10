@@ -24,24 +24,29 @@ if [[ ! "$BENCHMARK" =~ ^(lucas|places|eunis|env_zones)$ ]]; then
     exit 1
 fi
 
-# Load models list from YAML config
+# Load models list from YAML config (with local overrides and fallback)
 YAML_CONFIG="config/evaluation/compare_models.yaml"
 if [ ! -f "$YAML_CONFIG" ]; then
     echo "Error: Configuration file not found at $YAML_CONFIG"
     exit 1
 fi
 
-MODELS=$(python3 -c "import yaml; print(' '.join(yaml.safe_load(open('$YAML_CONFIG'))['models']))")
+MODELS=$(python3 -m src.utils.config get "$YAML_CONFIG" "compare_models" "models")
+if [ -z "$MODELS" ]; then
+    MODELS=$(python3 -m src.utils.config get "$YAML_CONFIG" "models")
+fi
 
 if [ -z "$MODELS" ]; then
     echo "Error: No models found in $YAML_CONFIG"
     exit 1
 fi
 
+read -r -a MODELS_ARR <<< "$MODELS"
+
 echo "================================================================================"
 echo "   Launching Automated Model Comparison for: $BENCHMARK"
 echo "   Config: $YAML_CONFIG"
-echo "   Target Models: $MODELS"
+echo "   Target Models: ${MODELS_ARR[*]}"
 echo "================================================================================"
 
-python3 -m src.evaluation.compare_models --benchmark "$BENCHMARK" --models $MODELS
+python3 -m src.evaluation.compare_models --benchmark "$BENCHMARK" --models "${MODELS_ARR[@]}"

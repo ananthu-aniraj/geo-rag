@@ -22,7 +22,11 @@ API_KEY="$FLICKR_API_KEY"
 YAML_PATH="config/scrapers/flickr_scraper.yaml"
 
 get_param() {
-    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "flickr_scraper" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
 }
 
 TOTAL_CHUNKS=$(get_param "total_chunks")

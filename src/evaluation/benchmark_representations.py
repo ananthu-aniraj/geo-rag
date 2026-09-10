@@ -135,7 +135,12 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
             loaded = load_merged_config(path_to_try)
             if isinstance(loaded, dict) and loaded:
-                for section, values in loaded.items():
+                # Support root key 'benchmark_representations' with fallback to flat schema
+                content = loaded.get("benchmark_representations")
+                if not isinstance(content, dict):
+                    content = loaded
+
+                for section, values in content.items():
                     if (
                         isinstance(values, dict)
                         and section in cfg

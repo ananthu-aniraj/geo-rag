@@ -5,7 +5,7 @@
 # imagery across Australia. Incorporates data governance checks (Three-Gate Rule),
 # spatial join to deployments, taxonomic filtering, and temporal stratification.
 
-scraper:
+wildobs_scraper:
   # If specified, only scrape these explicit project IDs.
   # Leave empty to automatically discover and scrape all open, shareable projects.
   project_ids: []

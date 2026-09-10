@@ -1,5 +1,5 @@
 # Flickr Grid Search Scraper Parameters
-scraper:
+flickr_scraper:
   total_chunks: 10000
   step_km: 5
   max_photos_per_box: 100

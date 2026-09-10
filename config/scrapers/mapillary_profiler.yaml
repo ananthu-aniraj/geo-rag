@@ -1,5 +1,5 @@
 # Mapillary Density Profiler Parameters
-scraper:
+mapillary_profiler:
   location: ""
   bbox: ""
   grid_size: 5.0

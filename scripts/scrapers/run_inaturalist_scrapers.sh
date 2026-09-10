@@ -14,7 +14,11 @@ cd "$PROJECT_ROOT" || exit 1
 YAML_PATH="config/scrapers/inaturalist_scraper.yaml"
 
 get_param() {
-    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "inaturalist_scraper" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
 }
 
 # Load countries array

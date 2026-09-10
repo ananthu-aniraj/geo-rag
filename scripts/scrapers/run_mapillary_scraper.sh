@@ -22,7 +22,11 @@ ACCESS_TOKEN="$MAPILLARY_TOKEN"
 YAML_PATH="config/scrapers/mapillary_scraper.yaml"
 
 get_param() {
-    python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1"
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "mapillary_scraper" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
 }
 
 TOTAL_CHUNKS=$(get_param "total_chunks")
