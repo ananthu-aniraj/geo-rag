@@ -1,0 +1,32 @@
+# ==============================================================================
+# WildObs Camera Trap Scraper Configuration
+# ==============================================================================
+# Queries the WildObs REST API (camdbapi.wildobs.org.au) for public camera trap
+# imagery across Australia. Incorporates data governance checks (Three-Gate Rule),
+# spatial join to deployments, taxonomic filtering, and temporal stratification.
+
+scraper:
+  # If specified, only scrape these explicit project IDs.
+  # Leave empty to automatically discover and scrape all open, shareable projects.
+  project_ids: []
+
+  # Automatically scrape all public, open datasets passing the Three-Gate Rule
+  all_open: true
+
+  # Per-camera sampling & stratification controls
+  max_images_per_camera: 4      # Hard cap on total images selected per camera deployment
+  samples_per_bin: 2             # Target samples per (season, time_of_day) stratum bin
+  tod_mode: "day_night"          # Time-of-day classification: "day_night" or "four_phase"
+  day_start: 7                   # Hour marking start of day (0-23)
+  day_end: 19                    # Hour marking start of night (0-23)
+
+  # Content filters
+  include_blanks: false          # If false, filters out empty/blank observation frames
+  taxa: []                       # Target scientific names to filter (empty = all detected wildlife)
+
+  # Output options
+  output: "data/scraped/wildobs_data.parquet"
+  no_csv: false                  # Whether to suppress companion CSV generation
+  download_images: true         # Set true to download full-resolution image files locally
+  image_dir: "data/scraped/wildobs_images"
+  threads: 16                    # Thread pool size for concurrent image downloads

@@ -8,6 +8,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **WildObs Camera Trap Scraper**: Added `src/scrapers/scrape_wildobs.py` to scrape public camera trap imagery and observation metadata from the Australian National Wildlife Camera Database ([WildObs](https://wildobs.org.au/)).
+  - **Three-Gate Data Governance**: Automatically audits project sharing agreements (`dataSharingPreference == "open"`), requires a valid RAiD research identifier (`10.83062/*`), and filters out demo projects.
+  - **Relational Ingestion & Optimized Querying**: Fast-scans the compound-indexed MongoDB endpoint on `media` (`projectName`, `mediaID`) to stream public media (`filePublic == True`), automatically joining camera station coordinates (`deployments`) and taxonomic identifications (`observations`).
+  - **Balanced Temporal Stratification**: Maps timestamps to Southern Hemisphere meteorological seasons (`summer`: Dec–Feb, `fall`: Mar–May, `winter`: Jun–Aug, `spring`: Sep–Nov) and time of day (`day`: 07:00–18:59 vs. `night`: 19:00–06:59), enforcing balanced quotas per camera deployment (`--max_images_per_camera`).
+  - **Direct TIR Image Downloads**: Supports concurrent multithreaded downloads from the WildObs Tagged Image Repository (`data.wildobs.org.au/tir/...`) with automatic binary verification.
+  - **Core Pipeline Integration**: Generates standardized Parquet and companion CSV files with `Platform="wildobs"` and project licensing (`CC-BY-4.0`).
+- **WildObs Scraper Configuration & Shell Runner**: Added `config/scrapers/wildobs_scraper.yaml` and executable runner script `scripts/scrapers/run_wildobs_scraper.sh` sourcing `WILDOBS_API_KEY` from `.env`.
+- **WildObs Pipeline & Licensing Support**: Integrated `wildobs` platform recognition and fallback licensing (`CC-BY-4.0`) into `src/processing/process_scraped_data.py` and `src/processing/backfill_licenses.py`.
 - **General Wildlife Insights Export Support**: Upgraded `src/processing/prepare_wildlife_insights.py` to support arbitrary Wildlife Insights exports out of the box. Automatically detects both single-file project exports (`images.csv`) and chunked multi-file archives (`images_*.csv`).
 - **Wildlife Insights Project & Licensing Metadata Parsing**: Added automatic detection and parsing of `projects.csv` in `prepare_wildlife_insights.py` (`load_projects`), capturing `project_id`, `project_name`, `project_short_name`, `metadata_license`, `image_license`, and `data_citation`. Aligns project attribution with deployment records and appends them to final Parquet and CSV outputs.
 - **Adaptive License Fallback**: Added dynamic license fallback in `prepare_wildlife_insights.py` to adopt the project's declared `image_license` (e.g. `CC-BY`) when image records lack explicit row-level licenses, avoiding erroneous default assumptions of `CC0`.

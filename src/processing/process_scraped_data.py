@@ -819,6 +819,12 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
         if inat_mask.any():
             df.loc[inat_mask, "License"] = "CC BY-NC 4.0"
 
+        wildobs_mask = (platform_lower == "wildobs") & (
+            df["License"].isna() | (df["License"] == "")
+        )
+        if wildobs_mask.any():
+            df.loc[wildobs_mask, "License"] = "CC-BY-4.0"
+
         # Map Flickr numeric indexes to human-readable strings
         flickr_mask = (
             (platform_lower == "flickr") & df["License"].notna() & (df["License"] != "")

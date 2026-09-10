@@ -16,6 +16,7 @@ The pipeline processes diverse geotagged image sources, unifies their schemas, a
 | **Wikimedia Commons** | Educational/illustrative media (landscapes, flora/fauna) | Latitude / Longitude coordinates | Naive or standardized timestamps (`extmetadata`) |
 | **iWildCam** | Camera trap wildlife observations | Station coordinates | Naive local timestamps |
 | **Snapshot USA / Wildlife Insights** | Camera trap wildlife & habitat observations | Deployment station coordinates (`deployments.csv`) | Standardized ISO 8601 timestamps (`YYYY-MM-DDTHH:MM:SSZ`) |
+| **WildObs** | Public camera trap wildlife & habitat observations (Australia) | Camera deployment coordinates (`deployments`) | Standardized UTC/local ISO 8601 timestamps (`media.timestamp`) |
 | **iNaturalist** | Species observations | Coordinates (filtered for sky/macro) | Standardized observation datetimes |
 
 > [!NOTE]
@@ -134,6 +135,17 @@ PYTHONPATH=. python3 src/processing/process_scraped_data.py \
   --output_dir /path/to/pipeline_output
 ```
 
+### 6. WildObs Camera Trap Scraper
+
+* **`src/scrapers/scrape_wildobs.py`**: Queries the Australian National Wildlife Camera Database ([WildObs](https://wildobs.org.au/)) REST API to harvest and temporally stratify public camera trap imagery.
+  * **Automated Data Governance (Three-Gate Rule)**: Dynamically checks project sharing agreements (`dataSharingPreference == "open"`), requires a valid, persistent Research Activity Identifier (RAiD `10.83062/*`), and filters out internal test/demo datasets.
+  * **Targeted Relational Ingestion**: Fast-scans the compound-indexed MongoDB endpoint (`projectName`, `mediaID`) to stream public media (`filePublic == True`), automatically joining camera station coordinates (`deployments`) and taxonomic identifications (`observations`).
+  * **Balanced Temporal Stratification**: Maps timestamps to Southern Hemisphere meteorological seasons (`summer`: Dec–Feb, `fall`: Mar–May, `winter`: Jun–Aug, `spring`: Sep–Nov) and time of day (`day`: 07:00–18:59 vs. `night`: 19:00–06:59, or four-phase dawn/day/dusk/night), enforcing balanced quota limits per camera deployment (`--max_images_per_camera`).
+  * **Direct TIR Imagery Downloads**: Supports on-the-fly multithreaded downloads from the WildObs Tagged Image Repository (`https://data.wildobs.org.au/tir/...`) with automatic binary verification.
+  * **Core Pipeline Compatibility**: Exports directly to standardized Parquet and companion CSV files with `Platform="wildobs"` and project licensing (`CC-BY-4.0`), ready for ingestion by `src/processing/process_scraped_data.py`.
+* **`config/scrapers/wildobs_scraper.yaml`**: Configuration file containing target project lists, camera sampling quotas, time-of-day bin parameters, and output paths.
+* **`scripts/scrapers/run_wildobs_scraper.sh`**: Executable shell wrapper that sources `WILDOBS_API_KEY` from `.env`, parses `config/scrapers/wildobs_scraper.yaml`, and executes the scraper.
+
 ---
 
 ## ⚙️ Configuration & Secrets Management
@@ -146,6 +158,7 @@ All sensitive credentials must be set in a `.env` file in the repository root (c
 
 * `FLICKR_API_KEY`: Sourced by Flickr scrapers and profilers.
 * `MAPILLARY_TOKEN`: Sourced by Mapillary scrapers and profilers.
+* `WILDOBS_API_KEY`: Sourced by the WildObs scraper (`camdbapi.wildobs.org.au`).
 * `WILDLIFE_INSIGHTS_COOKIE` / `WILDLIFE_INSIGHTS_TOKEN`: Sourced by Wildlife Insights download utilities to authenticate with the GraphQL API and resolve signed Google Cloud Storage image URLs.
 
 The scraper shell scripts and Python utilities automatically source `.env` at startup to export these variables to the runtime environment.
@@ -158,6 +171,7 @@ Scraping parameters (limits, chunks, directories, bounding boxes, target regions
 * **`flickr_profiler.yaml` / `mapillary_profiler.yaml`**: Density profiling boundaries and locations.
 * **`inaturalist_scraper.yaml` / `inaturalist_presets.yaml`**: Regions, biome presets, and observations quotas.
 * **`osm_scraper.yaml`**: Boundary scraping modes and OSM relations.
+* **`wildobs_scraper.yaml`**: WildObs camera trap projects, sampling quotas, and temporal binning.
 
 These configurations are read dynamically at run-time, and can still be overridden using command-line arguments.
 

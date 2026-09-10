@@ -29,7 +29,7 @@ options:
   # Evaluate FP16 alongside FP32 for each representation
   enable_fp16: false
   # Enable SegFormer semantic segmentation masking
-  use_segformer: false
+  use_segformer: true
   # Foreground attention filtering options (only computed if representation is selected)
   fg_attn_threshold: 1.5     # Multiplier over uniform attention (1/N) (e.g. 1.3 - 2.0)
   max_fg_ratio: 0.25         # Max fraction of patches allowed as foreground (25%)

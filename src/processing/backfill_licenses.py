@@ -446,6 +446,13 @@ def main():
             f" -> Backfilled {inat_mask.sum()} iNaturalist records with 'CC BY-NC 4.0'"
         )
 
+    # WildObs
+    wildobs_mask = (platform_lower == "wildobs") & df["License"].isna()
+    if wildobs_mask.any():
+        df.loc[wildobs_mask, "License"] = "CC-BY-4.0"
+        modified = True
+        print(f" -> Backfilled {wildobs_mask.sum()} WildObs records with 'CC-BY-4.0'")
+
     if flickr_licenses:
         print("\nMapping retrieved Flickr license codes back to dataset...")
         # Build mapping series
