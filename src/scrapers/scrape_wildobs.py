@@ -563,9 +563,12 @@ def download_single_image(
 
 
 def batch_download_images(
-    records: List[Dict[str, Any]], output_dir: str, threads: int = 16
+    records: List[Dict[str, Any]],
+    output_dir: str,
+    base_dir: Optional[str] = None,
+    threads: int = 16,
 ):
-    """Downloads images in parallel for offline use."""
+    """Downloads images in parallel for offline use, storing relative Image_Location paths."""
     print(
         f"\nDownloading {len(records):,} images to: {output_dir} using {threads} threads..."
     )
@@ -584,7 +587,13 @@ def batch_download_images(
             rec = futures[future]
             if ok:
                 success_count += 1
-                rec["Image_Location"] = local_path
+                if base_dir:
+                    try:
+                        rec["Image_Location"] = os.path.relpath(local_path, base_dir)
+                    except Exception:
+                        rec["Image_Location"] = local_path
+                else:
+                    rec["Image_Location"] = local_path
 
     print(
         f"Download complete: {success_count}/{len(records)} images saved successfully."
@@ -808,7 +817,9 @@ def main():
     if args.download_images:
         out_dir = os.path.dirname(os.path.abspath(args.output))
         img_dir = args.image_dir or os.path.join(out_dir, "images")
-        batch_download_images(all_selected, img_dir, threads=args.threads)
+        batch_download_images(
+            all_selected, img_dir, base_dir=out_dir, threads=args.threads
+        )
 
     # 6. Format and save
     df_result = pd.DataFrame(all_selected)
