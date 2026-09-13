@@ -7,7 +7,7 @@ import subprocess
 import sys
 from typing import Dict
 
-from src.utils.types import BenchmarkConfig
+from src.utils.custom_types import BenchmarkConfig
 
 
 def find_visualizers_for_model(actual_html_path):

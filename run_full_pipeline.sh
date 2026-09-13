@@ -447,7 +447,7 @@ if [ "$RELATIVIZE_PATHS" = "true" ]; then
 
     if [ -f "$CLEANED_PARQUET" ]; then
         echo "Relativizing paths in cleaned dataset..."
-        PYTHONPATH=. ./src/utils/relativize_dataset_paths.py \
+        python3 -m src.utils.relativize_dataset_paths \
           -i "$CLEANED_PARQUET" \
           -o "$OUTPUT_DIR/${BASE_NAME}_cleaned_hf.parquet" \
           $RELATIVIZE_MAPPINGS
@@ -455,7 +455,7 @@ if [ "$RELATIVIZE_PATHS" = "true" ]; then
 
     if [ -f "$CLUSTERED_PARQUET" ]; then
         echo "Relativizing paths in clustered dataset..."
-        PYTHONPATH=. ./src/utils/relativize_dataset_paths.py \
+        python3 -m src.utils.relativize_dataset_paths \
           -i "$CLUSTERED_PARQUET" \
           -o "$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}_hf.parquet" \
           $RELATIVIZE_MAPPINGS
