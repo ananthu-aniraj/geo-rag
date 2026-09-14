@@ -14,6 +14,40 @@ import pyarrow.parquet as pq
 import requests
 import seaborn as sns
 
+CAMERA_TRAP_PLATFORMS = {
+    "iwildcam",
+    "wildobs",
+    "wildlife_insights",
+    "wildlifeinsights",
+    "snapshotusa",
+    "snapshot_usa",
+}
+
+
+def is_camera_trap_platform(platform_name):
+    """Checks whether a platform name corresponds to a camera trap platform."""
+    if not platform_name or pd.isna(platform_name):
+        return False
+    norm = str(platform_name).strip().lower().replace("-", "_")
+    compact = norm.replace("_", "").replace(" ", "")
+    return norm in CAMERA_TRAP_PLATFORMS or compact in {
+        "iwildcam",
+        "wildobs",
+        "wildlifeinsights",
+        "snapshotusa",
+    }
+
+
+def get_grouped_platform_series(platform_series: pd.Series) -> pd.Series:
+    """Groups camera trap platforms (iwildcam, wildobs, wildlife_insights, snapshotusa)
+    into a single 'Camera Traps' category while preserving other platforms.
+    """
+    return platform_series.apply(
+        lambda p: "Camera Traps"
+        if is_camera_trap_platform(p)
+        else ("Unknown" if pd.isna(p) or not str(p).strip() else str(p).strip())
+    )
+
 
 def geocode_location(location_name):
     """Resolve location to bounding box [min_lat, max_lat, min_lon, max_lon] using Nominatim."""
@@ -330,6 +364,17 @@ def generate_text_report(df, df_filtered, is_global, location_name):
             pct = (count / total_filtered) * 100
             lines.append(f"  - {plat:<15}: {count:>10,} ({pct:>5.1f}%)")
 
+        # Grouped Camera Trap Breakdown
+        grouped_series = get_grouped_platform_series(df_filtered["Platform"])
+        grouped_counts = grouped_series.value_counts()
+        if "Camera Traps" in grouped_counts and len(grouped_counts) < len(
+            platform_counts
+        ):
+            lines.append("\n📷 PLATFORM BREAKDOWN (CAMERA TRAPS GROUPED):")
+            for plat, count in grouped_counts.items():
+                pct = (count / total_filtered) * 100
+                lines.append(f"  - {plat:<15}: {count:>10,} ({pct:>5.1f}%)")
+
     # 2. Continent Breakdown (only if global)
     if is_global and "continent" in df_filtered.columns and total_filtered > 0:
         lines.append("\n🌍 CONTINENT BREAKDOWN:")
@@ -436,7 +481,9 @@ def generate_text_report(df, df_filtered, is_global, location_name):
     return "\n".join(lines)
 
 
-def generate_plots(df_filtered, is_global, location_name, output_path):
+def generate_plots(
+    df_filtered, is_global, location_name, output_path, group_camera_traps=False
+):
     """Generate a multi-panel plot for visualization."""
     if len(df_filtered) == 0:
         print("Warning: No records found. Skipping plot generation.")
@@ -550,7 +597,12 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
     # --- Subplot 2: Platform Breakdown ---
     ax2 = axes[0, 1]
     if "Platform" in df_filtered.columns:
-        counts = df_filtered["Platform"].value_counts()
+        platform_data = (
+            get_grouped_platform_series(df_filtered["Platform"])
+            if group_camera_traps
+            else df_filtered["Platform"]
+        )
+        counts = platform_data.value_counts()
         sns.barplot(
             x=counts.index,
             y=counts.values,
@@ -559,8 +611,14 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
             hue=counts.index,
             legend=False,
         )
-        ax2.set_title("Distribution by Platform", fontsize=14, fontweight="bold")
+        title_suffix = " (Camera Traps Grouped)" if group_camera_traps else ""
+        ax2.set_title(
+            f"Distribution by Platform{title_suffix}", fontsize=14, fontweight="bold"
+        )
         ax2.set_ylabel("Image Count")
+        ax2.tick_params(axis="x", rotation=25)
+        for label in ax2.get_xticklabels():
+            label.set_ha("right")
         max_val = counts.values.max() if len(counts) > 0 else 1
         for i, v in enumerate(counts.values):
             ax2.text(
@@ -596,6 +654,9 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
         )
         ax3.set_title("Distribution by Time of Day", fontsize=14, fontweight="bold")
         ax3.set_ylabel("Image Count")
+        ax3.tick_params(axis="x", rotation=20)
+        for label in ax3.get_xticklabels():
+            label.set_ha("right")
         max_val = counts.values.max() if len(counts) > 0 else 1
         for i, v in enumerate(counts.values):
             ax3.text(
@@ -639,6 +700,9 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
         )
         ax4.set_title("Distribution by Season", fontsize=14, fontweight="bold")
         ax4.set_ylabel("Image Count")
+        ax4.tick_params(axis="x", rotation=25)
+        for label in ax4.get_xticklabels():
+            label.set_ha("right")
         max_val = counts.values.max() if len(counts) > 0 else 1
         for i, v in enumerate(counts.values):
             ax4.text(
@@ -749,12 +813,135 @@ def generate_plots(df_filtered, is_global, location_name, output_path):
                 "Parent Cluster Labels (Unavailable)", fontsize=14, fontweight="bold"
             )
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
     output_dir = os.path.dirname(os.path.abspath(output_path))
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f" -> Saved statistics plot to: {os.path.abspath(output_path)}")
+    plt.close()
+
+
+def generate_grouped_platform_plot(df_filtered, location_name, output_path):
+    """Generates a separate, dedicated visualization of platform distribution
+    where camera trap platforms (iwildcam, wildobs, wildlife_insights, snapshotusa)
+    are grouped into a single 'Camera Traps' category, alongside a detailed
+    composition breakdown of the camera trap platforms.
+    """
+    if len(df_filtered) == 0:
+        print("Warning: No records found. Skipping grouped platform plot.")
+        return
+
+    if "Platform" not in df_filtered.columns:
+        print("Warning: 'Platform' column not found. Skipping grouped platform plot.")
+        return
+
+    print("Generating grouped platform plot...")
+    sns.set_theme(style="whitegrid")
+
+    grouped_series = get_grouped_platform_series(df_filtered["Platform"])
+    grouped_counts = grouped_series.value_counts()
+    total_count = len(df_filtered)
+
+    camera_trap_mask = df_filtered["Platform"].apply(is_camera_trap_platform)
+    ct_counts = df_filtered.loc[camera_trap_mask, "Platform"].value_counts()
+    has_camera_traps = len(ct_counts) > 0
+
+    if has_camera_traps:
+        fig, (ax_macro, ax_sub) = plt.subplots(
+            1, 2, figsize=(16, 7), gridspec_kw={"width_ratios": [1.2, 1.0]}
+        )
+        fig.suptitle(
+            f"Platform Distribution & Camera Trap Breakdown: {location_name}",
+            fontsize=16,
+            fontweight="bold",
+            y=0.98,
+        )
+    else:
+        fig, ax_macro = plt.subplots(1, 1, figsize=(10, 6))
+        fig.suptitle(
+            f"Platform Distribution (Camera Traps Grouped): {location_name}",
+            fontsize=16,
+            fontweight="bold",
+            y=0.98,
+        )
+        ax_sub = None
+
+    # --- Panel 1: Macro Platforms with Camera Traps Grouped ---
+    sns.barplot(
+        x=grouped_counts.index,
+        y=grouped_counts.values,
+        ax=ax_macro,
+        palette="muted",
+        hue=grouped_counts.index,
+        legend=False,
+    )
+    ax_macro.set_title(
+        "Platform Breakdown (Camera Traps Grouped)",
+        fontsize=13,
+        fontweight="bold",
+    )
+    ax_macro.set_ylabel("Image Count")
+    ax_macro.tick_params(axis="x", rotation=25)
+    for label in ax_macro.get_xticklabels():
+        label.set_ha("right")
+
+    max_macro = grouped_counts.values.max() if len(grouped_counts) > 0 else 1
+    for i, v in enumerate(grouped_counts.values):
+        pct = (v / total_count) * 100 if total_count > 0 else 0
+        ax_macro.text(
+            i,
+            v + (max_macro * 0.015),
+            f"{v:,}\n({pct:.1f}%)",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            fontsize=9,
+        )
+    ax_macro.set_ylim(0, max_macro * 1.22)
+
+    # --- Panel 2: Camera Trap Sub-Breakdown ---
+    if ax_sub is not None:
+        ct_total = ct_counts.sum()
+        sns.barplot(
+            x=ct_counts.index,
+            y=ct_counts.values,
+            ax=ax_sub,
+            palette="crest",
+            hue=ct_counts.index,
+            legend=False,
+        )
+        pct_of_all = (ct_total / total_count) * 100 if total_count > 0 else 0
+        ax_sub.set_title(
+            f"Camera Trap Composition ({ct_total:,} images | {pct_of_all:.1f}% of total)",
+            fontsize=13,
+            fontweight="bold",
+        )
+        ax_sub.set_ylabel("Image Count")
+        ax_sub.tick_params(axis="x", rotation=25)
+        for label in ax_sub.get_xticklabels():
+            label.set_ha("right")
+
+        max_sub = ct_counts.values.max() if len(ct_counts) > 0 else 1
+        for i, v in enumerate(ct_counts.values):
+            pct_ct = (v / ct_total) * 100 if ct_total > 0 else 0
+            ax_sub.text(
+                i,
+                v + (max_sub * 0.015),
+                f"{v:,}\n({pct_ct:.1f}%)",
+                ha="center",
+                va="bottom",
+                fontweight="bold",
+                fontsize=9,
+            )
+        ax_sub.set_ylim(0, max_sub * 1.22)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    print(f" -> Saved grouped platform plot to: {os.path.abspath(output_path)}")
     plt.close()
 
 
@@ -1117,6 +1304,17 @@ def main():
         help="Path to save the generated plot (.png). Defaults to {location}_stats.png.",
     )
     parser.add_argument(
+        "--output_grouped_plot",
+        type=str,
+        default=None,
+        help="Path to save the separate grouped camera trap platforms plot (.png). Defaults to {location}_stats_grouped_platforms.png.",
+    )
+    parser.add_argument(
+        "--group_camera_traps",
+        action="store_true",
+        help="If set, also group camera trap platforms (iwildcam, wildobs, wildlife_insights, snapshotusa) into a single category in the main dashboard.",
+    )
+    parser.add_argument(
         "--output_text",
         type=str,
         default=None,
@@ -1239,6 +1437,13 @@ def main():
     else:
         plot_path = f"{safe_loc}_stats.png"
 
+    # Determine grouped plot output path
+    if args.output_grouped_plot:
+        grouped_plot_path = args.output_grouped_plot
+    else:
+        base_p, ext_p = os.path.splitext(plot_path)
+        grouped_plot_path = f"{base_p}_grouped_platforms{ext_p or '.png'}"
+
     # Determine text output path
     if args.output_text:
         text_path = args.output_text
@@ -1264,7 +1469,17 @@ def main():
         print(f"Warning: Failed to save text report to '{text_path}': {e}")
 
     # Generate plots
-    generate_plots(df_filtered, is_global, location_name, plot_path)
+    generate_plots(
+        df_filtered,
+        is_global,
+        location_name,
+        plot_path,
+        group_camera_traps=args.group_camera_traps,
+    )
+
+    # Generate separate grouped camera trap platforms plot
+    if "Platform" in df_filtered.columns:
+        generate_grouped_platform_plot(df_filtered, location_name, grouped_plot_path)
 
     # Generate interactive map
     generate_interactive_map(df_filtered, location_name, map_path)
