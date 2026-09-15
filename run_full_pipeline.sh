@@ -447,6 +447,7 @@ python3 -m src.utils.dataset_statistics \
   --output_plot "$STATS_PLOT" \
   --output_text "$STATS_TEXT" \
   --output_map "$STATS_MAP" \
+  --min_count 10 \
   $CAMERA_TRAP_FLAG
 
 if [ "$RELATIVIZE_PATHS" = "true" ]; then
