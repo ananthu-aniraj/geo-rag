@@ -306,7 +306,9 @@ def ensure_time_of_day(df):
     return df
 
 
-def generate_text_report(df, df_filtered, is_global, location_name):
+def generate_text_report(
+    df, df_filtered, is_global, location_name, camera_trap_platforms=None
+):
     """Generate a formatted report string of the statistics, including definitions."""
     total_global = len(df)
     total_filtered = len(df_filtered)
@@ -333,7 +335,9 @@ def generate_text_report(df, df_filtered, is_global, location_name):
             lines.append(f"  - {plat:<15}: {count:>10,} ({pct:>5.1f}%)")
 
         # Grouped Camera Trap Breakdown
-        grouped_series = get_grouped_platform_series(df_filtered["Platform"])
+        grouped_series = get_grouped_platform_series(
+            df_filtered["Platform"], camera_trap_platforms=camera_trap_platforms
+        )
         grouped_counts = grouped_series.value_counts()
         if "Camera Traps" in grouped_counts and len(grouped_counts) < len(
             platform_counts
@@ -480,7 +484,19 @@ def main():
     parser.add_argument(
         "--group_camera_traps",
         action="store_true",
-        help="If set, also group camera trap platforms (iwildcam, wildobs, wildlife_insights, snapshotusa) into a single category in the main dashboard.",
+        help="If set, also group camera trap platforms into a single category in the main dashboard.",
+    )
+    parser.add_argument(
+        "--camera_trap_platforms",
+        nargs="+",
+        default=None,
+        help="List of camera trap platforms to group (e.g. iwildcam wildobs wildlife_insights snapshotusa).",
+    )
+    parser.add_argument(
+        "--min_count",
+        type=int,
+        default=1,
+        help="Minimum number of images in an H3 cell to display on the map (default: 1).",
     )
     parser.add_argument(
         "--output_text",
@@ -625,7 +641,13 @@ def main():
         map_path = f"{safe_loc}_map.html"
 
     # Generate and print/save report
-    report_str = generate_text_report(df, df_filtered, is_global, location_name)
+    report_str = generate_text_report(
+        df,
+        df_filtered,
+        is_global,
+        location_name,
+        camera_trap_platforms=args.camera_trap_platforms,
+    )
     print(report_str)
 
     # Save text report to file
@@ -643,14 +665,22 @@ def main():
         location_name,
         plot_path,
         group_camera_traps=args.group_camera_traps,
+        camera_trap_platforms=args.camera_trap_platforms,
     )
 
     # Generate separate grouped camera trap platforms plot
     if "Platform" in df_filtered.columns:
-        generate_grouped_platform_plot(df_filtered, location_name, grouped_plot_path)
+        generate_grouped_platform_plot(
+            df_filtered,
+            location_name,
+            grouped_plot_path,
+            camera_trap_platforms=args.camera_trap_platforms,
+        )
 
     # Generate interactive map
-    generate_interactive_map(df_filtered, location_name, map_path)
+    generate_interactive_map(
+        df_filtered, location_name, map_path, min_count=args.min_count
+    )
 
 
 if __name__ == "__main__":

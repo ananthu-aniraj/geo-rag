@@ -8,46 +8,47 @@ distribution figures, and multi-layered interactive Folium/H3 web maps.
 import argparse
 import os
 import time
-from typing import Any
+from typing import Any, Collection, Optional
 
 import branca.colormap as cm
 import folium
 import h3
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
-CAMERA_TRAP_PLATFORMS = {
-    "iwildcam",
-    "wildobs",
-    "wildlife_insights",
-    "wildlifeinsights",
-    "snapshotusa",
-    "snapshot_usa",
-}
+
+def normalize_platform_name(name: Any) -> str:
+    """Normalizes platform string for robust case-insensitive and hyphen-agnostic matching."""
+    if not name or pd.isna(name):
+        return ""
+    return str(name).strip().lower().replace("-", "_")
 
 
-def is_camera_trap_platform(platform_name: Any) -> bool:
+def is_camera_trap_platform(
+    platform_name: Any,
+    camera_trap_platforms: Optional[Collection[str]] = None,
+) -> bool:
     """Checks whether a platform name corresponds to a camera trap platform."""
-    if not platform_name or pd.isna(platform_name):
+    if not platform_name or pd.isna(platform_name) or not camera_trap_platforms:
         return False
-    norm = str(platform_name).strip().lower().replace("-", "_")
+    norm_targets = {normalize_platform_name(p) for p in camera_trap_platforms}
+    compact_targets = {p.replace("_", "").replace(" ", "") for p in norm_targets}
+
+    norm = normalize_platform_name(platform_name)
     compact = norm.replace("_", "").replace(" ", "")
-    return norm in CAMERA_TRAP_PLATFORMS or compact in {
-        "iwildcam",
-        "wildobs",
-        "wildlifeinsights",
-        "snapshotusa",
-    }
+    return norm in norm_targets or compact in compact_targets
 
 
-def get_grouped_platform_series(platform_series: pd.Series) -> pd.Series:
-    """Groups camera trap platforms (iwildcam, wildobs, wildlife_insights, snapshotusa)
-    into a single 'Camera Traps' category while preserving other platforms.
-    """
+def get_grouped_platform_series(
+    platform_series: pd.Series,
+    camera_trap_platforms: Optional[Collection[str]] = None,
+) -> pd.Series:
+    """Groups camera trap platforms into a single 'Camera Traps' category while preserving other platforms."""
     return platform_series.apply(
         lambda p: "Camera Traps"
-        if is_camera_trap_platform(p)
+        if is_camera_trap_platform(p, camera_trap_platforms=camera_trap_platforms)
         else ("Unknown" if pd.isna(p) or not str(p).strip() else str(p).strip())
     )
 
@@ -58,6 +59,7 @@ def generate_plots(
     location_name: str,
     output_path: str,
     group_camera_traps: bool = False,
+    camera_trap_platforms: Optional[Collection[str]] = None,
 ) -> None:
     """Generate a multi-panel plot for visualization."""
     if len(df_filtered) == 0:
@@ -173,7 +175,10 @@ def generate_plots(
     ax2 = axes[0, 1]
     if "Platform" in df_filtered.columns:
         platform_data = (
-            get_grouped_platform_series(df_filtered["Platform"])
+            get_grouped_platform_series(
+                df_filtered["Platform"],
+                camera_trap_platforms=camera_trap_platforms,
+            )
             if group_camera_traps
             else df_filtered["Platform"]
         )
@@ -398,12 +403,14 @@ def generate_plots(
 
 
 def generate_grouped_platform_plot(
-    df_filtered: pd.DataFrame, location_name: str, output_path: str
+    df_filtered: pd.DataFrame,
+    location_name: str,
+    output_path: str,
+    camera_trap_platforms: Optional[Collection[str]] = None,
 ) -> None:
     """Generates a separate, dedicated visualization of platform distribution
-    where camera trap platforms (iwildcam, wildobs, wildlife_insights, snapshotusa)
-    are grouped into a single 'Camera Traps' category, alongside a detailed
-    composition breakdown of the camera trap platforms.
+    where camera trap platforms are grouped into a single 'Camera Traps' category,
+    alongside a detailed composition breakdown of the camera trap platforms.
     """
     if len(df_filtered) == 0:
         print("Warning: No records found. Skipping grouped platform plot.")
@@ -416,11 +423,17 @@ def generate_grouped_platform_plot(
     print("Generating grouped platform plot...")
     sns.set_theme(style="whitegrid")
 
-    grouped_series = get_grouped_platform_series(df_filtered["Platform"])
+    grouped_series = get_grouped_platform_series(
+        df_filtered["Platform"], camera_trap_platforms=camera_trap_platforms
+    )
     grouped_counts = grouped_series.value_counts()
     total_count = len(df_filtered)
 
-    camera_trap_mask = df_filtered["Platform"].apply(is_camera_trap_platform)
+    camera_trap_mask = df_filtered["Platform"].apply(
+        lambda p: is_camera_trap_platform(
+            p, camera_trap_platforms=camera_trap_platforms
+        )
+    )
     ct_counts = df_filtered.loc[camera_trap_mask, "Platform"].value_counts()
     has_camera_traps = len(ct_counts) > 0
 
@@ -523,7 +536,10 @@ def generate_grouped_platform_plot(
 
 
 def generate_interactive_map(
-    df_filtered: pd.DataFrame, location_name: str, output_html_path: str
+    df_filtered: pd.DataFrame,
+    location_name: str,
+    output_html_path: str,
+    min_count: int = 1,
 ) -> None:
     """Generate a multi-layered interactive Folium map centered on the filtered data."""
     if len(df_filtered) == 0:
@@ -532,6 +548,7 @@ def generate_interactive_map(
 
     print("Generating interactive H3 map...")
     _ = time.time()
+    df_filtered = df_filtered.copy()
 
     is_global = location_name.lower() == "global dataset"
 
@@ -625,45 +642,39 @@ def generate_interactive_map(
             return
 
         counts = df_sub["map_h3"].value_counts()
-
-        # Optimization: Apply a dynamic min_count filter to avoid map bloat from sparse/noisy cells
-        cell_budget = 4000
-        if len(counts) > cell_budget:
-            cutoff_quantile = 1.0 - (cell_budget / len(counts))
-            min_count_thresh = max(2, int(counts.quantile(cutoff_quantile)))
-            counts = counts[counts >= min_count_thresh]
+        if min_count > 1:
+            counts = counts[counts >= min_count]
 
         if len(counts) == 0:
             return
 
-        min_c = counts.min()
-        max_c = counts.max()
+        min_c = int(counts.min())
+        max_c = int(counts.max())
+        min_val = float(np.log10(max(1, min_c)))
+        max_val = float(np.log10(max(1, max_c)))
+        if min_val == max_val:
+            max_val += 0.1
 
         if theme == "viridis":
-            colors = ["#440154", "#31688e", "#35b779", "#fde725"]
+            colormap = cm.linear.viridis.scale(min_val, max_val)
         elif theme == "magma":
-            colors = ["#000004", "#51127c", "#b73779", "#fc8961", "#fcfdbf"]
+            colormap = cm.linear.magma.scale(min_val, max_val)
         elif theme == "blue":
-            colors = ["#eff3ff", "#bdd7e7", "#6baed6", "#2171b5"]
+            colormap = cm.linear.PuBu_09.scale(min_val, max_val)
         elif theme == "green":
-            colors = ["#edf8e9", "#bae4b3", "#74c476", "#238b45"]
+            colormap = cm.linear.YlGn_09.scale(min_val, max_val)
         elif theme == "orange":
-            colors = ["#feedde", "#fdbe85", "#fd8d3c", "#d94701"]
+            colormap = cm.linear.YlOrBr_09.scale(min_val, max_val)
         elif theme == "purple":
-            colors = ["#f2f0f7", "#cbc9e2", "#9e9ac8", "#6a51a3"]
+            colormap = cm.linear.RdPu_09.scale(min_val, max_val)
         else:
-            colors = ["#fee5d9", "#fcae91", "#fb6a4a", "#cb181d"]
+            colormap = cm.linear.YlOrRd_09.scale(min_val, max_val)
 
-        if min_c == max_c:
-            colormap = cm.LinearColormap(
-                [colors[0], colors[-1]], vmin=min_c, vmax=max_c + 1
-            )
-        else:
-            colormap = cm.LinearColormap(colors, vmin=min_c, vmax=max_c)
+        if category_col is None:
+            colormap.caption = f"Image Density (Log10 scale, H3 Res {target_res})"
+            m.add_child(colormap)
 
-        colormap.caption = f"Image Count: {layer_name}"
-
-        layer = folium.FeatureGroup(name=layer_name, show=False)
+        layer = folium.FeatureGroup(name=layer_name, show=(category_col is None))
 
         features = []
         for cell, count in counts.items():
@@ -672,6 +683,7 @@ def generate_interactive_map(
             properties = {
                 "cell": cell,
                 "count": int(count),
+                "log_count": float(np.log10(max(1, count))),
             }
 
             if not category_col:
@@ -679,7 +691,7 @@ def generate_interactive_map(
                     p_row = platform_counts.loc[cell]
                     properties["platforms"] = " | ".join(
                         [
-                            f"{plat}: {c}"
+                            f"{plat}: {int(c):,} ({c/count*100:.0f}%)"
                             for plat, c in p_row.items()
                             if c > 0 and plat != "Unknown"
                         ]
@@ -693,7 +705,7 @@ def generate_interactive_map(
                     t_row = tod_counts.loc[cell]
                     properties["time_of_day"] = " | ".join(
                         [
-                            f"{tod}: {c}"
+                            f"{tod}: {int(c):,} ({c/count*100:.0f}%)"
                             for tod, c in t_row.items()
                             if c > 0 and tod != "Unknown"
                         ]
@@ -707,7 +719,7 @@ def generate_interactive_map(
                     s_row = season_counts.loc[cell]
                     properties["seasons"] = " | ".join(
                         [
-                            f"{season}: {c}"
+                            f"{season}: {int(c):,} ({c/count*100:.0f}%)"
                             for season, c in s_row.items()
                             if c > 0 and season != "Unknown"
                         ]
@@ -716,6 +728,20 @@ def generate_interactive_map(
                         properties["seasons"] = "Unknown"
                 else:
                     properties["seasons"] = "N/A"
+
+                if not koppen_counts.empty and cell in koppen_counts.index:
+                    k_row = koppen_counts.loc[cell]
+                    properties["koppen_climate"] = " | ".join(
+                        [
+                            f"{kop}: {int(c):,} ({c/count*100:.0f}%)"
+                            for kop, c in k_row.items()
+                            if c > 0 and kop != "Unknown"
+                        ]
+                    )
+                    if not properties["koppen_climate"]:
+                        properties["koppen_climate"] = "Unknown"
+                else:
+                    properties["koppen_climate"] = "N/A"
 
             features.append(
                 {
@@ -734,13 +760,13 @@ def generate_interactive_map(
         }
 
         def style_function(feature):
-            count = feature["properties"]["count"]
-            color = colormap(count)
+            log_c = feature["properties"]["log_count"]
+            color = colormap(log_c)
             return {
                 "fillColor": color,
-                "color": "#333333",
-                "weight": 0.5,
-                "fillOpacity": 0.7,
+                "color": color,
+                "weight": 1,
+                "fillOpacity": 0.65,
             }
 
         def highlight_function(feature):
@@ -754,11 +780,14 @@ def generate_interactive_map(
             tooltip_fields = ["cell", "count", "platforms", "time_of_day", "seasons"]
             tooltip_aliases = [
                 "H3 Cell:",
-                "Total Count:",
+                "Total Images:",
                 "Platforms:",
                 "Time of Day:",
                 "Seasons:",
             ]
+            if not koppen_counts.empty:
+                tooltip_fields.append("koppen_climate")
+                tooltip_aliases.append("Köppen Climate:")
         else:
             tooltip_fields = ["cell", "count"]
             tooltip_aliases = ["H3 Cell:", "Count:"]
@@ -897,6 +926,18 @@ def main():
         help="If set, also group camera trap platforms into a single category in the main dashboard.",
     )
     parser.add_argument(
+        "--camera_trap_platforms",
+        nargs="+",
+        default=None,
+        help="List of platform names to categorize as Camera Traps (e.g. iwildcam wildobs wildlife_insights snapshotusa).",
+    )
+    parser.add_argument(
+        "--min_count",
+        type=int,
+        default=1,
+        help="Minimum number of images in an H3 cell to display on the map (default: 1).",
+    )
+    parser.add_argument(
         "--output_map",
         type=str,
         default=None,
@@ -921,6 +962,7 @@ def main():
         location_name,
         args.output_plot,
         group_camera_traps=args.group_camera_traps,
+        camera_trap_platforms=args.camera_trap_platforms,
     )
 
     # Generate separate grouped platform plot
@@ -929,11 +971,18 @@ def main():
         if not grouped_path:
             base_p, ext_p = os.path.splitext(args.output_plot)
             grouped_path = f"{base_p}_grouped_platforms{ext_p or '.png'}"
-        generate_grouped_platform_plot(df, location_name, grouped_path)
+        generate_grouped_platform_plot(
+            df,
+            location_name,
+            grouped_path,
+            camera_trap_platforms=args.camera_trap_platforms,
+        )
 
     # Optional map generation
     if args.output_map:
-        generate_interactive_map(df, location_name, args.output_map)
+        generate_interactive_map(
+            df, location_name, args.output_map, min_count=args.min_count
+        )
 
 
 if __name__ == "__main__":

@@ -122,6 +122,10 @@ if [ -n "$REL_MAPPINGS_RAW" ]; then
     done
 fi
 
+# Camera Trap Platforms configuration
+CAMERA_TRAP_PLATFORMS=$(get_param "camera_trap_platforms")
+[ -z "$CAMERA_TRAP_PLATFORMS" ] && CAMERA_TRAP_PLATFORMS="iwildcam wildobs wildlife_insights snapshotusa"
+
 # File Paths
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
 CLEANED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_cleaned.parquet"
@@ -432,12 +436,18 @@ python3 -m src.visualization.generate_h3_semantic_map \
 
 echo ""
 echo "Generating dataset statistics report, plots, and optimized H3 map..."
+CAMERA_TRAP_FLAG=""
+if [ -n "$CAMERA_TRAP_PLATFORMS" ]; then
+    CAMERA_TRAP_FLAG="--camera_trap_platforms $CAMERA_TRAP_PLATFORMS"
+fi
+
 python3 -m src.utils.dataset_statistics \
   --input "$CLUSTERED_PARQUET" \
   --spatial_index "$H3_SEMANTIC_INDEX" \
   --output_plot "$STATS_PLOT" \
   --output_text "$STATS_TEXT" \
-  --output_map "$STATS_MAP"
+  --output_map "$STATS_MAP" \
+  $CAMERA_TRAP_FLAG
 
 if [ "$RELATIVIZE_PATHS" = "true" ]; then
     echo ""

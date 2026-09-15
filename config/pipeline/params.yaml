@@ -40,6 +40,13 @@ pipeline:
   # Land boundaries shapefile for region mapping (country & continent)
   land_shp: "shapefiles/ne_10m_admin_0_countries.shp"
 
+  # Camera trap platforms to group and analyze in statistics/visualizations
+  camera_trap_platforms:
+    - iwildcam
+    - wildobs
+    - wildlife_insights
+    - snapshotusa
+
   # Public Hugging Face Datasets packaging options
   relativize_paths: true
   relativize_mappings:
