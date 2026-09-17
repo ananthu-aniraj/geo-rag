@@ -1,0 +1,52 @@
+# ==============================================================================
+# Wikiloc Remote Region Scraper Configuration
+# ==============================================================================
+# Uses Playwright with Stealth to crawl targeted remote regions, mountain ranges,
+# and national parks on Wikiloc (www.wikiloc.com). Extracts high-resolution geolocated
+# waypoint photography from embedded JSON-LD schemas and downloads image files locally.
+
+wikiloc_scraper:
+  # Target regional paths or search directories on Wikiloc
+  # Examples:
+  #   - "greenland"                               (Arctic Circle Trail / Ilulissat Icefjord)
+  #   - "australia/western-australia"             (Cape to Cape, Karijini, Kimberley, Pilbara)
+  #   - "morocco/draa-tafilalet"                  (Sahara Desert: Erg Chebbi, Zagora, Merzouga)
+  #   - "algeria/tamanrasset"                     (Sahara Desert: Hoggar Mountains, Ahaggar)
+  #   - "mauritania/adrar"                        (Sahara Desert: Chinguetti, Adrar Plateau)
+  #   - "egypt/new-valley"                        (Sahara: Western & White Desert)
+  #   - "norway/svalbard-and-jan-mayen"           (High Arctic Archipelago)
+  #   - "namibia/erongo"                          (Namib Desert / Spitzkoppe)
+  #   - "bolivia/potosi"                          (Altiplano / Salar de Uyuni)
+  #   - "chile/magallanes-y-antartica-chilena"    (Patagonia / Torres del Paine)
+  #   - "argentina/tierra-del-fuego"              (Ushuaia / Andes)
+  #   - "spain/aragon/huesca"                     (Pyrenees / Ordesa & Monte Perdido)
+  regions:
+    - "greenland"
+    - "australia/western-australia"
+    - "morocco/draa-tafilalet"
+    - "algeria/tamanrasset"
+    - "chile/magallanes-y-antartica-chilena"
+
+  # Optional explicit listing or trail URLs to scrape directly
+  urls: []
+
+  # Trail activity type (hiking, mountaineering, walking, trail-running)
+  activity: "hiking"
+
+  # Crawling & pagination controls
+  max_pages_per_region: 3       # Listing pages to scan per region (~25 trails/page)
+  max_trails: null              # Cap total trails across all regions (null for unlimited)
+  max_photos_per_trail: 20      # Cap photos extracted per trail to maintain spatial balance
+  delay: 2.0                    # Polite delay between page requests (seconds)
+
+  # Output dataset paths
+  output: "data/scraped/wikiloc/wikiloc_trails.parquet"
+  no_csv: false                 # Whether to suppress companion CSV generation
+
+  # Immediate image backup
+  download_images: true         # Download verified image binaries immediately to disk
+  image_dir: "data/scraped/wikiloc/images"
+  threads: 8                    # Concurrent download threads for image streaming
+
+  # Browser options
+  headless: true                # Run Chrome in headless mode

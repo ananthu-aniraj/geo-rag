@@ -8,6 +8,12 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Wikiloc Remote Region Trail & Waypoint Scraper**: Added `src/scrapers/scrape_wikiloc.py` to scrape geolocated trail waypoint photography and rich trail metadata from Wikiloc ([wikiloc.com](https://www.wikiloc.com/)) for underrepresented remote regions.
+  - **Stealth Browser Automation**: Integrates Playwright with `playwright-stealth` (backed by system Google Chrome) to seamlessly bypass Cloudflare Turnstile anti-bot challenges and extract structured schema.
+  - **Structured JSON-LD Waypoint Extraction**: Automatically extracts high-resolution master photo URLs, exact waypoint coordinates (`Latitude`, `Longitude`), and trail descriptions directly from embedded Schema.org `Landform` and `BreadcrumbList` script tags.
+  - **Automated Biome Expansion & Geocoder Resolution**: Automatically expands natural language biome queries (e.g. `sahara`, `patagonia`, `outback`, `atacama`, `arctic`, `alps`, `andes`, `himalayas`) into their constituent high-density trekking regional slugs, with fallback to OpenStreetMap Nominatim geocoding for arbitrary natural landmarks and parks.
+  - **Immediate Local Image Download & Verification**: Streams images directly using authenticated browser headers (`Referer: https://www.wikiloc.com/`) with magic byte binary verification, ensuring only 100% verified offline image files are added to the final dataset.
+  - **Configuration & Shell Runner**: Added `config/scrapers/wikiloc_scraper.yaml` with remote region presets (Patagonia, Tierra del Fuego, Pyrenees, Andes, Arctic Scandinavia) and executable runner `scripts/scrapers/run_wikiloc_scraper.sh`.
 - **Bulk Mapillary Image URL Resolution & Caching**: Added `bulk_resolve_mapillary_urls` in `src/utils/download_images.py` to pre-resolve virtual Mapillary URIs (`mapillary://<photo_id>`) in batches of up to 250–500 IDs per request using the Graph API multi-ID lookup endpoint (`GET /?ids=id1,id2,...&fields=thumb_1024_url`).
   - **Massive Request Reduction**: Slashes required Mapillary API calls by 250x–500x (reducing ~3.73M calls to ~14.9k calls), preventing API rate limit exhaustion and silent dataset row truncation.
   - **Rate Limit & Quota Resilience**: Inspects `x-app-usage` headers, monitors `call_volume`, and automatically backs off with exponential sleep on `HTTP 429` rate limits.
