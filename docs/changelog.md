@@ -6,13 +6,16 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-17
+
 ### Added
 
-- **Wikiloc Remote Region Trail & Waypoint Scraper**: Added `src/scrapers/scrape_wikiloc.py` to scrape geolocated trail waypoint photography and rich trail metadata from Wikiloc ([wikiloc.com](https://www.wikiloc.com/)) for underrepresented remote regions.
+- **Wikiloc Remote Region Trail & Waypoint Scraper (Experimental / Testing Only)**: Added `src/scrapers/scrape_wikiloc.py` to scrape geolocated trail waypoint photography and rich trail metadata from Wikiloc ([wikiloc.com](https://www.wikiloc.com/)) for underrepresented remote regions.
+  - **Testing-Only Scope**: Explicitly documented and restricted for experimental testing purposes only; data scraped from Wikiloc must **not** be appended to the master Geo-RAG production dataset due to platform access limitations and Terms of Service constraints.
   - **Stealth Browser Automation**: Integrates Playwright with `playwright-stealth` (backed by system Google Chrome) to seamlessly bypass Cloudflare Turnstile anti-bot challenges and extract structured schema.
   - **Structured JSON-LD Waypoint Extraction**: Automatically extracts high-resolution master photo URLs, exact waypoint coordinates (`Latitude`, `Longitude`), and trail descriptions directly from embedded Schema.org `Landform` and `BreadcrumbList` script tags.
   - **Automated Biome Expansion & Geocoder Resolution**: Automatically expands natural language biome queries (e.g. `sahara`, `patagonia`, `outback`, `atacama`, `arctic`, `alps`, `andes`, `himalayas`) into their constituent high-density trekking regional slugs, with fallback to OpenStreetMap Nominatim geocoding for arbitrary natural landmarks and parks.
-  - **Immediate Local Image Download & Verification**: Streams images directly using authenticated browser headers (`Referer: https://www.wikiloc.com/`) with magic byte binary verification, ensuring only 100% verified offline image files are added to the final dataset.
+  - **Immediate Local Image Download & Verification**: Streams images directly using authenticated browser headers (`Referer: https://www.wikiloc.com/`) with magic byte binary verification, ensuring only 100% verified offline image files are saved locally.
   - **Configuration & Shell Runner**: Added `config/scrapers/wikiloc_scraper.yaml` with remote region presets (Patagonia, Tierra del Fuego, Pyrenees, Andes, Arctic Scandinavia) and executable runner `scripts/scrapers/run_wikiloc_scraper.sh`.
 - **Bulk Mapillary Image URL Resolution & Caching**: Added `bulk_resolve_mapillary_urls` in `src/utils/download_images.py` to pre-resolve virtual Mapillary URIs (`mapillary://<photo_id>`) in batches of up to 250–500 IDs per request using the Graph API multi-ID lookup endpoint (`GET /?ids=id1,id2,...&fields=thumb_1024_url`).
   - **Massive Request Reduction**: Slashes required Mapillary API calls by 250x–500x (reducing ~3.73M calls to ~14.9k calls), preventing API rate limit exhaustion and silent dataset row truncation.
@@ -58,6 +61,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Changed
 
+- **Modernized Scraper Shell Runners to Pure Bash**: Refactored `scripts/scrapers/run_wikiloc_scraper.sh` and `scripts/scrapers/run_wildobs_scraper.sh` to remove embedded inline Python scripts (`python3 -c`). Runners now use pure Bash backed by the project's standardized `python3 -m src.utils.config get` configuration loader, set `PYTHONPATH`, and invoke Python modules via `exec python3 -m src.scrapers... "$@"` to eliminate `ModuleNotFoundError` and ensure standard execution across the repository.
 - **Modernized Image Downloader Storage I/O**: Upgraded `src/utils/download_images.py` to use `save_dataframe()` from `src/utils/io.py` directly, preserving input format (`.parquet` by default instead of forcing `.csv`), decoupling companion `.npy` embeddings, generating `.keys.parquet`, and removing redundant temporary file rewrites.
 - **Complete Global H3 Heatmap Density & Interactive Map Fixes**: Upgraded interactive map generation in `src/visualization/visualize_dataset_stats.py`:
   - Removed the restrictive `cell_budget = 4000` / quantile cutoff filter that was discarding 91.8% of H3 cells and over 3.8M images in global visualizations.

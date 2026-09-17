@@ -15,6 +15,8 @@ if [ -z "$WILDOBS_API_KEY" ]; then
     exit 1
 fi
 
+export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
+
 YAML_PATH="config/scrapers/wildobs_scraper.yaml"
 
 if [ ! -f "$YAML_PATH" ]; then
@@ -22,80 +24,79 @@ if [ ! -f "$YAML_PATH" ]; then
     exit 1
 fi
 
+get_param() {
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "wildobs_scraper" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
+}
+
 echo "============================================================"
 echo "WildObs Camera Trap Scraper Runner"
 echo "============================================================"
 echo "Config: $YAML_PATH"
 
-python3 -c "
-import subprocess, sys, os
-from src.utils.config import load_config
+ARGS=()
 
-loaded_cfg = load_config('$YAML_PATH')
-cfg = loaded_cfg.get('wildobs_scraper') or loaded_cfg.get('scraper', {})
+PROJECT_IDS=$(get_param "project_ids")
+if [ -n "$PROJECT_IDS" ]; then
+    read -r -a IDS_ARR <<< "$PROJECT_IDS"
+    ARGS+=("--project_ids" "${IDS_ARR[@]}")
+fi
 
-cmd = [sys.executable, 'src/scrapers/scrape_wildobs.py']
+ALL_OPEN=$(get_param "all_open")
+if [ -z "$PROJECT_IDS" ] && [ "$ALL_OPEN" = "true" ]; then
+    ARGS+=("--all_open")
+fi
 
-project_ids = cfg.get('project_ids', [])
-if project_ids:
-    cmd.extend(['--project_ids'] + [str(p) for p in project_ids])
-elif cfg.get('all_open', True):
-    cmd.append('--all_open')
+PROJECT_PREFIXES=$(get_param "project_prefixes")
+if [ -n "$PROJECT_PREFIXES" ]; then
+    read -r -a PREFIXES_ARR <<< "$PROJECT_PREFIXES"
+    ARGS+=("--project_prefixes" "${PREFIXES_ARR[@]}")
+fi
 
-project_prefixes = cfg.get('project_prefixes', [])
-if isinstance(project_prefixes, str):
-    project_prefixes = [project_prefixes]
-if project_prefixes:
-    cmd.extend(['--project_prefixes'] + [str(p) for p in project_prefixes])
+MAX_PER_CAM=$(get_param "max_images_per_camera")
+[ -n "$MAX_PER_CAM" ] && ARGS+=("--max_images_per_camera" "$MAX_PER_CAM")
 
-max_per_cam = cfg.get('max_images_per_camera')
-if max_per_cam is not None:
-    cmd.extend(['--max_images_per_camera', str(max_per_cam)])
+SAMPLES_PER_BIN=$(get_param "samples_per_bin")
+[ -n "$SAMPLES_PER_BIN" ] && ARGS+=("--samples_per_bin" "$SAMPLES_PER_BIN")
 
-samples_per_bin = cfg.get('samples_per_bin')
-if samples_per_bin is not None:
-    cmd.extend(['--samples_per_bin', str(samples_per_bin)])
+TOD_MODE=$(get_param "tod_mode")
+[ -n "$TOD_MODE" ] && ARGS+=("--tod_mode" "$TOD_MODE")
 
-tod_mode = cfg.get('tod_mode')
-if tod_mode:
-    cmd.extend(['--tod_mode', str(tod_mode)])
+DAY_START=$(get_param "day_start")
+[ -n "$DAY_START" ] && ARGS+=("--day_start" "$DAY_START")
 
-day_start = cfg.get('day_start')
-if day_start is not None:
-    cmd.extend(['--day_start', str(day_start)])
+DAY_END=$(get_param "day_end")
+[ -n "$DAY_END" ] && ARGS+=("--day_end" "$DAY_END")
 
-day_end = cfg.get('day_end')
-if day_end is not None:
-    cmd.extend(['--day_end', str(day_end)])
+INCLUDE_BLANKS=$(get_param "include_blanks")
+[ "$INCLUDE_BLANKS" = "true" ] && ARGS+=("--include_blanks")
 
-if cfg.get('include_blanks', False):
-    cmd.append('--include_blanks')
+TAXA=$(get_param "taxa")
+if [ -n "$TAXA" ]; then
+    read -r -a TAXA_ARR <<< "$TAXA"
+    ARGS+=("--taxa" "${TAXA_ARR[@]}")
+fi
 
-taxa = cfg.get('taxa', [])
-if taxa:
-    cmd.extend(['--taxa'] + [str(t) for t in taxa])
+OUTPUT=$(get_param "output")
+[ -n "$OUTPUT" ] && ARGS+=("--output" "$OUTPUT")
 
-output = cfg.get('output')
-if output:
-    cmd.extend(['--output', str(output)])
+NO_CSV=$(get_param "no_csv")
+[ "$NO_CSV" = "true" ] && ARGS+=("--no_csv")
 
-if cfg.get('no_csv', False):
-    cmd.append('--no_csv')
+DOWNLOAD_IMAGES=$(get_param "download_images")
+if [ "$DOWNLOAD_IMAGES" = "true" ]; then
+    ARGS+=("--download_images")
+    IMAGE_DIR=$(get_param "image_dir")
+    [ -n "$IMAGE_DIR" ] && ARGS+=("--image_dir" "$IMAGE_DIR")
+fi
 
-if cfg.get('download_images', False):
-    cmd.append('--download_images')
-    image_dir = cfg.get('image_dir')
-    if image_dir:
-        cmd.extend(['--image_dir', str(image_dir)])
+THREADS=$(get_param "threads")
+[ -n "$THREADS" ] && ARGS+=("--threads" "$THREADS")
 
-threads = cfg.get('threads')
-if threads is not None:
-    cmd.extend(['--threads', str(threads)])
+echo "Executing: python3 -m src.scrapers.scrape_wildobs ${ARGS[*]} $*"
+echo ""
 
-# Forward any additional command-line arguments passed to this script
-cmd.extend(sys.argv[1:])
-
-print(f'Executing: {\" \".join(cmd)}\n')
-ret = subprocess.run(cmd)
-sys.exit(ret.returncode)
-" "$@"
+exec python3 -m src.scrapers.scrape_wildobs "${ARGS[@]}" "$@"

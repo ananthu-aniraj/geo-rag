@@ -146,6 +146,19 @@ PYTHONPATH=. python3 src/processing/process_scraped_data.py \
 * **`config/scrapers/wildobs_scraper.yaml`**: Configuration file containing target project lists, camera sampling quotas, time-of-day bin parameters, and output paths.
 * **`scripts/scrapers/run_wildobs_scraper.sh`**: Executable shell wrapper that sources `WILDOBS_API_KEY` from `.env`, parses `config/scrapers/wildobs_scraper.yaml`, and executes the scraper.
 
+### 7. Wikiloc Trail & Waypoint Scraper (Experimental / Testing Only)
+
+> [!WARNING]
+> **Testing & Evaluation Only**: Wikiloc scraping is strictly intended for experimental evaluation and targeted testing of remote trail coverage. Due to platform access limitations, rate limiting, and Terms of Service constraints, data scraped from Wikiloc **must NOT be appended to the master Geo-RAG production dataset**.
+
+* **`src/scrapers/scrape_wikiloc.py`**: Crawls targeted geographic regions and trails on Wikiloc ([wikiloc.com](https://www.wikiloc.com/)) using Playwright with stealth, extracts geolocated waypoint photos and rich trail metadata from embedded JSON-LD schemas (`Landform` / `BreadcrumbList`), and downloads verified image binaries locally.
+  * **Stealth Browser Automation**: Uses Playwright with `playwright-stealth` (backed by system Google Chrome) to navigate anti-bot protections.
+  * **Structured JSON-LD Extraction**: Extracts master image URLs, exact coordinates (`Latitude`, `Longitude`), titles, descriptions, and trail IDs.
+  * **Biome Expansion & Nominatim Resolution**: Resolves natural language biome presets (`sahara`, `patagonia`, `outback`, `atacama`, etc.) into constituent high-density regional paths, with fallback to OpenStreetMap Nominatim geocoding.
+  * **Immediate Local Image Download**: Directly streams and validates image binaries with magic-byte verification, ensuring offline integrity.
+* **`config/scrapers/wikiloc_scraper.yaml`**: Configuration file containing target regions, pagination limits, activity filters, and download settings.
+* **`scripts/scrapers/run_wikiloc_scraper.sh`**: Pure Bash runner script that parses configuration parameters using the standard `get_param` helper and executes `python3 -m src.scrapers.scrape_wikiloc "$@"`.
+
 ---
 
 ## ⚙️ Configuration & Secrets Management
@@ -172,6 +185,7 @@ Scraping parameters (limits, chunks, directories, bounding boxes, target regions
 * **`inaturalist_scraper.yaml` / `inaturalist_presets.yaml`**: Regions, biome presets, and observations quotas.
 * **`osm_scraper.yaml`**: Boundary scraping modes and OSM relations.
 * **`wildobs_scraper.yaml`**: WildObs camera trap projects, sampling quotas, and temporal binning.
+* **`wikiloc_scraper.yaml`**: Target remote regions, activity types, pagination limits, and image download directories (for experimental testing).
 
 These configurations are read dynamically at run-time, and can still be overridden using command-line arguments.
 

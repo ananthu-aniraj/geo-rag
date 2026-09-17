@@ -10,6 +10,8 @@ if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
 
+export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
+
 YAML_PATH="config/scrapers/wikiloc_scraper.yaml"
 
 if [ ! -f "$YAML_PATH" ]; then
@@ -17,78 +19,67 @@ if [ ! -f "$YAML_PATH" ]; then
     exit 1
 fi
 
+get_param() {
+    VAL=$(python3 -m src.utils.config get "$YAML_PATH" "wikiloc_scraper" "$1")
+    if [ -z "$VAL" ]; then
+        VAL=$(python3 -m src.utils.config get "$YAML_PATH" "scraper" "$1")
+    fi
+    echo "$VAL"
+}
+
 echo "============================================================"
 echo "Wikiloc Remote Region Scraper Runner"
 echo "============================================================"
 echo "Config: $YAML_PATH"
 
-python3 -c "
-import subprocess, sys, os
-from src.utils.config import load_config
+ARGS=()
 
-loaded_cfg = load_config('$YAML_PATH')
-cfg = loaded_cfg.get('wikiloc_scraper') or loaded_cfg.get('scraper', {})
+REGIONS=$(get_param "regions")
+if [ -n "$REGIONS" ]; then
+    read -r -a REGIONS_ARR <<< "$REGIONS"
+    ARGS+=("--regions" "${REGIONS_ARR[@]}")
+fi
 
-cmd = [sys.executable, 'src/scrapers/scrape_wikiloc.py']
+URLS=$(get_param "urls")
+if [ -n "$URLS" ]; then
+    read -r -a URLS_ARR <<< "$URLS"
+    ARGS+=("--urls" "${URLS_ARR[@]}")
+fi
 
-regions = cfg.get('regions', [])
-if isinstance(regions, str):
-    regions = [regions]
-if regions:
-    cmd.extend(['--regions'] + [str(r) for r in regions])
+ACTIVITY=$(get_param "activity")
+[ -n "$ACTIVITY" ] && ARGS+=("--activity" "$ACTIVITY")
 
-urls = cfg.get('urls', [])
-if isinstance(urls, str):
-    urls = [urls]
-if urls:
-    cmd.extend(['--urls'] + [str(u) for u in urls])
+MAX_PAGES=$(get_param "max_pages_per_region")
+[ -n "$MAX_PAGES" ] && ARGS+=("--max_pages_per_region" "$MAX_PAGES")
 
-activity = cfg.get('activity')
-if activity:
-    cmd.extend(['--activity', str(activity)])
+MAX_TRAILS=$(get_param "max_trails")
+[ -n "$MAX_TRAILS" ] && ARGS+=("--max_trails" "$MAX_TRAILS")
 
-max_pages = cfg.get('max_pages_per_region')
-if max_pages is not None:
-    cmd.extend(['--max_pages_per_region', str(max_pages)])
+MAX_PHOTOS=$(get_param "max_photos_per_trail")
+[ -n "$MAX_PHOTOS" ] && ARGS+=("--max_photos_per_trail" "$MAX_PHOTOS")
 
-max_trails = cfg.get('max_trails')
-if max_trails is not None:
-    cmd.extend(['--max_trails', str(max_trails)])
+DELAY=$(get_param "delay")
+[ -n "$DELAY" ] && ARGS+=("--delay" "$DELAY")
 
-max_photos = cfg.get('max_photos_per_trail')
-if max_photos is not None:
-    cmd.extend(['--max_photos_per_trail', str(max_photos)])
+OUTPUT=$(get_param "output")
+[ -n "$OUTPUT" ] && ARGS+=("--output" "$OUTPUT")
 
-delay = cfg.get('delay')
-if delay is not None:
-    cmd.extend(['--delay', str(delay)])
+NO_CSV=$(get_param "no_csv")
+[ "$NO_CSV" = "true" ] && ARGS+=("--no_csv")
 
-output = cfg.get('output')
-if output:
-    cmd.extend(['--output', str(output)])
+DOWNLOAD_IMAGES=$(get_param "download_images")
+if [ "$DOWNLOAD_IMAGES" = "false" ]; then
+    ARGS+=("--no_download_images")
+else
+    ARGS+=("--download_images")
+    IMAGE_DIR=$(get_param "image_dir")
+    [ -n "$IMAGE_DIR" ] && ARGS+=("--image_dir" "$IMAGE_DIR")
+fi
 
-if cfg.get('no_csv', False):
-    cmd.append('--no_csv')
+THREADS=$(get_param "threads")
+[ -n "$THREADS" ] && ARGS+=("--threads" "$THREADS")
 
-if cfg.get('download_images', True):
-    cmd.append('--download_images')
-    image_dir = cfg.get('image_dir')
-    if image_dir:
-        cmd.extend(['--image_dir', str(image_dir)])
-else:
-    cmd.append('--no_download_images')
+echo "Executing: python3 -m src.scrapers.scrape_wikiloc ${ARGS[*]} $*"
+echo ""
 
-threads = cfg.get('threads')
-if threads is not None:
-    cmd.extend(['--threads', str(threads)])
-
-if not cfg.get('headless', True):
-    cmd.append('--no-headless')
-
-# Forward any additional command-line arguments passed to this script
-cmd.extend(sys.argv[1:])
-
-print(f'Executing: {\" \".join(cmd)}\n')
-ret = subprocess.run(cmd)
-sys.exit(ret.returncode)
-" "$@"
+exec python3 -m src.scrapers.scrape_wikiloc "${ARGS[@]}" "$@"
