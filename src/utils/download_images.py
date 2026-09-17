@@ -183,7 +183,7 @@ def main():
         "--output",
         type=str,
         default=None,
-        help="Path to write the updated offline metadata file (.csv or .parquet). Defaults to [input_base]_offline.csv.",
+        help="Path to write the updated offline metadata file (.parquet or .csv). Defaults to [input_base]_offline.parquet.",
     )
     parser.add_argument(
         "--threads", type=int, default=32, help="Number of download threads."
@@ -347,13 +347,16 @@ def main():
         embeddings[successful_indices] if embeddings is not None else None
     )
 
-    # Resolve output paths
+    # Resolve output paths (preserving dataset format, defaulting to .parquet)
     if args.output:
         out_metadata = args.output
     else:
         in_dir = os.path.dirname(os.path.abspath(args.input))
         in_base = os.path.splitext(os.path.basename(args.input))[0]
-        out_metadata = os.path.join(in_dir, f"{in_base}_offline.csv")
+        in_ext = os.path.splitext(args.input)[1].lower()
+        if in_ext not in [".parquet", ".csv"]:
+            in_ext = ".parquet"
+        out_metadata = os.path.join(in_dir, f"{in_base}_offline{in_ext}")
 
     out_dir = os.path.dirname(os.path.abspath(out_metadata))
     out_base = os.path.splitext(os.path.basename(out_metadata))[0]
@@ -392,50 +395,31 @@ def main():
     if "url" in df_clean.columns:
         df_clean["url"] = local_locations
 
-    temp_parquet_path = os.path.join(out_dir, f"{out_base}.parquet")
     if embeddings_clean is not None:
-        # Drop existing embedding_idx so save_dataframe will rebuild it for the new 1-to-1 matrix
+        # Drop existing embedding_idx so save_dataframe will rebuild companion files for the new 1-to-1 matrix
         if "embedding_idx" in df_clean.columns:
             df_clean = df_clean.drop(columns=["embedding_idx"])
 
         # Re-insert embedding to let save_dataframe decouple it dynamically
         df_clean["embedding"] = list(embeddings_clean)
 
-        # Leverage the tested save_dataframe logic by writing to a temporary parquet file (which handles the .npy decoupling)
-        print("Utilizing save_dataframe() to decouple companion embeddings matrix...")
-        save_dataframe(
-            df_clean,
-            temp_parquet_path,
-            representation_type=args.representation_type,
-            precision=args.precision,
-        )
-    else:
-        print(f"Saving updated offline metadata to {temp_parquet_path}...")
-        save_dataframe(df_clean, temp_parquet_path)
-
-    # Load back the decoupled dataframe containing the generated 'embedding_idx' column
-    df_decoupled = load_dataframe(temp_parquet_path)
-
-    # Save to CSV or Parquet based on requested format
-    ext = os.path.splitext(out_metadata)[1].lower()
-    if ext == ".parquet":
-        # Re-save the clean parquet to the requested location
-        if out_metadata != temp_parquet_path:
-            os.replace(temp_parquet_path, out_metadata)
-    else:
-        # Save CSV metadata
-        print(f"Saving offline dataset metadata to CSV: {out_metadata}...")
-        df_decoupled.to_csv(out_metadata, index=False)
-        # Clean up temporary parquet file
-        if os.path.exists(temp_parquet_path):
-            os.remove(temp_parquet_path)
+    print(
+        f"Saving offline dataset metadata to {out_metadata} using save_dataframe()..."
+    )
+    save_dataframe(
+        df_clean,
+        out_metadata,
+        representation_type=args.representation_type,
+        precision=args.precision,
+    )
 
     out_npy = os.path.join(
         out_dir, f"{out_base}_{args.representation_type}_embeddings.npy"
     )
     print("\n🎉 Offline dataset created successfully!")
     print(f" -> Metadata: {out_metadata}")
-    print(f" -> Embeddings: {out_npy}")
+    if embeddings_clean is not None:
+        print(f" -> Embeddings: {out_npy}")
 
 
 if __name__ == "__main__":
