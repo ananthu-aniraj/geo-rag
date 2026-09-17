@@ -8,6 +8,15 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Bulk Mapillary Image URL Resolution & Caching**: Added `bulk_resolve_mapillary_urls` in `src/utils/download_images.py` to pre-resolve virtual Mapillary URIs (`mapillary://<photo_id>`) in batches of up to 250–500 IDs per request using the Graph API multi-ID lookup endpoint (`GET /?ids=id1,id2,...&fields=thumb_1024_url`).
+  - **Massive Request Reduction**: Slashes required Mapillary API calls by 250x–500x (reducing ~3.73M calls to ~14.9k calls), preventing API rate limit exhaustion and silent dataset row truncation.
+  - **Rate Limit & Quota Resilience**: Inspects `x-app-usage` headers, monitors `call_volume`, and automatically backs off with exponential sleep on `HTTP 429` rate limits.
+  - **Persistent Disk Caching**: Stores resolved 30-day signed CDN URLs in `[output_dir]/.mapillary_url_cache.parquet`, enabling instant, quota-free resume across interrupted download runs.
+  - **Configurable CLI Controls**: Added `--mapillary_token`, `--mapillary_batch_size` (default: 250), and `--mapillary_resolver_threads` (default: 4).
+- **Configurable Camera Trap Platforms in Dataset Statistics**: Decoupled `CAMERA_TRAP_PLATFORMS` from hardcoded sets in `src/visualization/visualize_dataset_stats.py`.
+  - Added `--camera_trap_platforms` CLI argument to both `src/visualization/visualize_dataset_stats.py` and `src/utils/dataset_statistics.py`.
+  - Added `camera_trap_platforms` configuration to `config/pipeline/params.yaml` (`iwildcam wildobs wildlife_insights snapshotusa`).
+  - Updated `run_full_pipeline.sh` to extract `camera_trap_platforms` from pipeline configuration and forward it to dataset statistics generation.
 - **WildObs Camera Trap Scraper**: Added `src/scrapers/scrape_wildobs.py` to scrape public camera trap imagery and observation metadata from the Australian National Wildlife Camera Database ([WildObs](https://wildobs.org.au/)).
   - **Three-Gate Data Governance**: Automatically audits project sharing agreements (`dataSharingPreference == "open"`), requires a valid RAiD research identifier (`10.83062/*`), and filters out demo projects.
   - **Relational Ingestion & Optimized Querying**: Fast-scans the compound-indexed MongoDB endpoint on `media` (`projectName`, `mediaID`) to stream public media (`filePublic == True`), automatically joining camera station coordinates (`deployments`) and taxonomic identifications (`observations`).
@@ -43,6 +52,11 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Changed
 
+- **Modernized Image Downloader Storage I/O**: Upgraded `src/utils/download_images.py` to use `save_dataframe()` from `src/utils/io.py` directly, preserving input format (`.parquet` by default instead of forcing `.csv`), decoupling companion `.npy` embeddings, generating `.keys.parquet`, and removing redundant temporary file rewrites.
+- **Complete Global H3 Heatmap Density & Interactive Map Fixes**: Upgraded interactive map generation in `src/visualization/visualize_dataset_stats.py`:
+  - Removed the restrictive `cell_budget = 4000` / quantile cutoff filter that was discarding 91.8% of H3 cells and over 3.8M images in global visualizations.
+  - Switched the colormap from quantized linear steps to a continuous log10 scale (`cm.linear.YlOrRd_09`), attached an interactive colorbar legend, and formatted hover tooltips with commas and percentages.
+  - Added `--min_count` CLI option (default: 1) to allow filtering sparsely sampled cells when desired.
 - **Disambiguated Representation Benchmark & Model Comparison Keys**: Scoped `config/evaluation/benchmark_representations.yaml` under root key `benchmark_representations:` (with backward compatibility in `benchmark_representations.py`) and `config/evaluation/compare_models.yaml` under root key `compare_models:`. Updated `run_comparison.sh` to extract `compare_models.models` via `src.utils.config` with fallback, enabling clean workstation overrides via `config/local.yaml`.
 - **Disambiguated Scraper Configuration Keys**: Renamed the generic root `scraper:` key across all 8 scraper configs in `config/scrapers/` to file-stem-specific identifiers (`flickr_scraper:`, `mapillary_scraper:`, `inaturalist_scraper:`, `inaturalist_presets:`, `osm_scraper:`, `wildobs_scraper:`, `flickr_profiler:`, and `mapillary_profiler:`). Updated shell runner scripts in `scripts/scrapers/` to check the stem key first before falling back to `scraper:` for backward compatibility, and updated `src/utils/config.py` override extraction to cleanly scope stem-named overrides.
 - **Disambiguated Evaluation Configuration Keys**: Renamed the generic root `eval:` key in `config/evaluation/caption_evals.yaml` to `caption_evals:` and in `config/evaluation/lucas_evals.yaml` to `lucas_evals:`. This eliminates collisions between the two files under `config/local.yaml`, prevents overlap with `lucas:` in `params_offline.yaml`, and retains fallback compatibility for `eval:`.

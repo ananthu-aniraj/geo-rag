@@ -1,11 +1,14 @@
 import argparse
 import concurrent.futures
 import hashlib
+import json
 import os
 import sys
 import threading
+import time
 
 import numpy as np
+import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
 from tqdm import tqdm
@@ -46,6 +49,122 @@ if os.path.exists(".env"):
         pass
 
 MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
+
+
+def bulk_resolve_mapillary_urls(
+    photo_ids,
+    access_token,
+    cache_path=None,
+    batch_size=250,
+    max_workers=4,
+    max_retries=5,
+):
+    """
+    Bulk resolves Mapillary photo IDs to fresh 30-day signed CDN URLs (thumb_1024_url)
+    using the multi-ID endpoint (GET /?ids=id1,id2,...&fields=thumb_1024_url).
+    Supports persistent disk caching, multi-threading, and automatic backoff on 429 rate limits.
+    """
+    if not photo_ids or not access_token:
+        return {}
+
+    unique_ids = list(
+        dict.fromkeys(
+            str(pid).strip()[:-2]
+            if str(pid).strip().endswith(".0")
+            else str(pid).strip()
+            for pid in photo_ids
+            if pid
+        )
+    )
+
+    resolved = {}
+    if cache_path and os.path.exists(cache_path):
+        try:
+            cache_df = pd.read_parquet(cache_path)
+            resolved = dict(
+                zip(
+                    cache_df["photo_id"].astype(str),
+                    cache_df["url"].astype(str),
+                )
+            )
+            print(
+                f" -> Loaded {len(resolved):,} previously resolved Mapillary URLs from cache: {cache_path}"
+            )
+        except Exception as e:
+            print(f" -> Warning: Could not read Mapillary URL cache ({e}).")
+
+    missing_ids = [pid for pid in unique_ids if pid not in resolved]
+    if not missing_ids:
+        return resolved
+
+    print(
+        f" -> Querying Mapillary Graph API for {len(missing_ids):,} unresolved photo IDs (batch size: {batch_size})..."
+    )
+
+    batches = [
+        missing_ids[i : i + batch_size] for i in range(0, len(missing_ids), batch_size)
+    ]
+    session = requests.Session()
+
+    def fetch_batch(batch):
+        ids_str = ",".join(batch)
+        url = f"https://graph.mapillary.com/?ids={ids_str}&fields=thumb_1024_url"
+        headers = {"Authorization": f"OAuth {access_token}"}
+        for attempt in range(max_retries):
+            try:
+                res = session.get(url, headers=headers, timeout=25)
+                if res.status_code == 200:
+                    data = res.json()
+                    # Check usage header and pace if nearing limit
+                    usage_header = res.headers.get("x-app-usage", "")
+                    if usage_header and '"call_volume":' in usage_header:
+                        try:
+                            usage_dict = json.loads(usage_header)
+                            if usage_dict.get("call_volume", 0) > 85:
+                                time.sleep(5)
+                        except Exception:
+                            pass
+
+                    out = {}
+                    for pid, val in data.items():
+                        if isinstance(val, dict) and val.get("thumb_1024_url"):
+                            out[str(pid)] = val["thumb_1024_url"]
+                    return out
+                elif res.status_code == 429:
+                    wait_time = min(120, 15 * (2**attempt))
+                    time.sleep(wait_time)
+                elif res.status_code >= 500:
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    return {}
+            except Exception:
+                time.sleep(2 * (attempt + 1))
+        return {}
+
+    new_resolutions = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for batch_res in tqdm(
+            executor.map(fetch_batch, batches),
+            total=len(batches),
+            desc="Resolving Mapillary CDN URLs",
+        ):
+            resolved.update(batch_res)
+            new_resolutions += len(batch_res)
+
+    if cache_path and new_resolutions > 0:
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
+            pd.DataFrame(
+                {
+                    "photo_id": list(resolved.keys()),
+                    "url": list(resolved.values()),
+                }
+            ).to_parquet(cache_path, compression="zstd")
+            print(f" -> Saved updated Mapillary URL cache to {cache_path}")
+        except Exception as e:
+            print(f" -> Warning: Could not write Mapillary URL cache ({e}).")
+
+    return resolved
 
 
 def download_image(url, output_path, photo_id, platform, timeout=10):
@@ -137,6 +256,8 @@ def download_image(url, output_path, photo_id, platform, timeout=10):
                 fresh_url = api_res.json().get("thumb_1024_url")
                 if fresh_url and try_fetch(fresh_url):
                     return True
+            elif api_res.status_code == 429:
+                time.sleep(10)
         except Exception:
             pass
 
@@ -214,12 +335,34 @@ def main():
         default=None,
         help="Wildlife Insights JWT authorization token.",
     )
+    parser.add_argument(
+        "--mapillary_token",
+        type=str,
+        default=None,
+        help="Mapillary access token (overrides MAPILLARY_TOKEN env/secret).",
+    )
+    parser.add_argument(
+        "--mapillary_batch_size",
+        type=int,
+        default=250,
+        help="Batch size of photo IDs per Mapillary Graph API request (default: 250).",
+    )
+    parser.add_argument(
+        "--mapillary_resolver_threads",
+        type=int,
+        default=4,
+        help="Number of threads for bulk Mapillary URL resolution (default: 4).",
+    )
     args = parser.parse_args()
 
     if args.wildlife_cookie:
         os.environ["WILDLIFE_INSIGHTS_COOKIE"] = args.wildlife_cookie
     if args.wildlife_token:
         os.environ["WILDLIFE_INSIGHTS_TOKEN"] = args.wildlife_token
+    if args.mapillary_token:
+        os.environ["MAPILLARY_TOKEN"] = args.mapillary_token
+        global MAPILLARY_TOKEN
+        MAPILLARY_TOKEN = args.mapillary_token
 
     if not os.path.exists(args.input):
         print(f"Error: Input file not found: {args.input}")
@@ -305,6 +448,59 @@ def main():
 
     print(f" -> Found {len(df) - len(to_download):,} images already offline.")
     print(f" -> Need to download {len(to_download):,} online images.")
+
+    # Pre-resolve Mapillary virtual URIs in bulk using Graph API multi-ID lookups
+    mapillary_missing_ids = []
+    for item in to_download:
+        item_url, item_photo_id, item_platform = item[1], item[3], item[4]
+        plat_lower = str(item_platform).strip().lower() if item_platform else ""
+        if plat_lower == "mapillary" and (
+            item_url.startswith("mapillary://") or "thumb_1024_url" not in item_url
+        ):
+            photo_str = str(item_photo_id).strip()
+            if photo_str.endswith(".0"):
+                photo_str = photo_str[:-2]
+            if photo_str:
+                mapillary_missing_ids.append(photo_str)
+
+    if mapillary_missing_ids:
+        token = (
+            args.mapillary_token
+            or MAPILLARY_TOKEN
+            or os.environ.get("MAPILLARY_TOKEN", "")
+        )
+        if not token:
+            print(
+                "\nWarning: MAPILLARY_TOKEN not found in env, .env, or CLI args. "
+                "Mapillary virtual URIs cannot be resolved."
+            )
+        else:
+            cache_file = os.path.join(args.output_dir, ".mapillary_url_cache.parquet")
+            print(
+                f"\nPre-resolving {len(mapillary_missing_ids):,} Mapillary photo IDs via bulk Graph API..."
+            )
+            resolved_mapillary = bulk_resolve_mapillary_urls(
+                mapillary_missing_ids,
+                access_token=token,
+                cache_path=cache_file,
+                batch_size=args.mapillary_batch_size,
+                max_workers=args.mapillary_resolver_threads,
+            )
+            print(
+                f" -> Successfully resolved {len(resolved_mapillary):,} Mapillary CDN URLs."
+            )
+
+            # Update to_download tuples with fresh CDN URLs
+            updated_to_download = []
+            for item in to_download:
+                idx, url, target_path, photo_id, platform = item
+                photo_str = str(photo_id).strip()
+                if photo_str.endswith(".0"):
+                    photo_str = photo_str[:-2]
+                if photo_str in resolved_mapillary:
+                    url = resolved_mapillary[photo_str]
+                updated_to_download.append((idx, url, target_path, photo_id, platform))
+            to_download = updated_to_download
 
     # 4. Multi-threaded download
     download_success_count = 0
