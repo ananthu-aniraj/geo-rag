@@ -6,6 +6,15 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Embedding Retention in Scraped Data Processing**: Preserved precomputed `embedding` column across dataframe subsets in `src/processing/process_scraped_data.py`, preventing silent embedding loss for offline datasets.
+- **Offline Dataset Path Resolution**: Prioritized local `Image_Location` paths over remote URLs for offline datasets in `load_and_preprocess_csv`, and guarded URI schemes from corrupt path concatenation.
+
+### Changed
+
+- **WildObs Metadata Localized References**: Updated `src/scrapers/scrape_wildobs.py` to drop `Image_URL` and retain only local references (`Image_Location` and `file_name`) when `--download_images` is enabled, ensuring clean offline metadata.
+
 ## [1.5.0] - 2026-09-17
 
 ### Added

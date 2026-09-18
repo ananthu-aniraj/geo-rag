@@ -567,12 +567,12 @@ def batch_download_images(
     output_dir: str,
     base_dir: Optional[str] = None,
     threads: int = 16,
-):
+) -> List[Dict[str, Any]]:
     """Downloads images in parallel for offline use, storing relative Image_Location paths."""
     print(
         f"\nDownloading {len(records):,} images to: {output_dir} using {threads} threads..."
     )
-    success_count = 0
+    successful_records = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         futures = {
             executor.submit(download_single_image, rec, output_dir): rec
@@ -586,7 +586,6 @@ def batch_download_images(
             ok, local_path = future.result()
             rec = futures[future]
             if ok:
-                success_count += 1
                 if base_dir:
                     try:
                         rec["Image_Location"] = os.path.relpath(local_path, base_dir)
@@ -594,10 +593,13 @@ def batch_download_images(
                         rec["Image_Location"] = local_path
                 else:
                     rec["Image_Location"] = local_path
+                rec["file_name"] = os.path.basename(local_path)
+                successful_records.append(rec)
 
     print(
-        f"Download complete: {success_count}/{len(records)} images saved successfully."
+        f"Download complete: {len(successful_records)}/{len(records)} images saved successfully."
     )
+    return successful_records
 
 
 def print_project_summary(projects: List[Dict[str, Any]], session: requests.Session):
@@ -817,27 +819,46 @@ def main():
     if args.download_images:
         out_dir = os.path.dirname(os.path.abspath(args.output))
         img_dir = args.image_dir or os.path.join(out_dir, "images")
-        batch_download_images(
+        all_selected = batch_download_images(
             all_selected, img_dir, base_dir=out_dir, threads=args.threads
         )
+        if not all_selected:
+            print(" [!] No images were successfully downloaded. Exiting.")
+            sys.exit(0)
 
     # 6. Format and save
     df_result = pd.DataFrame(all_selected)
 
-    # Ensure required columns at front
-    required_cols = [
-        "Photo_ID",
-        "Platform",
-        "Latitude",
-        "Longitude",
-        "Image_URL",
-        "Captured_At",
-        "License",
-        "photo_key",
+    if args.download_images:
+        if "Image_URL" in df_result.columns:
+            df_result = df_result.drop(columns=["Image_URL"])
+        leading_cols = [
+            "Photo_ID",
+            "Platform",
+            "Latitude",
+            "Longitude",
+            "Image_Location",
+            "file_name",
+            "Captured_At",
+            "License",
+            "photo_key",
+        ]
+    else:
+        leading_cols = [
+            "Photo_ID",
+            "Platform",
+            "Latitude",
+            "Longitude",
+            "Image_URL",
+            "Captured_At",
+            "License",
+            "photo_key",
+        ]
+
+    cols = [c for c in leading_cols if c in df_result.columns] + [
+        c for c in df_result.columns if c not in leading_cols
     ]
-    extra_cols = [c for c in df_result.columns if c not in required_cols]
-    final_cols = required_cols + extra_cols
-    df_result = df_result[final_cols]
+    df_result = df_result[cols]
 
     out_dir = os.path.dirname(os.path.abspath(args.output))
     if out_dir:
