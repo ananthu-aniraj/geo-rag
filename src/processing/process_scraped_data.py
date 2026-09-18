@@ -190,8 +190,9 @@ def process_cell(
         to_compute_indices = []
         precomputed_embeddings = {}  # maps chunk_metadata index -> embedding vector
         for idx, m in enumerate(chunk_metadata):
-            if m.get("embedding") is not None:
-                precomputed_embeddings[idx] = m["embedding"]
+            emb = m.get("embedding")
+            if emb is not None and not (isinstance(emb, float) and np.isnan(emb)):
+                precomputed_embeddings[idx] = emb
             else:
                 to_compute_indices.append(idx)
 
@@ -742,35 +743,54 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
                     break
 
         # Resolve any local image paths (Image_Location or Image_URL) to absolute paths relative to the CSV's directory
-        image_col = (
-            "Image_URL"
-            if "Image_URL" in df.columns
-            else ("Image_Location" if "Image_Location" in df.columns else None)
-        )
-        if image_col:
-            csv_dir = os.path.dirname(os.path.abspath(f))
+        csv_dir = os.path.dirname(os.path.abspath(f))
 
-            def resolve_offline_path(loc):
-                if not isinstance(loc, str):
-                    return loc
-                if is_offline:
-                    if os.path.isabs(loc):
-                        return loc
-                    # Try direct join
-                    p = os.path.abspath(os.path.join(csv_dir, loc))
-                    if os.path.exists(p):
-                        return p
-                    # Try with "train" subdir (backward compatibility for flat iWildCam)
-                    p_train = os.path.abspath(
-                        os.path.join(csv_dir, "train", os.path.basename(loc))
-                    )
-                    if os.path.exists(p_train):
-                        return p_train
+        def resolve_offline_path(loc):
+            if not isinstance(loc, str) or not loc.strip():
+                return loc
+            loc = loc.strip()
+            # If already an absolute path or a remote/virtual protocol, preserve as-is
+            if loc.startswith(
+                ("http://", "https://", "mapillary://", "kartaview://")
+            ) or os.path.isabs(loc):
+                return loc
+            if is_offline:
+                # Try direct join with CSV's directory
+                p = os.path.abspath(os.path.join(csv_dir, loc))
+                if os.path.exists(p):
                     return p
-                else:
-                    return loc
+                # Try with "train" subdir (backward compatibility for flat iWildCam)
+                p_train = os.path.abspath(
+                    os.path.join(csv_dir, "train", os.path.basename(loc))
+                )
+                if os.path.exists(p_train):
+                    return p_train
+                return p
+            return loc
 
-            df["Image_URL"] = [resolve_offline_path(loc) for loc in df[image_col]]
+        has_img_loc = "Image_Location" in df.columns
+        has_img_url = "Image_URL" in df.columns
+
+        # For offline datasets, prioritize local Image_Location file paths over remote Image_URL
+        if is_offline and has_img_loc:
+            resolved_urls = []
+            for row in df.itertuples():
+                loc_val = getattr(row, "Image_Location", None)
+                url_val = getattr(row, "Image_URL", None) if has_img_url else None
+                resolved_loc = resolve_offline_path(loc_val)
+                if resolved_loc and os.path.exists(resolved_loc):
+                    resolved_urls.append(resolved_loc)
+                elif url_val:
+                    resolved_urls.append(resolve_offline_path(url_val))
+                else:
+                    resolved_urls.append(resolved_loc or "")
+            df["Image_URL"] = resolved_urls
+        elif has_img_url:
+            df["Image_URL"] = [resolve_offline_path(loc) for loc in df["Image_URL"]]
+        elif has_img_loc:
+            df["Image_URL"] = [
+                resolve_offline_path(loc) for loc in df["Image_Location"]
+            ]
 
         required_cols = [
             "Photo_ID",
@@ -842,7 +862,10 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
         df["Platform"] = df["Platform"].astype(str).str.strip().str.lower()
         df["photo_key"] = df["Platform"] + "_" + df["Photo_ID"].astype(str)
 
-        df = df[required_cols].copy()
+        out_cols = list(required_cols)
+        if "embedding" in df.columns:
+            out_cols.append("embedding")
+        df = df[out_cols].copy()
         df["License"] = (
             df["License"].astype(str).replace({"nan": None, "None": None, "<NA>": None})
         )

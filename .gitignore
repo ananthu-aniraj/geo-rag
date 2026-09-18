@@ -55,6 +55,7 @@ filtered_datasets/
 shapefiles/uncovered_land_areas_test.*
 scratch/
 benchmark_results/
+data/**
 
 # Secrets and environment configurations
 .env
