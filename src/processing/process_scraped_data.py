@@ -2,6 +2,7 @@ import argparse
 import glob
 import os
 import pickle
+import sys
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,9 +17,12 @@ import pyarrow.parquet as pq
 import torch
 from torchvision import transforms
 from tqdm import tqdm
-from transformers import AutoModel
 
-from src.models.vision_model_inference import extract_model_embeddings
+import src.models.tips_image_encoder as image_encoder
+from src.models.vision_model_inference import (
+    extract_regular_embeddings,
+    load_vision_model,
+)
 from src.utils.io import (
     download_image,
     get_core_base_name,
@@ -130,26 +134,51 @@ def standardize_timestamps_vectorized(ts_raw):
     return standardized
 
 
-def get_tips_embeddings(
-    images, model, device, batch_size=32, representation_type="cls"
+def get_image_embeddings(
+    images,
+    model,
+    device,
+    batch_size=32,
+    representation_type="cls",
+    transform=None,
+    is_local=False,
 ):
-    """Computes TIPSv2 embeddings for a list of PIL images in batches using a single forward pass."""
+    """Computes vision embeddings for a list of PIL images in batches using regular fast inference."""
     if not images:
         return None
+
+    if transform is None:
+        transform = tips_transform
 
     all_features = []
     with torch.no_grad():
         for i in range(0, len(images), batch_size):
             batch = images[i : i + batch_size]
-            batch_tensors = torch.stack([tips_transform(img) for img in batch]).to(
-                device
-            )
-            features = extract_model_embeddings(
-                model, batch_tensors, representation_type=representation_type
+            batch_tensors = torch.stack([transform(img) for img in batch]).to(device)
+            features = extract_regular_embeddings(
+                model,
+                batch_tensors,
+                representation_type=representation_type,
+                is_local=is_local,
             )
             all_features.append(features)
 
     return np.concatenate(all_features, axis=0)
+
+
+def get_tips_embeddings(
+    images, model, device, batch_size=32, representation_type="cls"
+):
+    """Backwards-compatible wrapper for get_image_embeddings."""
+    return get_image_embeddings(
+        images,
+        model,
+        device,
+        batch_size=batch_size,
+        representation_type=representation_type,
+        transform=tips_transform,
+        is_local=False,
+    )
 
 
 def process_cell(
@@ -168,6 +197,9 @@ def process_cell(
     offline_dirs=None,
     representation_type="cls",
     mapillary_token=None,
+    transform=None,
+    image_size=448,
+    is_local=False,
 ):
     """Filters indoor images (Flickr only) and deduplicates images within an H3 cell in chunks."""
     results = existing_items.copy() if existing_items else []
@@ -180,6 +212,7 @@ def process_cell(
             photo_id=pid,
             platform=plat,
             offline_dirs=offline_dirs,
+            image_size=image_size,
         )
 
     # Process new images in chunks to limit peak memory usage
@@ -212,12 +245,14 @@ def process_cell(
                 valid_imgs = [imgs[i] for i in valid_dl_indices]
 
                 # Compute embeddings for this chunk using configured tips_batch_size
-                computed_embeddings = get_tips_embeddings(
+                computed_embeddings = get_image_embeddings(
                     valid_imgs,
                     model,
                     device,
                     batch_size=tips_batch_size,
                     representation_type=representation_type,
+                    transform=transform,
+                    is_local=is_local,
                 )
 
                 # Explicitly close PIL images immediately to free RAM
@@ -316,6 +351,7 @@ def stream_update_parquet(
     active_cells,
     representation_type="cls",
     precision="float32",
+    model_name=None,
 ):
     """
     Standardized stream updater that copies/appends data chunk-by-chunk using PyArrow.
@@ -355,7 +391,7 @@ def stream_update_parquet(
 
     # Load existing embeddings (aligned with the input Parquet's rows)
     full_embeddings = load_embeddings(
-        input_path, representation_type=representation_type
+        input_path, representation_type=representation_type, model_name=model_name
     )
 
     # Load the keys of the input database to perform a key-based index lookup
@@ -460,7 +496,12 @@ def stream_update_parquet(
                     writer.write_table(filtered_table)
 
             # 2. Write the new/updated active rows
-            new_embs = np.empty((0, 768), dtype=np.float32)
+            emb_dim = (
+                full_embeddings.shape[1]
+                if full_embeddings is not None and len(full_embeddings) > 0
+                else 768
+            )
+            new_embs = np.empty((0, emb_dim), dtype=np.float32)
             new_keys = np.empty(0, dtype=object)
             if df_new is not None and not df_new.empty:
                 df_new_aligned = df_new.copy()
@@ -518,13 +559,19 @@ def stream_update_parquet(
             base_name = base_name.split("_clustered_k_")[0]
         core_name = get_core_base_name(base_name)
 
+        model_suffix = ""
+        if model_name and model_name != "google/tipsv2-b14":
+            model_suffix = "_" + model_name.replace("/", "_")
+
         npy_path = os.path.join(
-            db_dir, f"{core_name}_{representation_type}_embeddings.npy"
+            db_dir, f"{core_name}{model_suffix}_{representation_type}_embeddings.npy"
         )
         dtype = np.float16 if precision == "float16" else np.float32
         final_embs_cast = final_embs.astype(dtype)
 
-        tmp_npy_path = tmp_output + f"_{representation_type}_embeddings.npy"
+        tmp_npy_path = (
+            tmp_output + f"{model_suffix}_{representation_type}_embeddings.npy"
+        )
         tmp_keys_path = tmp_npy_path.replace(".npy", ".keys.parquet")
 
         print(
@@ -571,6 +618,7 @@ def save_checkpoint(
     active_cells=None,
     representation_type="cls",
     precision="float32",
+    model_name=None,
 ):
     """Saves the intermediate state to checkpoint files atomically."""
     tmp_path = f"{checkpoint_path}.tmp"
@@ -605,6 +653,7 @@ def save_checkpoint(
                 active_cells,
                 representation_type=representation_type,
                 precision=precision,
+                model_name=model_name,
             )
         else:
             save_dataframe(
@@ -612,6 +661,7 @@ def save_checkpoint(
                 tmp_path,
                 representation_type=representation_type,
                 precision=precision,
+                model_name=model_name,
             )
 
         # Save processed cells to tmp meta
@@ -630,7 +680,9 @@ def save_checkpoint(
         print(f"\nError saving checkpoint: {e}")
 
 
-def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
+def load_and_preprocess_csv(
+    f, offline_dirs=None, representation_type="cls", model_name=None
+):
     """Loads a single CSV or Parquet file, normalizes column names, and converts Mapillary/KartaView URLs."""
     try:
         if f.endswith(".parquet"):
@@ -641,7 +693,9 @@ def load_and_preprocess_csv(f, offline_dirs=None, representation_type="cls"):
                     df[col] = df[col].astype(str)
             # Load matching companion embeddings if present
             try:
-                embeddings = load_embeddings(f, representation_type=representation_type)
+                embeddings = load_embeddings(
+                    f, representation_type=representation_type, model_name=model_name
+                )
                 df["embedding"] = list(embeddings)
                 print(
                     f" -> Successfully loaded precomputed '{representation_type}' embeddings for: {f}"
@@ -946,10 +1000,36 @@ def main():
         help="Number of images within a cell to download/process in a chunk.",
     )
     parser.add_argument(
+        "--model_name",
+        type=str,
+        default="google/tipsv2-b14",
+        help="Hugging Face identifier or timm model name of the vision encoder to load.",
+    )
+    parser.add_argument(
         "--tips_batch_size",
+        "--batch_size",
+        dest="tips_batch_size",
         type=int,
         default=32,
-        help="Batch size for TIPSv2 embedding inference.",
+        help="Batch size for embedding inference.",
+    )
+    parser.add_argument(
+        "--tips_model_path",
+        type=str,
+        default=None,
+        help="Optional path to local TIPSv2 checkpoint .npy weight file.",
+    )
+    parser.add_argument(
+        "--tips_model_variant",
+        type=str,
+        default="b",
+        choices=["s", "b", "l", "g"],
+        help="TIPSv2 model variant to load if local checkpoint is specified (s, b, l, g).",
+    )
+    parser.add_argument(
+        "--tips_low_res",
+        action="store_true",
+        help="Use 224x224 input resolution for local checkpoints instead of 448x448.",
     )
     parser.add_argument(
         "--offline_dataset_dirs",
@@ -998,6 +1078,12 @@ def main():
 
     if not args.mapillary_token:
         args.mapillary_token = os.environ.get("MAPILLARY_TOKEN", "")
+
+    # Determine model suffix for npy file name
+    is_local = bool(args.tips_model_path)
+    model_name_for_save = (
+        f"local_tipsv2_{args.tips_model_variant}" if is_local else args.model_name
+    )
 
     # 1. Gather all CSVs and Parquets
     csv_files = []
@@ -1050,6 +1136,20 @@ def main():
 
     if args.resume_from and os.path.exists(args.resume_from):
         print(f"Resuming from existing data: {args.resume_from}")
+        if args.resume_from.endswith(".parquet"):
+            try:
+                load_embeddings(
+                    args.resume_from,
+                    representation_type=args.representation_type,
+                    model_name=model_name_for_save,
+                )
+            except FileNotFoundError as e:
+                print(
+                    f"\n❌ Error: Cannot resume from '{args.resume_from}' with model '{args.model_name}' (representation '{args.representation_type}'):"
+                )
+                print(f"   {e}\n")
+                sys.exit(1)
+
         if args.resume_from.endswith(".pkl"):
             with open(args.resume_from, "rb") as f:
                 existing_data = pickle.load(f)
@@ -1136,6 +1236,7 @@ def main():
                     f,
                     offline_dirs=args.offline_dataset_dirs,
                     representation_type=args.representation_type,
+                    model_name=model_name_for_save,
                 )
                 for f in csv_files
             ]
@@ -1253,7 +1354,9 @@ def main():
             if has_decoupled:
                 # Load the full memory-mapped embedding matrix
                 full_embeddings = load_embeddings(
-                    args.resume_from, representation_type=args.representation_type
+                    args.resume_from,
+                    representation_type=args.representation_type,
+                    model_name=model_name_for_save,
                 )
 
                 # Build master keys index from df_existing
@@ -1341,31 +1444,74 @@ def main():
         f"Total H3 cells: {len(all_cells)} ({len(active_cells)} active with new data, {len(all_cells) - len(active_cells)} inactive/skipped)"
     )
 
-    # 3. Load TIPSv2
+    # 3. Setup Device & Initialize Vision Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Loading TIPSv2 model on {device}...")
-    model = AutoModel.from_pretrained("google/tipsv2-b14", trust_remote_code=True)
-    model.eval().to(device)
+    print(f"Initializing model on {device}...")
+
+    if is_local:
+        print(f"Loading local checkpoint from {args.tips_model_path}...")
+        model_def = {
+            "s": image_encoder.vit_small14,
+            "b": image_encoder.vit_base14,
+            "l": image_encoder.vit_large14,
+            "g": image_encoder.vit_giant2,
+        }[args.tips_model_variant]
+
+        image_size = 224 if args.tips_low_res else 448
+        transform = transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+        ffn_layer = "swiglu" if args.tips_model_variant == "g" else "mlp"
+        checkpoint = dict(np.load(args.tips_model_path, allow_pickle=False))
+        for key in checkpoint:
+            checkpoint[key] = torch.tensor(checkpoint[key])
+
+        model = model_def(
+            img_size=image_size,
+            patch_size=14,
+            ffn_layer=ffn_layer,
+            block_chunks=0,
+            init_values=1.0,
+            interpolate_antialias=True,
+            interpolate_offset=0.0,
+        )
+        model.load_state_dict(checkpoint)
+        model = model.eval().to(device)
+    else:
+        # Load any timm or Hugging Face model dynamically
+        model, transform, image_size = load_vision_model(args.model_name, device)
 
     # Pre-compute text features for Zero-Shot filtering
     text_features = None
     macro_idx = -1
     sky_idx = -1
     if not args.no_filter:
-        print("Pre-computing zero-shot filter text embeddings...")
-        with torch.no_grad():
-            prompts = ["An indoor scene", "An outdoor landscape or street view"]
-            if args.filter_macro:
-                prompts.append(
-                    "A close-up macro photo of a single leaf, plant petal, flower, insect, mushroom, or tree bark"
-                )
-                macro_idx = len(prompts) - 1
-            if args.filter_sky:
-                prompts.append(
-                    "A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible"
-                )
-                sky_idx = len(prompts) - 1
-            text_features = model.encode_text(prompts).cpu().numpy()
+        if hasattr(model, "encode_text"):
+            print("Pre-computing zero-shot filter text embeddings...")
+            with torch.no_grad():
+                prompts = ["An indoor scene", "An outdoor landscape or street view"]
+                if args.filter_macro:
+                    prompts.append(
+                        "A close-up macro photo of a single leaf, plant petal, flower, insect, mushroom, or tree bark"
+                    )
+                    macro_idx = len(prompts) - 1
+                if args.filter_sky:
+                    prompts.append(
+                        "A photo of the sky, a bird flying in the air, an insect in flight, an airplane, or a close-up of a cloud with no ground visible"
+                    )
+                    sky_idx = len(prompts) - 1
+                text_features = model.encode_text(prompts).cpu().numpy()
+        else:
+            print(
+                f"Note: Model '{args.model_name}' does not support text encoding. Disabling zero-shot indoor/macro/sky filtering."
+            )
 
     # 4. Process and Deduplicate
     checkpoint_path = os.path.join(
@@ -1391,7 +1537,9 @@ def main():
             df_ckpt = load_dataframe(checkpoint_path)
             try:
                 ckpt_embs = load_embeddings(
-                    checkpoint_path, representation_type=args.representation_type
+                    checkpoint_path,
+                    representation_type=args.representation_type,
+                    model_name=model_name_for_save,
                 )
                 df_ckpt["embedding"] = list(ckpt_embs)
             except FileNotFoundError:
@@ -1473,6 +1621,9 @@ def main():
                 offline_dirs=args.offline_dataset_dirs,
                 representation_type=args.representation_type,
                 mapillary_token=args.mapillary_token,
+                transform=transform,
+                image_size=image_size,
+                is_local=is_local,
             )
             final_data.extend(deduped)
             processed_cells.add(cell)
@@ -1490,6 +1641,7 @@ def main():
                         active_cells=active_cells,
                         representation_type=args.representation_type,
                         precision=args.precision,
+                        model_name=model_name_for_save,
                     )
                     last_checkpoint_time = current_time
 
@@ -1505,6 +1657,7 @@ def main():
             active_cells=active_cells,
             representation_type=args.representation_type,
             precision=args.precision,
+            model_name=model_name_for_save,
         )
 
     # 5. Save Results
@@ -1536,6 +1689,7 @@ def main():
             active_cells,
             representation_type=args.representation_type,
             precision=args.precision,
+            model_name=model_name_for_save,
         )
     else:
         # Save Full Data to Parquet (High-performance binary storage)
@@ -1544,6 +1698,7 @@ def main():
             parquet_path,
             representation_type=args.representation_type,
             precision=args.precision,
+            model_name=model_name_for_save,
         )
 
     # Clean up checkpoint files on successful completion

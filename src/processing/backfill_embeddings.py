@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 import src.models.tips_image_encoder as image_encoder
 from src.models.vision_model_inference import (
-    extract_benchmark_features_single_pass,
+    extract_regular_embeddings,
     load_vision_model,
 )
 from src.utils.io import (
@@ -308,28 +308,12 @@ def main():
                     batch_tensors = torch.stack(
                         [transform(img) for img in batch_imgs]
                     ).to(device)
-                    with torch.no_grad():
-                        cls_out, patch_tokens_vals = (
-                            extract_benchmark_features_single_pass(
-                                model, batch_tensors, is_local=is_local
-                            )
-                        )
-                    patch_tokens_vals = patch_tokens_vals.reshape(
-                        len(batch_imgs), -1, patch_tokens_vals.shape[-1]
+                    features = extract_regular_embeddings(
+                        model,
+                        batch_tensors,
+                        representation_type=args.representation_type,
+                        is_local=is_local,
                     )
-                    cls_tokens = cls_out[0] if is_local else cls_out
-
-                    if args.representation_type == "cls":
-                        features = cls_tokens
-                    elif args.representation_type == "avg_patch":
-                        features = np.mean(patch_tokens_vals, axis=1)
-                    elif args.representation_type == "cls_avg_patch":
-                        avg_patch = np.mean(patch_tokens_vals, axis=1)
-                        features = np.concatenate([cls_tokens, avg_patch], axis=1)
-                    else:
-                        raise ValueError(
-                            f"Unsupported representation type: {args.representation_type}"
-                        )
 
                     if embeddings_matrix is None:
                         dim = features.shape[1]

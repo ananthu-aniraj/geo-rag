@@ -43,6 +43,19 @@ def main():
         default=0.03,
         help="Outlier ratio threshold (e.g. 0.03 for 3%).",
     )
+    parser.add_argument(
+        "--representation_type",
+        type=str,
+        default="cls",
+        choices=["cls", "avg_patch", "cls_avg_patch"],
+        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Optional model name to disambiguate companion embedding files.",
+    )
     args = parser.parse_args()
 
     # Fallback to fit if the pre-existing file doesn't exist
@@ -86,7 +99,11 @@ def main():
             print("assign")
             return
 
-        embs_all_new = load_embeddings(args.input)
+        embs_all_new = load_embeddings(
+            args.input,
+            representation_type=args.representation_type,
+            model_name=args.model_name,
+        )
         new_embs = embs_all_new[is_new_mask].astype(np.float32)
 
         new_embs = normalize(new_embs).astype(np.float32)
@@ -108,7 +125,11 @@ def main():
             c_ids_list.append(c_ids_rg)
         c_ids_old = np.concatenate(c_ids_list)
 
-        embs_old = load_embeddings(args.centroids_parquet)
+        embs_old = load_embeddings(
+            args.centroids_parquet,
+            representation_type=args.representation_type,
+            model_name=args.model_name,
+        )
 
         raw_centroids = np.zeros((args.k_clusters, dim), dtype=np.float32)
         counts = np.zeros(args.k_clusters, dtype=np.int64)

@@ -94,6 +94,19 @@ def main():
         help="If set, mathematically calculates the elbow point and updates 'k_clusters' in params.yaml.",
     )
     parser.add_argument(
+        "--representation_type",
+        type=str,
+        default="cls",
+        choices=["cls", "avg_patch", "cls_avg_patch"],
+        help="Type of representation embedding to load (cls, avg_patch, or cls_avg_patch).",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Optional model name to disambiguate companion embedding files.",
+    )
+    parser.add_argument(
         "--params_path",
         type=str,
         default="params.yaml",
@@ -133,7 +146,11 @@ def main():
     # Load embeddings matrix
     print("Loading raw embedding matrix...")
     t0_emb = time.time()
-    embeddings_matrix = load_embeddings(args.input)
+    embeddings_matrix = load_embeddings(
+        args.input,
+        representation_type=args.representation_type,
+        model_name=args.model_name,
+    )
 
     print(
         f" -> Successfully loaded raw embedding matrix in {time.time() - t0_emb:.2f}s."

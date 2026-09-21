@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "geo-rag"
-version = "0.1.0"
+version = "1.0.0"
 description = "A global spatial-semantic mapping, clustering, and data engineering pipeline for geotagged ground-level imagery"
 readme = "README.md"
 requires-python = ">=3.10"

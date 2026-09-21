@@ -8,6 +8,154 @@ from torchvision import transforms
 from transformers import AutoModel
 
 
+@torch.no_grad()
+def extract_regular_embeddings(
+    model, batch_tensors, representation_type="cls", is_local=False
+):
+    """
+    Computes visual representations using regular fast model inference.
+
+    Executes standard forward pass:
+      image -> transforms -> model -> (cls + patch outs, if cls is present otherwise patch_outs)
+    and produces:
+      - 'cls': cls directly (or avg_patch if cls is not present)
+      - 'avg_patch': avg_patch directly (mean over patch tokens)
+      - 'cls_avg_patch': concatenation of cls and avg_patch
+
+    Args:
+        model: Vision model (timm, Hugging Face AutoModel, or local TIPSv2 checkpoint).
+        batch_tensors (torch.Tensor): Preprocessed image batch tensor of shape (B, 3, H, W).
+        representation_type (str): 'cls', 'avg_patch', or 'cls_avg_patch'.
+        is_local (bool): True if using local check-pointed ImageEncoder.
+
+    Returns:
+        np.ndarray: Feature matrix of shape (B, D) or (B, 2*D) on CPU.
+    """
+    cls_out = None
+    patch_outs = None
+
+    # Case 1: Local TIPSv2 checkpoint
+    if is_local:
+        out = model(batch_tensors)
+        if isinstance(out, (tuple, list)):
+            cls_out = out[0]
+            patch_outs = out[2] if len(out) > 2 else out[-1]
+        else:
+            cls_out = out
+
+    # Case 2: Hugging Face TIPSv2 wrapper (or models with encode_image)
+    elif hasattr(model, "encode_image"):
+        out = model.encode_image(batch_tensors)
+        if hasattr(out, "cls_token"):
+            cls_out = out.cls_token
+            patch_outs = getattr(out, "patch_tokens", None)
+        elif isinstance(out, (tuple, list)):
+            cls_out = out[0]
+            patch_outs = out[2] if len(out) > 2 else out[-1]
+        else:
+            cls_out = out
+
+    # Case 3: timm model
+    elif hasattr(model, "forward_features"):
+        features = model.forward_features(batch_tensors)
+        if features.ndim == 4:
+            # CNN output: pool spatial dims for CLS, reshape for patches
+            cls_out = F.adaptive_avg_pool2d(features, 1).flatten(1)
+            b, c, h, w = features.shape
+            patch_outs = features.permute(0, 2, 3, 1).reshape(b, h * w, c)
+        elif features.ndim == 3:
+            has_cls = getattr(model, "has_cls_token", None)
+            if has_cls is None:
+                has_cls = (getattr(model, "cls_token", None) is not None) or (
+                    getattr(model, "num_prefix_tokens", 0) > 0
+                )
+                model.has_cls_token = has_cls
+            if has_cls:
+                num_prefix = getattr(model, "num_prefix_tokens", 1)
+                cls_out = features[:, 0]
+                patch_outs = features[:, num_prefix:]
+            else:
+                cls_out = None
+                patch_outs = features
+        else:
+            cls_out = features
+            patch_outs = None
+
+    # Case 4: Generic PyTorch / HF model
+    else:
+        out = model(batch_tensors)
+        if isinstance(out, (tuple, list)):
+            cls_out = out[0]
+            patch_outs = out[2] if len(out) > 2 else (out[1] if len(out) > 1 else None)
+        elif hasattr(out, "last_hidden_state"):
+            features = out.last_hidden_state
+            cls_out = features[:, 0]
+            patch_outs = features[:, 1:]
+        elif hasattr(out, "cls_token"):
+            cls_out = getattr(out, "cls_token", None)
+            patch_outs = getattr(out, "patch_tokens", None)
+        elif isinstance(out, torch.Tensor):
+            if out.ndim == 2:
+                cls_out = out
+                patch_outs = None
+            elif out.ndim == 3:
+                cls_out = out[:, 0]
+                patch_outs = out[:, 1:]
+            else:
+                cls_out = out
+                patch_outs = None
+        else:
+            cls_out = out
+            patch_outs = None
+
+    # Ensure tensors if mock or custom model returned numpy
+    if isinstance(cls_out, np.ndarray):
+        cls_out = torch.from_numpy(cls_out)
+    if isinstance(patch_outs, np.ndarray):
+        patch_outs = torch.from_numpy(patch_outs)
+
+    # Normalize dimensions
+    if cls_out is not None and cls_out.ndim == 3 and cls_out.shape[1] == 1:
+        cls_out = cls_out.squeeze(1)
+
+    if patch_outs is not None and patch_outs.ndim == 4:
+        b, c, h, w = patch_outs.shape
+        patch_outs = patch_outs.permute(0, 2, 3, 1).reshape(b, h * w, c)
+
+    # Compute requested representation directly on tensor on device
+    if representation_type == "cls":
+        if cls_out is not None:
+            embs = cls_out
+        elif patch_outs is not None:
+            embs = patch_outs.mean(dim=1)
+        else:
+            raise ValueError("Model produced neither cls_token nor patch_tokens.")
+    elif representation_type == "avg_patch":
+        if patch_outs is not None:
+            embs = patch_outs.mean(dim=1)
+        elif cls_out is not None:
+            embs = cls_out
+        else:
+            raise ValueError("Model produced neither patch_tokens nor cls_token.")
+    elif representation_type == "cls_avg_patch":
+        if cls_out is None and patch_outs is not None:
+            cls_out = patch_outs.mean(dim=1)
+        if patch_outs is not None:
+            avg_patch = patch_outs.mean(dim=1)
+        elif cls_out is not None:
+            avg_patch = cls_out
+        else:
+            raise ValueError("Model produced neither cls_token nor patch_tokens.")
+        embs = torch.cat([cls_out, avg_patch], dim=-1)
+    else:
+        raise ValueError(f"Unsupported representation type: {representation_type}")
+
+    if embs.ndim == 3 and embs.shape[1] == 1:
+        embs = embs.squeeze(1)
+
+    return embs.detach().cpu().numpy()
+
+
 def extract_model_embeddings(model, batch_tensors, representation_type="cls"):
     """
     Extracts image embeddings from a TIPSv2 model (local checkpoints or Hugging Face wrappers)

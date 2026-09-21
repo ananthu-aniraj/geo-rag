@@ -6,34 +6,50 @@ This document describes the design and operation of `process_scraped_data.py`, w
 
 ## ⚙️ Core Operation
 
-The script takes a raw scraped database, partitions coordinates into **H3 Resolution 11 parent cells** (each spanning ~2,000 m²), and performs spatial-temporal deduplication using TIPSv2 image embeddings to ensure uniform geographic coverage.
+The script takes a raw scraped database, partitions coordinates into **H3 Resolution 11 parent cells** (each spanning ~2,000 m²), and performs spatial-temporal deduplication using deep vision model embeddings to ensure uniform geographic coverage.
 
-### 1. Multi-Representation & Precision Customization
+### 1. Multi-Model Support
+
+The pipeline is fully decoupled from a single vision architecture and supports arbitrary vision encoders via `--model_name`:
+
+* **Supported Architectures**:
+  * **TIPSv2 (Default: `google/tipsv2-b14`)**: Hugging Face remote-code wrapper or local checkpoints (`--tips_model_path`, `--tips_model_variant`, `--tips_low_res`).
+  * **`timm` Models**: Vision Transformers, Swin, ConvNeXt, ResNet (e.g. `vit_base_patch16_224`, `vit_large_patch14_clip_224.openai`).
+  * **Hugging Face Models**: AutoModel encoders (e.g. `facebook/dinov2-base`, CLIP).
+* **Dynamic Resolution & Transforms**: Input resolution and preprocessing transforms are resolved automatically via `load_vision_model` (e.g. $448 \times 448$ for TIPSv2, $224 \times 224$ for standard `timm` models). Background download workers resize incoming imagery to the model's exact target resolution on the fly.
+
+### 2. Multi-Representation & Precision Customization
 
 Through command-line options and the master `params.yaml`, the pipeline supports customizable representations and storage layouts:
 
 * **`--representation_type`**:
-  * `cls`: Standard CLS token ($768$ dimensions).
-  * `avg_patch`: Attention-weighted average of vision patch tokens ($768$ dimensions).
-  * `cls_avg_patch`: Concatenated CLS + Average Patch tokens ($1536$ dimensions).
+  * `cls`: Standard CLS token (or global average pooled features for models lacking a class token).
+  * `avg_patch`: Average of spatial patch tokens.
+  * `cls_avg_patch`: Concatenated CLS + Average Patch tokens.
 * **`--precision`**:
   * `float32`: High-precision float storage.
   * `float16`: Half-precision float storage. This downcasts the final matrix right before writing to disk, reducing SSD storage footprint by **50%** (saving ~8 GB on a 16 GB database). Slicing/loading routines automatically upcast the segments back to `float32` in RAM for downstream model compatibility.
 
-### 2. Single-Pass Feature Extraction
+### 3. Fast Regular Inference Engine (`extract_regular_embeddings`)
 
-When computing concatenated representations (`cls_avg_patch`), rather than running two separate forward passes, the script uses `extract_model_embeddings` from `src.models.vision_model_inference`. It executes transformer blocks $1$ through $11$ once and branches only at the $12\text{th}$ block, yielding both CLS and value attention patch projections in practically the cost of a single standard forward pass.
+Rather than relying on complex, hook-based benchmark extraction loops, the pipeline uses native forward inference:
+$$\text{image} \longrightarrow \text{transform} \longrightarrow \text{model} \longrightarrow (\text{CLS token}, \text{patch tokens})$$
+
+* **GPU Tensor Acceleration**: All pooling (`avg_patch`), selection (`cls`), and concatenation (`cls_avg_patch`) operations are performed as tensor operations on the GPU prior to host memory transfer.
+* **Zero PCIe Bottleneck**: Eliminates host-transfer of bulky raw patch token sequences across the PCIe bus, saving significant memory bandwidth and avoiding CPU-side reshaping overhead.
 
 ---
 
-## 📐 Decoupled Storage Layout
+## 📐 Decoupled Storage Layout & Model Disambiguation
 
 To prevent Parquet file bloating and RAM starvation, the database uses a decoupled storage architecture:
 
 * **Lightweight Parquet File**: The `.parquet` output holds only metadata columns (Photo ID, Platform, coordinates, H3 cell) and a stable unique `photo_key` column (formatted as `{Platform}_{Photo_ID}`). No heavy vectors are stored inside the Parquet format.
-* **Companion NumPy Binary File**: The embedding vectors are stacked in a dense NumPy matrix and saved to an independent file named `{core_name}_{representation_type}_embeddings.npy` (e.g., `geo_space_cls_avg_patch_embeddings.npy`).
-* **Keys Index File**: A companion index file named `{core_name}_{representation_type}_embeddings.keys.parquet` stores the ordered list of `photo_key` values matching the rows of the `.npy` matrix.
-* **Alignment**: The loader dynamically resolves alignment by matching the metadata's `photo_key` against the companion `keys.parquet` index.
+* **Companion NumPy Binary File**: The embedding vectors are stacked in a dense NumPy matrix and saved to an independent file named:
+  * For TIPSv2 (`google/tipsv2-b14`): `{core_name}_{representation_type}_embeddings.npy` (e.g., `geo_space_cls_avg_patch_embeddings.npy`). Files without a model name suffix represent TIPSv2 by convention for backward compatibility.
+  * For other models: `{core_name}_{model_name}_{representation_type}_embeddings.npy` (e.g., `geo_space_timm_vit_base_patch16_224_cls_embeddings.npy`).
+* **Keys Index File**: A companion index file named `[embedding_filename].keys.parquet` stores the ordered list of `photo_key` values matching the rows of the `.npy` matrix.
+* **Missing Embedding Validation**: If an embedding matrix for a non-TIPSv2 model or a non-CLS representation is not found on disk when resuming, the loader raises a descriptive `FileNotFoundError` providing the exact `python -m src.processing.backfill_embeddings` command required to backfill representations.
 
 ---
 
@@ -85,9 +101,12 @@ To optimize ingestion speed and minimize network bottlenecks:
 
 ## 🤖 Zero-Shot Noise Filters
 
+> [!NOTE]
+> Zero-shot noise filtering requires a multimodal vision-language model equipped with text encoding capabilities (such as TIPSv2 via `encode_text`). For pure vision backbones (e.g. `timm` models or standard DINOv2), text filtering is automatically and gracefully bypassed while spatial and cosine deduplication continue normally.
+
 ### 1. Flickr Indoor/Outdoor Filter
 
-Filters out indoor photos using zero-shot text-image classification with TIPSv2. Images are compared against the prompts:
+Filters out indoor photos using zero-shot text-image classification with TIPSv2 (or any model supporting `encode_text`). Images are compared against the prompts:
 
 * *"An indoor scene"*
 * *"An outdoor landscape or street view"*

@@ -1,6 +1,7 @@
 # params.yaml
 pipeline:
   k_clusters: 40000
+  model_name: "google/tipsv2-b14"  # Vision encoder model (options: "google/tipsv2-b14" or any timm/HF model)
   representation_type: "cls"   # Representation embedding variant (options: "cls", "avg_patch", "cls_avg_patch")
   precision: "float16"         # Stored binary precision (options: "float32", "float16")
   auto_find_k: true  # Mathematically estimate and update k before clustering

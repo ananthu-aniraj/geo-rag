@@ -166,6 +166,12 @@ def main():
         choices=["float32", "float16"],
         help="Stored precision of companion binary file (float32 or float16).",
     )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Optional model name to disambiguate companion embedding files.",
+    )
     args = parser.parse_args()
 
     k_parents = args.k_parents
@@ -193,7 +199,9 @@ def main():
         print("Loading embedding matrix...")
         t0 = time.time()
         embeddings = load_embeddings(
-            args.pkl, representation_type=args.representation_type
+            args.pkl,
+            representation_type=args.representation_type,
+            model_name=args.model_name,
         )
 
         dim = embeddings.shape[1]

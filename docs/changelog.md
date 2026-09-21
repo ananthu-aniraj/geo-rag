@@ -4,10 +4,22 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-09-21
 
 ### Added
 
+- **Fast Regular Vision Inference Optimization**: Added `extract_regular_embeddings` in `src/models/vision_model_inference.py` and integrated it across `src/processing/process_scraped_data.py` and `src/processing/backfill_embeddings.py`.
+  - Replaced overhead of MaskCLIP value-projection and single-pass attention hook extraction with native forward inference (`image -> transforms -> model -> (cls + patch_outs)`).
+  - Performs pooling (`avg_patch`), selection (`cls`), and concatenation (`cls_avg_patch`) directly as GPU tensor operations before CPU host transfers, eliminating PCIe bus bottlenecks and Python-side token reshaping.
+  - Seamlessly handles Hugging Face wrappers (`encode_image`), local TIPSv2 checkpoints (tuple outputs), `timm` models (`forward_features` for both ViT prefix tokens and CNN spatial pooling), and generic TorchVision architectures.
+- **Multi-Model Support in Data Processing Pipeline**: Upgraded `src/processing/process_scraped_data.py` to support dynamic vision models (`timm`, Hugging Face, or local checkpoints) using `load_vision_model`.
+  - Added CLI arguments `--model_name` (default: `"google/tipsv2-b14"`), `--batch_size` / `--tips_batch_size`, `--tips_model_path`, `--tips_model_variant`, and `--tips_low_res`.
+  - Added `model_name` parameter to `config/pipeline/params.yaml` and wired it into `run_full_pipeline.sh`, forwarding `--model_name` to `process_scraped_data`, `validate_cluster_count`, `check_semantic_drift`, and `cluster_images_global`.
+  - Added `--model_name` CLI flags to `src/indexing/cluster_images_global.py`, `src/utils/validate_cluster_count.py`, and `src/utils/check_semantic_drift.py`.
+  - Guarded zero-shot text filtering (`indoor`, `macro`, `sky`) to run when text encoding is available (`hasattr(model, "encode_text")`), gracefully skipping text filtering for pure vision models without crash.
+- **Strict Embedding Disambiguation & Missing Backfill Validation**:
+  - Enforced convention that embedding companion files without a model name suffix represent TIPSv2 (`google/tipsv2-b14`).
+  - Updated `load_embeddings` (`src/utils/io.py`) and `process_scraped_data.py` to disallow non-TIPSv2 models from falsely falling back to legacy TIPSv2 files, raising clear `FileNotFoundError` exceptions with exact `python -m src.processing.backfill_embeddings` commands.
 - **Resume & Streaming Checkpointing in Bulk Image Downloader**: Added `--resume`, `--resume_from`, and `--checkpoint_interval` to `src/utils/download_images.py`.
   - Verifies existing output records on disk and skips all images already present and valid in the output Parquet file.
   - Automatically filters candidate records so only missing images present in the input dataset are downloaded.
@@ -18,6 +30,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Fixed
 
+- **Temporary Path Handling in Companion Embeddings**: Fixed base name resolution in `save_dataframe()` (`src/utils/io.py`) when paths end with `.tmp`, preventing `.parquet` from lingering in companion filenames.
+- **Safe Initialization in Embedding Loader**: Initialized default candidate path before existence checks in `load_embeddings` (`src/utils/io.py`), avoiding `TypeError` on missing model files.
 - **Embedding Retention in Scraped Data Processing**: Preserved precomputed `embedding` column across dataframe subsets in `src/processing/process_scraped_data.py`, preventing silent embedding loss for offline datasets.
 - **Offline Dataset Path Resolution**: Prioritized local `Image_Location` paths over remote URLs for offline datasets in `load_and_preprocess_csv`, and guarded URI schemes from corrupt path concatenation.
 
@@ -25,7 +39,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 - **WildObs Metadata Localized References**: Updated `src/scrapers/scrape_wildobs.py` to drop `Image_URL` and retain only local references (`Image_Location` and `file_name`) when `--download_images` is enabled, ensuring clean offline metadata.
 
-## [1.5.0] - 2026-09-17
+## [0.5.0] - 2026-09-17
 
 ### Added
 
@@ -91,7 +105,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Disambiguated Evaluation Configuration Keys**: Renamed the generic root `eval:` key in `config/evaluation/caption_evals.yaml` to `caption_evals:` and in `config/evaluation/lucas_evals.yaml` to `lucas_evals:`. This eliminates collisions between the two files under `config/local.yaml`, prevents overlap with `lucas:` in `params_offline.yaml`, and retains fallback compatibility for `eval:`.
 - **Standardized Default Platform Identifier**: Changed the default `--platform_name` in `prepare_wildlife_insights.py` from `"SnapshotUSA"` to `"wildlife_insights"` and updated default output resolution to `<data_dir>/<platform_name>_filtered.parquet`.
 
-## [1.4.0] - 2026-09-08
+## [0.4.0] - 2026-09-08
 
 ### Added
 
@@ -132,7 +146,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **KeyError in Relabel Failed Clusters**: Fixed a `KeyError: 'cluster_id'` crash in `src/indexing/relabel_failed_clusters.py` where a leftover `df = pd.DataFrame(data)` re-instantiated a DataFrame from `DataFrameRowWrapper`, overwriting dataset columns. Added unit and integration tests in `tests/test_relabel_failed_clusters.py`.
 - **Markdown List Concatenation in Documentation**: Fixed missing blank lines preceding 49 list blocks across `docs/**/*.md` and `README.md` to prevent item concatenation under standard Python-Markdown parsers.
 
-## [1.3.0] - 2026-09-01
+## [0.3.0] - 2026-09-01
 
 ### Added
 
@@ -174,7 +188,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Streaming Parquet Write Schema ArrowInvalid Crash**: Resolved `ArrowInvalid` type-matching errors in `stream_update_parquet` by dynamically checking schema string widths (`large_string` vs `string`) and casting/aligning copied row groups before writing.
 - **Clustering Argument Overriding Bug**: Fixed a bug in `cluster_images_global.py` where the user-specified `--k_parents` configuration parameter was being silently overridden and reset.
 
-## [1.2.0] - 2026-08-24
+## [0.2.0] - 2026-08-24
 
 ### Added
 
@@ -194,7 +208,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **EUNIS 2024 Code-Based Legend Resolution**: Keyed the EUNIS 2024 legend mapping using the classification `Code` attribute rather than the row `Id` index in `spatial_overlays.py`. This resolves coordinate query errors where pixel codes (e.g. `8000`, `2113`) failed to map, fully restoring Level 1, 2, and 3 geobotanical retrieval evaluations.
 - **Complete Checkpoint Purge**: Updated the cleanup task handler at the end of `process_scraped_data.py` to completely purge companion `*.keys.parquet`, `.npy` files, and lingering `.tmp` files left over from checkpoints upon successful completion.
 
-## [1.1.2] - 2026-08-20
+## [0.1.2] - 2026-08-20
 
 ### Added
 
@@ -215,7 +229,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Robust Boolean Parsing**: Standardized bash wrappers to support both lowercase (`false`) and title-case (`False`) outputs from PyYAML parser lookups, correcting issues where flags like `use_segformer: false` were ignored.
 - **Dynamic Mapillary API Keying in Evaluations**: Replaced hardcoded Mapillary credential variables in the spatial evaluation scripts with dynamic `--mapillary_token` parameters populated from the `.env` environment.
 
-## [1.1.1] - 2026-08-18
+## [0.1.1] - 2026-08-18
 
 ### Added
 
@@ -229,7 +243,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 - **Configurable YAML Model Names**: Exposed `model_name` attributes in the offline and online evaluation configs, enabling seamless comparisons across diverse representation models (like DINOv2, SigLIP, or CLIP via timm) by updating the YAML parameters.
 - **Optional SegFormer Speedup Toggle**: Added `--no_segformer` CLI argument and `use_segformer` YAML configuration support, enabling users to completely bypass SegFormer model loading and background segmentation checks for a massive (several times) performance speedup.
 
-## [1.1.0] - 2026-08-17
+## [0.1.0] - 2026-08-17
 
 ### Added
 

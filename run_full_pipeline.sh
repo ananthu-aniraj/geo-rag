@@ -74,6 +74,9 @@ BASE_NAME=$(get_param "base_name")
 OUTPUT_DIR=$(get_param "output_dir")
 [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR="/home/ananthu/DATA/data_ananthu/full_pipeline_output"
 
+MODEL_NAME=$(get_param "model_name")
+[ -z "$MODEL_NAME" ] && MODEL_NAME="google/tipsv2-b14"
+
 REPRESENTATION_TYPE=$(get_param "representation_type")
 [ -z "$REPRESENTATION_TYPE" ] && REPRESENTATION_TYPE="cls"
 
@@ -182,6 +185,7 @@ python3 -m src.processing.process_scraped_data \
   --checkpoint_interval "$CHECKPOINT_INTERVAL" \
   --tips_batch_size "$BATCH_SIZE" \
   --cell_chunk_size "$CELL_CHUNK_SIZE" \
+  --model_name "$MODEL_NAME" \
   --representation_type "$REPRESENTATION_TYPE" \
   --precision "$PRECISION" \
   --mapillary_token "$MAPILLARY_TOKEN" \
@@ -242,6 +246,8 @@ if [ "$AUTO_FIND_K" = "true" ]; then
       --k_min "$K_MIN" \
       --k_max "$K_MAX" \
       --k_step "$K_STEP" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --model_name "$MODEL_NAME" \
       --update_params \
       --output_plot "$CLUSTER_COUNT_PLOT" \
       --sample_limit 0 \
@@ -270,6 +276,8 @@ if [ -f "$CLUSTERED_PARQUET" ]; then
     DETECTOR_MODE=$(python3 -m src.utils.check_semantic_drift \
       --input "$INPUT_PARQUET" \
       --centroids_parquet "$CLUSTERED_PARQUET" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --model_name "$MODEL_NAME" \
       --k_clusters "$K_CLUSTERS")
 
     if [ "$DETECTOR_MODE" = "assign" ]; then
@@ -297,6 +305,7 @@ if [ "$CLUSTERING_MODE" = "assign" ]; then
       --out "$CLUSTERED_PARQUET.tmp" \
       --clustering_mode assign \
       --centroids_parquet "$CLUSTERED_PARQUET" \
+      --model_name "$MODEL_NAME" \
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --gpu
@@ -306,6 +315,7 @@ else
       --pkl "$INPUT_PARQUET" \
       --k "$K_CLUSTERS" \
       --out "$CLUSTERED_PARQUET" \
+      --model_name "$MODEL_NAME" \
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --gpu

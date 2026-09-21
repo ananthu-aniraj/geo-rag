@@ -95,8 +95,13 @@ def save_dataframe(
                 )
 
         if "embedding" in df.columns:
-            db_dir = os.path.dirname(os.path.abspath(file_path))
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            effective_path = (
+                base_without_tmp
+                if os.path.splitext(file_path)[1].lower() == ".tmp"
+                else file_path
+            )
+            db_dir = os.path.dirname(os.path.abspath(effective_path))
+            base_name = os.path.splitext(os.path.basename(effective_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
             core_name = (
@@ -117,7 +122,7 @@ def save_dataframe(
                     rep_suffix = "cls"
 
             model_suffix = ""
-            if model_name:
+            if model_name and model_name != "google/tipsv2-b14":
                 model_suffix = "_" + model_name.replace("/", "_")
 
             npy_path = os.path.join(
@@ -344,6 +349,8 @@ def load_embeddings(
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
 
+    is_tipsv2 = (model_name is None) or ("tipsv2" in model_name.lower())
+
     def get_npy_path(base, model):
         model_suf = f"_{model.replace('/', '_')}" if model else ""
         if column == "embedding":
@@ -355,7 +362,7 @@ def load_embeddings(
         return os.path.join(db_dir, name)
 
     # 1. Try resolving with model_name if provided
-    npy_path = None
+    npy_path = get_npy_path(base_name, model_name)
     if model_name:
         for b in [base_name, get_core_base_name(base_name)]:
             path = get_npy_path(b, model_name)
@@ -363,15 +370,14 @@ def load_embeddings(
                 npy_path = path
                 break
 
-    # 2. Fallback to model-agnostic (legacy) path resolution
-    if not npy_path:
+    # 2. Fallback to model-agnostic (legacy) path resolution ONLY for TIPSv2 models
+    # (simplifying assumption: if the embedding file does not contain a model name, it's a TIPSv2 model)
+    if not os.path.exists(npy_path) and is_tipsv2:
         for b in [base_name, get_core_base_name(base_name)]:
             path = get_npy_path(b, None)
             if os.path.exists(path):
                 npy_path = path
                 break
-        if not npy_path:
-            npy_path = get_npy_path(base_name, None)
 
     def suffix_matches(filename, req_rep):
         has_cls_avg = "cls_avg_patch" in filename
@@ -392,12 +398,23 @@ def load_embeddings(
     # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet
     if not os.path.exists(npy_path) and "cleaned" in base_name:
         fallback_base = base_name.replace("cleaned", "deduplicated")
-        fallback_name = (
-            f"{fallback_base}.npy"
-            if column == "embedding"
-            else f"{fallback_base}_{column}.npy"
-        )
-        npy_path = os.path.join(db_dir, fallback_name)
+        if model_name:
+            p = get_npy_path(fallback_base, model_name)
+            if os.path.exists(p):
+                npy_path = p
+        if (not npy_path or not os.path.exists(npy_path)) and is_tipsv2:
+            p = get_npy_path(fallback_base, None)
+            if os.path.exists(p):
+                npy_path = p
+            else:
+                fallback_name = (
+                    f"{fallback_base}.npy"
+                    if column == "embedding"
+                    else f"{fallback_base}_{column}.npy"
+                )
+                p_legacy = os.path.join(db_dir, fallback_name)
+                if os.path.exists(p_legacy):
+                    npy_path = p_legacy
 
     # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
     if not os.path.exists(npy_path):
@@ -422,6 +439,19 @@ def load_embeddings(
                         for m in matches
                         if suffix_matches(os.path.basename(m), representation_type)
                     ]
+                # For non-TIPSv2 models, NEVER pick up files without the model name!
+                if not is_tipsv2:
+                    model_clean = model_name.replace("/", "_")
+                    matches = [m for m in matches if model_clean in os.path.basename(m)]
+                elif model_name:
+                    # For TIPSv2 with explicit model name, prefer matching model name if available
+                    model_clean = model_name.replace("/", "_")
+                    model_matches = [
+                        m for m in matches if model_clean in os.path.basename(m)
+                    ]
+                    if model_matches:
+                        matches = model_matches
+
                 if not matches:
                     continue
 
@@ -544,9 +574,20 @@ def load_embeddings(
 
         return emb.astype(np.float32)
 
-    raise FileNotFoundError(
-        f"Could not locate embeddings in parquet schema or matching '{base_name}' in '{db_dir}'"
-    )
+    if not is_tipsv2:
+        raise FileNotFoundError(
+            f"Embeddings for model '{model_name}' (representation '{representation_type}') were not found on disk for '{parquet_path}' in '{db_dir}'. "
+            f"(Note: Embedding files without a model name are assumed to be TIPSv2). "
+            f"Please run 'python -m src.processing.backfill_embeddings --input {parquet_path} --model_name {model_name} --representation_type {representation_type}' "
+            f"to compute and backfill embeddings for this model before proceeding."
+        )
+    else:
+        model_display = model_name or "google/tipsv2-b14"
+        raise FileNotFoundError(
+            f"Embeddings for model '{model_display}' (representation '{representation_type}') were not found on disk for '{parquet_path}' in '{db_dir}'. "
+            f"Please run 'python -m src.processing.backfill_embeddings --input {parquet_path} --model_name {model_display} --representation_type {representation_type}' "
+            f"to compute and backfill embeddings for this representation before proceeding."
+        )
 
 
 # Known censor/placeholder image hashes (e.g. Wildlife Insights "Human in frame" placeholder)
