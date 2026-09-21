@@ -53,6 +53,7 @@ nav:
   - Home: index.md
   - Dataset Guide:
       - Overview: dataset.md
+      - Offline Image Downloader: dataset/download_images.md
       - Publication Roadmap: dataset_publication_roadmap.md
   - Pipeline Architecture:
       - Overview: pipeline.md

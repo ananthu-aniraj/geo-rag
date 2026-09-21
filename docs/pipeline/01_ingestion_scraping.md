@@ -121,6 +121,7 @@ This utility:
 * **Offline Directory Image Migration (`--copy_offline_images`)**: Automatically copies local image files found in `--image_root_dirs` into `--output_dir` (under standard `<platform>/<photo_id>.jpg` directory trees) and updates output dataset paths accordingly.
 * Verifies image binaries via magic-byte checking (`is_valid_image_file`), rejecting any HTML login walls or corrupted streams.
 * Updates metadata records with relative local image file paths (`Image_Location = ./images/<platform>/<photo_id>.jpg`) and license attributes (e.g. CC-BY or CC0).
+* For complete documentation of all flags, resume mechanisms, and companion embedding features, see the [Offline Image Downloader Guide](../dataset/download_images.md).
 
 ##### Step 4: Ingesting into the Core Pipeline
 

@@ -58,6 +58,7 @@ graph TD
    - **Offline Directory Layout**: Offline datasets (e.g. `snapshot_usa_2024`, `iwildcam_subset`) store local assets in structured subfolders (e.g. `images/<platform>/<photo_id>.jpg`) referenced by `Image_Location` in their companion `.parquet` or `.csv` metadata.
    - **Dynamic Local Path Resolution**: During ingestion and evaluations, `resolve_offline_image_path` dynamically resolves local image paths across flat layouts, `train/` folders, platform subdirectories, and nested directory trees.
    - **Automatic Platform Licensing**: Missing licenses for camera trap sensors are automatically backfilled (`CC0` for Snapshot USA, `CDLA-Permissive-1.0` for iWildCam).
+   - **Bulk Downloader Utility**: For details on converting online dataset tables into localized offline directory structures with streaming checkpoints and companion embeddings, see the [Offline Image Downloader Guide](dataset/download_images.md).
 
 ---
 
