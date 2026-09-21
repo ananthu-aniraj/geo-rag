@@ -18,6 +18,11 @@ dvc-ssh
 plotly
 openpyxl
 
+# --- Web Scraping & Ingestion ---
+beautifulsoup4
+playwright
+playwright-stealth
+
 # --- Deep Learning & GPU Operations ---
 # Install these manually matching your CUDA GPU drivers:
 # torch

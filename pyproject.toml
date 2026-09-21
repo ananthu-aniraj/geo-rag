@@ -32,7 +32,10 @@ dependencies = [
     "dvc-ssh",
     "plotly",
     "openpyxl",
-    "timm"
+    "timm",
+    "beautifulsoup4",
+    "playwright",
+    "playwright-stealth"
 ]
 
 [project.optional-dependencies]
