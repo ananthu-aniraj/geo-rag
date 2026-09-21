@@ -107,13 +107,18 @@ PYTHONPATH=. python3 src/utils/download_images.py \
   --input /path/to/snapshot_usa_2024_filtered.parquet \
   --output_dir /path/to/snapshot_usa_2024/images \
   --output /path/to/snapshot_usa_2024/snapshot_usa_2024_metadata.parquet \
-  --threads 24
+  --threads 24 \
+  --resume \
+  --checkpoint_interval 60 \
+  --copy_offline_images
 ```
 
 This utility:
 
-* Queries the Wildlife Insights GraphQL API (`getDataFilePublicDownloadUrl`) to dynamically retrieve signed Google Cloud Storage URLs.
+* Queries the Wildlife Insights GraphQL API (`getDataFilePublicDownloadUrl`) or Mapillary Graph API to dynamically retrieve signed download URLs.
 * Downloads images concurrently with automatic retries, exponential backoff, and atomic temporary writes.
+* **Resume & Stream Checkpointing (`--resume`, `--checkpoint_interval`)**: Skips images already present and verified in the output Parquet file, downloads only the remaining candidate records, and periodically streams incremental updates (Parquet metadata, companion `.npy` embeddings, and `.keys.parquet` index) safely to disk.
+* **Offline Directory Image Migration (`--copy_offline_images`)**: Automatically copies local image files found in `--image_root_dirs` into `--output_dir` (under standard `<platform>/<photo_id>.jpg` directory trees) and updates output dataset paths accordingly.
 * Verifies image binaries via magic-byte checking (`is_valid_image_file`), rejecting any HTML login walls or corrupted streams.
 * Updates metadata records with relative local image file paths (`Image_Location = ./images/<platform>/<photo_id>.jpg`) and license attributes (e.g. CC-BY or CC0).
 

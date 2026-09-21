@@ -6,6 +6,16 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Resume & Streaming Checkpointing in Bulk Image Downloader**: Added `--resume`, `--resume_from`, and `--checkpoint_interval` to `src/utils/download_images.py`.
+  - Verifies existing output records on disk and skips all images already present and valid in the output Parquet file.
+  - Automatically filters candidate records so only missing images present in the input dataset are downloaded.
+  - Periodically streams incremental updates to disk atomically, ensuring metadata, companion `.npy` embeddings, and `.keys.parquet` index remain synchronized and resilient to network dropouts or process termination.
+- **Offline Directory Image Migration**: Added `--copy_offline_images` to `src/utils/download_images.py`.
+  - Automatically copies existing local images discovered across `--image_root_dirs` (or the input directory) into `--output_dir` under standardized platform/photo subpaths (`<platform>/<photo_id>.jpg`).
+  - Rewrites dataset output references (`Image_Location`, `file_name`, and `Image_URL`) to target the copied files in `--output_dir`.
+
 ### Fixed
 
 - **Embedding Retention in Scraped Data Processing**: Preserved precomputed `embedding` column across dataframe subsets in `src/processing/process_scraped_data.py`, preventing silent embedding loss for offline datasets.
