@@ -178,3 +178,133 @@ class TestDownloadImagesResume(unittest.TestCase):
         self.assertEqual(len(df_res), 4)
         for loc in df_res["Image_Location"]:
             self.assertTrue(loc.startswith("./output_images/test_plat/"))
+
+    def test_resume_verify_existing_redownloads_missing(self):
+        # 1. Pre-populate output_parquet with first 2 images
+        plat_dir = os.path.join(self.output_images_dir, "test_plat")
+        os.makedirs(plat_dir, exist_ok=True)
+        img_100 = os.path.join(plat_dir, "100.jpg")
+        img_101 = os.path.join(plat_dir, "101.jpg")
+        shutil.copy2(self.image_paths[0], img_100)
+        shutil.copy2(self.image_paths[1], img_101)
+
+        df_first2 = self.df_input.iloc[:2].copy()
+        df_first2["photo_key"] = ["test_plat_100", "test_plat_101"]
+        df_first2["file_name"] = ["100.jpg", "101.jpg"]
+        df_first2["Image_Location"] = [
+            "./output_images/test_plat/100.jpg",
+            "./output_images/test_plat/101.jpg",
+        ]
+        df_first2["Image_URL"] = df_first2["Image_Location"]
+        save_stream_checkpoint(
+            out_metadata=self.output_parquet,
+            df_combined=df_first2,
+            embeddings_combined=self.input_embs[:2],
+            representation_type="cls",
+            precision="float32",
+        )
+
+        # 2. Delete 100.jpg from disk to simulate missing file
+        os.remove(img_100)
+
+        # 3. Resume WITH --verify_existing
+        downloaded_ids = []
+
+        def mock_download(url, output_path, photo_id, platform, timeout=10):
+            downloaded_ids.append(str(photo_id))
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            img = Image.new("RGB", (10, 10), color="green")
+            img.save(output_path, format="JPEG")
+            return True
+
+        test_args = [
+            "download_images.py",
+            "--input",
+            self.input_parquet,
+            "--output",
+            self.output_parquet,
+            "--output_dir",
+            self.output_images_dir,
+            "--resume",
+            "--verify_existing",
+            "--threads",
+            "2",
+        ]
+
+        with (
+            patch("sys.argv", test_args),
+            patch(
+                "src.utils.download_images.download_image", side_effect=mock_download
+            ),
+        ):
+            main()
+
+        # 100 was missing on disk, 102 and 103 were missing from parquet -> all 3 re-downloaded
+        # 101 was valid on disk -> skipped
+        self.assertEqual(sorted(downloaded_ids), ["100", "102", "103"])
+        df_res = load_dataframe(self.output_parquet)
+        self.assertEqual(len(df_res), 4)
+        embs_res = load_embeddings(self.output_parquet, representation_type="cls")
+        self.assertEqual(len(embs_res), 4)
+
+    def test_fast_resume_skips_disk_verification(self):
+        # 1. Pre-populate output_parquet with first 2 images
+        plat_dir = os.path.join(self.output_images_dir, "test_plat")
+        os.makedirs(plat_dir, exist_ok=True)
+        img_100 = os.path.join(plat_dir, "100.jpg")
+        img_101 = os.path.join(plat_dir, "101.jpg")
+        shutil.copy2(self.image_paths[0], img_100)
+        shutil.copy2(self.image_paths[1], img_101)
+
+        df_first2 = self.df_input.iloc[:2].copy()
+        df_first2["photo_key"] = ["test_plat_100", "test_plat_101"]
+        df_first2["file_name"] = ["100.jpg", "101.jpg"]
+        df_first2["Image_Location"] = [
+            "./output_images/test_plat/100.jpg",
+            "./output_images/test_plat/101.jpg",
+        ]
+        df_first2["Image_URL"] = df_first2["Image_Location"]
+        save_stream_checkpoint(
+            out_metadata=self.output_parquet,
+            df_combined=df_first2,
+            embeddings_combined=self.input_embs[:2],
+            representation_type="cls",
+            precision="float32",
+        )
+
+        # 2. Delete 100.jpg from disk to simulate missing file
+        os.remove(img_100)
+
+        # 3. Resume WITHOUT --verify_existing (default fast resume)
+        downloaded_ids = []
+
+        def mock_download(url, output_path, photo_id, platform, timeout=10):
+            downloaded_ids.append(str(photo_id))
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            img = Image.new("RGB", (10, 10), color="green")
+            img.save(output_path, format="JPEG")
+            return True
+
+        test_args = [
+            "download_images.py",
+            "--input",
+            self.input_parquet,
+            "--output",
+            self.output_parquet,
+            "--output_dir",
+            self.output_images_dir,
+            "--resume",
+            "--threads",
+            "2",
+        ]
+
+        with (
+            patch("sys.argv", test_args),
+            patch(
+                "src.utils.download_images.download_image", side_effect=mock_download
+            ),
+        ):
+            main()
+
+        # Fast resume trusts output_parquet: only 102 and 103 are downloaded, 100 is skipped
+        self.assertEqual(sorted(downloaded_ids), ["102", "103"])

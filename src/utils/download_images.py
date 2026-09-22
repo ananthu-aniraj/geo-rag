@@ -390,6 +390,11 @@ def main():
         help="Path to an existing output Parquet file to resume from (defaults to --output or [input_base]_offline.parquet if --resume is set).",
     )
     parser.add_argument(
+        "--verify_existing",
+        action="store_true",
+        help="Re-verify on disk that all existing records in the resume file are present and valid image files (by default, resume trusts records already written to the resume file for fast resumption).",
+    )
+    parser.add_argument(
         "--checkpoint_interval",
         type=int,
         default=60,
@@ -557,85 +562,133 @@ def main():
                 print(f" -> No companion embeddings found for resume file ({e}).")
 
             # Verify existing records on disk
-            valid_existing_mask = []
-            verified_locations = []
-            verified_filenames = []
-
-            for row in df_existing.itertuples():
-                loc = getattr(row, "Image_Location", None) or getattr(
-                    row, "Image_URL", ""
-                )
-                photo_id = getattr(row, "Photo_ID", "")
-                platform = getattr(row, "Platform", "")
-                platform_str = str(platform).strip().lower() or "unknown"
-                photo_str = str(photo_id).strip()
-                if photo_str.endswith(".0"):
-                    photo_str = photo_str[:-2]
-                target_name = f"{photo_str}.jpg"
-                target_path = os.path.join(args.output_dir, platform_str, target_name)
-
-                # Resolve path on disk
-                abs_p = (
-                    os.path.abspath(os.path.join(out_dir, loc))
-                    if loc and not os.path.isabs(loc)
-                    else loc
-                )
-                valid = bool(abs_p and is_valid_image_file(abs_p))
-
-                if valid and args.copy_offline_images:
-                    if os.path.abspath(abs_p) != os.path.abspath(target_path):
-                        if not (
-                            os.path.exists(target_path)
-                            and is_valid_image_file(target_path)
-                        ):
-                            os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                            shutil.copy2(abs_p, target_path)
-                        abs_p = target_path
-
-                if valid and os.path.exists(abs_p):
-                    valid_existing_mask.append(True)
-                    try:
-                        rel_p = "./" + os.path.relpath(abs_p, out_dir)
-                    except Exception:
-                        rel_p = abs_p
-                    verified_locations.append(rel_p)
-                    verified_filenames.append(os.path.basename(abs_p))
-                else:
-                    valid_existing_mask.append(False)
-
-            valid_mask_arr = np.array(valid_existing_mask, dtype=bool)
-            if not valid_mask_arr.all():
-                num_inv = int(np.sum(~valid_mask_arr))
+            if args.verify_existing:
                 print(
-                    f" -> Found {num_inv:,} records in resume file with missing/corrupt image files on disk. These will be re-downloaded."
+                    f" -> Verifying {len(df_existing):,} existing records on disk (--verify_existing enabled)..."
                 )
-                df_existing = df_existing.iloc[valid_mask_arr].reset_index(drop=True)
-                if existing_embeddings is not None:
-                    existing_embeddings = existing_embeddings[valid_mask_arr]
-                verified_locations = [
-                    loc for loc, v in zip(verified_locations, valid_mask_arr) if v
-                ]
-                verified_filenames = [
-                    fn for fn, v in zip(verified_filenames, valid_mask_arr) if v
-                ]
 
-            df_existing["Image_Location"] = verified_locations
-            df_existing["file_name"] = verified_filenames
-            if "Image_URL" in df_existing.columns:
-                df_existing["Image_URL"] = verified_locations
-            if "url" in df_existing.columns:
-                df_existing["url"] = verified_locations
+                def check_existing_row(row):
+                    loc = getattr(row, "Image_Location", None) or getattr(
+                        row, "Image_URL", ""
+                    )
+                    photo_id = getattr(row, "Photo_ID", "")
+                    platform = getattr(row, "Platform", "")
+                    platform_str = str(platform).strip().lower() or "unknown"
+                    photo_str = str(photo_id).strip()
+                    if photo_str.endswith(".0"):
+                        photo_str = photo_str[:-2]
+                    target_name = f"{photo_str}.jpg"
+                    target_path = os.path.join(
+                        args.output_dir, platform_str, target_name
+                    )
 
-            existing_keys = set(df_existing["photo_key"].dropna().astype(str))
-            print(
-                f" -> Resuming: {len(existing_keys):,} valid images verified in output Parquet ({resume_file}). Skipping these."
-            )
+                    # Resolve path on disk
+                    abs_p = (
+                        os.path.abspath(os.path.join(out_dir, loc))
+                        if loc and not os.path.isabs(loc)
+                        else loc
+                    )
+                    valid = bool(abs_p and is_valid_image_file(abs_p))
+
+                    if valid and args.copy_offline_images:
+                        if os.path.abspath(abs_p) != os.path.abspath(target_path):
+                            if not (
+                                os.path.exists(target_path)
+                                and is_valid_image_file(target_path)
+                            ):
+                                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                                shutil.copy2(abs_p, target_path)
+                            abs_p = target_path
+
+                    if valid and os.path.exists(abs_p):
+                        try:
+                            rel_p = "./" + os.path.relpath(abs_p, out_dir)
+                        except Exception:
+                            rel_p = abs_p
+                        return True, rel_p, os.path.basename(abs_p)
+                    return False, None, None
+
+                verify_threads = min(args.threads, 32)
+                valid_existing_mask = []
+                verified_locations = []
+                verified_filenames = []
+
+                if len(df_existing) > 500 and verify_threads > 1:
+                    with concurrent.futures.ThreadPoolExecutor(
+                        max_workers=verify_threads
+                    ) as executor:
+                        results = list(
+                            tqdm(
+                                executor.map(
+                                    check_existing_row,
+                                    df_existing.itertuples(index=False),
+                                    chunksize=256,
+                                ),
+                                total=len(df_existing),
+                                desc="Verifying existing records on disk",
+                            )
+                        )
+                    for is_valid, rel_p, fn in results:
+                        valid_existing_mask.append(is_valid)
+                        verified_locations.append(rel_p)
+                        verified_filenames.append(fn)
+                else:
+                    for row in tqdm(
+                        df_existing.itertuples(index=False),
+                        total=len(df_existing),
+                        desc="Verifying existing records on disk",
+                    ):
+                        is_valid, rel_p, fn = check_existing_row(row)
+                        valid_existing_mask.append(is_valid)
+                        verified_locations.append(rel_p)
+                        verified_filenames.append(fn)
+
+                valid_mask_arr = np.array(valid_existing_mask, dtype=bool)
+                if not valid_mask_arr.all():
+                    num_inv = int(np.sum(~valid_mask_arr))
+                    print(
+                        f" -> Found {num_inv:,} records in resume file with missing/corrupt image files on disk. These will be re-downloaded."
+                    )
+                    df_existing = df_existing.iloc[valid_mask_arr].reset_index(
+                        drop=True
+                    )
+                    if existing_embeddings is not None:
+                        existing_embeddings = existing_embeddings[valid_mask_arr]
+                    verified_locations = [
+                        loc for loc, v in zip(verified_locations, valid_mask_arr) if v
+                    ]
+                    verified_filenames = [
+                        fn for fn, v in zip(verified_filenames, valid_mask_arr) if v
+                    ]
+
+                df_existing["Image_Location"] = verified_locations
+                df_existing["file_name"] = verified_filenames
+                if "Image_URL" in df_existing.columns:
+                    df_existing["Image_URL"] = verified_locations
+                if "url" in df_existing.columns:
+                    df_existing["url"] = verified_locations
+
+                existing_keys = set(df_existing["photo_key"].dropna().astype(str))
+                print(
+                    f" -> Resuming: {len(existing_keys):,} valid images verified in output Parquet ({resume_file}). Skipping these."
+                )
+            else:
+                existing_keys = set(df_existing["photo_key"].dropna().astype(str))
+                print(
+                    f" -> Fast resume: {len(existing_keys):,} existing records loaded from output Parquet ({resume_file}). Skipping disk verification."
+                )
+                print(
+                    "    (Tip: Use --verify_existing if you wish to re-verify all image files on disk)."
+                )
         else:
             print(
                 f" -> Resume requested, but output file '{resume_file}' does not exist yet. Starting fresh download."
             )
 
     # 5. Filter input DataFrame to remaining candidate images
+    print(
+        f"\nFiltering input dataset ({len(df):,} records) against existing resume keys..."
+    )
     remaining_indices = [
         i for i, pk in enumerate(df["photo_key"]) if pk not in existing_keys
     ]
@@ -717,7 +770,13 @@ def main():
                     (i, existing_path, rel_p, os.path.basename(existing_path))
                 )
         else:
-            if existing_path and os.path.isfile(existing_path):
+            if (
+                existing_path
+                and os.path.isfile(existing_path)
+                and os.path.abspath(existing_path).startswith(
+                    os.path.abspath(args.output_dir)
+                )
+            ):
                 try:
                     os.remove(existing_path)
                 except Exception:

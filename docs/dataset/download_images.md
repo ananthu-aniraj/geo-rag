@@ -47,7 +47,8 @@ PYTHONPATH=. python3 src/utils/download_images.py \
   --threads 32
 ```
 
-* **Candidate Filtering**: Automatically checks `large_dataset_offline.parquet` and skips all records where local image files already exist and pass binary validation.
+* **Instant Candidate Filtering**: By default, `--resume` uses fast resumption by checking `photo_key` identifiers already recorded in the output Parquet file. For multi-million-row datasets, this avoids hours of redundant disk I/O and skips previously processed records in seconds.
+* **Optional Disk Re-Verification (`--verify_existing`)**: If you suspect files on disk were corrupted or deleted, pass `--verify_existing` to perform multi-threaded disk validation with real-time progress bars and re-download missing files.
 * **Streaming Updates**: Saves incremental progress every 60 seconds.
 
 ### 3. Migrating & Consolidating Existing Local Images
@@ -111,6 +112,7 @@ PYTHONPATH=. python3 src/utils/download_images.py \
 | `--threads` | `int` | `16` | Number of concurrent download worker threads. |
 | `--resume` | `flag` | `False` | Resume downloading by skipping images already present in the output Parquet file. |
 | `--resume_from` | `str` | `None` | Explicit path to existing output Parquet file to resume from. |
+| `--verify_existing` | `flag` | `False` | Re-verify on disk that existing records in resume file exist and are valid (by default, fast resume trusts existing records). |
 | `--checkpoint_interval`| `int` | `60` | Interval in seconds for atomic streaming checkpoints (set to `0` to disable). |
 | `--copy_offline_images`| `flag` | `False` | Copy existing offline images found in `--image_root_dirs` into `--output_dir`. |
 | `--image_root_dirs` | `str` (list) | `None` | Local directories to search for existing offline images. |
