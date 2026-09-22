@@ -397,7 +397,7 @@ def main():
     parser.add_argument(
         "--checkpoint_interval",
         type=int,
-        default=60,
+        default=18000,
         help="Interval in seconds for periodic streaming updates / checkpoints to the output Parquet file during downloads (default: 60, set to 0 to disable periodic streaming).",
     )
     parser.add_argument(
