@@ -379,3 +379,83 @@ class TestDownloadImagesResume(unittest.TestCase):
 
         # Fast resume trusts output_parquet: only 102 and 103 are downloaded, 100 is skipped
         self.assertEqual(sorted(downloaded_ids), ["102", "103"])
+
+    def test_resume_copy_offline_images_unifies_existing_records(self):
+        # 1. Place offline images in offline_images_dir
+        offline_img_100 = os.path.join(self.offline_images_dir, "100.jpg")
+        offline_img_101 = os.path.join(self.offline_images_dir, "101.jpg")
+        shutil.copy2(self.image_paths[0], offline_img_100)
+        shutil.copy2(self.image_paths[1], offline_img_101)
+
+        # 2. Output parquet has 100 and 101 recorded, but files are NOT yet in output_images_dir
+        df_first2 = self.df_input.iloc[:2].copy()
+        df_first2["photo_key"] = ["test_plat_100", "test_plat_101"]
+        df_first2["file_name"] = ["old_100.jpg", "old_101.jpg"]
+        df_first2["Image_Location"] = [
+            offline_img_100,
+            offline_img_101,
+        ]
+        df_first2["Image_URL"] = [
+            "https://example.com/orig_100.jpg",
+            "https://example.com/orig_101.jpg",
+        ]
+        save_stream_checkpoint(
+            out_metadata=self.output_parquet,
+            df_combined=df_first2,
+            embeddings_combined=self.input_embs[:2],
+            representation_type="cls",
+            precision="float32",
+        )
+
+        downloaded_ids = []
+
+        def mock_download(url, output_path, photo_id, platform, timeout=10):
+            downloaded_ids.append(str(photo_id))
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            img = Image.new("RGB", (10, 10), color="blue")
+            img.save(output_path, format="JPEG")
+            return True
+
+        test_args = [
+            "download_images.py",
+            "--input",
+            self.input_parquet,
+            "--output",
+            self.output_parquet,
+            "--output_dir",
+            self.output_images_dir,
+            "--image_root_dirs",
+            self.offline_images_dir,
+            "--copy_offline_images",
+            "--resume",
+            "--threads",
+            "2",
+        ]
+
+        with (
+            patch("sys.argv", test_args),
+            patch(
+                "src.utils.download_images.download_image",
+                side_effect=mock_download,
+            ),
+        ):
+            main()
+
+        # Existing offline images 100 and 101 must be copied to output_images_dir
+        target_100 = os.path.join(self.output_images_dir, "test_plat", "100.jpg")
+        target_101 = os.path.join(self.output_images_dir, "test_plat", "101.jpg")
+        self.assertTrue(os.path.exists(target_100))
+        self.assertTrue(os.path.exists(target_101))
+
+        # Remaining images 102 and 103 were downloaded
+        self.assertEqual(sorted(downloaded_ids), ["102", "103"])
+
+        # Output parquet metadata must be unified with rel paths
+        df_res = load_dataframe(self.output_parquet)
+        self.assertEqual(len(df_res), 4)
+        for loc in df_res["Image_Location"][:2]:
+            self.assertTrue(loc.startswith("./output_images/test_plat/"))
+        # Original Image_URL preserved without --overwrite_image_url
+        self.assertEqual(
+            df_res["Image_URL"].iloc[0], "https://example.com/orig_100.jpg"
+        )

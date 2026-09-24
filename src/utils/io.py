@@ -707,6 +707,12 @@ def build_offline_image_index(image_root_dirs, extensions=None):
                     if sub_key.lower() not in index:
                         index[sub_key.lower()] = full_path
 
+                    stem_sub_key = f"{parts[-2]}/{stem}"
+                    if stem_sub_key not in index:
+                        index[stem_sub_key] = full_path
+                    if stem_sub_key.lower() not in index:
+                        index[stem_sub_key.lower()] = full_path
+
     return index
 
 
@@ -720,20 +726,31 @@ def resolve_offline_image_path(
     Returns the absolute path if found, otherwise None.
     """
     # 0. Check precomputed recursive image_index first if provided
-    if image_index:
+    if image_index is not None:
         # A. Try platform + photo_id
         if photo_id:
             photo_str = str(photo_id).strip()
             if photo_str.endswith(".0"):
                 photo_str = photo_str[:-2]
+
+            # Fast direct ID check in index
+            if photo_str in image_index:
+                return image_index[photo_str]
+            photo_str_lower = photo_str.lower()
+            if photo_str_lower in image_index:
+                return image_index[photo_str_lower]
+
             if platform:
                 plat_str = str(platform).strip().lower()
-                for ext in ["", ".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
-                    candidate = f"{plat_str}/{photo_str}{ext}".lower()
+                plat_key = f"{plat_str}/{photo_str_lower}"
+                if plat_key in image_index:
+                    return image_index[plat_key]
+                for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
+                    candidate = f"{plat_key}{ext.lower()}"
                     if candidate in image_index:
                         return image_index[candidate]
 
-            for ext in ["", ".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
+            for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
                 candidate = f"{photo_str}{ext}"
                 if candidate in image_index:
                     return image_index[candidate]
@@ -746,20 +763,42 @@ def resolve_offline_image_path(
             clean_url = clean_url.strip()
             if clean_url in image_index:
                 return image_index[clean_url]
-            if clean_url.lower() in image_index:
-                return image_index[clean_url.lower()]
+            clean_url_lower = clean_url.lower()
+            if clean_url_lower in image_index:
+                return image_index[clean_url_lower]
 
-            basename = os.path.basename(clean_url)
+            url_no_params = clean_url.split("?")[0].split("#")[0]
+            if url_no_params != clean_url:
+                if url_no_params in image_index:
+                    return image_index[url_no_params]
+                if url_no_params.lower() in image_index:
+                    return image_index[url_no_params.lower()]
+
+            basename = os.path.basename(url_no_params)
             if basename in image_index:
                 return image_index[basename]
-            if basename.lower() in image_index:
-                return image_index[basename.lower()]
+            basename_lower = basename.lower()
+            if basename_lower in image_index:
+                return image_index[basename_lower]
 
             stem = os.path.splitext(basename)[0]
             if stem in image_index:
                 return image_index[stem]
-            if stem.lower() in image_index:
-                return image_index[stem.lower()]
+            stem_lower = stem.lower()
+            if stem_lower in image_index:
+                return image_index[stem_lower]
+
+            parts = url_no_params.replace("\\", "/").split("/")
+            if len(parts) > 1:
+                sub_key = "/".join(parts[-2:])
+                if sub_key in image_index:
+                    return image_index[sub_key]
+                if sub_key.lower() in image_index:
+                    return image_index[sub_key.lower()]
+
+        # When precomputed image_index is provided, image_root_dirs have been fully indexed.
+        # Avoid expensive fall-through disk checks on non-matching records.
+        return None
 
     if not image_root_dirs:
         return None
