@@ -648,12 +648,119 @@ def is_valid_image_file(filepath_or_bytes, reject_placeholders=True):
     return False
 
 
-def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=None):
+def build_offline_image_index(image_root_dirs, extensions=None):
     """
-    Resolves an image URL/ID to a local path on disk by checking flat files,
-    train/ folders, and nested GLDv2 directory structures.
+    Recursively scans image_root_dirs to build a fast in-memory lookup index
+    supporting arbitrary nested directory structures.
+
+    Returns a dict mapping keys (exact filenames, stems, relative subpaths,
+    and platform-qualified stems) to absolute file paths on disk.
+    """
+    if not image_root_dirs:
+        return {}
+
+    dirs = [image_root_dirs] if isinstance(image_root_dirs, str) else image_root_dirs
+    if extensions is None:
+        extensions = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".tif",
+            ".tiff",
+            ".gif",
+            ".bmp",
+        }
+
+    index = {}
+
+    for d in dirs:
+        if not d or not os.path.exists(d):
+            continue
+        abs_d = os.path.abspath(d)
+        for root, _, files in os.walk(abs_d):
+            for fn in files:
+                ext = os.path.splitext(fn)[1].lower()
+                if ext not in extensions:
+                    continue
+                full_path = os.path.join(root, fn)
+                stem = os.path.splitext(fn)[0]
+                rel_path = os.path.relpath(full_path, abs_d)
+
+                # Store direct filename and stem
+                for k in [fn, fn.lower(), stem, stem.lower()]:
+                    if k not in index:
+                        index[k] = full_path
+
+                # Store relative subpath
+                rel_clean = rel_path.replace("\\", "/")
+                for k in [rel_clean, rel_clean.lower()]:
+                    if k not in index:
+                        index[k] = full_path
+
+                # Subpath components (e.g. "site_A/deployment_1/photo_999.JPG")
+                parts = rel_clean.split("/")
+                if len(parts) > 1:
+                    sub_key = "/".join(parts[-2:])
+                    if sub_key not in index:
+                        index[sub_key] = full_path
+                    if sub_key.lower() not in index:
+                        index[sub_key.lower()] = full_path
+
+    return index
+
+
+def resolve_offline_image_path(
+    url, image_root_dirs, photo_id=None, platform=None, image_index=None
+):
+    """
+    Resolves an image URL/ID to a local path on disk by checking an optional
+    precomputed recursive image_index, flat files, train/ folders, and nested
+    directory structures.
     Returns the absolute path if found, otherwise None.
     """
+    # 0. Check precomputed recursive image_index first if provided
+    if image_index:
+        # A. Try platform + photo_id
+        if photo_id:
+            photo_str = str(photo_id).strip()
+            if photo_str.endswith(".0"):
+                photo_str = photo_str[:-2]
+            if platform:
+                plat_str = str(platform).strip().lower()
+                for ext in ["", ".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
+                    candidate = f"{plat_str}/{photo_str}{ext}".lower()
+                    if candidate in image_index:
+                        return image_index[candidate]
+
+            for ext in ["", ".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]:
+                candidate = f"{photo_str}{ext}"
+                if candidate in image_index:
+                    return image_index[candidate]
+                if candidate.lower() in image_index:
+                    return image_index[candidate.lower()]
+
+        # B. Try url
+        if url and isinstance(url, str):
+            clean_url = url.split("://")[1] if "://" in url else url
+            clean_url = clean_url.strip()
+            if clean_url in image_index:
+                return image_index[clean_url]
+            if clean_url.lower() in image_index:
+                return image_index[clean_url.lower()]
+
+            basename = os.path.basename(clean_url)
+            if basename in image_index:
+                return image_index[basename]
+            if basename.lower() in image_index:
+                return image_index[basename.lower()]
+
+            stem = os.path.splitext(basename)[0]
+            if stem in image_index:
+                return image_index[stem]
+            if stem.lower() in image_index:
+                return image_index[stem.lower()]
+
     if not image_root_dirs:
         return None
 
@@ -663,8 +770,8 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
             continue
 
         # 0. Try direct relative path join first
-        p_direct = os.path.join(d, url)
-        if os.path.exists(p_direct):
+        p_direct = os.path.join(d, url) if url else None
+        if p_direct and os.path.exists(p_direct):
             return os.path.abspath(p_direct)
 
         # A. Try direct lookup using Photo_ID (flat file, train/ folder, or nested)
@@ -709,28 +816,28 @@ def resolve_offline_image_path(url, image_root_dirs, photo_id=None, platform=Non
                         return os.path.abspath(p_nested_train)
 
         # B. Fallback to URL basename lookup
-        # Strip protocol if present
-        clean_url = url
-        if "://" in url:
-            clean_url = url.split("://")[1]
-        basename = os.path.basename(clean_url)
+        if url and isinstance(url, str):
+            clean_url = url
+            if "://" in url:
+                clean_url = url.split("://")[1]
+            basename = os.path.basename(clean_url)
 
-        basenames = [basename]
-        if "." not in basename:
-            basenames.extend(
-                [
-                    f"{basename}{ext}"
-                    for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]
-                ]
-            )
+            basenames = [basename]
+            if "." not in basename:
+                basenames.extend(
+                    [
+                        f"{basename}{ext}"
+                        for ext in [".jpg", ".jpeg", ".png", ".webp", ".JPG", ".JPEG"]
+                    ]
+                )
 
-        for b in basenames:
-            p_base = os.path.join(d, b)
-            if os.path.exists(p_base):
-                return os.path.abspath(p_base)
-            p_base_train = os.path.join(d, "train", b)
-            if os.path.exists(p_base_train):
-                return os.path.abspath(p_base_train)
+            for b in basenames:
+                p_base = os.path.join(d, b)
+                if os.path.exists(p_base):
+                    return os.path.abspath(p_base)
+                p_base_train = os.path.join(d, "train", b)
+                if os.path.exists(p_base_train):
+                    return os.path.abspath(p_base_train)
 
     return None
 

@@ -17,6 +17,7 @@ from urllib3.util import Retry
 
 from src.utils.io import (
     KNOWN_PLACEHOLDER_MD5_HASHES,
+    build_offline_image_index,
     is_valid_image_file,
     load_dataframe,
     load_embeddings,
@@ -406,6 +407,11 @@ def main():
         help="Copy existing offline images found in --image_root_dirs into --output_dir and update their paths in the output dataset.",
     )
     parser.add_argument(
+        "--overwrite_image_url",
+        action="store_true",
+        help="Overwrite Image_URL with Image_Location. By default, the original remote Image_URL from the input dataset is preserved.",
+    )
+    parser.add_argument(
         "--wildlife_cookie",
         type=str,
         default=None,
@@ -519,6 +525,17 @@ def main():
                     f"Error: Shape mismatch. Metadata has {len(df)} rows, but embeddings has {len(embeddings)} rows."
                 )
                 sys.exit(1)
+
+    # Build recursive offline index across image_root_dirs if provided
+    image_index = None
+    if args.image_root_dirs:
+        print(
+            f"\nIndexing {len(args.image_root_dirs)} image root directories for offline resolution (recursive)..."
+        )
+        image_index = build_offline_image_index(args.image_root_dirs)
+        print(
+            f" -> Indexed {len(image_index):,} offline image lookup keys across root directories."
+        )
 
     # 4. Check for existing output / resume
     is_resuming = args.resume or (args.resume_from is not None)
@@ -663,10 +680,11 @@ def main():
 
                 df_existing["Image_Location"] = verified_locations
                 df_existing["file_name"] = verified_filenames
-                if "Image_URL" in df_existing.columns:
-                    df_existing["Image_URL"] = verified_locations
-                if "url" in df_existing.columns:
-                    df_existing["url"] = verified_locations
+                if args.overwrite_image_url:
+                    if "Image_URL" in df_existing.columns:
+                        df_existing["Image_URL"] = verified_locations
+                    if "url" in df_existing.columns:
+                        df_existing["url"] = verified_locations
 
                 existing_keys = set(df_existing["photo_key"].dropna().astype(str))
                 print(
@@ -680,6 +698,77 @@ def main():
                 print(
                     "    (Tip: Use --verify_existing if you wish to re-verify all image files on disk)."
                 )
+
+                # If copy_offline_images is requested on resume, ensure existing records matching image_root_dirs are unified in output_dir
+                if args.copy_offline_images and image_index:
+                    to_copy_from_existing = []
+                    for row in df_existing.itertuples():
+                        pid = getattr(row, "Photo_ID", "")
+                        plat = getattr(row, "Platform", "")
+                        plat_str = str(plat).strip().lower() or "unknown"
+                        p_str = str(pid).strip()
+                        if p_str.endswith(".0"):
+                            p_str = p_str[:-2]
+                        target_name = f"{p_str}.jpg"
+                        target_path = os.path.join(
+                            args.output_dir, plat_str, target_name
+                        )
+
+                        # Only copy if target does not already exist
+                        if not (
+                            os.path.exists(target_path)
+                            and is_valid_image_file(target_path)
+                        ):
+                            loc = getattr(row, "Image_Location", None) or getattr(
+                                row, "Image_URL", ""
+                            )
+                            src_path = resolve_offline_image_path(
+                                loc,
+                                args.image_root_dirs,
+                                photo_id=pid,
+                                platform=plat,
+                                image_index=image_index,
+                            )
+                            if src_path and is_valid_image_file(src_path):
+                                try:
+                                    rel_target_path = "./" + os.path.relpath(
+                                        target_path, out_dir
+                                    )
+                                except Exception:
+                                    rel_target_path = target_path
+                                to_copy_from_existing.append(
+                                    (
+                                        src_path,
+                                        target_path,
+                                        rel_target_path,
+                                        target_name,
+                                    )
+                                )
+
+                    if to_copy_from_existing:
+                        print(
+                            f"\nCopying {len(to_copy_from_existing):,} offline images for existing resume records into {args.output_dir}..."
+                        )
+
+                        def copy_res_worker(item):
+                            src, dst, rel_p, fn = item
+                            os.makedirs(os.path.dirname(dst), exist_ok=True)
+                            if not (os.path.exists(dst) and is_valid_image_file(dst)):
+                                shutil.copy2(src, dst)
+                            return dst
+
+                        with concurrent.futures.ThreadPoolExecutor(
+                            max_workers=min(args.threads, 32)
+                        ) as executor:
+                            list(
+                                tqdm(
+                                    executor.map(
+                                        copy_res_worker, to_copy_from_existing
+                                    ),
+                                    total=len(to_copy_from_existing),
+                                    desc="Copying existing offline images",
+                                )
+                            )
         else:
             print(
                 f" -> Resume requested, but output file '{resume_file}' does not exist yet. Starting fresh download."
@@ -717,9 +806,6 @@ def main():
         check_dirs.extend(args.image_root_dirs)
     if args.output_dir not in check_dirs:
         check_dirs.append(args.output_dir)
-    in_dir = os.path.dirname(os.path.abspath(args.input))
-    if in_dir not in check_dirs:
-        check_dirs.append(in_dir)
 
     offline_to_copy = []
     offline_ready = []
@@ -748,15 +834,32 @@ def main():
             rel_target_path = target_path
 
         existing_path = resolve_offline_image_path(
-            url, check_dirs, photo_id=photo_id, platform=platform
+            url,
+            check_dirs,
+            photo_id=photo_id,
+            platform=platform,
+            image_index=image_index,
         )
 
         if existing_path and is_valid_image_file(existing_path):
             if args.copy_offline_images:
                 if os.path.abspath(existing_path) != os.path.abspath(target_path):
-                    offline_to_copy.append(
-                        (i, existing_path, target_path, rel_target_path, output_name)
-                    )
+                    if not (
+                        os.path.exists(target_path) and is_valid_image_file(target_path)
+                    ):
+                        offline_to_copy.append(
+                            (
+                                i,
+                                existing_path,
+                                target_path,
+                                rel_target_path,
+                                output_name,
+                            )
+                        )
+                    else:
+                        offline_ready.append(
+                            (i, target_path, rel_target_path, output_name)
+                        )
                 else:
                     offline_ready.append(
                         (i, existing_path, rel_target_path, output_name)
@@ -834,8 +937,9 @@ def main():
         df_offline = df.iloc[offline_indices].copy()
         df_offline["Image_Location"] = [item[2] for item in offline_ready]
         df_offline["file_name"] = [item[3] for item in offline_ready]
-        df_offline["Image_URL"] = df_offline["Image_Location"]
-        if "url" in df_offline.columns:
+        if "Image_URL" not in df_offline.columns or args.overwrite_image_url:
+            df_offline["Image_URL"] = df_offline["Image_Location"]
+        if "url" in df_offline.columns and args.overwrite_image_url:
             df_offline["url"] = df_offline["Image_Location"]
 
         offline_embs = embeddings[offline_indices] if embeddings is not None else None
@@ -957,8 +1061,9 @@ def main():
             df_batch = df.iloc[batch_indices].copy()
             df_batch["Image_Location"] = [item[7] for item in pending_downloaded]
             df_batch["file_name"] = [item[8] for item in pending_downloaded]
-            df_batch["Image_URL"] = df_batch["Image_Location"]
-            if "url" in df_batch.columns:
+            if "Image_URL" not in df_batch.columns or args.overwrite_image_url:
+                df_batch["Image_URL"] = df_batch["Image_Location"]
+            if "url" in df_batch.columns and args.overwrite_image_url:
                 df_batch["url"] = df_batch["Image_Location"]
 
             batch_embs = embeddings[batch_indices] if embeddings is not None else None

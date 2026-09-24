@@ -178,6 +178,77 @@ class TestDownloadImagesResume(unittest.TestCase):
         self.assertEqual(len(df_res), 4)
         for loc in df_res["Image_Location"]:
             self.assertTrue(loc.startswith("./output_images/test_plat/"))
+        # Verify original remote Image_URL was preserved
+        self.assertEqual(
+            list(df_res["Image_URL"]),
+            [
+                "https://example.com/100.jpg",
+                "https://example.com/101.jpg",
+                "https://example.com/102.jpg",
+                "https://example.com/103.jpg",
+            ],
+        )
+
+    def test_copy_offline_images_nested_folders(self):
+        # Create nested folders in offline_images_dir:
+        # site_A/cam_1/100.jpg
+        # deep/level2/level3/101.jpg
+        # custom_sub/102.jpg
+        # 103.jpg (flat)
+        nested_dir1 = os.path.join(self.offline_images_dir, "site_A", "cam_1")
+        nested_dir2 = os.path.join(self.offline_images_dir, "deep", "level2", "level3")
+        nested_dir3 = os.path.join(self.offline_images_dir, "custom_sub")
+        os.makedirs(nested_dir1, exist_ok=True)
+        os.makedirs(nested_dir2, exist_ok=True)
+        os.makedirs(nested_dir3, exist_ok=True)
+
+        shutil.copy2(self.image_paths[0], os.path.join(nested_dir1, "100.jpg"))
+        shutil.copy2(self.image_paths[1], os.path.join(nested_dir2, "101.jpg"))
+        shutil.copy2(self.image_paths[2], os.path.join(nested_dir3, "102.jpg"))
+        shutil.copy2(
+            self.image_paths[3], os.path.join(self.offline_images_dir, "103.jpg")
+        )
+
+        df_nested = self.df_input.copy()
+        # Even without Image_Location or with generic names, lookup by Photo_ID succeeds
+        df_nested["Image_Location"] = [
+            "site_A/cam_1/100.jpg",
+            "101.jpg",
+            "different_name.jpg",  # Photo_ID is 102
+            "103.jpg",
+        ]
+        save_dataframe(df_nested, self.input_parquet, representation_type="cls")
+
+        test_args = [
+            "download_images.py",
+            "--input",
+            self.input_parquet,
+            "--output",
+            self.output_parquet,
+            "--output_dir",
+            self.output_images_dir,
+            "--image_root_dirs",
+            self.offline_images_dir,
+            "--copy_offline_images",
+            "--threads",
+            "2",
+        ]
+
+        with patch("sys.argv", test_args):
+            main()
+
+        # Check all 4 images were discovered from nested folders and unified in output_dir
+        for pid in ["100", "101", "102", "103"]:
+            target_img = os.path.join(self.output_images_dir, "test_plat", f"{pid}.jpg")
+            self.assertTrue(
+                os.path.exists(target_img),
+                f"Missing copied image from nested folder: {target_img}",
+            )
+
+        df_res = load_dataframe(self.output_parquet)
+        self.assertEqual(len(df_res), 4)
+        for loc in df_res["Image_Location"]:
+            self.assertTrue(loc.startswith("./output_images/test_plat/"))
 
     def test_resume_verify_existing_redownloads_missing(self):
         # 1. Pre-populate output_parquet with first 2 images

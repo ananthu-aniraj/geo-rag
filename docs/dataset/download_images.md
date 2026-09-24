@@ -65,8 +65,9 @@ PYTHONPATH=. python3 src/utils/download_images.py \
   --resume
 ```
 
-* Existing files matching `{Photo_ID}.jpg` or `{platform}/{Photo_ID}.jpg` inside `--image_root_dirs` are copied to `--output_dir/<platform>/<photo_id>.jpg`.
-* Only images missing from local directories are downloaded from the web.
+* **Recursive Nested Directory Discovery**: All subdirectories within `--image_root_dirs` are indexed recursively. Whether files are in flat directories, camera trap deployment subfolders (`site_1/cam_A/img.jpg`), or dataset hierarchies (`train/0/1/2/img.jpg`), they are automatically discovered.
+* **Consolidation**: Discovered images are copied and unified into standardized `--output_dir/<platform>/<photo_id>.jpg` paths (skipping files already present in the output directory).
+* **Remote Fallback**: Only images missing from the listed offline root directories are downloaded from the web.
 
 ### 4. Downloading Datasets with Companion Embeddings
 
@@ -115,7 +116,8 @@ PYTHONPATH=. python3 src/utils/download_images.py \
 | `--verify_existing` | `flag` | `False` | Re-verify on disk that existing records in resume file exist and are valid (by default, fast resume trusts existing records). |
 | `--checkpoint_interval`| `int` | `60` | Interval in seconds for atomic streaming checkpoints (set to `0` to disable). |
 | `--copy_offline_images`| `flag` | `False` | Copy existing offline images found in `--image_root_dirs` into `--output_dir`. |
-| `--image_root_dirs` | `str` (list) | `None` | Local directories to search for existing offline images. |
+| `--image_root_dirs` | `str` (list) | `None` | Local directories to search for existing offline images (scanned recursively). |
+| `--overwrite_image_url`| `flag` | `False` | Overwrite `Image_URL` with `Image_Location` (by default, original remote `Image_URL` is preserved). |
 | `--representation_type`| `str` | `"cls"` | Representation type for companion embeddings (`cls`, `avg_patch`, `cls_avg_patch`). |
 | `--precision` | `str` | `"float32"` | Storage precision for companion embeddings (`float32` or `float16`). |
 | `--timeout` | `int` | `20` | Request timeout in seconds per image download. |
