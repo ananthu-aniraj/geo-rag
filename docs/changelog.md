@@ -4,6 +4,30 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ---
 
+## [1.0.1] - 2026-09-28
+
+### Added
+
+- **MkDocs Website Homepage Adaptation Hook**: Enhanced `config/wiki/hooks.py` (`on_page_markdown`) to dynamically tailor `docs/index.md` (which symlinks to `README.md`) for the MkDocs website.
+  - Strips the circular `[Wiki / Docs]` badge and self-referential website link from the website home page while preserving them for GitHub visitors on `README.md`.
+  - Directly exposes clean documentation quick links (`pipeline/`, `evaluation/`, `dataset/`, `changelog/`) under `Technical Documentation`.
+  - Automatically rewrites relative `scripts/` links in markdown to point to the GitHub repository rather than missing documentation paths, eliminating MkDocs 404 warnings during build.
+  - Added support for `<!-- mkdocs:hide -->...<!-- /mkdocs:hide -->` comment blocks to conditionally hide markdown sections on the website.
+- **Recursive Offline Image Directory Resolution**: Added `build_offline_image_index()` in `src/utils/io.py` to recursively index multi-level subdirectories across `--image_root_dirs` (e.g. arbitrary nested camera trap folders, platform-subfolder layouts, and GLDv2 hierarchical trees).
+- **Remote URL Preservation in Image Downloader**: Updated `src/utils/download_images.py` to preserve original remote `Image_URL` values while writing local file paths to `Image_Location`, and introduced `--overwrite_image_url` for workflows requiring `Image_URL` to mirror local paths.
+- **Comprehensive Resume Unit Test Suite**: Added unit test coverage in `tests/test_download_images_resume.py` for fast resume, disk verification, nested offline directory copying, and offline unification on resume.
+
+### Optimized
+
+- **Bulk Image Downloader Resume & Fast In-Memory Resolution**:
+  - Updated `resolve_offline_image_path()` in `src/utils/io.py` to perform $O(1)$ in-memory lookups when `image_index` is provided, completely preventing millions of redundant `os.path.exists()` fallback disk stat calls across external storage.
+  - Overhauled the `--resume` and `--copy_offline_images` synchronization loop in `src/utils/download_images.py` to pre-filter records against `image_index` in RAM, reducing resume scanning times on multi-million record datasets from hours to seconds.
+  - Added real-time progress bars (`tqdm(desc="Checking offline unification status")` and `tqdm(desc="Copying existing offline images")`).
+  - Switched resume check to `os.path.getsize(dst) > 0` unless `--verify_existing` is explicitly passed, eliminating millions of disk file reads across external storage.
+  - Vectorized `Image_Location` and `file_name` metadata updates into the output Parquet checkpoint.
+
+---
+
 ## [1.0.0] - 2026-09-21
 
 ### Added
