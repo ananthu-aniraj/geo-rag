@@ -157,13 +157,35 @@ The `/scripts/scrapers/` folder contains automated shell orchestrators for batch
 
 ---
 
-## ⚙️ Data Postprocessing
+## ⚙️ Data Postprocessing Pipelines
 
-To postprocess scraped images, cluster them semantically, auto-label clusters, build spatial-semantic H3 indices, and generate interactive maps:
+Geo-RAG provides two complementary orchestrators for postprocessing, clustering, and visualization:
+
+### 1. Full End-to-End Pipeline (`run_full_pipeline.sh`)
+
+Executes the complete ingestion, cell-chunking, spatial deduplication, timestamp standardization, coordinate cleaning, FAISS GPU clustering, MLLM labeling, spatial indexing, and visualization generation:
 
 ```bash
 ./run_full_pipeline.sh
 ```
+
+### 2. Streamlined Offline Clustering & Visualization Pipeline (`run_offline_pipeline.sh`)
+
+Dedicated to pre-downloaded offline datasets (e.g. `geo_space_cleaned_offline.parquet`, iWildCam, Wildlife Insights, Snapshot USA). It bypasses network scraping and downloading, allowing you to rapidly sweep across vision models, pooling representations, and cluster counts:
+
+```bash
+# Run clustering and visualization for a specific model and cluster count
+./run_offline_pipeline.sh \
+  --input /path/to/geo_space_cleaned_offline.parquet \
+  --image_root_dirs /path/to/images \
+  --output_dir /path/to/output \
+  --model_name "google/tipsv2-b14" \
+  --representation_type "cls" \
+  --precision "float16" \
+  --k_clusters 40000
+```
+
+Visual dashboards, maps, and plots are cleanly isolated into dedicated folders (`vis_${num_clusters}_${model_name}_${rep_type}_${precision}/`), while decoupled sidecar Parquets are saved in the main output directory with matching model provenance tags.
 
 ---
 

@@ -20,7 +20,18 @@ def get_core_base_name(base_name):
     """Recursively strips common pipeline suffixes to find the base prefix (e.g. geo_space)."""
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
-    suffixes = ["_filtered", "_cleaned", "_deduplicated", "_clustered"]
+    suffixes = [
+        "_filtered",
+        "_cleaned",
+        "_deduplicated",
+        "_clustered",
+        "_offline",
+        "_float16",
+        "_float32",
+        "_cls",
+        "_avg_patch",
+        "_cls_avg_patch",
+    ]
     changed = True
     while changed:
         changed = False
@@ -207,7 +218,13 @@ def get_parquet_writer(file_path, schema, **kwargs):
 
 
 def load_dataset_with_clusters(
-    parquet_path, k_clusters=50000, columns=None, representation_type=None, **kwargs
+    parquet_path,
+    k_clusters=50000,
+    columns=None,
+    representation_type=None,
+    model_name=None,
+    precision=None,
+    **kwargs,
 ):
     """
     Backward-compatible loader that returns metadata and cluster assignments.
@@ -230,24 +247,47 @@ def load_dataset_with_clusters(
     pf = pq.ParquetFile(parquet_path)
     schema_names = pf.schema_arrow.names
 
+    known_sidecar_path = None
     # If it's a decoupled sidecar file (has cluster_id but lacks base columns like Latitude/Longitude),
     # resolve the path to the base metadata file instead.
     if "cluster_id" in schema_names and (
         "Latitude" not in schema_names or "Longitude" not in schema_names
     ):
+        known_sidecar_path = parquet_path
         db_dir = os.path.dirname(os.path.abspath(parquet_path))
+        parent_dir = os.path.dirname(db_dir)
+        candidate_dirs = [db_dir]
+        if parent_dir and parent_dir != db_dir:
+            candidate_dirs.append(parent_dir)
+
         base_name = os.path.splitext(os.path.basename(parquet_path))[0]
-        core_name = get_core_base_name(base_name)
-        for fallback in [
-            f"{core_name}_cleaned.parquet",
-            f"{core_name}_deduplicated.parquet",
-            f"{core_name}.parquet",
-        ]:
-            fallback_path = os.path.join(db_dir, fallback)
+        prefix = base_name.split("_clustered_k_")[0]
+
+        # Scan candidate directories for matching base datasets (longest prefix match first)
+        candidate_base_files = []
+        for d in candidate_dirs:
+            if not os.path.exists(d):
+                continue
+            for f in os.listdir(d):
+                if (
+                    f.endswith(".parquet")
+                    and not f.endswith(".keys.parquet")
+                    and "_clustered_k_" not in f
+                    and "_h3_semantic_index" not in f
+                ):
+                    cand_stem = f[:-8]
+                    if prefix.startswith(cand_stem):
+                        candidate_base_files.append(os.path.join(d, f))
+
+        candidate_base_files.sort(key=lambda p: len(os.path.basename(p)), reverse=True)
+
+        found_base = False
+        for fallback_path in candidate_base_files:
             if os.path.exists(fallback_path):
                 parquet_path = fallback_path
                 pf = pq.ParquetFile(parquet_path)
                 schema_names = pf.schema_arrow.names
+                found_base = True
                 break
 
     cluster_cols = [
@@ -259,6 +299,9 @@ def load_dataset_with_clusters(
         "parent_cluster_description",
         "visual_description",
         "parent_visual_description",
+        "model_name",
+        "representation_type",
+        "precision",
     ]
 
     # Filter which columns belong to cluster variables vs base metadata
@@ -281,24 +324,74 @@ def load_dataset_with_clusters(
     # Case B: Decoupled format
     df_meta = load_dataframe(parquet_path, columns=req_meta_cols, **kwargs)
 
-    # Check for and load sidecar file
-    db_dir = os.path.dirname(os.path.abspath(parquet_path))
-    base_name = os.path.splitext(os.path.basename(parquet_path))[0]
+    if known_sidecar_path and os.path.exists(known_sidecar_path):
+        sidecar_path = known_sidecar_path
+    else:
+        # Check for and load sidecar file
+        db_dir = os.path.dirname(os.path.abspath(parquet_path))
+        base_name = os.path.splitext(os.path.basename(parquet_path))[0]
 
-    # Trim '_clustered_k_X' suffix if present to find base name
-    if "_clustered_k_" in base_name:
-        base_name = base_name.split("_clustered_k_")[0]
+        # Trim '_clustered_k_X' suffix if present to find base name
+        if "_clustered_k_" in base_name:
+            base_name = base_name.split("_clustered_k_")[0]
 
-    core_name = get_core_base_name(base_name)
+        core_name = get_core_base_name(base_name)
+        model_slug = model_name.replace("/", "_") if model_name else None
 
-    # Try finding sidecar with full base_name or core_name
-    sidecar_path = os.path.join(db_dir, f"{base_name}_clustered_k_{k_clusters}.parquet")
-    if not os.path.exists(sidecar_path):
-        sidecar_path = os.path.join(
-            db_dir, f"{core_name}_clustered_k_{k_clusters}.parquet"
+        candidates = []
+        if model_slug and representation_type and precision:
+            candidates.extend(
+                [
+                    os.path.join(
+                        db_dir,
+                        f"{base_name}_{model_slug}_{representation_type}_{precision}_clustered_k_{k_clusters}.parquet",
+                    ),
+                    os.path.join(
+                        db_dir,
+                        f"{core_name}_{model_slug}_{representation_type}_{precision}_clustered_k_{k_clusters}.parquet",
+                    ),
+                ]
+            )
+        if model_slug and representation_type:
+            candidates.extend(
+                [
+                    os.path.join(
+                        db_dir,
+                        f"{base_name}_{model_slug}_{representation_type}_clustered_k_{k_clusters}.parquet",
+                    ),
+                    os.path.join(
+                        db_dir,
+                        f"{core_name}_{model_slug}_{representation_type}_clustered_k_{k_clusters}.parquet",
+                    ),
+                ]
+            )
+        if model_slug:
+            candidates.extend(
+                [
+                    os.path.join(
+                        db_dir,
+                        f"{base_name}_{model_slug}_clustered_k_{k_clusters}.parquet",
+                    ),
+                    os.path.join(
+                        db_dir,
+                        f"{core_name}_{model_slug}_clustered_k_{k_clusters}.parquet",
+                    ),
+                ]
+            )
+        candidates.extend(
+            [
+                os.path.join(db_dir, f"{base_name}_clustered_k_{k_clusters}.parquet"),
+                os.path.join(db_dir, f"{core_name}_clustered_k_{k_clusters}.parquet"),
+            ]
         )
 
-    if os.path.exists(sidecar_path) and req_cluster_cols:
+        sidecar_path = None
+        for p in candidates:
+            if os.path.exists(p):
+                sidecar_path = p
+                break
+
+    if sidecar_path and os.path.exists(sidecar_path) and req_cluster_cols:
         # We need Platform and Photo_ID in both dataframes for merging
         sidecar_cols = list(set(["Platform", "Photo_ID"] + req_cluster_cols))
         # Ensure we only load available columns from the sidecar
@@ -312,7 +405,11 @@ def load_dataset_with_clusters(
 
 
 def load_embeddings(
-    parquet_path, column="embedding", representation_type="cls", model_name=None
+    parquet_path,
+    column="embedding",
+    representation_type="cls",
+    model_name=None,
+    precision=None,
 ):
     """
     Backward-compatible loader that returns memory-mapped or raw embedding matrices.
@@ -343,11 +440,36 @@ def load_embeddings(
 
     # Case B: Decoupled format (.npy)
     db_dir = os.path.dirname(os.path.abspath(parquet_path))
+    parent_dir = os.path.dirname(db_dir)
+    candidate_dirs = [db_dir]
+    if parent_dir and parent_dir != db_dir:
+        candidate_dirs.append(parent_dir)
+
     base_name = os.path.splitext(os.path.basename(parquet_path))[0]
 
     # Trim '_clustered_k_X' suffix if present to find base name
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
+
+    # Find candidate base dataset stem by scanning candidate dirs
+    candidate_bases = []
+    for d in candidate_dirs:
+        if not os.path.exists(d):
+            continue
+        for f in os.listdir(d):
+            if (
+                f.endswith(".parquet")
+                and not f.endswith(".keys.parquet")
+                and "_clustered_k_" not in f
+                and "_h3_semantic_index" not in f
+            ):
+                cand_stem = f[:-8]
+                if base_name.startswith(cand_stem):
+                    candidate_bases.append(cand_stem)
+
+    candidate_bases.sort(key=len, reverse=True)
+    clean_base = candidate_bases[0] if candidate_bases else base_name
+    core_name = get_core_base_name(clean_base)
 
     is_tipsv2 = (model_name is None) or ("tipsv2" in model_name.lower())
 
@@ -359,12 +481,16 @@ def load_embeddings(
             name = f"{base}{model_suf}_patch_embeddings.npy"
         else:
             name = f"{base}{model_suf}_{column}_embeddings.npy"
+        for d in candidate_dirs:
+            p = os.path.join(d, name)
+            if os.path.exists(p):
+                return p
         return os.path.join(db_dir, name)
 
     # 1. Try resolving with model_name if provided
     npy_path = get_npy_path(base_name, model_name)
     if model_name:
-        for b in [base_name, get_core_base_name(base_name)]:
+        for b in [clean_base, core_name, base_name, get_core_base_name(base_name)]:
             path = get_npy_path(b, model_name)
             if os.path.exists(path):
                 npy_path = path
@@ -412,9 +538,11 @@ def load_embeddings(
                     if column == "embedding"
                     else f"{fallback_base}_{column}.npy"
                 )
-                p_legacy = os.path.join(db_dir, fallback_name)
-                if os.path.exists(p_legacy):
-                    npy_path = p_legacy
+                for d in candidate_dirs:
+                    p_legacy = os.path.join(d, fallback_name)
+                    if os.path.exists(p_legacy):
+                        npy_path = p_legacy
+                        break
 
     # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
     if not os.path.exists(npy_path):
@@ -423,56 +551,63 @@ def load_embeddings(
         if "cleaned" in base_name:
             bases.append(base_name.replace("cleaned", "deduplicated"))
 
-        for b in bases:
-            pattern = os.path.join(db_dir, f"{b}*.npy")
-            matches = glob.glob(pattern)
-            if matches:
-                # Exclude checkpoint files if base_name does not contain checkpoint
-                if "checkpoint" not in base_name:
-                    matches = [
-                        m for m in matches if "checkpoint" not in os.path.basename(m)
-                    ]
-                # Filter matches by representation type if default 'embedding' column is requested
-                if column == "embedding" and representation_type:
-                    matches = [
-                        m
-                        for m in matches
-                        if suffix_matches(os.path.basename(m), representation_type)
-                    ]
-                # For non-TIPSv2 models, NEVER pick up files without the model name!
-                if not is_tipsv2:
-                    model_clean = model_name.replace("/", "_")
-                    matches = [m for m in matches if model_clean in os.path.basename(m)]
-                elif model_name:
-                    # For TIPSv2 with explicit model name, prefer matching model name if available
-                    model_clean = model_name.replace("/", "_")
-                    model_matches = [
-                        m for m in matches if model_clean in os.path.basename(m)
-                    ]
-                    if model_matches:
-                        matches = model_matches
+        for d in candidate_dirs:
+            for b in bases:
+                pattern = os.path.join(d, f"{b}*.npy")
+                matches = glob.glob(pattern)
+                if matches:
+                    # Exclude checkpoint files if base_name does not contain checkpoint
+                    if "checkpoint" not in base_name:
+                        matches = [
+                            m
+                            for m in matches
+                            if "checkpoint" not in os.path.basename(m)
+                        ]
+                    # Filter matches by representation type if default 'embedding' column is requested
+                    if column == "embedding" and representation_type:
+                        matches = [
+                            m
+                            for m in matches
+                            if suffix_matches(os.path.basename(m), representation_type)
+                        ]
+                    # For non-TIPSv2 models, NEVER pick up files without the model name!
+                    if not is_tipsv2:
+                        model_clean = model_name.replace("/", "_")
+                        matches = [
+                            m for m in matches if model_clean in os.path.basename(m)
+                        ]
+                    elif model_name:
+                        # For TIPSv2 with explicit model name, prefer matching model name if available
+                        model_clean = model_name.replace("/", "_")
+                        model_matches = [
+                            m for m in matches if model_clean in os.path.basename(m)
+                        ]
+                        if model_matches:
+                            matches = model_matches
 
-                if not matches:
-                    continue
+                    if not matches:
+                        continue
 
-                # If there's a file matching the specific column name, use it
-                col_match = [m for m in matches if column in os.path.basename(m)]
-                if col_match:
-                    npy_path = col_match[0]
-                    break
-                # Otherwise, if default 'embedding' was requested, try finding cls_embeddings or similar
-                if column == "embedding":
-                    preferred = [
-                        m
-                        for m in matches
-                        if "cls_embeddings" in os.path.basename(m)
-                        or "embedding" in os.path.basename(m)
-                    ]
-                    if preferred:
-                        npy_path = preferred[0]
+                    # If there's a file matching the specific column name, use it
+                    col_match = [m for m in matches if column in os.path.basename(m)]
+                    if col_match:
+                        npy_path = col_match[0]
                         break
-                # Fallback to the first match
-                npy_path = matches[0]
+                    # Otherwise, if default 'embedding' was requested, try finding cls_embeddings or similar
+                    if column == "embedding":
+                        preferred = [
+                            m
+                            for m in matches
+                            if "cls_embeddings" in os.path.basename(m)
+                            or "embedding" in os.path.basename(m)
+                        ]
+                        if preferred:
+                            npy_path = preferred[0]
+                            break
+                    # Fallback to the first match
+                    npy_path = matches[0]
+                    break
+            if os.path.exists(npy_path):
                 break
 
     if os.path.exists(npy_path):

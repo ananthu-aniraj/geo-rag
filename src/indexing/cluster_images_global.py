@@ -441,7 +441,17 @@ def main():
             "parent_cluster_description",
             "visual_description",
             "parent_visual_description",
+            "model_name",
+            "representation_type",
+            "precision",
         ]
+        if getattr(args, "model_name", None):
+            df["model_name"] = args.model_name
+        if getattr(args, "representation_type", None):
+            df["representation_type"] = args.representation_type
+        if getattr(args, "precision", None):
+            df["precision"] = args.precision
+
         active_cols = [c for c in sidecar_cols + extra_cols if c in df.columns]
 
         df_sidecar = df[active_cols].copy()

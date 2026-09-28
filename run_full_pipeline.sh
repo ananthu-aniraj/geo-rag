@@ -130,22 +130,34 @@ CAMERA_TRAP_PLATFORMS=$(get_param "camera_trap_platforms")
 [ -z "$CAMERA_TRAP_PLATFORMS" ] && CAMERA_TRAP_PLATFORMS="iwildcam wildobs wildlife_insights snapshotusa"
 
 # File Paths
+MODEL_SLUG=$(echo "$MODEL_NAME" | tr '/' '_')
+EXP_TAG="${MODEL_SLUG}_${REPRESENTATION_TYPE}_${PRECISION}"
+VIS_DIR="${OUTPUT_DIR}/vis_${K_CLUSTERS}_${EXP_TAG}"
+
+# Ensure output and visualization directories exist
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$VIS_DIR"
+
 RAW_PARQUET="$OUTPUT_DIR/${BASE_NAME}_deduplicated.parquet"
 CLEANED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_cleaned.parquet"
-CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
-H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_h3_semantic_index.parquet"
-MAP_FILE="$OUTPUT_DIR/global_cluster_map.html"
-SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
-SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
-OCCUPANCY_MAP="$OUTPUT_DIR/global_h3_occupancy_map.html"
-SEMANTIC_MAP="$OUTPUT_DIR/global_h3_semantic_map.html"
-STATS_PLOT="$OUTPUT_DIR/global_dataset_stats.png"
-STATS_TEXT="$OUTPUT_DIR/global_dataset_stats.txt"
-STATS_MAP="$OUTPUT_DIR/global_dataset_map.html"
-CLUSTER_COUNT_PLOT="$OUTPUT_DIR/cluster_count_validation.png"
+CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_${EXP_TAG}_clustered_k_${K_CLUSTERS}.parquet"
+H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_${EXP_TAG}_h3_semantic_index.parquet"
 
-# Ensure output directory exists
-mkdir -p "$OUTPUT_DIR"
+# Backward compatibility fallback if un-tagged sidecar exists
+if [ ! -f "$CLUSTERED_PARQUET" ] && [ -f "$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet" ]; then
+    CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
+    H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_h3_semantic_index.parquet"
+fi
+
+MAP_FILE="$VIS_DIR/global_cluster_map.html"
+SAMPLES_FILE="$VIS_DIR/cluster_samples_k_${K_CLUSTERS}.html"
+SCATTER_FILE="$VIS_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
+OCCUPANCY_MAP="$VIS_DIR/global_h3_occupancy_map.html"
+SEMANTIC_MAP="$VIS_DIR/global_h3_semantic_map.html"
+STATS_PLOT="$VIS_DIR/global_dataset_stats.png"
+STATS_TEXT="$VIS_DIR/global_dataset_stats.txt"
+STATS_MAP="$VIS_DIR/global_dataset_map.html"
+CLUSTER_COUNT_PLOT="$VIS_DIR/cluster_count_validation.png"
 
 # 2. Check for resume files
 echo ""
@@ -260,9 +272,13 @@ if [ "$AUTO_FIND_K" = "true" ]; then
     echo "Optimal k determined: $K_CLUSTERS"
 
     # Update target clustered parquet path with the new K_CLUSTERS
-    CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_clustered_k_${K_CLUSTERS}.parquet"
-    SAMPLES_FILE="$OUTPUT_DIR/cluster_samples_k_${K_CLUSTERS}.html"
-    SCATTER_FILE="$OUTPUT_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
+    VIS_DIR="${OUTPUT_DIR}/vis_${K_CLUSTERS}_${EXP_TAG}"
+    mkdir -p "$VIS_DIR"
+    CLUSTERED_PARQUET="$OUTPUT_DIR/${BASE_NAME}_${EXP_TAG}_clustered_k_${K_CLUSTERS}.parquet"
+    H3_SEMANTIC_INDEX="$OUTPUT_DIR/${BASE_NAME}_${EXP_TAG}_h3_semantic_index.parquet"
+    MAP_FILE="$VIS_DIR/global_cluster_map.html"
+    SAMPLES_FILE="$VIS_DIR/cluster_samples_k_${K_CLUSTERS}.html"
+    SCATTER_FILE="$VIS_DIR/cluster_semantic_scatter_k_${K_CLUSTERS}.png"
 else
     echo "Auto-find k is disabled. Using current k_clusters value: $K_CLUSTERS"
 fi
@@ -419,6 +435,7 @@ python3 -m src.visualization.visualize_cluster_samples \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SAMPLES_FILE" \
   --top_n 6 \
+  --model_name "$MODEL_NAME" \
   --representation_type "$REPRESENTATION_TYPE" \
   --precision "$PRECISION" \
   $IMAGE_ROOT_FLAG
@@ -428,6 +445,7 @@ echo "[Step 5/5] Generating Semantic Scatter Plot (UMAP 2D)..."
 python3 -m src.visualization.visualize_cluster_scatter \
   --pkl "$CLUSTERED_PARQUET" \
   --out "$SCATTER_FILE" \
+  --model_name "$MODEL_NAME" \
   --representation_type "$REPRESENTATION_TYPE" \
   --precision "$PRECISION"
 

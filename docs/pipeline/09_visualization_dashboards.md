@@ -63,3 +63,24 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
   * **Density Sizing**: Node marker size scales dynamically based on the number of images assigned to that cluster (larger dots = higher density clusters).
   * **Hover Metadata**: Hovering over any cluster centroid displays its unique `Cluster ID`, `Cluster Label`, `Parent Category`, exact image count, and its VLM visual description.
   * **Filter Toggles**: Double-clicking or clicking parent categories in the legend instantly filters and highlights specific semantic families (e.g. isolating all forestry subclasses).
+
+---
+
+## 📂 Experiment Output Organization & Namespacing
+
+To facilitate model comparison sweeps and avoid clobbering visualization files across experiments (e.g. comparing TIPSv2 vs DINOv2 vs SigLIP, or varying $k$ from 20,000 to 50,000), all visual reports and maps are routed into dedicated folders:
+
+```text
+vis_${num_clusters}_${model_name}_${representation_type}_${precision}/
+├── global_cluster_map.html                  # Interactive Folium map
+├── cluster_samples_k_${k}.html              # Multi-image sample grid
+├── cluster_semantic_scatter_k_${k}.png      # UMAP 2D scatter plot
+├── global_h3_occupancy_map.html             # Spatial density map
+├── global_h3_semantic_map.html              # Spatial-semantic map
+├── global_dataset_stats.png                 # Summary distribution plot
+├── global_dataset_stats.txt                 # Textual statistics report
+├── global_dataset_map.html                  # Layered coverage map
+└── cluster_count_validation.png             # (If auto_find_k is enabled)
+```
+
+The heavy dataset and companion embedding binaries remain stored once in the root dataset directory, keeping visual experiment folders lightweight, modular, and easy to share or archive.

@@ -66,4 +66,5 @@ graph TD
 ### Type Resilience & Immediate Persistence
 
 * Coordinate columns are cast to numeric `float64` right after loading to preserve schema alignment during final Parquet export.
-* Cluster assignments are written to the database (`geo_space_clustered_k_{num_clusters}.parquet`) and heavy embedding matrices are immediately released from RAM to avoid CPU memory bottlenecks.
+* Cluster assignments are written to decoupled sidecar Parquet databases (`${BASE_NAME}_${model_slug}_${rep}_${prec}_clustered_k_{num_clusters}.parquet`), recording `model_name`, `representation_type`, and `precision` in sidecar metadata to guarantee end-to-end provenance.
+* Heavy embedding matrices are memory-mapped or decoupled as companion binary files and immediately released from RAM to prevent memory bottlenecks.

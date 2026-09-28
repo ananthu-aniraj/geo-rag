@@ -1,0 +1,55 @@
+# ==============================================================================
+# Geo-RAG Offline Pipeline Parameters (config/pipeline/params_offline.yaml)
+# ==============================================================================
+# Use this configuration when working with pre-downloaded offline datasets
+# (e.g. geo_space_cleaned_offline.parquet, iWildCam, Snapshot USA, Wildlife Insights).
+# Feature extraction is handled by 'src.processing.backfill_embeddings', and this
+# pipeline executes clustering, indexing, and visualization without downloading.
+# ==============================================================================
+
+offline_pipeline:
+  # 1. Dataset & Offline Directory Inputs
+  input_parquet: "/path/to/geo_space_cleaned_offline.parquet"
+  image_root_dirs: "/path/to/images"
+
+  # 2. Vision Model & Representation Settings
+  # Options: "google/tipsv2-b14", or any timm / Hugging Face model identifier
+  model_name: "google/tipsv2-b14"
+  # Options: "cls", "avg_patch", "cls_avg_patch"
+  representation_type: "cls"
+  # Options: "float16", "float32"
+  precision: "float16"
+
+  # 3. Clustering Configuration
+  k_clusters: 40000
+  auto_find_k: false        # Automatically search and estimate optimal k before clustering
+  k_min: 10000              # Minimum cluster count for validation search range
+  k_max: 50000              # Maximum cluster count for validation search range
+  k_step: 10000             # Step size for validation search range
+
+  # 4. Optional Preprocessing (False by default for pre-cleaned offline datasets)
+  run_coordinate_cleanup: false
+  cleanup_platform: ""      # (Optional) Restrict anomaly cleanup to a specific platform
+  cleanup_continent: ""     # (Optional) Restrict anomaly cleanup to a specific continent
+  run_timestamp_standardization: false
+  koppen_geiger_tif: ""     # Path to Köppen-Geiger GeoTIFF (optional)
+  land_shp: "shapefiles/ne_10m_admin_0_countries.shp"
+
+  # 5. MLLM Cluster Auto-Labeling (Disabled by default for fast representation sweeps)
+  enable_mllm: false
+  mllm_backend: "sglang"
+  mllm_model: "google/gemma-4-E4B-it"
+  chunk_size: 64
+  num_medoids: 4            # Number of medoid images to stack in multi-image collage
+
+  # 6. Output Configuration
+  base_name: "geo_space_offline"
+  output_dir: ""            # Destination directory (leave empty to auto-detect from input_parquet)
+
+  # 7. Visualization Settings
+  max_markers: 10000
+  camera_trap_platforms:
+    - iwildcam
+    - wildobs
+    - wildlife_insights
+    - snapshotusa

@@ -18,7 +18,9 @@ from tqdm import tqdm
 from src.utils.io import load_dataset_with_clusters, load_embeddings
 
 
-def create_scatter_plot(pkl_path, output_png, representation_type=None):
+def create_scatter_plot(
+    pkl_path, output_png, representation_type=None, model_name=None, precision=None
+):
     print(f"Loading clustered data from {pkl_path}...")
     start_time = time.time()
     try:
@@ -133,9 +135,29 @@ def create_scatter_plot(pkl_path, output_png, representation_type=None):
     else:
         # Case B: New decoupled format (load metadata/clusters and memory-mapped embeddings)
         df_meta = load_dataset_with_clusters(
-            pkl_path, k_clusters=k_clusters, representation_type=representation_type
+            pkl_path,
+            k_clusters=k_clusters,
+            representation_type=representation_type,
+            model_name=model_name,
+            precision=precision,
         )
-        embeddings = load_embeddings(pkl_path, representation_type=representation_type)
+
+        if not model_name and "model_name" in df_meta.columns:
+            valid_models = df_meta["model_name"].dropna()
+            if len(valid_models) > 0:
+                model_name = str(valid_models.iloc[0])
+
+        if not representation_type and "representation_type" in df_meta.columns:
+            valid_reps = df_meta["representation_type"].dropna()
+            if len(valid_reps) > 0:
+                representation_type = str(valid_reps.iloc[0])
+
+        embeddings = load_embeddings(
+            pkl_path,
+            representation_type=representation_type,
+            model_name=model_name,
+            precision=precision,
+        )
 
         dim = embeddings.shape[1]
         print(f"Detected decoupled embedding matrix dimensionality: {dim}")
@@ -395,8 +417,18 @@ if __name__ == "__main__":
         choices=["float32", "float16"],
         help="Stored precision of companion binary file (float32 or float16).",
     )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Optional vision model name for companion embedding resolution.",
+    )
     args = parser.parse_args()
 
     create_scatter_plot(
-        args.pkl, args.out, representation_type=args.representation_type
+        args.pkl,
+        args.out,
+        representation_type=args.representation_type,
+        model_name=args.model_name,
+        precision=args.precision,
     )

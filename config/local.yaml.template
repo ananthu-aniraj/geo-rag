@@ -87,6 +87,9 @@ evaluation:
 # ------------------------------------------------------------------------------
 pipeline:
   # output_dir: "/path/to/your/full_pipeline_output"
+  # model_name: "google/tipsv2-b14"
+  # representation_type: "cls"
+  # precision: "float16"
   # input_dirs: "/path/to/your/flickr_scrape /path/to/your/mapillary_scrape"
   # offline_dataset_dirs: "/path/to/your/offline_dataset_1 /path/to/your/offline_dataset_2"
   # koppen_geiger_tif: "/path/to/your/koppen_geiger.tif"
@@ -97,7 +100,21 @@ pipeline:
   #   - "/path/to/your/offline_dataset_2:offline_dataset_2"
 
 # ------------------------------------------------------------------------------
-# 3. Scrapers (config/scrapers/)
+# 3. Offline Clustering & Visualization Pipeline (config/pipeline/params_offline.yaml)
+# ------------------------------------------------------------------------------
+offline_pipeline:
+  # input_parquet: "/path/to/your/geo_space_cleaned_offline.parquet"
+  # image_root_dirs: "/path/to/your/images"
+  # output_dir: ""  # Optional: defaults to the directory containing input_parquet
+  # model_name: "google/tipsv2-b14"
+  # representation_type: "cls"
+  # precision: "float16"
+  # k_clusters: 40000
+  # auto_find_k: false
+  # enable_mllm: false
+
+# ------------------------------------------------------------------------------
+# 4. Scrapers (config/scrapers/)
 # ------------------------------------------------------------------------------
 scrapers:
   # mapillary_scraper:

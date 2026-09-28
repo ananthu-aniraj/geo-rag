@@ -30,7 +30,36 @@ Detailed documentation for each stage of the pipeline can be found in the sub-gu
 
 ---
 
-## 💾 3. Data Versioning (DVC)
+## ⚡ 3. Offline Pipeline & Model Representation Sweeps (`run_offline_pipeline.sh`)
+
+When working with pre-downloaded offline datasets (e.g. `geo_space_cleaned_offline.parquet`, camera trap subsets, or benchmark extracts), the scraping, cell-chunking, and network downloading stages can be skipped entirely.
+
+The offline pipeline (`run_offline_pipeline.sh`, configured via `config/pipeline/params_offline.yaml`) allows rapid evaluation across different vision backbones (`google/tipsv2-b14`, `facebook/dinov2-base`, SigLIP, etc.), pooling strategies (`cls`, `avg_patch`, `cls_avg_patch`), and cluster counts ($k$).
+
+```bash
+./run_offline_pipeline.sh \
+  --input /path/to/geo_space_cleaned_offline.parquet \
+  --image_root_dirs /path/to/images \
+  --output_dir /path/to/output \
+  --model_name "google/tipsv2-b14" \
+  --representation_type "cls" \
+  --precision "float16" \
+  --k_clusters 40000
+```
+
+### Visualizations & Sidecar Layout
+
+To prevent destructive file overwrites across different model sweeps:
+
+* **Visualizations Directory**: All HTML maps, sample grids, UMAP scatter plots, and summary statistics are routed into a dedicated subfolder:
+  `vis_${num_clusters}_${model_name}_${representation_type}_${precision}/`
+* **Model-Namespaced Sidecar Parquets**: Clustered sidecar files and spatial indexes record the model provenance in their metadata and filenames:
+  `${BASE_NAME}_${model_slug}_${representation_type}_${precision}_clustered_k_${k}.parquet`
+* **Smart Parent-Directory Resolution**: Downstream loaders (`load_dataset_with_clusters` and `load_embeddings`) automatically traverse parent and sibling directories to discover base metadata and companion `.npy` embeddings matrices without duplicating storage.
+
+---
+
+## 💾 4. Data Versioning (DVC)
 
 To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline.sh` implements autonomous DVC standalone tracking:
 
@@ -40,7 +69,7 @@ To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline
 
 ---
 
-## 📚 4. Literature & Software References
+## 📚 5. Literature & Software References
 
 * Brodsky, A. (2018). *H3: Uber's Hexagonal Hierarchical Spatial Index*. Uber Engineering. [https://h3geo.org](https://h3geo.org)
 * Dhillon, I. S., & Modha, D. S. (2001). Concept decompositions for large sparse text document collections with applications to high-dimensional clustering. *Machine Learning*, 42(1), 143–175.

@@ -40,6 +40,8 @@ def create_sample_grid(
     image_root_dir=None,
     target_h3_res=5,
     representation_type=None,
+    model_name=None,
+    precision=None,
 ):
     print(f"Loading clustered data from {pkl_path}...")
 
@@ -56,12 +58,33 @@ def create_sample_grid(
         if match:
             k_clusters = int(match.group(1))
 
-        df = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
+        df = load_dataset_with_clusters(
+            pkl_path,
+            k_clusters=k_clusters,
+            representation_type=representation_type,
+            model_name=model_name,
+            precision=precision,
+        )
+
+        if not model_name and "model_name" in df.columns:
+            valid_models = df["model_name"].dropna()
+            if len(valid_models) > 0:
+                model_name = str(valid_models.iloc[0])
+
+        if not representation_type and "representation_type" in df.columns:
+            valid_reps = df["representation_type"].dropna()
+            if len(valid_reps) > 0:
+                representation_type = str(valid_reps.iloc[0])
 
         # Load embeddings
         print("Loading raw embedding matrix...")
         t0 = time.time()
-        embeddings = load_embeddings(pkl_path, representation_type=representation_type)
+        embeddings = load_embeddings(
+            pkl_path,
+            representation_type=representation_type,
+            model_name=model_name,
+            precision=precision,
+        )
 
         print(
             f" -> Successfully loaded raw embedding matrix in {time.time() - t0:.2f}s."
@@ -624,6 +647,12 @@ if __name__ == "__main__":
         choices=["float32", "float16"],
         help="Stored precision of companion binary file (float32 or float16).",
     )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Optional vision model name for companion embedding resolution.",
+    )
     args = parser.parse_args()
 
     create_sample_grid(
@@ -633,4 +662,6 @@ if __name__ == "__main__":
         args.image_root_dir,
         target_h3_res=args.target_h3_res,
         representation_type=args.representation_type,
+        model_name=args.model_name,
+        precision=args.precision,
     )

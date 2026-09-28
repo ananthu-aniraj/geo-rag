@@ -8,6 +8,15 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Streamlined Offline Clustering & Visualization Pipeline (`run_offline_pipeline.sh`)**:
+  - Added dedicated runner script and configuration (`config/pipeline/params_offline.yaml`) for pre-downloaded offline datasets (e.g. `geo_space_cleaned_offline.parquet`).
+  - Skips data scraping and image downloading, executing FAISS GPU clustering, H3 spatial-semantic indexing, and visualization sweeps across different models and representations.
+  - Automatically isolates all visualization outputs into dedicated experiment folders: `vis_${num_clusters}_${model_name}_${rep_type}_${precision}/`.
+  - Stores decoupled sidecar Parquet files with matching model/representation/precision tags in the dataset directory to prevent overwrites across representation sweeps.
+- **Model Provenance & Subdirectory Sidecar Resolution**:
+  - Updated `src/indexing/cluster_images_global.py` to record `model_name`, `representation_type`, and `precision` directly in sidecar DataFrames.
+  - Enhanced `src/utils/io.py` (`load_dataset_with_clusters` and `load_embeddings`) with candidate directory discovery, resolving base Parquets and `.npy` companion embeddings across parent directories when called directly with sidecar paths.
+  - Added `--model_name` and `--precision` CLI arguments and sidecar auto-detection to `src/visualization/visualize_cluster_samples.py` and `src/visualization/visualize_cluster_scatter.py`.
 - **MkDocs Website Homepage Adaptation Hook**: Enhanced `config/wiki/hooks.py` (`on_page_markdown`) to dynamically tailor `docs/index.md` (which symlinks to `README.md`) for the MkDocs website.
   - Strips the circular `[Wiki / Docs]` badge and self-referential website link from the website home page while preserving them for GitHub visitors on `README.md`.
   - Directly exposes clean documentation quick links (`pipeline/`, `evaluation/`, `dataset/`, `changelog/`) under `Technical Documentation`.
