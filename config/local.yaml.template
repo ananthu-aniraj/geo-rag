@@ -109,6 +109,9 @@ offline_pipeline:
   # model_name: "google/tipsv2-b14"
   # representation_type: "cls"
   # precision: "float16"
+  # run_backfill_embeddings: false
+  # backfill_batch_size: 32
+  # backfill_chunk_size: 512
   # k_clusters: 40000
   # auto_find_k: false
   # enable_mllm: false

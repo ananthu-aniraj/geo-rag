@@ -4,6 +4,11 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Enforce execution from the project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 echo "=========================================================="
 echo "  Geo-RAG: Full Processing & Global Clustering Pipeline"
 echo "=========================================================="

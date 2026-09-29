@@ -4,6 +4,11 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Enforce execution from the project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
 echo "=========================================================="
 echo "  Geo-RAG: Streamlined Offline Clustering & Vis Pipeline"
 echo "=========================================================="
@@ -39,6 +44,15 @@ REPRESENTATION_TYPE=$(get_param "representation_type")
 
 PRECISION=$(get_param "precision")
 [ -z "$PRECISION" ] && PRECISION="float16"
+
+RUN_BACKFILL_EMBEDDINGS=$(get_param "run_backfill_embeddings")
+[ -z "$RUN_BACKFILL_EMBEDDINGS" ] && RUN_BACKFILL_EMBEDDINGS="false"
+
+BACKFILL_BATCH_SIZE=$(get_param "backfill_batch_size")
+[ -z "$BACKFILL_BATCH_SIZE" ] && BACKFILL_BATCH_SIZE=32
+
+BACKFILL_CHUNK_SIZE=$(get_param "backfill_chunk_size")
+[ -z "$BACKFILL_CHUNK_SIZE" ] && BACKFILL_CHUNK_SIZE=512
 
 K_CLUSTERS=$(get_param "k_clusters")
 [ -z "$K_CLUSTERS" ] && K_CLUSTERS=40000
@@ -122,6 +136,18 @@ while [[ $# -gt 0 ]]; do
       PRECISION="$2"
       shift 2
       ;;
+    --run_backfill_embeddings|--backfill)
+      RUN_BACKFILL_EMBEDDINGS="true"
+      shift
+      ;;
+    --backfill_batch_size|--batch_size)
+      BACKFILL_BATCH_SIZE="$2"
+      shift 2
+      ;;
+    --backfill_chunk_size|--chunk_size)
+      BACKFILL_CHUNK_SIZE="$2"
+      shift 2
+      ;;
     --k_clusters)
       K_CLUSTERS="$2"
       shift 2
@@ -155,7 +181,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: ./run_offline_pipeline.sh [options]"
+      echo "Usage: ./scripts/pipeline/run_offline_pipeline.sh [options]"
       echo ""
       echo "Options:"
       echo "  --input PATH                 Path to input offline parquet file"
@@ -163,6 +189,9 @@ while [[ $# -gt 0 ]]; do
       echo "  --model_name MODEL           Vision encoder (e.g. google/tipsv2-b14, facebook/dinov2-base)"
       echo "  --representation_type TYPE   Embedding type (cls, avg_patch, cls_avg_patch)"
       echo "  --precision PREC             Stored precision (float16, float32)"
+      echo "  --run_backfill_embeddings    Compute/backfill embeddings before clustering"
+      echo "  --backfill_batch_size BATCH  Batch size for feature extraction (default: 32)"
+      echo "  --backfill_chunk_size CHUNK  Chunk size for parallel loading (default: 512)"
       echo "  --k_clusters K               Number of clusters (default: 40000)"
       echo "  --auto_find_k                Enable spatial block validation to find optimal k"
       echo "  --output_dir DIR             Directory for dataset & output storage (default: parent dir of --input)"
@@ -237,6 +266,7 @@ echo " - Input Dataset       : $INPUT_PARQUET"
 echo " - Model Identifier    : $MODEL_NAME"
 echo " - Representation Type : $REPRESENTATION_TYPE"
 echo " - Precision           : $PRECISION"
+echo " - Backfill Embeddings : $RUN_BACKFILL_EMBEDDINGS"
 echo " - Clusters (k)        : $K_CLUSTERS"
 echo " - Output Directory    : $OUTPUT_DIR"
 echo " - Clustered Sidecar   : $CLUSTERED_PARQUET"
@@ -266,6 +296,20 @@ if [ "$RUN_COORDINATE_CLEANUP" = "true" ]; then
     CLEANED_OUTPUT="$OUTPUT_DIR/${BASE_NAME}_cleaned.parquet"
     python3 -m src.processing.cleanup_coordinate_anomalies --input "$INPUT_PARQUET" --output "$CLEANED_OUTPUT" $CLEANUP_FLAGS
     INPUT_PARQUET="$CLEANED_OUTPUT"
+fi
+
+# Optional Preprocessing Step: Backfill Embeddings for Specified Model
+if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
+    echo ""
+    echo "[Preprocessing] Backfilling embeddings for model '$MODEL_NAME' ($REPRESENTATION_TYPE, $PRECISION)..."
+    python3 -m src.processing.backfill_embeddings \
+      --input "$INPUT_PARQUET" \
+      --model_name "$MODEL_NAME" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
+      --batch_size "$BACKFILL_BATCH_SIZE" \
+      --chunk_size "$BACKFILL_CHUNK_SIZE" \
+      $IMAGE_ROOT_FLAG
 fi
 
 # Step 1: Auto-find optimal k (if enabled)

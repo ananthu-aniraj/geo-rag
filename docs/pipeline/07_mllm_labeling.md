@@ -6,7 +6,7 @@ This document describes the design and prompting strategies of `label_clusters_m
 
 ## ⚙️ SGLang Docker Lifecycle Management
 
-To run local vision-language model inference on GPUs, the master script `run_full_pipeline.sh` automatically manages the lifecycle of the SGLang container (`sglang-server`):
+To run local vision-language model inference on GPUs, the master pipeline scripts (`scripts/pipeline/run_full_pipeline.sh` and `scripts/pipeline/run_offline_pipeline.sh`) automatically manage the lifecycle of the SGLang container (`sglang-server`):
 
 1. **Pre-Launch Cleanup**: Scan and kill any stale container bindings to clear Nvidia GPU memory and ports.
 2. **Container Launch**: Spawns the container with NVIDIA runtime support:

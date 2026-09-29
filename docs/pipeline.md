@@ -30,21 +30,22 @@ Detailed documentation for each stage of the pipeline can be found in the sub-gu
 
 ---
 
-## ⚡ 3. Offline Pipeline & Model Representation Sweeps (`run_offline_pipeline.sh`)
+## ⚡ 3. Offline Pipeline & Model Representation Sweeps (`scripts/pipeline/run_offline_pipeline.sh`)
 
 When working with pre-downloaded offline datasets (e.g. `geo_space_cleaned_offline.parquet`, camera trap subsets, or benchmark extracts), the scraping, cell-chunking, and network downloading stages can be skipped entirely.
 
-The offline pipeline (`run_offline_pipeline.sh`, configured via `config/pipeline/params_offline.yaml`) allows rapid evaluation across different vision backbones (`google/tipsv2-b14`, `facebook/dinov2-base`, SigLIP, etc.), pooling strategies (`cls`, `avg_patch`, `cls_avg_patch`), and cluster counts ($k$).
+The offline pipeline (`scripts/pipeline/run_offline_pipeline.sh`, configured via `config/pipeline/params_offline.yaml`) allows rapid evaluation across different vision backbones (`google/tipsv2-b14`, `facebook/dinov2-base`, SigLIP, etc.), pooling strategies (`cls`, `avg_patch`, `cls_avg_patch`), and cluster counts ($k$).
 
 ```bash
-./run_offline_pipeline.sh \
+./scripts/pipeline/run_offline_pipeline.sh \
   --input /path/to/geo_space_cleaned_offline.parquet \
   --image_root_dirs /path/to/images \
   --output_dir /path/to/output \
   --model_name "google/tipsv2-b14" \
   --representation_type "cls" \
   --precision "float16" \
-  --k_clusters 40000
+  --k_clusters 40000 \
+  --run_backfill_embeddings
 ```
 
 ### Visualizations & Sidecar Layout
@@ -61,7 +62,7 @@ To prevent destructive file overwrites across different model sweeps:
 
 ## 💾 4. Data Versioning (DVC)
 
-To handle heavy files (Parquet databases, HTML maps, images), `run_full_pipeline.sh` implements autonomous DVC standalone tracking:
+To handle heavy files (Parquet databases, HTML maps, images), `scripts/pipeline/run_full_pipeline.sh` implements autonomous DVC standalone tracking:
 
 1. **HDD Storage**: Outputs are written to a fast SSD, then backed up to a high-capacity HDD directory tracked by DVC.
 2. **Push**: Pushes heavy data to remote storage using `dvc push`.

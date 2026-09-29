@@ -52,6 +52,10 @@ geo-rag/
 │   ├── evaluation/               # Evaluation & collated model comparison runners
 │   └── scrapers/                 # Data collection and profiling runner wrappers
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
+├── scripts/                      # Shell execution runners
+│   ├── evaluation/               # Benchmark job runners
+│   ├── pipeline/                 # Full end-to-end & offline data processing pipelines
+│   └── scrapers/                 # Scraper execution runners
 ├── src/                          # Core Python Package
 │   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
 │   ├── indexing/                 # K-Means clustering & H3 spatial-semantic index builder
@@ -61,8 +65,7 @@ geo-rag/
 │   └── visualization/            # Map generators, dashboard templates & visualizers
 ├── tests/                        # Automated unit and integration test suite
 ├── .env                          # Local credentials file (gitignored)
-├── .env.template                 # Template for API credentials configuration
-└── run_full_pipeline.sh          # Full end-to-end data processing pipeline
+└── .env.template                 # Template for API credentials configuration
 ```
 
 ---
@@ -161,28 +164,29 @@ The `/scripts/scrapers/` folder contains automated shell orchestrators for batch
 
 Geo-RAG provides two complementary orchestrators for postprocessing, clustering, and visualization:
 
-### 1. Full End-to-End Pipeline (`run_full_pipeline.sh`)
+### 1. Full End-to-End Pipeline (`scripts/pipeline/run_full_pipeline.sh`)
 
 Executes the complete ingestion, cell-chunking, spatial deduplication, timestamp standardization, coordinate cleaning, FAISS GPU clustering, MLLM labeling, spatial indexing, and visualization generation:
 
 ```bash
-./run_full_pipeline.sh
+./scripts/pipeline/run_full_pipeline.sh
 ```
 
-### 2. Streamlined Offline Clustering & Visualization Pipeline (`run_offline_pipeline.sh`)
+### 2. Streamlined Offline Clustering & Visualization Pipeline (`scripts/pipeline/run_offline_pipeline.sh`)
 
 Dedicated to pre-downloaded offline datasets (e.g. `geo_space_cleaned_offline.parquet`, iWildCam, Wildlife Insights, Snapshot USA). It bypasses network scraping and downloading, allowing you to rapidly sweep across vision models, pooling representations, and cluster counts:
 
 ```bash
 # Run clustering and visualization for a specific model and cluster count
-./run_offline_pipeline.sh \
+./scripts/pipeline/run_offline_pipeline.sh \
   --input /path/to/geo_space_cleaned_offline.parquet \
   --image_root_dirs /path/to/images \
   --output_dir /path/to/output \
   --model_name "google/tipsv2-b14" \
   --representation_type "cls" \
   --precision "float16" \
-  --k_clusters 40000
+  --k_clusters 40000 \
+  --run_backfill_embeddings
 ```
 
 Visual dashboards, maps, and plots are cleanly isolated into dedicated folders (`vis_${num_clusters}_${model_name}_${rep_type}_${precision}/`), while decoupled sidecar Parquets are saved in the main output directory with matching model provenance tags.
@@ -245,7 +249,7 @@ Please refer to the [official PyTorch installation guide](https://pytorch.org/ge
 
 ### 4. Docker & NVIDIA Container Toolkit (For VLM Auto-Labeling)
 
-The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is controlled by `run_full_pipeline.sh`, which automatically launches an **SGLang** server inside a Docker container. To allow the Docker container to access the host GPU (required for VLM inference):
+The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is controlled by `scripts/pipeline/run_full_pipeline.sh` and `scripts/pipeline/run_offline_pipeline.sh`, which automatically launch an **SGLang** server inside a Docker container. To allow the Docker container to access the host GPU (required for VLM inference):
 
 1. **Install Docker Engine:** Follow the official guide to install [Docker Engine for your OS](https://docs.docker.com/engine/install/).
 2. **Install NVIDIA Container Toolkit:** This allows Docker containers to interface with host GPUs using `--gpus all`:
@@ -267,7 +271,7 @@ The VLM cluster auto-labeling script (`src/indexing/label_clusters_mllm.py`) is 
    ```
 
 3. **Running Docker without sudo (Non-root User Setup):**
-   By default, the Docker daemon binds to a Unix socket owned by `root`. To allow `run_full_pipeline.sh` to launch VLM containers without prefixing commands with `sudo` (which prevents permission denied socket errors):
+   By default, the Docker daemon binds to a Unix socket owned by `root`. To allow pipeline scripts to launch VLM containers without prefixing commands with `sudo` (which prevents permission denied socket errors):
 
    ```bash
    # Create the docker group (often already exists)
@@ -320,14 +324,14 @@ On modern Ubuntu releases (specifically Ubuntu 24.04 LTS), a conflict between Ap
 
 ### Symptom
 
-Running `./run_full_pipeline.sh` hangs when stopping the server, or manual commands like `docker stop sglang-server` / `docker rm -f sglang-server` fail with:
+Running `./scripts/pipeline/run_full_pipeline.sh` hangs when stopping the server, or manual commands like `docker stop sglang-server` / `docker rm -f sglang-server` fail with:
 > `Error response from daemon: cannot stop container: sglang-server: permission denied`
 
 ### Solution (Implemented in Pipeline)
 
 To ensure the pipeline is portable and does not fail on non-Ubuntu systems (like macOS, Windows WSL2, or Red Hat):
 
-1. **Dynamic AppArmor Detection:** `run_full_pipeline.sh` checks if AppArmor is enabled on the host system at runtime by reading `/sys/module/apparmor/parameters/enabled`.
+1. **Dynamic AppArmor Detection:** Pipeline scripts (`scripts/pipeline/run_full_pipeline.sh` and `scripts/pipeline/run_offline_pipeline.sh`) check if AppArmor is enabled on the host system at runtime by reading `/sys/module/apparmor/parameters/enabled`.
 2. **Conditional Unconfinement:** If AppArmor is active, the script automatically launches the container with `--security-opt apparmor=unconfined`. This prevents AppArmor from blocking the containerd namespace teardown when the script exits, enabling clean removal.
 3. **Fallback:** On non-Ubuntu systems, this flag is omitted to prevent "security option not supported" compatibility failures.
 

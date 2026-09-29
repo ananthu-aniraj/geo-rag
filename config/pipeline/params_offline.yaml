@@ -20,6 +20,11 @@ offline_pipeline:
   # Options: "float16", "float32"
   precision: "float16"
 
+  # Optional Feature Extraction / Embedding Backfilling (compute embeddings before clustering)
+  run_backfill_embeddings: false
+  backfill_batch_size: 32
+  backfill_chunk_size: 512
+
   # 3. Clustering Configuration
   k_clusters: 40000
   auto_find_k: true        # Automatically search and estimate optimal k before clustering

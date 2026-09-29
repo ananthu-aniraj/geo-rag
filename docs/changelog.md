@@ -2,6 +2,22 @@
 
 All notable changes and updates to the Geo-RAG codebase are documented here.
 
+## [1.0.2] - 2026-09-29
+
+### Added
+
+- **Optional Embedding Backfill in Offline Pipeline**:
+  - Integrated `src.processing.backfill_embeddings` into `scripts/pipeline/run_offline_pipeline.sh` via the optional flag `--run_backfill_embeddings` (or `--backfill`), with configurable `--backfill_batch_size` and `--backfill_chunk_size`.
+  - Added configuration keys `run_backfill_embeddings`, `backfill_batch_size`, and `backfill_chunk_size` to `config/pipeline/params_offline.yaml` and `config/local.yaml.template`.
+  - Enables end-to-end extraction of visual embeddings, clustering, indexing, and visualization sweeps on offline datasets within a single command.
+
+### Changed
+
+- **Pipeline Scripts Relocation to `scripts/pipeline/`**:
+  - Moved `run_full_pipeline.sh` and `run_offline_pipeline.sh` from the repository root into a dedicated `scripts/pipeline/` directory, mirroring `scripts/scrapers/`, `scripts/evaluation/`, `config/pipeline/`, and `docs/pipeline/`.
+  - Added project root directory enforcement (`cd "$PROJECT_ROOT"`) to both scripts to ensure deterministic relative path resolution regardless of invocation working directory.
+  - Updated all documentation references across `README.md`, `docs/pipeline.md`, and sub-guides.
+
 ---
 
 ## [1.0.1] - 2026-09-28
