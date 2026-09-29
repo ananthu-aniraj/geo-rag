@@ -53,10 +53,6 @@ geo-rag/
 │   └── pipeline/                 # Core pipeline scripts for ingestion, clustering, and visualization
 │   └── scrapers/                 # Data collection and profiling runner wrappers
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
-├── scripts/                      # Shell execution runners
-│   ├── evaluation/               # Benchmark job runners
-│   ├── pipeline/                 # Full end-to-end & offline data processing pipelines
-│   └── scrapers/                 # Scraper execution runners
 ├── src/                          # Core Python Package
 │   ├── evaluation/               # Benchmark evaluations (LUCAS 2018, iWildCam, Retrieval)
 │   ├── indexing/                 # K-Means clustering & H3 spatial-semantic index builder
