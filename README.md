@@ -50,6 +50,7 @@ geo-rag/
 ├── full_pipeline_output/         # DVC-tracked dataset outputs and artifacts
 ├── scripts/                      # Automated shell orchestrators
 │   ├── evaluation/               # Evaluation & collated model comparison runners
+│   └── pipeline/                 # Core pipeline scripts for ingestion, clustering, and visualization
 │   └── scrapers/                 # Data collection and profiling runner wrappers
 ├── shapefiles/                   # GIS shapefiles (admin borders & uncovered land polygons)
 ├── scripts/                      # Shell execution runners
