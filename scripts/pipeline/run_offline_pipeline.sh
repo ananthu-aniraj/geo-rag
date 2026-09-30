@@ -54,6 +54,12 @@ BACKFILL_BATCH_SIZE=$(get_param "backfill_batch_size")
 BACKFILL_CHUNK_SIZE=$(get_param "backfill_chunk_size")
 [ -z "$BACKFILL_CHUNK_SIZE" ] && BACKFILL_CHUNK_SIZE=512
 
+BACKFILL_RESUME=$(get_param "backfill_resume")
+[ -z "$BACKFILL_RESUME" ] && BACKFILL_RESUME="true"
+
+BACKFILL_CHECKPOINT_INTERVAL=$(get_param "backfill_checkpoint_interval")
+[ -z "$BACKFILL_CHECKPOINT_INTERVAL" ] && BACKFILL_CHECKPOINT_INTERVAL=300
+
 K_CLUSTERS=$(get_param "k_clusters")
 [ -z "$K_CLUSTERS" ] && K_CLUSTERS=40000
 
@@ -148,6 +154,18 @@ while [[ $# -gt 0 ]]; do
       BACKFILL_CHUNK_SIZE="$2"
       shift 2
       ;;
+    --backfill_resume)
+      BACKFILL_RESUME="true"
+      shift
+      ;;
+    --no_backfill_resume|--force_backfill)
+      BACKFILL_RESUME="false"
+      shift
+      ;;
+    --backfill_checkpoint_interval)
+      BACKFILL_CHECKPOINT_INTERVAL="$2"
+      shift 2
+      ;;
     --k_clusters)
       K_CLUSTERS="$2"
       shift 2
@@ -192,6 +210,9 @@ while [[ $# -gt 0 ]]; do
       echo "  --run_backfill_embeddings    Compute/backfill embeddings before clustering"
       echo "  --backfill_batch_size BATCH  Batch size for feature extraction (default: 32)"
       echo "  --backfill_chunk_size CHUNK  Chunk size for parallel loading (default: 512)"
+      echo "  --backfill_resume            Reuse existing embeddings and only embed new images (default: true)"
+      echo "  --no_backfill_resume         Force recomputing all embeddings from scratch"
+      echo "  --backfill_checkpoint_interval S Interval in seconds for saving checkpoints (default: 300)"
       echo "  --k_clusters K               Number of clusters (default: 40000)"
       echo "  --auto_find_k                Enable spatial block validation to find optimal k"
       echo "  --output_dir DIR             Directory for dataset & output storage (default: parent dir of --input)"
@@ -267,6 +288,10 @@ echo " - Model Identifier    : $MODEL_NAME"
 echo " - Representation Type : $REPRESENTATION_TYPE"
 echo " - Precision           : $PRECISION"
 echo " - Backfill Embeddings : $RUN_BACKFILL_EMBEDDINGS"
+if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
+    echo "   * Backfill Resume   : $BACKFILL_RESUME"
+    echo "   * Checkpoint Int.   : ${BACKFILL_CHECKPOINT_INTERVAL}s"
+fi
 echo " - Clusters (k)        : $K_CLUSTERS"
 echo " - Output Directory    : $OUTPUT_DIR"
 echo " - Clustered Sidecar   : $CLUSTERED_PARQUET"
@@ -302,6 +327,11 @@ fi
 if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
     echo ""
     echo "[Preprocessing] Backfilling embeddings for model '$MODEL_NAME' ($REPRESENTATION_TYPE, $PRECISION)..."
+    BACKFILL_RESUME_FLAG="--resume"
+    if [ "$BACKFILL_RESUME" = "false" ]; then
+        BACKFILL_RESUME_FLAG="--no_resume"
+    fi
+
     python3 -m src.processing.backfill_embeddings \
       --input "$INPUT_PARQUET" \
       --model_name "$MODEL_NAME" \
@@ -309,6 +339,8 @@ if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
       --precision "$PRECISION" \
       --batch_size "$BACKFILL_BATCH_SIZE" \
       --chunk_size "$BACKFILL_CHUNK_SIZE" \
+      --checkpoint_interval "$BACKFILL_CHECKPOINT_INTERVAL" \
+      $BACKFILL_RESUME_FLAG \
       $IMAGE_ROOT_FLAG
 fi
 

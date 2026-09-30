@@ -10,6 +10,12 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Integrated `src.processing.backfill_embeddings` into `scripts/pipeline/run_offline_pipeline.sh` via the optional flag `--run_backfill_embeddings` (or `--backfill`), with configurable `--backfill_batch_size` and `--backfill_chunk_size`.
   - Added configuration keys `run_backfill_embeddings`, `backfill_batch_size`, and `backfill_chunk_size` to `config/pipeline/params_offline.yaml` and `config/local.yaml.template`.
   - Enables end-to-end extraction of visual embeddings (for any model), clustering, indexing, and visualization sweeps on offline datasets within a single command.
+- **Incremental Embedding Backfill & Checkpointing Support**:
+  - Enhanced `src/processing/backfill_embeddings.py` with automatic key-based resumption (`--resume`, enabled by default; `--no_resume` / `--force` to override).
+  - Automatically indexes existing companion `.keys.parquet` and `.npy` files from the output, input, or in-progress checkpoint files.
+  - Automatically identifies images in the dataset that already have valid embeddings, bypassing download and model inference for existing records, and executing forward passes strictly on missing/appended images.
+  - Added periodic companion file checkpointing (`--checkpoint_interval`) and graceful `KeyboardInterrupt` handling to persist in-progress embeddings and resume interrupted extraction jobs seamlessly.
+  - Added unit test suite in `tests/test_backfill_embeddings.py` covering pre-existing embedding detection, incremental expansion, and checkpoint recovery.
 
 ### Changed
 

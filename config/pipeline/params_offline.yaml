@@ -24,6 +24,8 @@ offline_pipeline:
   run_backfill_embeddings: false
   backfill_batch_size: 64
   backfill_chunk_size: 1024
+  backfill_resume: true
+  backfill_checkpoint_interval: 300
 
   # 3. Clustering Configuration
   k_clusters: 40000
