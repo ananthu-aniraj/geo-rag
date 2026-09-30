@@ -298,6 +298,27 @@ echo " - Clustered Sidecar   : $CLUSTERED_PARQUET"
 echo " - Visualizations Dir  : $VIS_DIR"
 echo ""
 
+# Optional Preprocessing Step: Backfill Embeddings for Specified Model
+if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
+    echo ""
+    echo "[Preprocessing] Backfilling embeddings for model '$MODEL_NAME' ($REPRESENTATION_TYPE, $PRECISION)..."
+    BACKFILL_RESUME_FLAG="--resume"
+    if [ "$BACKFILL_RESUME" = "false" ]; then
+        BACKFILL_RESUME_FLAG="--no_resume"
+    fi
+
+    python3 -m src.processing.backfill_embeddings \
+      --input "$INPUT_PARQUET" \
+      --model_name "$MODEL_NAME" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
+      --batch_size "$BACKFILL_BATCH_SIZE" \
+      --chunk_size "$BACKFILL_CHUNK_SIZE" \
+      --checkpoint_interval "$BACKFILL_CHECKPOINT_INTERVAL" \
+      $BACKFILL_RESUME_FLAG \
+      $IMAGE_ROOT_FLAG
+fi
+
 # Optional Preprocessing Step: Timestamp Standardization
 if [ "$RUN_TIMESTAMP_STANDARDIZATION" = "true" ]; then
     echo "Standardizing dataset timestamps and Köppen-Geiger mapping..."
@@ -323,26 +344,6 @@ if [ "$RUN_COORDINATE_CLEANUP" = "true" ]; then
     INPUT_PARQUET="$CLEANED_OUTPUT"
 fi
 
-# Optional Preprocessing Step: Backfill Embeddings for Specified Model
-if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
-    echo ""
-    echo "[Preprocessing] Backfilling embeddings for model '$MODEL_NAME' ($REPRESENTATION_TYPE, $PRECISION)..."
-    BACKFILL_RESUME_FLAG="--resume"
-    if [ "$BACKFILL_RESUME" = "false" ]; then
-        BACKFILL_RESUME_FLAG="--no_resume"
-    fi
-
-    python3 -m src.processing.backfill_embeddings \
-      --input "$INPUT_PARQUET" \
-      --model_name "$MODEL_NAME" \
-      --representation_type "$REPRESENTATION_TYPE" \
-      --precision "$PRECISION" \
-      --batch_size "$BACKFILL_BATCH_SIZE" \
-      --chunk_size "$BACKFILL_CHUNK_SIZE" \
-      --checkpoint_interval "$BACKFILL_CHECKPOINT_INTERVAL" \
-      $BACKFILL_RESUME_FLAG \
-      $IMAGE_ROOT_FLAG
-fi
 
 # Step 1: Auto-find optimal k (if enabled)
 if [ "$AUTO_FIND_K" = "true" ]; then
@@ -355,7 +356,7 @@ if [ "$AUTO_FIND_K" = "true" ]; then
       --k_step "$K_STEP" \
       --representation_type "$REPRESENTATION_TYPE" \
       --model_name "$MODEL_NAME" \
-      --precision "$PRECISION" \
+      --update_params \
       --output_plot "$CLUSTER_COUNT_PLOT" \
       --sample_limit 0 \
       --params_path "$PARAMS_YAML"
@@ -385,7 +386,6 @@ if [ -f "$CLUSTERED_PARQUET" ]; then
       --centroids_parquet "$CLUSTERED_PARQUET" \
       --representation_type "$REPRESENTATION_TYPE" \
       --model_name "$MODEL_NAME" \
-      --precision "$PRECISION" \
       --k_clusters "$K_CLUSTERS" 2>/dev/null || echo "fit")
 
     if [ "$DETECTOR_MODE" = "assign" ]; then
