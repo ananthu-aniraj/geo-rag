@@ -240,7 +240,9 @@ def main():
         has_decoupled_old = "embedding" not in pf_old.schema_arrow.names
         if has_decoupled_old:
             embs_old_matrix = load_embeddings(
-                args.centroids_parquet, representation_type=args.representation_type
+                args.centroids_parquet,
+                representation_type=args.representation_type,
+                model_name=args.model_name,
             )
 
         # Accumulate centroids dynamically from the old clustered database using vectorized math
