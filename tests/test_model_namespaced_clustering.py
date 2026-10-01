@@ -167,6 +167,95 @@ class TestModelNamespacedClustering(unittest.TestCase):
         self.assertEqual(df_result["representation_type"].iloc[0], "cls")
         self.assertEqual(df_result["precision"].iloc[0], "float32")
 
+    def test_assign_mode_with_dotted_model_name(self):
+        # Test model with dots/dashes in identifier e.g. vit_base_patch16_dinov3.lvd1689m
+        model_name = "vit_base_patch16_dinov3.lvd1689m"
+        num_rows = 10
+        dim = 16
+        rng = np.random.RandomState(42)
+
+        df_base = pd.DataFrame(
+            {
+                "Platform": ["flickr"] * num_rows,
+                "Photo_ID": [str(i) for i in range(num_rows)],
+                "Latitude": [40.0] * num_rows,
+                "Longitude": [10.0] * num_rows,
+                "embedding": [
+                    rng.randn(dim).astype(np.float32) for _ in range(num_rows)
+                ],
+            }
+        )
+        base_path = os.path.join(self.temp_dir, "geo_space_cleaned_offline.parquet")
+        save_dataframe(
+            df_base,
+            base_path,
+            representation_type="cls",
+            precision="float16",
+            model_name=model_name,
+        )
+
+        sidecar_path = os.path.join(
+            self.temp_dir,
+            f"geo_space_offline_{model_name}_cls_float16_clustered_k_3.parquet",
+        )
+        df_sidecar = pd.DataFrame(
+            {
+                "Platform": ["flickr"] * num_rows,
+                "Photo_ID": [str(i) for i in range(num_rows)],
+                "cluster_id": [i % 3 for i in range(num_rows)],
+                "parent_cluster_id": [0] * num_rows,
+                "model_name": [model_name] * num_rows,
+                "representation_type": ["cls"] * num_rows,
+                "precision": ["float16"] * num_rows,
+            }
+        )
+        save_dataframe(df_sidecar, sidecar_path)
+
+        # 1. Verify load_embeddings directly on sidecar
+        loaded_embs = load_embeddings(
+            sidecar_path,
+            representation_type="cls",
+            model_name=model_name,
+            precision="float16",
+        )
+        self.assertEqual(loaded_embs.shape, (num_rows, dim))
+
+        # 2. Verify load_dataset_with_clusters directly on sidecar
+        merged = load_dataset_with_clusters(sidecar_path)
+        self.assertIn("Latitude", merged.columns)
+        self.assertIn("cluster_id", merged.columns)
+        self.assertEqual(len(merged), num_rows)
+
+        # 3. Verify cluster_images_global in assign mode
+        assign_out = os.path.join(self.temp_dir, "assign_dotted_out.parquet")
+        test_args = [
+            "cluster_images_global",
+            "--pkl",
+            base_path,
+            "--out",
+            assign_out,
+            "--k",
+            "3",
+            "--no_gpu",
+            "--clustering_mode",
+            "assign",
+            "--centroids_parquet",
+            sidecar_path,
+            "--model_name",
+            model_name,
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float16",
+        ]
+        with patch.object(sys, "argv", test_args):
+            cluster_main()
+
+        self.assertTrue(os.path.exists(assign_out))
+        res = pd.read_parquet(assign_out)
+        self.assertEqual(len(res), num_rows)
+        self.assertIn("cluster_id", res.columns)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,12 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Added periodic companion file checkpointing (`--checkpoint_interval`) and graceful `KeyboardInterrupt` handling to persist in-progress embeddings and resume interrupted extraction jobs seamlessly.
   - Added unit test suite in `tests/test_backfill_embeddings.py` covering pre-existing embedding detection, incremental expansion, and checkpoint recovery.
 
+- **Decoupled Sidecar Resolution in Assign Clustering & Drift Detection**:
+  - Enhanced `load_embeddings` in `src/utils/io.py` to auto-detect provenance columns (`model_name`, `representation_type`, `precision`) embedded in sidecar schemas and strip namespaced pipeline tags (such as `_${model_slug}_${rep}_${prec}`) to resolve underlying companion `.npy` and `.keys.parquet` files.
+  - Added fallback search across candidate directories to inspect companion `.keys.parquet` indices directly for sidecar files when names differ.
+  - Added in-memory key-alignment fallbacks in `src/indexing/cluster_images_global.py` (assign mode) and `src/utils/check_semantic_drift.py` so that old cluster centroids can resolve directly against loaded dataset matrices even in custom folder configurations.
+  - Added `test_end_to_end_assign_mode_with_decoupled_sidecar` to `tests/test_cluster_images_global.py`.
+
 ### Changed
 
 - **Pipeline Scripts Relocation to `scripts/pipeline/`**:

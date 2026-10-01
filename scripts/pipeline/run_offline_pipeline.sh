@@ -103,8 +103,6 @@ NUM_MEDOIDS=$(get_param "num_medoids")
 [ -z "$NUM_MEDOIDS" ] && NUM_MEDOIDS=4
 
 BASE_NAME=$(get_param "base_name")
-[ -z "$BASE_NAME" ] && BASE_NAME="geo_space_offline"
-
 OUTPUT_DIR=$(get_param "output_dir")
 
 MAX_MARKERS=$(get_param "max_markers")
@@ -241,6 +239,13 @@ if [ -z "$OUTPUT_DIR" ] || [ "$OUTPUT_DIR" = "auto" ]; then
     OUTPUT_DIR=$(dirname "$INPUT_PARQUET")
 fi
 [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR="."
+
+# Auto-detect base_name from input_parquet if not explicitly specified
+if [ -z "$BASE_NAME" ] || [ "$BASE_NAME" = "auto" ]; then
+    INPUT_FILENAME=$(basename "$INPUT_PARQUET")
+    BASE_NAME="${INPUT_FILENAME%.*}"
+fi
+[ -z "$BASE_NAME" ] && BASE_NAME="geo_space_offline"
 
 MODEL_SLUG=$(echo "$MODEL_NAME" | tr '/' '_')
 EXP_TAG="${MODEL_SLUG}_${REPRESENTATION_TYPE}_${PRECISION}"

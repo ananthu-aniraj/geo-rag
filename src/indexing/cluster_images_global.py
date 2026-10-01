@@ -239,11 +239,64 @@ def main():
 
         has_decoupled_old = "embedding" not in pf_old.schema_arrow.names
         if has_decoupled_old:
-            embs_old_matrix = load_embeddings(
-                args.centroids_parquet,
-                representation_type=args.representation_type,
-                model_name=args.model_name,
-            )
+            try:
+                embs_old_matrix = load_embeddings(
+                    args.centroids_parquet,
+                    representation_type=args.representation_type,
+                    model_name=args.model_name,
+                )
+            except Exception as e:
+                print(
+                    f" -> Could not directly load embeddings for centroids database ({e})."
+                )
+                print(
+                    " -> Resolving old cluster embeddings from current dataset matrix in memory..."
+                )
+                if "photo_key" in pf_old.schema_arrow.names:
+                    old_keys = (
+                        pf_old.read(columns=["photo_key"])["photo_key"]
+                        .to_pandas()
+                        .astype(str)
+                        .str.lower()
+                        .values
+                    )
+                elif (
+                    "Platform" in pf_old.schema_arrow.names
+                    and "Photo_ID" in pf_old.schema_arrow.names
+                ):
+                    df_old_keys = pf_old.read(
+                        columns=["Platform", "Photo_ID"]
+                    ).to_pandas()
+                    old_keys = (
+                        df_old_keys["Platform"].astype(str).str.lower()
+                        + "_"
+                        + df_old_keys["Photo_ID"].astype(str)
+                    ).values
+                else:
+                    raise
+
+                if "photo_key" in df.columns:
+                    cur_keys = df["photo_key"].astype(str).str.lower().values
+                elif "Platform" in df.columns and "Photo_ID" in df.columns:
+                    cur_keys = (
+                        df["Platform"].astype(str).str.lower()
+                        + "_"
+                        + df["Photo_ID"].astype(str)
+                    ).values
+                else:
+                    raise
+
+                cur_key_index = pd.Index(cur_keys)
+                indexer = cur_key_index.get_indexer(old_keys)
+                valid_mask = indexer >= 0
+                if not valid_mask.any():
+                    raise ValueError(
+                        f"None of the keys in '{args.centroids_parquet}' match the dataset in memory."
+                    )
+
+                safe_indexer = np.clip(indexer, 0, len(embeddings) - 1)
+                embs_old_matrix = embeddings[safe_indexer].astype(np.float32)
+                embs_old_matrix[~valid_mask] = 0.0
 
         # Accumulate centroids dynamically from the old clustered database using vectorized math
         raw_centroids = np.zeros((args.k, dim), dtype=np.float32)
@@ -251,6 +304,7 @@ def main():
         child_to_parent = np.zeros(args.k, dtype=np.int32)
 
         print("Computing centroids from pre-existing database...")
+        curr_idx = 0
         for rg in range(pf_old.num_row_groups):
             cols_to_read = ["cluster_id", "parent_cluster_id"]
             if has_decoupled_old:
@@ -265,11 +319,8 @@ def main():
                 continue
 
             if has_decoupled_old:
-                start_idx = sum(
-                    pf_old.metadata.row_group(i).num_rows for i in range(rg)
-                )
-                end_idx = start_idx + len(df_rg_old)
-                embs_old = embs_old_matrix[start_idx:end_idx]
+                embs_old = embs_old_matrix[curr_idx : curr_idx + len(df_rg_old)]
+                curr_idx += len(df_rg_old)
             else:
                 embs_old = np.vstack(df_rg_old["embedding"].values).astype(np.float32)
 

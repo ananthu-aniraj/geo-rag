@@ -50,7 +50,7 @@ offline_pipeline:
   num_medoids: 4            # Number of medoid images to stack in multi-image collage
 
   # 6. Output Configuration
-  base_name: "geo_space_offline"
+  base_name: ""             # Base name prefix (leave empty to auto-detect from input_parquet)
   output_dir: ""            # Destination directory (leave empty to auto-detect from input_parquet)
 
   # 7. Visualization Settings

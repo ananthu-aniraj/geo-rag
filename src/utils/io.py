@@ -263,6 +263,54 @@ def load_dataset_with_clusters(
         base_name = os.path.splitext(os.path.basename(parquet_path))[0]
         prefix = base_name.split("_clustered_k_")[0]
 
+        if model_name is None and "model_name" in schema_names:
+            try:
+                m_val = pf.read(columns=["model_name"])["model_name"].to_pylist()[0]
+                if m_val:
+                    model_name = m_val
+            except Exception:
+                pass
+        if (
+            representation_type is None or representation_type == "cls"
+        ) and "representation_type" in schema_names:
+            try:
+                r_val = pf.read(columns=["representation_type"])[
+                    "representation_type"
+                ].to_pylist()[0]
+                if r_val:
+                    representation_type = r_val
+            except Exception:
+                pass
+        if precision is None and "precision" in schema_names:
+            try:
+                p_val = pf.read(columns=["precision"])["precision"].to_pylist()[0]
+                if p_val:
+                    precision = p_val
+            except Exception:
+                pass
+
+        model_slug = model_name.replace("/", "_") if model_name else None
+        stripped_prefix = prefix
+        tags_to_strip = []
+        if model_slug and representation_type and precision:
+            tags_to_strip.append(f"_{model_slug}_{representation_type}_{precision}")
+        if model_slug and representation_type:
+            tags_to_strip.append(f"_{model_slug}_{representation_type}")
+        if model_slug:
+            tags_to_strip.append(f"_{model_slug}")
+        tags_to_strip.extend(
+            [
+                "_float16",
+                "_float32",
+                "_cls_avg_patch",
+                "_avg_patch",
+                "_cls",
+            ]
+        )
+        for tag in tags_to_strip:
+            if tag in stripped_prefix:
+                stripped_prefix = stripped_prefix.split(tag)[0]
+
         # Scan candidate directories for matching base datasets (longest prefix match first)
         candidate_base_files = []
         for d in candidate_dirs:
@@ -276,7 +324,26 @@ def load_dataset_with_clusters(
                     and "_h3_semantic_index" not in f
                 ):
                     cand_stem = f[:-8]
-                    if prefix.startswith(cand_stem):
+                    if (
+                        prefix.startswith(cand_stem)
+                        or stripped_prefix.startswith(cand_stem)
+                        or cand_stem.startswith(stripped_prefix)
+                        or get_core_base_name(stripped_prefix)
+                        == get_core_base_name(cand_stem)
+                    ):
+                        candidate_base_files.append(os.path.join(d, f))
+
+        if not candidate_base_files:
+            for d in candidate_dirs:
+                if not os.path.exists(d):
+                    continue
+                for f in os.listdir(d):
+                    if (
+                        f.endswith(".parquet")
+                        and not f.endswith(".keys.parquet")
+                        and "_clustered_k_" not in f
+                        and "_h3_semantic_index" not in f
+                    ):
                         candidate_base_files.append(os.path.join(d, f))
 
         candidate_base_files.sort(key=lambda p: len(os.path.basename(p)), reverse=True)
@@ -445,11 +512,66 @@ def load_embeddings(
     if parent_dir and parent_dir != db_dir:
         candidate_dirs.append(parent_dir)
 
+    # Auto-detect sidecar metadata from Parquet schema if not explicitly provided
+    if model_name is None and "model_name" in pf.schema_arrow.names:
+        try:
+            m_val = pf.read(columns=["model_name"])["model_name"].to_pylist()[0]
+            if m_val:
+                model_name = m_val
+        except Exception:
+            pass
+
+    if (
+        representation_type is None or representation_type == "cls"
+    ) and "representation_type" in pf.schema_arrow.names:
+        try:
+            r_val = pf.read(columns=["representation_type"])[
+                "representation_type"
+            ].to_pylist()[0]
+            if r_val:
+                representation_type = r_val
+        except Exception:
+            pass
+
+    if precision is None and "precision" in pf.schema_arrow.names:
+        try:
+            p_val = pf.read(columns=["precision"])["precision"].to_pylist()[0]
+            if p_val:
+                precision = p_val
+        except Exception:
+            pass
+
     base_name = os.path.splitext(os.path.basename(parquet_path))[0]
 
     # Trim '_clustered_k_X' suffix if present to find base name
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
+
+    is_tipsv2 = (model_name is None) or ("tipsv2" in model_name.lower())
+    model_slug = model_name.replace("/", "_") if model_name else None
+
+    # Strip any known provenance tags that may have been baked into sidecar name
+    # e.g., geo_space_offline_google_tipsv2-b14_cls_float16 -> geo_space_offline
+    stripped_base = base_name
+    tags_to_strip = []
+    if model_slug and representation_type and precision:
+        tags_to_strip.append(f"_{model_slug}_{representation_type}_{precision}")
+    if model_slug and representation_type:
+        tags_to_strip.append(f"_{model_slug}_{representation_type}")
+    if model_slug:
+        tags_to_strip.append(f"_{model_slug}")
+    tags_to_strip.extend(
+        [
+            "_float16",
+            "_float32",
+            "_cls_avg_patch",
+            "_avg_patch",
+            "_cls",
+        ]
+    )
+    for tag in tags_to_strip:
+        if tag in stripped_base:
+            stripped_base = stripped_base.split(tag)[0]
 
     # Find candidate base dataset stem by scanning candidate dirs
     candidate_bases = []
@@ -464,14 +586,30 @@ def load_embeddings(
                 and "_h3_semantic_index" not in f
             ):
                 cand_stem = f[:-8]
-                if base_name.startswith(cand_stem):
+                if (
+                    base_name.startswith(cand_stem)
+                    or stripped_base.startswith(cand_stem)
+                    or cand_stem.startswith(stripped_base)
+                    or get_core_base_name(stripped_base)
+                    == get_core_base_name(cand_stem)
+                ):
                     candidate_bases.append(cand_stem)
 
     candidate_bases.sort(key=len, reverse=True)
-    clean_base = candidate_bases[0] if candidate_bases else base_name
+    clean_base = candidate_bases[0] if candidate_bases else stripped_base
     core_name = get_core_base_name(clean_base)
 
-    is_tipsv2 = (model_name is None) or ("tipsv2" in model_name.lower())
+    bases_to_check = []
+    for candidate in [
+        clean_base,
+        core_name,
+        stripped_base,
+        get_core_base_name(stripped_base),
+        base_name,
+        get_core_base_name(base_name),
+    ]:
+        if candidate and candidate not in bases_to_check:
+            bases_to_check.append(candidate)
 
     def get_npy_path(base, model):
         model_suf = f"_{model.replace('/', '_')}" if model else ""
@@ -490,7 +628,7 @@ def load_embeddings(
     # 1. Try resolving with model_name if provided
     npy_path = get_npy_path(base_name, model_name)
     if model_name:
-        for b in [clean_base, core_name, base_name, get_core_base_name(base_name)]:
+        for b in bases_to_check:
             path = get_npy_path(b, model_name)
             if os.path.exists(path):
                 npy_path = path
@@ -499,7 +637,7 @@ def load_embeddings(
     # 2. Fallback to model-agnostic (legacy) path resolution ONLY for TIPSv2 models
     # (simplifying assumption: if the embedding file does not contain a model name, it's a TIPSv2 model)
     if not os.path.exists(npy_path) and is_tipsv2:
-        for b in [base_name, get_core_base_name(base_name)]:
+        for b in bases_to_check:
             path = get_npy_path(b, None)
             if os.path.exists(path):
                 npy_path = path
@@ -522,34 +660,39 @@ def load_embeddings(
         return True
 
     # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet
-    if not os.path.exists(npy_path) and "cleaned" in base_name:
-        fallback_base = base_name.replace("cleaned", "deduplicated")
-        if model_name:
-            p = get_npy_path(fallback_base, model_name)
-            if os.path.exists(p):
-                npy_path = p
-        if (not npy_path or not os.path.exists(npy_path)) and is_tipsv2:
-            p = get_npy_path(fallback_base, None)
-            if os.path.exists(p):
-                npy_path = p
-            else:
-                fallback_name = (
-                    f"{fallback_base}.npy"
-                    if column == "embedding"
-                    else f"{fallback_base}_{column}.npy"
-                )
-                for d in candidate_dirs:
-                    p_legacy = os.path.join(d, fallback_name)
-                    if os.path.exists(p_legacy):
-                        npy_path = p_legacy
+    if not os.path.exists(npy_path) and any("cleaned" in b for b in bases_to_check):
+        for b in bases_to_check:
+            if "cleaned" in b:
+                fallback_base = b.replace("cleaned", "deduplicated")
+                if model_name:
+                    p = get_npy_path(fallback_base, model_name)
+                    if os.path.exists(p):
+                        npy_path = p
+                        break
+                if is_tipsv2:
+                    p = get_npy_path(fallback_base, None)
+                    if os.path.exists(p):
+                        npy_path = p
+                        break
+                    fallback_name = (
+                        f"{fallback_base}.npy"
+                        if column == "embedding"
+                        else f"{fallback_base}_{column}.npy"
+                    )
+                    for d in candidate_dirs:
+                        p_legacy = os.path.join(d, fallback_name)
+                        if os.path.exists(p_legacy):
+                            npy_path = p_legacy
+                            break
+                    if os.path.exists(npy_path):
                         break
 
     # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
     if not os.path.exists(npy_path):
-        core_name = get_core_base_name(base_name)
-        bases = [base_name, core_name]
-        if "cleaned" in base_name:
-            bases.append(base_name.replace("cleaned", "deduplicated"))
+        bases = list(bases_to_check)
+        for b in bases_to_check:
+            if "cleaned" in b:
+                bases.append(b.replace("cleaned", "deduplicated"))
 
         for d in candidate_dirs:
             for b in bases:
@@ -609,6 +752,37 @@ def load_embeddings(
                     break
             if os.path.exists(npy_path):
                 break
+
+    # 5. Sidecar fallback: inspect companion keys files in candidate directories
+    if not os.path.exists(npy_path):
+        is_sidecar = (
+            "cluster_id" in pf.schema_arrow.names
+            and "Latitude" not in pf.schema_arrow.names
+            and "Longitude" not in pf.schema_arrow.names
+        )
+        if is_sidecar:
+            for d in candidate_dirs:
+                if not os.path.exists(d):
+                    continue
+                for f in os.listdir(d):
+                    if f.endswith(".keys.parquet"):
+                        candidate_npy = os.path.join(
+                            d, f.replace(".keys.parquet", ".npy")
+                        )
+                        if not os.path.exists(candidate_npy):
+                            continue
+                        if representation_type and not suffix_matches(
+                            f, representation_type
+                        ):
+                            continue
+                        if not is_tipsv2:
+                            model_clean = model_name.replace("/", "_")
+                            if model_clean not in f:
+                                continue
+                        npy_path = candidate_npy
+                        break
+                if os.path.exists(npy_path):
+                    break
 
     if os.path.exists(npy_path):
         emb = np.load(npy_path, mmap_mode="r")

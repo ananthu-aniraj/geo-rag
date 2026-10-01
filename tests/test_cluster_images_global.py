@@ -137,6 +137,68 @@ class TestClusterImagesGlobal(unittest.TestCase):
         loaded_embs = load_embeddings(self.output_parquet, representation_type="cls")
         self.assertEqual(len(loaded_embs), 10)
 
+    def test_end_to_end_assign_mode_with_decoupled_sidecar(self):
+        # 1. First run fit mode to produce sidecar
+        fit_args = [
+            "cluster_images_global.py",
+            "--pkl",
+            self.input_parquet,
+            "--k",
+            "4",
+            "--k_parents",
+            "2",
+            "--no_gpu",
+            "--out",
+            self.output_parquet,
+            "--clustering_mode",
+            "fit",
+            "--model_name",
+            "google/tipsv2-b14",
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float16",
+        ]
+        with patch.object(sys, "argv", fit_args):
+            main()
+
+        self.assertTrue(os.path.exists(self.output_parquet))
+
+        # 2. Now run assign mode referencing the generated sidecar
+        assign_out = os.path.join(self.test_dir, "test_assign_out.parquet")
+        assign_args = [
+            "cluster_images_global.py",
+            "--pkl",
+            self.input_parquet,
+            "--k",
+            "4",
+            "--k_parents",
+            "2",
+            "--no_gpu",
+            "--out",
+            assign_out,
+            "--clustering_mode",
+            "assign",
+            "--centroids_parquet",
+            self.output_parquet,
+            "--model_name",
+            "google/tipsv2-b14",
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float16",
+        ]
+        with patch.object(sys, "argv", assign_args):
+            main()
+
+        self.assertTrue(os.path.exists(assign_out))
+        df_assigned = load_dataframe(assign_out)
+        self.assertIn("cluster_id", df_assigned.columns)
+        self.assertIn("parent_cluster_id", df_assigned.columns)
+        self.assertEqual(len(df_assigned), 10)
+        self.assertTrue((df_assigned["cluster_id"] >= 0).all())
+        self.assertTrue((df_assigned["parent_cluster_id"] >= 0).all())
+
 
 if __name__ == "__main__":
     unittest.main()

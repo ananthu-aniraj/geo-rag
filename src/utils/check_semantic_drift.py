@@ -73,6 +73,7 @@ def main():
             # Combine Photo_ID and Platform to create a unique key
             keys = df_ids["Platform"].astype(str) + "_" + df_ids["Photo_ID"].astype(str)
             old_ids.extend(keys.values)
+        old_keys_arr = np.array(old_ids)
         old_keys_set = set(old_ids)
         del old_ids
     except Exception:
@@ -125,11 +126,21 @@ def main():
             c_ids_list.append(c_ids_rg)
         c_ids_old = np.concatenate(c_ids_list)
 
-        embs_old = load_embeddings(
-            args.centroids_parquet,
-            representation_type=args.representation_type,
-            model_name=args.model_name,
-        )
+        try:
+            embs_old = load_embeddings(
+                args.centroids_parquet,
+                representation_type=args.representation_type,
+                model_name=args.model_name,
+            )
+        except Exception:
+            new_keys_idx = pd.Index(new_keys)
+            indexer = new_keys_idx.get_indexer(old_keys_arr)
+            valid_k = indexer >= 0
+            if not valid_k.any():
+                raise
+            safe_indexer = np.clip(indexer, 0, len(embs_all_new) - 1)
+            embs_old = embs_all_new[safe_indexer].astype(np.float32)
+            embs_old[~valid_k] = 0.0
 
         raw_centroids = np.zeros((args.k_clusters, dim), dtype=np.float32)
         counts = np.zeros(args.k_clusters, dtype=np.int64)
