@@ -401,6 +401,7 @@ else
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --num_medoids "$NUM_MEDOIDS" \
+      --model_name "$MODEL_NAME" \
       $IMAGE_ROOT_FLAG
 
     echo ""
@@ -412,6 +413,7 @@ else
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --num_medoids "$NUM_MEDOIDS" \
+      --model_name "$MODEL_NAME" \
       $IMAGE_ROOT_FLAG
 
     echo ""

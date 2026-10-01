@@ -411,6 +411,12 @@ def main():
         help="Interval of successfully re-labeled clusters at which to save intermediate checkpoints.",
     )
     parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Name of the model embedding to use.",
+    )
+    parser.add_argument(
         "--representation_type",
         type=str,
         default="cls",
@@ -536,14 +542,19 @@ def main():
 
     try:
         embeddings = load_embeddings(
-            args.file, representation_type=args.representation_type
+            args.file,
+            representation_type=args.representation_type,
+            model_name=args.model_name,
         ).squeeze()
     except Exception as e:
         print(
             f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load..."
         )
         embeddings = load_embeddings(
-            args.file, column="embedding", representation_type=args.representation_type
+            args.file,
+            column="embedding",
+            representation_type=args.representation_type,
+            model_name=args.model_name,
         ).squeeze()
 
     # 6. Construct prompt templates

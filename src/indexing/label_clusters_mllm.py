@@ -398,6 +398,14 @@ def main():
     parser.add_argument(
         "--img_max_dim", type=int, default=672, help="Target max dimension for images."
     )
+
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Name of the model embedding to use.",
+    )
+
     parser.add_argument(
         "--image_root_dir",
         type=str,
@@ -450,7 +458,9 @@ def main():
         t0 = time.time()
         try:
             embeddings = load_embeddings(
-                args.input_file, representation_type=args.representation_type
+                args.input_file,
+                representation_type=args.representation_type,
+                model_name=args.model_name,
             )
         except Exception as e:
             print(
@@ -460,6 +470,7 @@ def main():
                 args.input_file,
                 column="embedding",
                 representation_type=args.representation_type,
+                model_name=args.model_name,
             )
         print(
             f" -> Temporarily loaded raw embedding matrix in {time.time() - t0:.2f}s."

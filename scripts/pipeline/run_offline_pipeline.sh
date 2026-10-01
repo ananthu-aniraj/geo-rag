@@ -482,6 +482,7 @@ if [ "$ENABLE_MLLM" = "true" ]; then
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --num_medoids "$NUM_MEDOIDS" \
+      --model_name "$MODEL_NAME" \
       $IMAGE_ROOT_FLAG
 
     python3 -m src.indexing.relabel_failed_clusters \
@@ -491,6 +492,7 @@ if [ "$ENABLE_MLLM" = "true" ]; then
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --num_medoids "$NUM_MEDOIDS" \
+      --model_name "$MODEL_NAME" \
       $IMAGE_ROOT_FLAG
 
     docker rm -f sglang-server >/dev/null 2>&1 || true
