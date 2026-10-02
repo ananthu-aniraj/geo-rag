@@ -156,9 +156,18 @@ class TestMapUtils(unittest.TestCase):
         except ImportError:
             self.skipTest("geopandas not installed")
 
+        import importlib.util
+
+        if not importlib.util.find_spec("mapclassify"):
+            self.skipTest("mapclassify not installed")
+
         gdf = gpd.GeoDataFrame([{"geometry": Point(0, 0)}], crs="EPSG:4326")
         url, attr = get_carto_tile_config("CartoDB Positron", api_key="shp_key_xyz")
-        m = gdf.explore(tiles=url, attr=attr)
+        try:
+            m = gdf.explore(tiles=url, attr=attr)
+        except ImportError as e:
+            self.skipTest(f"explore() dependencies missing: {e}")
+
         html = m._repr_html_()
         self.assertIn("shp_key_xyz", html)
         self.assertIn("cartocdn.com/light_all", html)
