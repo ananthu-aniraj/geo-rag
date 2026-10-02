@@ -123,6 +123,7 @@ PYTHONPATH=. python3 src/utils/download_images.py \
 | `--overwrite_image_url`| `flag` | `False` | Overwrite `Image_URL` with `Image_Location` (by default, original remote `Image_URL` is preserved). |
 | `--representation_type`| `str` | `"cls"` | Representation type for companion embeddings (`cls`, `avg_patch`, `cls_avg_patch`). |
 | `--precision` | `str` | `"float32"` | Storage precision for companion embeddings (`float32` or `float16`). |
+| `--skip_embeddings` | `flag` | `False` | Skip loading, updating, or saving companion embeddings (metadata-only download/copy). |
 | `--timeout` | `int` | `20` | Request timeout in seconds per image download. |
 | `--max_retries` | `int` | `3` | Maximum retry attempts for failed downloads with exponential backoff. |
 | `--mapillary_token` | `str` | `None` | Mapillary access token (overrides `MAPILLARY_TOKEN` in `.env`). |

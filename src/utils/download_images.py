@@ -381,6 +381,13 @@ def main():
         help="Floating point precision format for stored embeddings (float32 or float16).",
     )
     parser.add_argument(
+        "--skip_embeddings",
+        "--no_embeddings",
+        dest="skip_embeddings",
+        action="store_true",
+        help="Skip loading, updating, or saving companion embeddings. Only download/copy images and update dataset metadata.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume downloading by skipping images already present in the output Parquet file and streaming updates as new images are downloaded.",
@@ -496,36 +503,39 @@ def main():
         df["photo_key"] = df["photo_key"].astype(str)
 
     # 3. Load Embeddings
-    print("Checking companion embeddings matrix...")
     embeddings = None
-    try:
-        embeddings = load_embeddings(
-            args.input, representation_type=args.representation_type
-        )
-        print(f" -> Loaded embeddings shape: {embeddings.shape}")
-    except Exception as e:
-        print(
-            f" -> No companion embeddings found ({e}). Proceeding with metadata-only download."
-        )
-
-    # Validate row alignment if embeddings exist
-    if embeddings is not None:
-        if "embedding_idx" in df.columns:
-            valid_mask = (df["embedding_idx"] >= 0) & (
-                df["embedding_idx"] < len(embeddings)
+    if not args.skip_embeddings:
+        print("Checking companion embeddings matrix...")
+        try:
+            embeddings = load_embeddings(
+                args.input, representation_type=args.representation_type
             )
-            if not valid_mask.all():
-                print(
-                    f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Slicing embeddings..."
+            print(f" -> Loaded embeddings shape: {embeddings.shape}")
+        except Exception as e:
+            print(
+                f" -> No companion embeddings found ({e}). Proceeding with metadata-only download."
+            )
+
+        # Validate row alignment if embeddings exist
+        if embeddings is not None:
+            if "embedding_idx" in df.columns:
+                valid_mask = (df["embedding_idx"] >= 0) & (
+                    df["embedding_idx"] < len(embeddings)
                 )
-                df = df.iloc[valid_mask.values].reset_index(drop=True)
-                embeddings = embeddings[df["embedding_idx"].values]
-        else:
-            if len(df) != len(embeddings):
-                print(
-                    f"Error: Shape mismatch. Metadata has {len(df)} rows, but embeddings has {len(embeddings)} rows."
-                )
-                sys.exit(1)
+                if not valid_mask.all():
+                    print(
+                        f"Warning: Found {np.sum(~valid_mask):,} rows with out-of-bounds embedding_idx. Slicing embeddings..."
+                    )
+                    df = df.iloc[valid_mask.values].reset_index(drop=True)
+                    embeddings = embeddings[df["embedding_idx"].values]
+            else:
+                if len(df) != len(embeddings):
+                    print(
+                        f"Error: Shape mismatch. Metadata has {len(df)} rows, but embeddings has {len(embeddings)} rows."
+                    )
+                    sys.exit(1)
+    else:
+        print("Skipping companion embeddings matrix (--skip_embeddings enabled).")
 
     # Build recursive offline index across image_root_dirs if provided
     image_index = None
@@ -568,16 +578,19 @@ def main():
             else:
                 df_existing["photo_key"] = df_existing["photo_key"].astype(str)
 
-            try:
-                existing_embeddings = load_embeddings(
-                    resume_file, representation_type=args.representation_type
-                )
-                print(
-                    f" -> Loaded {len(existing_embeddings):,} companion embeddings from resume file."
-                )
-            except Exception as e:
+            if not args.skip_embeddings:
+                try:
+                    existing_embeddings = load_embeddings(
+                        resume_file, representation_type=args.representation_type
+                    )
+                    print(
+                        f" -> Loaded {len(existing_embeddings):,} companion embeddings from resume file."
+                    )
+                except Exception as e:
+                    existing_embeddings = None
+                    print(f" -> No companion embeddings found for resume file ({e}).")
+            else:
                 existing_embeddings = None
-                print(f" -> No companion embeddings found for resume file ({e}).")
 
             # Verify existing records on disk
             if args.verify_existing:
@@ -1216,7 +1229,7 @@ def main():
         print("\n🎉 Offline dataset created successfully!")
         print(f" -> Total images recorded: {len(df_existing):,}")
         print(f" -> Metadata: {out_metadata}")
-        if existing_embeddings is not None:
+        if existing_embeddings is not None and not args.skip_embeddings:
             print(f" -> Embeddings: {out_npy}")
     else:
         print("\n[!] No images were successfully downloaded or resolved.")

@@ -459,3 +459,53 @@ class TestDownloadImagesResume(unittest.TestCase):
         self.assertEqual(
             df_res["Image_URL"].iloc[0], "https://example.com/orig_100.jpg"
         )
+
+    def test_download_images_skip_embeddings(self):
+        """Verify that --skip_embeddings performs downloading and metadata update without writing companion embeddings."""
+        downloaded_ids = []
+
+        def mock_download(url, output_path, photo_id, platform, timeout=10):
+            downloaded_ids.append(str(photo_id))
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            img = Image.new("RGB", (10, 10), color="green")
+            img.save(output_path, format="JPEG")
+            return True
+
+        out_parquet = os.path.join(self.test_dir, "skip_embs_output.parquet")
+        test_args = [
+            "download_images.py",
+            "--input",
+            self.input_parquet,
+            "--output",
+            out_parquet,
+            "--output_dir",
+            self.output_images_dir,
+            "--skip_embeddings",
+            "--threads",
+            "2",
+        ]
+
+        with (
+            patch("sys.argv", test_args),
+            patch(
+                "src.utils.download_images.download_image",
+                side_effect=mock_download,
+            ),
+        ):
+            main()
+
+        # All 4 images downloaded
+        self.assertEqual(len(downloaded_ids), 4)
+
+        # Output parquet created with 4 records
+        df_out = load_dataframe(out_parquet)
+        self.assertEqual(len(df_out), 4)
+        self.assertNotIn("embedding", df_out.columns)
+
+        # Companion files (.npy and .keys.parquet) must NOT exist
+        out_npy = os.path.join(self.test_dir, "skip_embs_output_cls_embeddings.npy")
+        out_keys = os.path.join(
+            self.test_dir, "skip_embs_output_cls_embeddings.keys.parquet"
+        )
+        self.assertFalse(os.path.exists(out_npy))
+        self.assertFalse(os.path.exists(out_keys))

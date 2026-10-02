@@ -438,8 +438,7 @@ if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
       --output "$INPUT_PARQUET" \
       --output_dir "$DOWNLOAD_OUTPUT_DIR" \
       --threads "$DOWNLOAD_THREADS" \
-      --representation_type "$REPRESENTATION_TYPE" \
-      --precision "$PRECISION" \
+      --skip_embeddings \
       --checkpoint_interval "$DOWNLOAD_CHECKPOINT_INTERVAL" \
       $DOWNLOAD_RESUME_FLAG \
       $DOWNLOAD_COPY_FLAG \
