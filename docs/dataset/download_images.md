@@ -101,6 +101,9 @@ PYTHONPATH=. python3 src/utils/download_images.py \
   --threads 24
 ```
 
+> [!NOTE]
+> **Wildlife Insights Cookie Expiration**: The `connect.sid` cookie is a short-lived web session cookie that expires periodically. If downloads fail to resolve signed GCS URLs, renew the session cookie by logging into [app.wildlifeinsights.org](https://app.wildlifeinsights.org) and updating `WILDLIFE_INSIGHTS_COOKIE` in `.env` (or pass a fresh `--wildlife_cookie`).
+
 ---
 
 ## ⚙️ CLI Parameter Reference

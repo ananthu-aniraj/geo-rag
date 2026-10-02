@@ -18,6 +18,7 @@ from urllib3.util import Retry
 from src.utils.io import (
     KNOWN_PLACEHOLDER_MD5_HASHES,
     build_offline_image_index,
+    get_wildlife_insights_token,
     is_valid_image_file,
     load_dataframe,
     load_embeddings,
@@ -1084,6 +1085,28 @@ def main():
                     )
                 )
             to_download = updated_to_download
+
+    # Check if Wildlife Insights images are queued and verify authentication
+    has_wildlife = any(
+        (
+            plat
+            and str(plat).strip().lower()
+            in ["snapshotusa", "snapshot_usa", "wildlife_insights"]
+        )
+        or (url and "wildlifeinsights.org" in str(url))
+        for _, url, _, _, plat, _, _, _, _ in to_download
+    )
+    if has_wildlife:
+        wi_token = get_wildlife_insights_token()
+        if not wi_token:
+            print(
+                "\n⚠️  Warning: Wildlife Insights records detected, but WILDLIFE_INSIGHTS_COOKIE "
+                "(or WILDLIFE_INSIGHTS_TOKEN) is missing or expired.\n"
+                "   Wildlife Insights session cookies expire periodically (typically after a few days or on logout).\n"
+                "   Please log into app.wildlifeinsights.org and copy a fresh 'connect.sid=...' cookie into .env."
+            )
+        else:
+            print(" -> Wildlife Insights session token validated successfully.")
 
     # 10. Multi-threaded download with periodic streaming updates
     download_success_count = 0

@@ -98,6 +98,9 @@ To obtain your session cookie:
 
    *(Alternatively, you can extract and set `WILDLIFE_INSIGHTS_TOKEN="<Bearer JWT>"` or pass `--wildlife_cookie` / `--wildlife_token` directly via the CLI).*
 
+> [!IMPORTANT]
+> **Cookie Expiration & Renewal**: The `connect.sid` cookie is a short-lived browser session cookie that expires periodically (typically after a few days of inactivity, browser session expiration, or logging out / logging in from another device). If image downloads fail to resolve signed storage URLs or download zero images, log into [app.wildlifeinsights.org](https://app.wildlifeinsights.org), extract a fresh `connect.sid=...` cookie from DevTools, and update `WILDLIFE_INSIGHTS_COOKIE` in your `.env` file.
+
 ##### Step 3: Bulk Downloading Images for Offline Reuse
 
 Download the camera trap imagery locally to build a self-contained offline dataset:
