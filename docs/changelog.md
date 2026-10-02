@@ -2,6 +2,26 @@
 
 All notable changes and updates to the Geo-RAG codebase are documented here.
 
+## [1.0.3] - 2026-10-02
+
+### Added
+
+- **Centralized CARTO Basemap & Tile Management (`src/visualization/map_utils.py`)**:
+  - Implemented `get_carto_api_key()` to discover and load CARTO credentials from environment variables (`CARTO_API_KEY`) or `.env` files with directory tree walk-up search and optional search path support.
+  - Implemented `get_carto_key_param()` and `get_carto_tile_config()` supporting all CARTO raster basemap styles (`Positron`, `Dark_Matter`, `Voyager`). Automatically appends `?key=<CARTO_API_KEY>` to tile requests and sets canonical OpenStreetMap and CARTO attribution to eliminate the "API key required" watermark.
+  - Implemented `create_folium_map()` and `create_carto_tile_layer()` as drop-in wrappers around Folium map and tile layer initializations.
+  - Added unit test suite in `tests/test_map_utils.py` verifying key loading, query parameter formatting, style variants, tile layers, Folium/Leaflet template integration, and GeoPandas interactive exploration.
+
+### Changed
+
+- **CARTO Basemap Key Injection Across Visualization Suite**:
+  - Updated all Folium map generators (`src/visualization/generate_h3_occupancy_map.py`, `src/visualization/generate_h3_semantic_map.py`, `src/visualization/visualize_clusters.py`, `src/visualization/visualize_dataset_stats.py`) to initialize maps via `create_folium_map()`.
+  - Updated GeoPandas shapefile visualizer (`src/visualization/visualize_shp.py`) to use `get_carto_tile_config("CartoDB Positron")` in `gdf.explore()` for consistent styling and watermark-free tiles.
+  - Updated Leaflet cluster dashboard (`src/visualization/templates/cluster_dashboard.html` and `src/visualization/visualize_cluster_samples.py`) to inject `CARTO_KEY_PARAM` and standard attribution.
+  - Updated `.env.template` documentation for `CARTO_API_KEY`.
+
+---
+
 ## [1.0.2] - 2026-09-29
 
 ### Added

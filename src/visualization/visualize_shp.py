@@ -4,6 +4,11 @@ import sys
 import geopandas as gpd
 import matplotlib.pyplot as plt
 
+try:
+    from src.visualization.map_utils import get_carto_tile_config
+except ImportError:
+    from map_utils import get_carto_tile_config
+
 
 def visualize_shapefile(shp_path, title=None):
     """
@@ -63,7 +68,10 @@ def visualize_shapefile(shp_path, title=None):
     try:
         # Use explore() for an interactive folium-based map
         # We simplify the geometry if it's too complex, though for grid boxes it's fine
+        tile_url, attr = get_carto_tile_config("CartoDB Positron")
         m = gdf.explore(
+            tiles=tile_url,
+            attr=attr,
             color="#ff3333",
             style_kwds={"fillOpacity": 0.5, "weight": 0.5, "color": "#ff3333"},
             tooltip=False,  # Disable tooltip if many polygons to improve performance

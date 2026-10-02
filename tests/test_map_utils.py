@@ -149,6 +149,20 @@ class TestMapUtils(unittest.TestCase):
         self.assertIn("cartocdn.com/light_all/{z}/{x}/{y}{r}.png${cartoKey}", rendered)
         self.assertIn("const CARTO_KEY_PARAM = '?key=test_rendered_key';", rendered)
 
+    def test_geopandas_explore_carto_tiles(self):
+        try:
+            import geopandas as gpd
+            from shapely.geometry import Point
+        except ImportError:
+            self.skipTest("geopandas not installed")
+
+        gdf = gpd.GeoDataFrame([{"geometry": Point(0, 0)}], crs="EPSG:4326")
+        url, attr = get_carto_tile_config("CartoDB Positron", api_key="shp_key_xyz")
+        m = gdf.explore(tiles=url, attr=attr)
+        html = m._repr_html_()
+        self.assertIn("shp_key_xyz", html)
+        self.assertIn("cartocdn.com/light_all", html)
+
 
 if __name__ == "__main__":
     unittest.main()
