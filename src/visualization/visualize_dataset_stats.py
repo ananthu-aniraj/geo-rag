@@ -18,6 +18,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+try:
+    from src.visualization.map_utils import create_folium_map
+except ImportError:
+    from map_utils import create_folium_map
+
 
 def normalize_platform_name(name: Any) -> str:
     """Normalizes platform string for robust case-insensitive and hyphen-agnostic matching."""
@@ -618,7 +623,7 @@ def generate_interactive_map(
     center_lat = (min_lat + max_lat) / 2
     center_lon = (min_lon + max_lon) / 2
 
-    m = folium.Map(
+    m = create_folium_map(
         location=[center_lat, center_lon], zoom_start=6, tiles="CartoDB Positron"
     )
     m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])

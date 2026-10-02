@@ -16,6 +16,11 @@ from tqdm import tqdm
 
 from src.utils.io import load_dataset_with_clusters, load_embeddings
 
+try:
+    from src.visualization.map_utils import get_carto_key_param
+except ImportError:
+    from map_utils import get_carto_key_param
+
 # Try to load .env variables if not already set
 if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
     try:
@@ -599,6 +604,7 @@ def create_sample_grid(
         html_template.replace("{{DATA_JS_FILENAME}}", data_js_filename)
         .replace("{{TOTAL_CLUSTERS}}", str(len(dashboard_data)))
         .replace("{{MAPILLARY_TOKEN}}", MAPILLARY_TOKEN)
+        .replace("{{CARTO_KEY_PARAM}}", get_carto_key_param())
     )
 
     with open(output_html, "w", encoding="utf-8") as f:

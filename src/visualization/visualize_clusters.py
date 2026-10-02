@@ -11,6 +11,11 @@ from folium.plugins import MarkerCluster
 
 from src.utils.io import load_dataset_with_clusters
 
+try:
+    from src.visualization.map_utils import create_folium_map
+except ImportError:
+    from map_utils import create_folium_map
+
 # Try to load .env variables if not already set
 if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
     try:
@@ -111,7 +116,9 @@ def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
     )
     avg_lon = math.degrees(math.atan2(y, x))
 
-    m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12, tiles="CartoDB Positron")
+    m = create_folium_map(
+        location=[avg_lat, avg_lon], zoom_start=12, tiles="CartoDB Positron"
+    )
 
     # Prepare H3 Cell Polygons
     unique_cells = set(item["H3_Cell"] for item in plot_data if "H3_Cell" in item)

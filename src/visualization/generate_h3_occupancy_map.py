@@ -9,6 +9,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+try:
+    from src.visualization.map_utils import create_folium_map
+except ImportError:
+    from map_utils import create_folium_map
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -193,7 +198,7 @@ def main():
 
     # 3. Create Interactive Map
     print("Generating Folium map...")
-    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
+    m = create_folium_map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
 
     # Filter by min_count
     display_cells = {k: v for k, v in h3_stats.items() if v["total"] >= args.min_count}

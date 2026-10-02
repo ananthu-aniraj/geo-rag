@@ -11,6 +11,11 @@ from tqdm import tqdm
 
 from src.utils.io import load_dataframe
 
+try:
+    from src.visualization.map_utils import create_folium_map
+except ImportError:
+    from map_utils import create_folium_map
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -87,7 +92,7 @@ def main():
     colormap.caption = f"Image Density (Log10 scale, H3 Res {args.res})"
 
     # Initialize Folium Map centered globally
-    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
+    m = create_folium_map(location=[20, 0], zoom_start=2, tiles="CartoDB Positron")
 
     def get_clean_boundary(cell):
         """Get cell boundary coordinates, adjusting for antimeridian crossing."""

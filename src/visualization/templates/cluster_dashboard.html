@@ -351,6 +351,7 @@
 
     <script>
         const MAPILLARY_TOKEN = '{{MAPILLARY_TOKEN}}';
+        const CARTO_KEY_PARAM = '{{CARTO_KEY_PARAM}}';
         const data = typeof CLUSTER_DATA !== 'undefined' ? CLUSTER_DATA : [];
         let filteredData = [...data];
         let renderLimit = 50;
@@ -576,8 +577,9 @@
             activeMaps[clusterId] = map;
 
             // Load CartoDB Positron tiles
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+            const cartoKey = CARTO_KEY_PARAM && !CARTO_KEY_PARAM.startsWith('{{') ? CARTO_KEY_PARAM : '';
+            L.tileLayer(`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${cartoKey}`, {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             }).addTo(map);
 
             // Add circle for cluster geographical center
