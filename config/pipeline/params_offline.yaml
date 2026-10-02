@@ -10,7 +10,20 @@
 offline_pipeline:
   # 1. Dataset & Offline Directory Inputs
   input_parquet: "/path/to/geo_space_cleaned_offline.parquet"
-  image_root_dirs: "/path/to/images"
+  download_output_dir: "/path/to/images"  # Destination folder where downloaded/copied images will reside
+  image_root_dirs:                        # Offline image directories to search (list or space-separated string)
+    - "/path/to/images"
+
+  # Optional Step 0: Sync / Download Images from Master Dataset
+  # When true: checks full_dataset_parquet for new records, copies existing offline
+  # files from image_root_dirs, downloads remote deltas, and appends them to input_parquet.
+  run_download_images: false
+  full_dataset_parquet: "/path/to/geo_space_cleaned.parquet"  # Master dataset with remote URLs preserved
+  download_threads: 16                    # Worker threads for concurrent image downloads
+  download_copy_offline_images: true      # Copy images found in image_root_dirs into download_output_dir
+  download_resume: true                   # Skip images already present in input_parquet
+  download_checkpoint_interval: 18000     # Streaming checkpoint interval in seconds (default: 18000)
+
 
   # 2. Vision Model & Representation Settings
   # Options: "google/tipsv2-b14", or any timm / Hugging Face model identifier

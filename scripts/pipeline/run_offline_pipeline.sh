@@ -34,6 +34,26 @@ get_param() {
 INPUT_PARQUET=$(get_param "input_parquet")
 [ -z "$INPUT_PARQUET" ] && INPUT_PARQUET="full_pipeline_output/geo_space_cleaned_offline.parquet"
 
+FULL_DATASET_PARQUET=$(get_param "full_dataset_parquet")
+[ -z "$FULL_DATASET_PARQUET" ] && FULL_DATASET_PARQUET="full_pipeline_output/geo_space_cleaned.parquet"
+
+RUN_DOWNLOAD_IMAGES=$(get_param "run_download_images")
+[ -z "$RUN_DOWNLOAD_IMAGES" ] && RUN_DOWNLOAD_IMAGES="false"
+
+DOWNLOAD_OUTPUT_DIR=$(get_param "download_output_dir")
+
+DOWNLOAD_THREADS=$(get_param "download_threads")
+[ -z "$DOWNLOAD_THREADS" ] && DOWNLOAD_THREADS=16
+
+DOWNLOAD_COPY_OFFLINE_IMAGES=$(get_param "download_copy_offline_images")
+[ -z "$DOWNLOAD_COPY_OFFLINE_IMAGES" ] && DOWNLOAD_COPY_OFFLINE_IMAGES="true"
+
+DOWNLOAD_RESUME=$(get_param "download_resume")
+[ -z "$DOWNLOAD_RESUME" ] && DOWNLOAD_RESUME="true"
+
+DOWNLOAD_CHECKPOINT_INTERVAL=$(get_param "download_checkpoint_interval")
+[ -z "$DOWNLOAD_CHECKPOINT_INTERVAL" ] && DOWNLOAD_CHECKPOINT_INTERVAL=18000
+
 IMAGE_ROOT_DIRS=$(get_param "image_root_dirs")
 
 MODEL_NAME=$(get_param "model_name")
@@ -120,6 +140,46 @@ while [[ $# -gt 0 ]]; do
       INPUT_PARQUET="$2"
       shift 2
       ;;
+    --run_download_images|--download_images)
+      RUN_DOWNLOAD_IMAGES="true"
+      shift
+      ;;
+    --no_download_images)
+      RUN_DOWNLOAD_IMAGES="false"
+      shift
+      ;;
+    --full_dataset_parquet|--master_parquet|--full_dataset)
+      FULL_DATASET_PARQUET="$2"
+      shift 2
+      ;;
+    --download_output_dir|--images_output_dir)
+      DOWNLOAD_OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --download_threads)
+      DOWNLOAD_THREADS="$2"
+      shift 2
+      ;;
+    --download_copy_offline_images)
+      DOWNLOAD_COPY_OFFLINE_IMAGES="true"
+      shift
+      ;;
+    --no_download_copy_offline_images)
+      DOWNLOAD_COPY_OFFLINE_IMAGES="false"
+      shift
+      ;;
+    --download_resume)
+      DOWNLOAD_RESUME="true"
+      shift
+      ;;
+    --no_download_resume)
+      DOWNLOAD_RESUME="false"
+      shift
+      ;;
+    --download_checkpoint_interval)
+      DOWNLOAD_CHECKPOINT_INTERVAL="$2"
+      shift 2
+      ;;
     --image_root_dirs)
       IMAGE_ROOT_DIRS=""
       shift
@@ -201,6 +261,16 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --input PATH                 Path to input offline parquet file"
+      echo "  --full_dataset_parquet PATH  Path to master dataset with preserved URLs (for sync)"
+      echo "  --run_download_images        Sync/download new images from master dataset to offline target"
+      echo "  --no_download_images         Disable downloading images (default)"
+      echo "  --download_output_dir DIR    Directory where downloaded/copied images will reside"
+      echo "  --download_threads N         Worker threads for downloading (default: 16)"
+      echo "  --download_copy_offline_images Copy existing offline images to download_output_dir"
+      echo "  --no_download_copy_offline_images Keep existing offline images in-place"
+      echo "  --download_resume            Skip already recorded images during sync (default: true)"
+      echo "  --no_download_resume         Force re-checking/re-downloading images"
+      echo "  --download_checkpoint_interval S Interval in seconds for saving download checkpoints (default: 18000)"
       echo "  --image_root_dirs DIRS...    Directories containing offline images"
       echo "  --model_name MODEL           Vision encoder (e.g. google/tipsv2-b14, facebook/dinov2-base)"
       echo "  --representation_type TYPE   Embedding type (cls, avg_patch, cls_avg_patch)"
@@ -228,10 +298,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ ! -f "$INPUT_PARQUET" ]; then
-    echo "❌ Error: Input parquet dataset not found at '$INPUT_PARQUET'."
-    echo "Please provide a valid file via --input or configure input_parquet in $PARAMS_YAML."
-    exit 1
+if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
+    if [ ! -f "$FULL_DATASET_PARQUET" ]; then
+        echo "❌ Error: Master dataset not found at '$FULL_DATASET_PARQUET'."
+        echo "Please provide a valid file via --full_dataset_parquet or configure full_dataset_parquet in $PARAMS_YAML."
+        exit 1
+    fi
+else
+    if [ ! -f "$INPUT_PARQUET" ]; then
+        echo "❌ Error: Input parquet dataset not found at '$INPUT_PARQUET'."
+        echo "Please provide a valid file via --input or configure input_parquet in $PARAMS_YAML."
+        exit 1
+    fi
 fi
 
 # Auto-detect output_dir from input_parquet if not explicitly specified
@@ -246,6 +324,25 @@ if [ -z "$BASE_NAME" ] || [ "$BASE_NAME" = "auto" ]; then
     BASE_NAME="${INPUT_FILENAME%.*}"
 fi
 [ -z "$BASE_NAME" ] && BASE_NAME="geo_space_offline"
+
+# Auto-detect download_output_dir if not explicitly specified
+if [ -z "$DOWNLOAD_OUTPUT_DIR" ] || [ "$DOWNLOAD_OUTPUT_DIR" = "null" ]; then
+    DOWNLOAD_OUTPUT_DIR="${OUTPUT_DIR}/images"
+fi
+
+# Ensure download_output_dir is registered in IMAGE_ROOT_DIRS for downstream steps
+if [ -n "$DOWNLOAD_OUTPUT_DIR" ] && [ "$DOWNLOAD_OUTPUT_DIR" != "null" ]; then
+    case " $IMAGE_ROOT_DIRS " in
+        *" $DOWNLOAD_OUTPUT_DIR "*) ;;
+        *)
+            if [ -z "$IMAGE_ROOT_DIRS" ]; then
+                IMAGE_ROOT_DIRS="$DOWNLOAD_OUTPUT_DIR"
+            else
+                IMAGE_ROOT_DIRS="$DOWNLOAD_OUTPUT_DIR $IMAGE_ROOT_DIRS"
+            fi
+            ;;
+    esac
+fi
 
 MODEL_SLUG=$(echo "$MODEL_NAME" | tr '/' '_')
 EXP_TAG="${MODEL_SLUG}_${REPRESENTATION_TYPE}_${PRECISION}"
@@ -289,6 +386,18 @@ fi
 echo ""
 echo "Configuration Summary:"
 echo " - Input Dataset       : $INPUT_PARQUET"
+if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
+    echo " - Download/Sync Images: $RUN_DOWNLOAD_IMAGES"
+    echo "   * Master Dataset    : $FULL_DATASET_PARQUET"
+    echo "   * Image Output Dir  : $DOWNLOAD_OUTPUT_DIR"
+    echo "   * Download Threads  : $DOWNLOAD_THREADS"
+    echo "   * Copy Offline Imgs : $DOWNLOAD_COPY_OFFLINE_IMAGES"
+    echo "   * Download Resume   : $DOWNLOAD_RESUME"
+    echo "   * Checkpoint Int.   : ${DOWNLOAD_CHECKPOINT_INTERVAL}s"
+fi
+if [ -n "$IMAGE_ROOT_DIRS" ]; then
+    echo " - Image Root Dirs     : $IMAGE_ROOT_DIRS"
+fi
 echo " - Model Identifier    : $MODEL_NAME"
 echo " - Representation Type : $REPRESENTATION_TYPE"
 echo " - Precision           : $PRECISION"
@@ -302,6 +411,45 @@ echo " - Output Directory    : $OUTPUT_DIR"
 echo " - Clustered Sidecar   : $CLUSTERED_PARQUET"
 echo " - Visualizations Dir  : $VIS_DIR"
 echo ""
+
+# Optional Preprocessing Step: Download / Sync Images from Master Dataset
+if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
+    echo ""
+    echo "[Preprocessing] Downloading and syncing images from master dataset '$FULL_DATASET_PARQUET'..."
+    mkdir -p "$DOWNLOAD_OUTPUT_DIR"
+
+    DOWNLOAD_RESUME_FLAG=""
+    if [ "$DOWNLOAD_RESUME" = "true" ]; then
+        DOWNLOAD_RESUME_FLAG="--resume"
+    fi
+
+    DOWNLOAD_COPY_FLAG=""
+    if [ "$DOWNLOAD_COPY_OFFLINE_IMAGES" = "true" ]; then
+        DOWNLOAD_COPY_FLAG="--copy_offline_images"
+    fi
+
+    DOWNLOAD_IMAGE_ROOT_FLAG=""
+    if [ -n "$IMAGE_ROOT_DIRS" ]; then
+        DOWNLOAD_IMAGE_ROOT_FLAG="--image_root_dirs $IMAGE_ROOT_DIRS"
+    fi
+
+    python3 -m src.utils.download_images \
+      --input "$FULL_DATASET_PARQUET" \
+      --output "$INPUT_PARQUET" \
+      --output_dir "$DOWNLOAD_OUTPUT_DIR" \
+      --threads "$DOWNLOAD_THREADS" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      --precision "$PRECISION" \
+      --checkpoint_interval "$DOWNLOAD_CHECKPOINT_INTERVAL" \
+      $DOWNLOAD_RESUME_FLAG \
+      $DOWNLOAD_COPY_FLAG \
+      $DOWNLOAD_IMAGE_ROOT_FLAG
+
+    if [ ! -f "$INPUT_PARQUET" ]; then
+        echo "❌ Error: Offline dataset '$INPUT_PARQUET' was not produced by download_images."
+        exit 1
+    fi
+fi
 
 # Optional Preprocessing Step: Backfill Embeddings for Specified Model
 if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then

@@ -25,15 +25,21 @@ pipeline:
   mllm_model: "google/gemma-4-E4B-it"
   chunk_size: 64
   num_medoids: 4             # Number of representative medoids to stack for collage auto-labeling (1 to disable / use single-medoid)
-  # Input directories passed as a space-separated string
-  input_dirs: "/path/to/flickr_scrape /path/to/mapillary_scrape /path/to/osm_scrape"
+  # Input directories (list or space-separated string)
+  input_dirs:
+    - "/path/to/flickr_scrape"
+    - "/path/to/mapillary_scrape"
+    - "/path/to/osm_scrape"
 
   # Zero-shot filters for iNaturalist data (true/false)
   filter_macro: true
   filter_sky: true
 
-  # Optional local offline dataset directories (space-separated paths)
-  offline_dataset_dirs: "/path/to/offline_dataset_1 /path/to/offline_dataset_2 /path/to/offline_dataset_3"
+  # Optional local offline dataset directories (list or space-separated string)
+  offline_dataset_dirs:
+    - "/path/to/offline_dataset_1"
+    - "/path/to/offline_dataset_2"
+    - "/path/to/offline_dataset_3"
 
   # Köppen-Geiger climate classification GeoTIFF path
   koppen_geiger_tif: "/path/to/koppen_geiger_0p00833333.tif"

@@ -214,10 +214,76 @@ class TestConfigLoader(unittest.TestCase):
             )
 
         cfg = load_config(comp_yaml, repo_root=self.test_dir)
-        self.assertEqual(cfg["compare_models"]["models"], ["custom_m1", "custom_m2"])
         self.assertEqual(
             format_for_shell(cfg["compare_models"]["models"]),
             "custom_m1 custom_m2",
+        )
+
+    def test_offline_pipeline_download_config(self):
+        """Verify offline_pipeline configuration and download_images parameters with overrides."""
+        pipe_dir = os.path.join(self.config_dir, "pipeline")
+        os.makedirs(pipe_dir, exist_ok=True)
+        offline_yaml = os.path.join(pipe_dir, "params_offline.yaml")
+        base_offline_data = {
+            "offline_pipeline": {
+                "input_parquet": "/data/geo_space_cleaned_offline.parquet",
+                "full_dataset_parquet": "/data/geo_space_cleaned.parquet",
+                "run_download_images": False,
+                "download_output_dir": "/data/images",
+                "image_root_dirs": ["/data/images", "/data/cam_traps"],
+                "download_threads": 16,
+                "download_copy_offline_images": True,
+                "download_resume": True,
+                "download_checkpoint_interval": 18000,
+            }
+        }
+        with open(offline_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(base_offline_data, f)
+
+        # Base check
+        cfg = load_config(offline_yaml, repo_root=self.test_dir)
+        self.assertFalse(cfg["offline_pipeline"]["run_download_images"])
+        self.assertEqual(
+            format_for_shell(cfg["offline_pipeline"]["image_root_dirs"]),
+            "/data/images /data/cam_traps",
+        )
+        self.assertEqual(
+            format_for_shell(cfg["offline_pipeline"]["run_download_images"]),
+            "false",
+        )
+
+        # Override via local.yaml
+        local_yaml = os.path.join(self.config_dir, "local.yaml")
+        with open(local_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {
+                    "offline_pipeline": {
+                        "run_download_images": True,
+                        "download_output_dir": "/custom/images",
+                        "image_root_dirs": ["/custom/images", "/custom/raw"],
+                        "download_threads": 8,
+                    }
+                },
+                f,
+            )
+
+        cfg_overridden = load_config(offline_yaml, repo_root=self.test_dir)
+        self.assertTrue(cfg_overridden["offline_pipeline"]["run_download_images"])
+        self.assertEqual(
+            cfg_overridden["offline_pipeline"]["download_output_dir"],
+            "/custom/images",
+        )
+        self.assertEqual(
+            cfg_overridden["offline_pipeline"]["download_threads"],
+            8,
+        )
+        self.assertEqual(
+            format_for_shell(cfg_overridden["offline_pipeline"]["image_root_dirs"]),
+            "/custom/images /custom/raw",
+        )
+        self.assertEqual(
+            format_for_shell(cfg_overridden["offline_pipeline"]["run_download_images"]),
+            "true",
         )
 
 

@@ -11,6 +11,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Implemented `get_carto_key_param()` and `get_carto_tile_config()` supporting all CARTO raster basemap styles (`Positron`, `Dark_Matter`, `Voyager`). Automatically appends `?key=<CARTO_API_KEY>` to tile requests and sets canonical OpenStreetMap and CARTO attribution to eliminate the "API key required" watermark.
   - Implemented `create_folium_map()` and `create_carto_tile_layer()` as drop-in wrappers around Folium map and tile layer initializations.
   - Added unit test suite in `tests/test_map_utils.py` verifying key loading, query parameter formatting, style variants, tile layers, Folium/Leaflet template integration, and GeoPandas interactive exploration.
+- **Automated Image Downloading & Synchronization in Offline Pipeline**:
+  - Integrated `src.utils.download_images` into `scripts/pipeline/run_offline_pipeline.sh` as an optional preprocessing Step 0 via `--run_download_images` (default: `false` via `run_download_images: false`).
+  - Added clean two-tier dataset architecture: canonical master dataset (`full_dataset_parquet`) with preserved remote URLs, and self-contained offline dataset (`input_parquet`) with local paths and companion embeddings.
+  - Automatically indexes existing local directories (`--image_root_dirs`), copies offline images into `--download_output_dir` (`download_copy_offline_images: true`), and downloads only missing delta images using multi-threaded streaming checkpoints.
+  - Automatically registers `download_output_dir` in downstream search paths so that `backfill_embeddings.py`, `label_clusters_mllm.py`, and `visualize_cluster_samples.py` immediately resolve newly downloaded images.
+  - Exposed full configuration parameters in `config/pipeline/params_offline.yaml`, `config/pipeline/params.yaml`, and `config/local.yaml.template`, with clean YAML list syntax support for `image_root_dirs`, `input_dirs`, and `offline_dataset_dirs`.
+  - Added CLI flag overrides: `--run_download_images`, `--no_download_images`, `--full_dataset_parquet`, `--download_output_dir`, `--download_threads`, `--download_copy_offline_images`, `--no_download_copy_offline_images`, `--download_resume`, `--no_download_resume`, and `--download_checkpoint_interval`.
+  - Added configuration verification tests in `tests/test_config.py`.
 - **Wildlife Insights Authentication Pre-Flight Warning & Expiration Documentation**:
   - Added pre-flight session validation in `src/utils/download_images.py` that verifies `WILDLIFE_INSIGHTS_COOKIE` / `WILDLIFE_INSIGHTS_TOKEN` before downloads start, warning users early if their session cookie has expired.
   - Documented session cookie lifecycle and renewal procedures in `docs/pipeline/01_ingestion_scraping.md`, `docs/dataset/download_images.md`, and `.env.template`.

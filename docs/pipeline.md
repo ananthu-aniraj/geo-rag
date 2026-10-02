@@ -36,17 +36,33 @@ When working with pre-downloaded offline datasets (e.g. `geo_space_cleaned_offli
 
 The offline pipeline (`scripts/pipeline/run_offline_pipeline.sh`, configured via `config/pipeline/params_offline.yaml`) allows rapid evaluation across different vision backbones (`google/tipsv2-b14`, `facebook/dinov2-base`, SigLIP, etc.), pooling strategies (`cls`, `avg_patch`, `cls_avg_patch`), and cluster counts ($k$).
 
+### Two-Dataset Architecture & Automated Image Synchronization
+
+Geo-RAG maintains a clean separation between remote and local datasets:
+
+1. **Master Dataset (`full_dataset_parquet`)**: The canonical dataset preserving all original remote URLs (`Image_URL = https://...`).
+2. **Offline Dataset (`input_parquet`)**: The self-contained operational dataset with local relative paths (`Image_Location = ./images/<platform>/<photo_id>.jpg`) and companion embeddings (`.npy` + `.keys.parquet`).
+
+When new images are appended to the master dataset, pass `--run_download_images` to sync the offline dataset automatically:
+
 ```bash
 ./scripts/pipeline/run_offline_pipeline.sh \
   --input /path/to/geo_space_cleaned_offline.parquet \
-  --image_root_dirs /path/to/images \
+  --full_dataset_parquet /path/to/geo_space_cleaned.parquet \
+  --run_download_images \
+  --download_output_dir /path/to/images \
+  --image_root_dirs /path/to/images /path/to/other_cam_traps \
   --output_dir /path/to/output \
   --model_name "google/tipsv2-b14" \
   --representation_type "cls" \
   --precision "float16" \
-  --k_clusters 40000 \
-  --run_backfill_embeddings
+  --run_backfill_embeddings \
+  --k_clusters 40000
 ```
+
+* **Step 0 (Download / Sync)**: Reads `--full_dataset_parquet`, identifies new candidate images not yet recorded in `--input`, copies existing files from `--image_root_dirs`, downloads missing deltas with streaming atomic checkpoints, and appends them to `--input`.
+* **Step 0.5 (Backfill Embeddings)**: Reads `--input` with `--resume`, skips already embedded images, computes embeddings only for the newly downloaded deltas, and updates companion `.npy` matrices.
+* **Steps 1–5**: Performs clustering, spatial indexing, medoid labeling, and interactive visualization generation seamlessly.
 
 ### Visualizations & Sidecar Layout
 
