@@ -104,8 +104,8 @@ pipeline:
 # ------------------------------------------------------------------------------
 offline_pipeline:
   # input_parquet: "/path/to/your/geo_space_cleaned_offline.parquet"
-  # download_output_dir: "/path/to/your/images"  # Consolidated image directory used by all downstream steps
-  # run_download_images: false
+  # download_output_dir: "/path/to/your/images"  # Offline images directory (assumed to contain downloaded images; used downstream)
+  # run_download_images: false                  # When false, assumes images were already downloaded into download_output_dir
   # full_dataset_parquet: "/path/to/your/geo_space_cleaned.parquet"
   # download_threads: 16
   # download_copy_offline_images: true

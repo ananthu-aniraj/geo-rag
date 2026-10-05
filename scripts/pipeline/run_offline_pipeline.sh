@@ -331,13 +331,6 @@ if [ -z "$DOWNLOAD_OUTPUT_DIR" ] || [ "$DOWNLOAD_OUTPUT_DIR" = "null" ]; then
     DOWNLOAD_OUTPUT_DIR="${OUTPUT_DIR}/images"
 fi
 
-# download_output_dir is used as the image directory for all subsequent python programs.
-# If download_output_dir is not specified, fall back to image_root_dirs if provided.
-DOWNSTREAM_IMAGE_DIR="$DOWNLOAD_OUTPUT_DIR"
-if [ -z "$DOWNSTREAM_IMAGE_DIR" ] || [ "$DOWNSTREAM_IMAGE_DIR" = "null" ]; then
-    DOWNSTREAM_IMAGE_DIR="$IMAGE_ROOT_DIRS"
-fi
-
 MODEL_SLUG=$(echo "$MODEL_NAME" | tr '/' '_')
 EXP_TAG="${MODEL_SLUG}_${REPRESENTATION_TYPE}_${PRECISION}"
 VIS_DIR="${OUTPUT_DIR}/vis_${K_CLUSTERS}_${EXP_TAG}"
@@ -360,9 +353,10 @@ STATS_TEXT="$VIS_DIR/global_dataset_stats.txt"
 STATS_MAP="$VIS_DIR/global_dataset_map.html"
 CLUSTER_COUNT_PLOT="$VIS_DIR/cluster_count_validation.png"
 
+# Downstream python programs directly read images from download_output_dir
 IMAGE_ROOT_FLAG=""
-if [ -n "$DOWNSTREAM_IMAGE_DIR" ]; then
-    IMAGE_ROOT_FLAG="--image_root_dir $DOWNSTREAM_IMAGE_DIR"
+if [ -n "$DOWNLOAD_OUTPUT_DIR" ]; then
+    IMAGE_ROOT_FLAG="--image_root_dir $DOWNLOAD_OUTPUT_DIR"
 fi
 
 LAND_SHP_FLAG=""
@@ -377,14 +371,17 @@ if [ -n "$LAND_SHP" ]; then
     LAND_SHP_FLAG="--land_shp $LAND_SHP"
 fi
 
+if [ "$RUN_DOWNLOAD_IMAGES" = "false" ] && [ ! -d "$DOWNLOAD_OUTPUT_DIR" ]; then
+    echo "⚠️  Warning: Image directory '$DOWNLOAD_OUTPUT_DIR' does not exist on disk."
+fi
+
 echo ""
 echo "Configuration Summary:"
 echo " - Input Dataset       : $INPUT_PARQUET"
-echo " - Image Directory     : $DOWNSTREAM_IMAGE_DIR"
+echo " - Image Directory     : $DOWNLOAD_OUTPUT_DIR"
 if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
-    echo " - Download/Sync Images: $RUN_DOWNLOAD_IMAGES"
+    echo " - Download/Sync Images: true"
     echo "   * Master Dataset    : $FULL_DATASET_PARQUET"
-    echo "   * Image Output Dir  : $DOWNLOAD_OUTPUT_DIR"
     if [ -n "$IMAGE_ROOT_DIRS" ]; then
         echo "   * Search Root Dirs  : $IMAGE_ROOT_DIRS"
     fi
@@ -393,7 +390,7 @@ if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
     echo "   * Download Resume   : $DOWNLOAD_RESUME"
     echo "   * Checkpoint Int.   : ${DOWNLOAD_CHECKPOINT_INTERVAL}s"
 else
-    echo " - Download/Sync Images: false"
+    echo " - Download/Sync Images: false (using existing images in $DOWNLOAD_OUTPUT_DIR)"
 fi
 echo " - Model Identifier    : $MODEL_NAME"
 echo " - Representation Type : $REPRESENTATION_TYPE"
