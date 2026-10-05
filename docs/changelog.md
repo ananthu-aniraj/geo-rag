@@ -6,6 +6,10 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Offline Dataset Image URL Restoration Utility (`src/utils/restore_offline_image_urls.py`)**:
+  - Implemented a high-throughput, chunked PyArrow utility to restore canonical remote `Image_URL` values into offline Parquet datasets using the canonical online dataset.
+  - Specifically restricted URL updates to online platforms (`flickr`, `mapillary`, `kartaview`, `inaturalist`), leaving offline-only datasets (`wikimedia`, `snapshotusa`, `wildobs`, `iwildcam`, `wildlife_insights`) untouched.
+  - Added unit test suite in `tests/test_restore_offline_image_urls.py`.
 - **Centralized CARTO Basemap & Tile Management (`src/visualization/map_utils.py`)**:
   - Implemented `get_carto_api_key()` to discover and load CARTO credentials from environment variables (`CARTO_API_KEY`) or `.env` files with directory tree walk-up search and optional search path support.
   - Implemented `get_carto_key_param()` and `get_carto_tile_config()` supporting all CARTO raster basemap styles (`Positron`, `Dark_Matter`, `Voyager`). Automatically appends `?key=<CARTO_API_KEY>` to tile requests and sets canonical OpenStreetMap and CARTO attribution to eliminate the "API key required" watermark.
