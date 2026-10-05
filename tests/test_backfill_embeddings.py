@@ -583,6 +583,59 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
                 embs_combo[i, dim:], np.full(dim, float((i + 1) * 5), dtype=np.float32)
             )
 
+    def test_cls_less_vit_swin_gap_alias(self):
+        # Save a dataset with avg_patch for a CLS-less ViT (swin_base_patch4_window7_224)
+        dim = 16
+        gap_embs = [np.full(dim, float(i + 1), dtype=np.float32) for i in range(3)]
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2", "3"],
+                "Platform": ["flickr", "flickr", "flickr"],
+                "Latitude": [40.0, 41.0, 42.0],
+                "Longitude": [-74.0, -73.0, -72.0],
+                "Image_URL": ["url_1", "url_2", "url_3"],
+                "embedding": gap_embs,
+            }
+        )
+        save_dataframe(
+            df,
+            self.input_parquet,
+            representation_type="avg_patch",
+            precision="float32",
+            model_name="swin_base_patch4_window7_224",
+        )
+
+        # Requesting 'cls' for Swin should dynamically detect that Swin has no CLS token and reuse avg_patch
+        test_args_cls = [
+            "backfill_embeddings.py",
+            "--input",
+            self.input_parquet,
+            "--model_name",
+            "swin_base_patch4_window7_224",
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args_cls):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs_cls = load_embeddings(
+            self.input_parquet,
+            representation_type="cls",
+            model_name="swin_base_patch4_window7_224",
+            precision="float32",
+        )
+        self.assertEqual(embs_cls.shape, (3, dim))
+        for i in range(3):
+            np.testing.assert_allclose(
+                embs_cls[i], np.full(dim, float(i + 1), dtype=np.float32)
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

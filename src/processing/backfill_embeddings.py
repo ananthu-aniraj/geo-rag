@@ -14,8 +14,8 @@ from tqdm import tqdm
 import src.models.tips_image_encoder as image_encoder
 from src.models.vision_model_inference import (
     extract_regular_embeddings,
-    is_cnn_model,
     load_vision_model,
+    model_has_cls_token,
 )
 from src.utils.io import (
     download_image,
@@ -100,8 +100,8 @@ def resolve_companion_with_derivation(
             mode = "slice_cls" if representation_type == "cls" else "slice_avg_patch"
             return sup_npy, sup_keys, mode
 
-    # 3. CNN architecture: interchangeable cls <-> avg_patch (both are Global Average Pooling)
-    if is_cnn_model(model_name):
+    # 3. Architectures without discrete CLS token: interchangeable cls <-> avg_patch (both are spatial pooling)
+    if not model_has_cls_token(model_name):
         if representation_type in ["cls", "avg_patch"]:
             other_rep = "avg_patch" if representation_type == "cls" else "cls"
             alt_npy, alt_keys = find_companion_files(target_path, model_name, other_rep)
@@ -387,13 +387,13 @@ def main():
                     return False
             elif derivation_mode == "cnn_alias":
                 print(
-                    f" -> Model '{model_name_for_save}' is a CNN architecture; reusing Global Average Pooling representation from {label or npy_p} as '{args.representation_type}' ({len(k_arr):,} vectors)"
+                    f" -> Model '{model_name_for_save}' has no discrete CLS token; reusing spatial pooled representation from {label or npy_p} as '{args.representation_type}' ({len(k_arr):,} vectors)"
                 )
             elif derivation_mode == "cnn_duplicate":
                 d = e_arr.shape[1]
                 e_arr = np.concatenate([e_arr, e_arr], axis=-1)
                 print(
-                    f" -> Model '{model_name_for_save}' is a CNN architecture; forming 'cls_avg_patch' (dim: {2*d}) from Global Average Pooling {label or npy_p} ({len(k_arr):,} vectors)"
+                    f" -> Model '{model_name_for_save}' has no discrete CLS token; forming 'cls_avg_patch' (dim: {2*d}) from spatial pooling in {label or npy_p} ({len(k_arr):,} vectors)"
                 )
             else:
                 print(
@@ -464,8 +464,8 @@ def main():
             ):
                 return True
 
-        # 2. ViT architecture: assemble cls_avg_patch from separate cls and avg_patch companions
-        if args.representation_type == "cls_avg_patch" and not is_cnn_model(
+        # 2. ViT architecture with CLS: assemble cls_avg_patch from separate cls and avg_patch companions
+        if args.representation_type == "cls_avg_patch" and model_has_cls_token(
             model_name_for_save
         ):
             c_npy, c_keys = find_companion_files(

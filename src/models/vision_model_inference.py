@@ -1,3 +1,4 @@
+import functools
 import math
 
 import numpy as np
@@ -499,15 +500,36 @@ def compute_cls_attn_fg_removed_patch(
     return simple_avg
 
 
-def is_cnn_model(model_name: str) -> bool:
+@functools.lru_cache(maxsize=128)
+def model_has_cls_token(model_name: str) -> bool:
     """
-    Checks if a vision model architecture name corresponds to a Convolutional Neural Network (CNN)
-    without discrete transformer CLS/patch tokens.
+    Dynamically inspects whether a model architecture uses a discrete [CLS] token
+    versus spatial feature pooling (Global Average Pooling or patch mean).
+
+    Uses PyTorch 'meta' device instantiation (0 RAM, 0 VRAM, 0 weight downloads)
+    to inspect `cls_token` and `num_prefix_tokens` on the actual architecture definition,
+    with a structural heuristic fallback for offline or custom models.
     """
     if not model_name:
-        return False
-    name = model_name.lower()
-    cnn_indicators = [
+        return True
+
+    name_lower = model_name.lower()
+    if "tipsv2" in name_lower:
+        return True
+
+    # 1. Dynamic structural inspection via PyTorch 'meta' device
+    try:
+        with torch.device("meta"):
+            meta_model = timm.create_model(model_name, pretrained=False)
+        return (getattr(meta_model, "cls_token", None) is not None) or (
+            getattr(meta_model, "num_prefix_tokens", 0) > 0
+        )
+    except Exception:
+        pass
+
+    # 2. Structural fallback for non-timm or custom offline checkpoints
+    non_cls_indicators = [
+        # CNNs
         "resnet",
         "convnext",
         "efficientnet",
@@ -518,8 +540,26 @@ def is_cnn_model(model_name: str) -> bool:
         "inception",
         "resnext",
         "shufflenet",
+        # CLS-less / Hierarchical Transformers
+        "swin",
+        "_gap",
+        "-gap",
+        "pvt",
+        "levit",
+        "mvit",
     ]
-    return any(ind in name for ind in cnn_indicators)
+    if any(ind in name_lower for ind in non_cls_indicators):
+        return False
+
+    return True
+
+
+def is_cnn_model(model_name: str) -> bool:
+    """
+    Checks if a vision model architecture lacks a discrete transformer [CLS] token.
+    Maintained for backward compatibility; delegates to model_has_cls_token.
+    """
+    return not model_has_cls_token(model_name)
 
 
 def load_vision_model(model_name, device):

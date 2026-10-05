@@ -75,9 +75,10 @@ When running representation sweeps across different pooling variants (`cls`, `av
   * Slicing operates directly via zero-copy NumPy memory maps (`mmap_mode="r"`), completing in seconds across millions of vectors without downloading images or loading PyTorch models into GPU VRAM.
 * **ViT Concatenation (`cls` + `avg_patch` $\to$ `cls_avg_patch`)**:
   * If `cls_avg_patch` is requested and separate `_cls_embeddings.npy` and `_avg_patch_embeddings.npy` files exist, they are automatically concatenated along axis 1 with key alignment.
-* **CNN Architecture Aggregation (Global Average Pooling)**:
-  * Convolutional backbones (ResNet, ConvNeXt, EfficientNet, MobileNet, DenseNet) lack discrete `[CLS]` tokens. The spatial feature map $(B, C, H, W)$ is reduced via Global Average Pooling (GAP), making `cls` and `avg_patch` mathematically identical.
-  * The script automatically detects CNN architectures (`is_cnn_model`) and reuses existing GAP embeddings across `cls` and `avg_patch` interchangeably.
+* **Dynamic Architecture Aggregation & Zero-Inference Aliasing**:
+  * Models without discrete `[CLS]` tokens—including CNNs (ResNet, ConvNeXt, EfficientNet) and CLS-less Vision Transformers (Swin Transformer, GAP-pooled ViTs, PVT)—reduce spatial tokens via Global Average Pooling (GAP) or patch averaging, making `cls` and `avg_patch` mathematically identical.
+  * Rather than relying on fragile hard-coded architecture lists, `backfill_embeddings.py` dynamically inspects `cls_token` and `num_prefix_tokens` via `model_has_cls_token` using PyTorch's `meta` device (allocating **0 bytes of RAM/VRAM** and **0 weight downloads** in ~2ms).
+  * Existing spatial pooled embeddings are automatically reused across `cls` and `avg_patch` interchangeably without recomputation.
 * **Full Override Control**: Pass `--no_resume` or `--force` to bypass automatic derivation and force recomputation from scratch.
 
 ### Visualizations & Sidecar Layout
