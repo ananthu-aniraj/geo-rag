@@ -41,6 +41,7 @@ RUN_DOWNLOAD_IMAGES=$(get_param "run_download_images")
 [ -z "$RUN_DOWNLOAD_IMAGES" ] && RUN_DOWNLOAD_IMAGES="false"
 
 DOWNLOAD_OUTPUT_DIR=$(get_param "download_output_dir")
+[ -z "$DOWNLOAD_OUTPUT_DIR" ] && DOWNLOAD_OUTPUT_DIR=$(get_param "image_dir")
 
 DOWNLOAD_THREADS=$(get_param "download_threads")
 [ -z "$DOWNLOAD_THREADS" ] && DOWNLOAD_THREADS=16
@@ -152,7 +153,7 @@ while [[ $# -gt 0 ]]; do
       FULL_DATASET_PARQUET="$2"
       shift 2
       ;;
-    --download_output_dir|--images_output_dir)
+    --download_output_dir|--images_output_dir|--image_dir)
       DOWNLOAD_OUTPUT_DIR="$2"
       shift 2
       ;;
@@ -264,14 +265,14 @@ while [[ $# -gt 0 ]]; do
       echo "  --full_dataset_parquet PATH  Path to master dataset with preserved URLs (for sync)"
       echo "  --run_download_images        Sync/download new images from master dataset to offline target"
       echo "  --no_download_images         Disable downloading images (default)"
-      echo "  --download_output_dir DIR    Directory where downloaded/copied images will reside"
+      echo "  --download_output_dir DIR    Directory where offline images reside (used by all downstream steps)"
       echo "  --download_threads N         Worker threads for downloading (default: 16)"
       echo "  --download_copy_offline_images Copy existing offline images to download_output_dir"
       echo "  --no_download_copy_offline_images Keep existing offline images in-place"
       echo "  --download_resume            Skip already recorded images during sync (default: true)"
       echo "  --no_download_resume         Force re-checking/re-downloading images"
       echo "  --download_checkpoint_interval S Interval in seconds for saving download checkpoints (default: 18000)"
-      echo "  --image_root_dirs DIRS...    Directories containing offline images"
+      echo "  --image_root_dirs DIRS...    Directories on local PC containing offline datasets to copy/search from (used in download step)"
       echo "  --model_name MODEL           Vision encoder (e.g. google/tipsv2-b14, facebook/dinov2-base)"
       echo "  --representation_type TYPE   Embedding type (cls, avg_patch, cls_avg_patch)"
       echo "  --precision PREC             Stored precision (float16, float32)"
@@ -330,18 +331,11 @@ if [ -z "$DOWNLOAD_OUTPUT_DIR" ] || [ "$DOWNLOAD_OUTPUT_DIR" = "null" ]; then
     DOWNLOAD_OUTPUT_DIR="${OUTPUT_DIR}/images"
 fi
 
-# Ensure download_output_dir is registered in IMAGE_ROOT_DIRS for downstream steps
-if [ -n "$DOWNLOAD_OUTPUT_DIR" ] && [ "$DOWNLOAD_OUTPUT_DIR" != "null" ]; then
-    case " $IMAGE_ROOT_DIRS " in
-        *" $DOWNLOAD_OUTPUT_DIR "*) ;;
-        *)
-            if [ -z "$IMAGE_ROOT_DIRS" ]; then
-                IMAGE_ROOT_DIRS="$DOWNLOAD_OUTPUT_DIR"
-            else
-                IMAGE_ROOT_DIRS="$DOWNLOAD_OUTPUT_DIR $IMAGE_ROOT_DIRS"
-            fi
-            ;;
-    esac
+# download_output_dir is used as the image directory for all subsequent python programs.
+# If download_output_dir is not specified, fall back to image_root_dirs if provided.
+DOWNSTREAM_IMAGE_DIR="$DOWNLOAD_OUTPUT_DIR"
+if [ -z "$DOWNSTREAM_IMAGE_DIR" ] || [ "$DOWNSTREAM_IMAGE_DIR" = "null" ]; then
+    DOWNSTREAM_IMAGE_DIR="$IMAGE_ROOT_DIRS"
 fi
 
 MODEL_SLUG=$(echo "$MODEL_NAME" | tr '/' '_')
@@ -367,8 +361,8 @@ STATS_MAP="$VIS_DIR/global_dataset_map.html"
 CLUSTER_COUNT_PLOT="$VIS_DIR/cluster_count_validation.png"
 
 IMAGE_ROOT_FLAG=""
-if [ -n "$IMAGE_ROOT_DIRS" ]; then
-    IMAGE_ROOT_FLAG="--image_root_dir $IMAGE_ROOT_DIRS"
+if [ -n "$DOWNSTREAM_IMAGE_DIR" ]; then
+    IMAGE_ROOT_FLAG="--image_root_dir $DOWNSTREAM_IMAGE_DIR"
 fi
 
 LAND_SHP_FLAG=""
@@ -386,17 +380,20 @@ fi
 echo ""
 echo "Configuration Summary:"
 echo " - Input Dataset       : $INPUT_PARQUET"
+echo " - Image Directory     : $DOWNSTREAM_IMAGE_DIR"
 if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
     echo " - Download/Sync Images: $RUN_DOWNLOAD_IMAGES"
     echo "   * Master Dataset    : $FULL_DATASET_PARQUET"
     echo "   * Image Output Dir  : $DOWNLOAD_OUTPUT_DIR"
+    if [ -n "$IMAGE_ROOT_DIRS" ]; then
+        echo "   * Search Root Dirs  : $IMAGE_ROOT_DIRS"
+    fi
     echo "   * Download Threads  : $DOWNLOAD_THREADS"
     echo "   * Copy Offline Imgs : $DOWNLOAD_COPY_OFFLINE_IMAGES"
     echo "   * Download Resume   : $DOWNLOAD_RESUME"
     echo "   * Checkpoint Int.   : ${DOWNLOAD_CHECKPOINT_INTERVAL}s"
-fi
-if [ -n "$IMAGE_ROOT_DIRS" ]; then
-    echo " - Image Root Dirs     : $IMAGE_ROOT_DIRS"
+else
+    echo " - Download/Sync Images: false"
 fi
 echo " - Model Identifier    : $MODEL_NAME"
 echo " - Representation Type : $REPRESENTATION_TYPE"

@@ -104,15 +104,16 @@ pipeline:
 # ------------------------------------------------------------------------------
 offline_pipeline:
   # input_parquet: "/path/to/your/geo_space_cleaned_offline.parquet"
-  # download_output_dir: "/path/to/your/images"
-  # image_root_dirs:
-  #   - "/path/to/your/images"
+  # download_output_dir: "/path/to/your/images"  # Consolidated image directory used by all downstream steps
   # run_download_images: false
   # full_dataset_parquet: "/path/to/your/geo_space_cleaned.parquet"
   # download_threads: 16
   # download_copy_offline_images: true
   # download_resume: true
   # download_checkpoint_interval: 18000
+  # image_root_dirs:                             # Offline dataset locations on PC (used ONLY in download step)
+  #   - "/path/to/your/raw_cam_traps"
+  #   - "/path/to/your/google-landmark"
   # output_dir: ""  # Optional: defaults to the directory containing input_parquet
   # base_name: ""   # Optional: defaults to input_parquet filename stem
   # model_name: "google/tipsv2-b14"

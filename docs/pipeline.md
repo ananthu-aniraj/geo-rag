@@ -60,9 +60,9 @@ When new images are appended to the master dataset, pass `--run_download_images`
   --k_clusters 40000
 ```
 
-* **Step 0 (Download / Sync)**: Reads `--full_dataset_parquet`, identifies new candidate images not yet recorded in `--input`, copies existing files from `--image_root_dirs`, downloads missing deltas with streaming atomic checkpoints, and appends them to `--input` (metadata-only via `--skip_embeddings`, strictly decoupling image retrieval from model representations).
-* **Step 0.5 (Backfill Embeddings)**: Reads `--input` with `--resume`, skips already embedded images, computes embeddings only for the newly downloaded deltas (for the exact `--model_name`, `--representation_type`, and `--precision` configured), and updates companion `.npy` matrices.
-* **Steps 1–5**: Performs clustering, spatial indexing, medoid labeling, and interactive visualization generation seamlessly.
+* **Step 0 (Download / Sync)**: Reads `--full_dataset_parquet`, searches existing offline files across `--image_root_dirs` (storage locations on local PC), copies discovered images into `--download_output_dir`, downloads missing deltas with streaming atomic checkpoints into `--download_output_dir`, and appends them to `--input` (metadata-only via `--skip_embeddings`, strictly decoupling image retrieval from model representations).
+* **Step 0.5 (Backfill Embeddings)**: Reads `--input` with `--resume`, skips already embedded images, loads images directly from `--download_output_dir`, computes embeddings only for the newly downloaded deltas (for the exact `--model_name`, `--representation_type`, and `--precision` configured), and updates companion `.npy` matrices.
+* **Steps 1–5**: Performs clustering, spatial indexing, medoid labeling, and interactive visualization generation seamlessly, reading images directly from `--download_output_dir`.
 
 ### Visualizations & Sidecar Layout
 
