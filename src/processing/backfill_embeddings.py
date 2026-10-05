@@ -14,6 +14,7 @@ from tqdm import tqdm
 import src.models.tips_image_encoder as image_encoder
 from src.models.vision_model_inference import (
     extract_regular_embeddings,
+    is_cnn_model,
     load_vision_model,
 )
 from src.utils.io import (
@@ -64,6 +65,57 @@ def find_companion_files(target_path: str, model_name: str, representation_type:
                 return npy_path, keys_path
 
     return None, None
+
+
+def resolve_companion_with_derivation(
+    target_path: str, model_name: str, representation_type: str
+):
+    """
+    Finds exact companion files or derivable alternatives (e.g. cls_avg_patch for ViT,
+    or Global Average Pooling aliases for CNN).
+
+    Returns:
+        tuple: (npy_path, keys_path, derivation_mode) or (None, None, None)
+        derivation_mode can be:
+          - 'exact': exact representation match
+          - 'slice_cls': slice first half [:, :D] from cls_avg_patch
+          - 'slice_avg_patch': slice second half [:, D:] from cls_avg_patch
+          - 'cnn_alias': reuse Global Average Pooling representation between cls and avg_patch
+          - 'cnn_duplicate': concatenate GAP representation with itself for cls_avg_patch
+    """
+    if not target_path:
+        return None, None, None
+
+    # 1. Exact match
+    npy_p, keys_p = find_companion_files(target_path, model_name, representation_type)
+    if npy_p and keys_p:
+        return npy_p, keys_p, "exact"
+
+    # 2. Derive cls or avg_patch from cls_avg_patch (ViT or any model with cls_avg_patch)
+    if representation_type in ["cls", "avg_patch"]:
+        sup_npy, sup_keys = find_companion_files(
+            target_path, model_name, "cls_avg_patch"
+        )
+        if sup_npy and sup_keys:
+            mode = "slice_cls" if representation_type == "cls" else "slice_avg_patch"
+            return sup_npy, sup_keys, mode
+
+    # 3. CNN architecture: interchangeable cls <-> avg_patch (both are Global Average Pooling)
+    if is_cnn_model(model_name):
+        if representation_type in ["cls", "avg_patch"]:
+            other_rep = "avg_patch" if representation_type == "cls" else "cls"
+            alt_npy, alt_keys = find_companion_files(target_path, model_name, other_rep)
+            if alt_npy and alt_keys:
+                return alt_npy, alt_keys, "cnn_alias"
+        elif representation_type == "cls_avg_patch":
+            for alt_rep in ["cls", "avg_patch"]:
+                alt_npy, alt_keys = find_companion_files(
+                    target_path, model_name, alt_rep
+                )
+                if alt_npy and alt_keys:
+                    return alt_npy, alt_keys, "cnn_duplicate"
+
+    return None, None, None
 
 
 def resolve_checkpoint_paths(
@@ -292,54 +344,163 @@ def main():
     )
     target_dtype = np.float32 if args.precision == "float32" else np.float16
 
-    # 2. Check for existing companion embeddings and checkpoint files (Resume support)
+    # 2. Check for existing companion embeddings and checkpoint files (Resume & Derivation support)
     known_keys = []
     known_embs = []
 
-    def load_companion_pair(npy_p, keys_p, label=""):
+    def load_companion_pair(npy_p, keys_p, label="", derivation_mode="exact"):
         if not (npy_p and keys_p and os.path.exists(npy_p) and os.path.exists(keys_p)):
-            return
+            return False
         try:
             keys_df = pd.read_parquet(keys_p, columns=["photo_key"])
             k_arr = keys_df["photo_key"].astype(str).str.lower().values
             e_arr = np.load(npy_p, mmap_mode="r")
-            if len(k_arr) == len(e_arr) and len(k_arr) > 0:
-                print(
-                    f" -> Found existing companion embeddings ({len(k_arr):,} vectors): {label or npy_p}"
-                )
-                known_keys.append(k_arr)
-                known_embs.append(e_arr)
-            else:
+            if len(k_arr) != len(e_arr) or len(k_arr) == 0:
                 print(
                     f" -> [WARNING] Length mismatch between keys ({len(k_arr)}) and embeddings ({len(e_arr)}) in {npy_p}. Skipping."
                 )
+                return False
+
+            if derivation_mode == "slice_cls":
+                if e_arr.ndim == 2 and e_arr.shape[1] % 2 == 0:
+                    d = e_arr.shape[1] // 2
+                    e_arr = e_arr[:, :d]
+                    print(
+                        f" -> Automatically derived 'cls' (dim: {d}) by slicing first half of {label or npy_p} ({len(k_arr):,} vectors)"
+                    )
+                else:
+                    print(
+                        f" -> [WARNING] Cannot derive 'cls' from {npy_p}: embedding dim {e_arr.shape[1]} not even. Skipping."
+                    )
+                    return False
+            elif derivation_mode == "slice_avg_patch":
+                if e_arr.ndim == 2 and e_arr.shape[1] % 2 == 0:
+                    d = e_arr.shape[1] // 2
+                    e_arr = e_arr[:, d:]
+                    print(
+                        f" -> Automatically derived 'avg_patch' (dim: {d}) by slicing second half of {label or npy_p} ({len(k_arr):,} vectors)"
+                    )
+                else:
+                    print(
+                        f" -> [WARNING] Cannot derive 'avg_patch' from {npy_p}: embedding dim {e_arr.shape[1]} not even. Skipping."
+                    )
+                    return False
+            elif derivation_mode == "cnn_alias":
+                print(
+                    f" -> Model '{model_name_for_save}' is a CNN architecture; reusing Global Average Pooling representation from {label or npy_p} as '{args.representation_type}' ({len(k_arr):,} vectors)"
+                )
+            elif derivation_mode == "cnn_duplicate":
+                d = e_arr.shape[1]
+                e_arr = np.concatenate([e_arr, e_arr], axis=-1)
+                print(
+                    f" -> Model '{model_name_for_save}' is a CNN architecture; forming 'cls_avg_patch' (dim: {2*d}) from Global Average Pooling {label or npy_p} ({len(k_arr):,} vectors)"
+                )
+            else:
+                print(
+                    f" -> Found existing companion embeddings ({len(k_arr):,} vectors): {label or npy_p}"
+                )
+
+            known_keys.append(k_arr)
+            known_embs.append(e_arr)
+            return True
         except Exception as e:
             print(
                 f" -> [WARNING] Failed loading existing companion files ({npy_p}): {e}"
             )
+            return False
+
+    def load_concatenated_companion_pair(
+        cls_npy, cls_keys, patch_npy, patch_keys, label=""
+    ):
+        if not (cls_npy and cls_keys and patch_npy and patch_keys):
+            return False
+        try:
+            k1_df = pd.read_parquet(cls_keys, columns=["photo_key"])
+            k2_df = pd.read_parquet(patch_keys, columns=["photo_key"])
+            k1 = k1_df["photo_key"].astype(str).str.lower().values
+            k2 = k2_df["photo_key"].astype(str).str.lower().values
+            e1 = np.load(cls_npy, mmap_mode="r")
+            e2 = np.load(patch_npy, mmap_mode="r")
+
+            if len(k1) != len(e1) or len(k2) != len(e2) or len(k1) == 0:
+                return False
+
+            if not np.array_equal(k1, k2):
+                idx1 = pd.Index(k1)
+                idx2 = pd.Index(k2)
+                common = idx1.intersection(idx2)
+                if len(common) == 0:
+                    return False
+                m1 = idx1.get_indexer(common)
+                m2 = idx2.get_indexer(common)
+                e1 = e1[m1]
+                e2 = e2[m2]
+                k_arr = common.values
+            else:
+                k_arr = k1
+
+            e_arr = np.concatenate([e1, e2], axis=-1)
+            print(
+                f" -> Automatically assembled 'cls_avg_patch' (dim: {e_arr.shape[1]}) by concatenating separate 'cls' and 'avg_patch' companions ({len(k_arr):,} vectors): {label}"
+            )
+            known_keys.append(k_arr)
+            known_embs.append(e_arr)
+            return True
+        except Exception as e:
+            print(f" -> [WARNING] Failed assembling concatenated companion: {e}")
+            return False
+
+    def resolve_and_load_companion(path_target, label_prefix):
+        if not path_target:
+            return False
+
+        # 1. Exact or single-file derived companion (e.g. slice from cls_avg_patch or CNN GAP alias)
+        npy_p, keys_p, mode = resolve_companion_with_derivation(
+            path_target, model_name_for_save, args.representation_type
+        )
+        if npy_p and keys_p:
+            if load_companion_pair(
+                npy_p, keys_p, f"{label_prefix} ({npy_p})", derivation_mode=mode
+            ):
+                return True
+
+        # 2. ViT architecture: assemble cls_avg_patch from separate cls and avg_patch companions
+        if args.representation_type == "cls_avg_patch" and not is_cnn_model(
+            model_name_for_save
+        ):
+            c_npy, c_keys = find_companion_files(
+                path_target, model_name_for_save, "cls"
+            )
+            p_npy, p_keys = find_companion_files(
+                path_target, model_name_for_save, "avg_patch"
+            )
+            if c_npy and c_keys and p_npy and p_keys:
+                if load_concatenated_companion_pair(
+                    c_npy, c_keys, p_npy, p_keys, f"{label_prefix} [cls + avg_patch]"
+                ):
+                    return True
+
+        return False
 
     ckpt_npy, ckpt_keys = resolve_checkpoint_paths(
         out_path, model_name_for_save, args.representation_type
     )
 
     if args.resume:
-        # A. Check output path companion files
-        npy_p, keys_p = find_companion_files(
-            out_path, model_name_for_save, args.representation_type
-        )
-        load_companion_pair(npy_p, keys_p, f"output companion ({npy_p})")
+        # A. Check output path companion files (exact or derived)
+        resolve_and_load_companion(out_path, "output companion")
 
         # B. Check input path companion files (if input is different from output)
         if os.path.abspath(args.input) != os.path.abspath(out_path):
-            npy_p, keys_p = find_companion_files(
-                args.input, model_name_for_save, args.representation_type
-            )
-            load_companion_pair(npy_p, keys_p, f"input companion ({npy_p})")
+            resolve_and_load_companion(args.input, "input companion")
 
-        # C. Check intermediate checkpoint files for output
+        # C. Check intermediate checkpoint files for output (exact only)
         if os.path.exists(ckpt_npy) and os.path.exists(ckpt_keys):
             load_companion_pair(
-                ckpt_npy, ckpt_keys, f"checkpoint companion ({ckpt_npy})"
+                ckpt_npy,
+                ckpt_keys,
+                f"checkpoint companion ({ckpt_npy})",
+                derivation_mode="exact",
             )
 
     unique_keys_index = pd.Index([])

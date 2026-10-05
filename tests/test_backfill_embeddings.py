@@ -14,6 +14,7 @@ from src.processing.backfill_embeddings import (
     find_companion_files,
     main,
     resolve_checkpoint_paths,
+    resolve_companion_with_derivation,
     save_checkpoint_companion,
 )
 from src.utils.io import load_dataframe, load_embeddings, save_dataframe
@@ -295,6 +296,292 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
         np.testing.assert_allclose(loaded_embs[1], np.full(dim, 88.0, dtype=np.float32))
         np.testing.assert_allclose(loaded_embs[2], np.full(dim, 55.0, dtype=np.float32))
         np.testing.assert_allclose(loaded_embs[3], np.full(dim, 55.0, dtype=np.float32))
+
+    def test_resolve_companion_with_derivation(self):
+        dim = 16
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2"],
+                "Platform": ["flickr", "flickr"],
+                "Latitude": [40.0, 41.0],
+                "Longitude": [-74.0, -73.0],
+                "Image_URL": ["url_1", "url_2"],
+                "embedding": [np.ones(dim * 2, dtype=np.float32) for _ in range(2)],
+            }
+        )
+        save_dataframe(
+            df,
+            self.input_parquet,
+            representation_type="cls_avg_patch",
+            model_name="google/tipsv2-b14",
+        )
+
+        # 1. Exact match for cls_avg_patch
+        p_npy, p_keys, mode = resolve_companion_with_derivation(
+            self.input_parquet, "google/tipsv2-b14", "cls_avg_patch"
+        )
+        self.assertEqual(mode, "exact")
+        self.assertIsNotNone(p_npy)
+
+        # 2. Derive cls from cls_avg_patch
+        p_npy, p_keys, mode = resolve_companion_with_derivation(
+            self.input_parquet, "google/tipsv2-b14", "cls"
+        )
+        self.assertEqual(mode, "slice_cls")
+        self.assertIsNotNone(p_npy)
+
+        # 3. Derive avg_patch from cls_avg_patch
+        p_npy, p_keys, mode = resolve_companion_with_derivation(
+            self.input_parquet, "google/tipsv2-b14", "avg_patch"
+        )
+        self.assertEqual(mode, "slice_avg_patch")
+        self.assertIsNotNone(p_npy)
+
+    def test_derive_cls_and_avg_patch_from_cls_avg_patch_end_to_end(self):
+        # Create dataset with pre-existing cls_avg_patch (dim=32: first 16 is CLS, second 16 is avg_patch)
+        dim = 16
+        cls_part = [np.full(dim, float(i + 1), dtype=np.float32) for i in range(3)]
+        patch_part = [
+            np.full(dim, float((i + 1) * 10), dtype=np.float32) for i in range(3)
+        ]
+        combo_embs = [np.concatenate([c, p]) for c, p in zip(cls_part, patch_part)]
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2", "3"],
+                "Platform": ["flickr", "flickr", "flickr"],
+                "Latitude": [40.0, 41.0, 42.0],
+                "Longitude": [-74.0, -73.0, -72.0],
+                "Image_URL": ["url_1", "url_2", "url_3"],
+                "embedding": combo_embs,
+            }
+        )
+        save_dataframe(
+            df,
+            self.input_parquet,
+            representation_type="cls_avg_patch",
+            precision="float32",
+            model_name="google/tipsv2-b14",
+        )
+
+        # 1. Run for 'cls' -> should automatically slice first 16 without model loading
+        test_args_cls = [
+            "backfill_embeddings.py",
+            "--input",
+            self.input_parquet,
+            "--model_name",
+            "google/tipsv2-b14",
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args_cls):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                # Model should NOT be loaded since all are derived
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs_cls = load_embeddings(
+            self.input_parquet,
+            representation_type="cls",
+            model_name="google/tipsv2-b14",
+            precision="float32",
+        )
+        self.assertEqual(embs_cls.shape, (3, dim))
+        for i in range(3):
+            np.testing.assert_allclose(
+                embs_cls[i], np.full(dim, float(i + 1), dtype=np.float32)
+            )
+
+        # 2. Run for 'avg_patch' -> should automatically slice second 16 without model loading
+        test_args_patch = [
+            "backfill_embeddings.py",
+            "--input",
+            self.input_parquet,
+            "--model_name",
+            "google/tipsv2-b14",
+            "--representation_type",
+            "avg_patch",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args_patch):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs_patch = load_embeddings(
+            self.input_parquet,
+            representation_type="avg_patch",
+            model_name="google/tipsv2-b14",
+            precision="float32",
+        )
+        self.assertEqual(embs_patch.shape, (3, dim))
+        for i in range(3):
+            np.testing.assert_allclose(
+                embs_patch[i], np.full(dim, float((i + 1) * 10), dtype=np.float32)
+            )
+
+    def test_cnn_architecture_gap_alias_and_duplicate(self):
+        # Save a dataset with avg_patch for a CNN (resnet50)
+        dim = 16
+        gap_embs = [np.full(dim, float(i + 1), dtype=np.float32) for i in range(3)]
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2", "3"],
+                "Platform": ["flickr", "flickr", "flickr"],
+                "Latitude": [40.0, 41.0, 42.0],
+                "Longitude": [-74.0, -73.0, -72.0],
+                "Image_URL": ["url_1", "url_2", "url_3"],
+                "embedding": gap_embs,
+            }
+        )
+        save_dataframe(
+            df,
+            self.input_parquet,
+            representation_type="avg_patch",
+            precision="float32",
+            model_name="resnet50",
+        )
+
+        # 1. Requesting 'cls' for resnet50 should automatically reuse the GAP avg_patch
+        test_args_cls = [
+            "backfill_embeddings.py",
+            "--input",
+            self.input_parquet,
+            "--model_name",
+            "resnet50",
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args_cls):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs_cls = load_embeddings(
+            self.input_parquet,
+            representation_type="cls",
+            model_name="resnet50",
+            precision="float32",
+        )
+        self.assertEqual(embs_cls.shape, (3, dim))
+        for i in range(3):
+            np.testing.assert_allclose(
+                embs_cls[i], np.full(dim, float(i + 1), dtype=np.float32)
+            )
+
+        # 2. Requesting 'cls_avg_patch' for resnet50 should duplicate GAP into (B, 2*D)
+        test_args_combo = [
+            "backfill_embeddings.py",
+            "--input",
+            self.input_parquet,
+            "--model_name",
+            "resnet50",
+            "--representation_type",
+            "cls_avg_patch",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args_combo):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs_combo = load_embeddings(
+            self.input_parquet,
+            representation_type="cls_avg_patch",
+            model_name="resnet50",
+            precision="float32",
+        )
+        self.assertEqual(embs_combo.shape, (3, dim * 2))
+        for i in range(3):
+            np.testing.assert_allclose(
+                embs_combo[i, :dim], np.full(dim, float(i + 1), dtype=np.float32)
+            )
+            np.testing.assert_allclose(
+                embs_combo[i, dim:], np.full(dim, float(i + 1), dtype=np.float32)
+            )
+
+    def test_assemble_cls_avg_patch_from_separate(self):
+        # Save separate cls and avg_patch companions for a ViT model
+        dim = 16
+        cls_embs = [np.full(dim, float(i + 1), dtype=np.float32) for i in range(3)]
+        patch_embs = [
+            np.full(dim, float((i + 1) * 5), dtype=np.float32) for i in range(3)
+        ]
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2", "3"],
+                "Platform": ["flickr", "flickr", "flickr"],
+                "Latitude": [40.0, 41.0, 42.0],
+                "Longitude": [-74.0, -73.0, -72.0],
+                "Image_URL": ["url_1", "url_2", "url_3"],
+                "embedding": cls_embs,
+            }
+        )
+        save_dataframe(
+            df,
+            self.input_parquet,
+            representation_type="cls",
+            precision="float32",
+            model_name="google/tipsv2-b14",
+        )
+
+        df["embedding"] = patch_embs
+        save_dataframe(
+            df,
+            self.input_parquet,
+            representation_type="avg_patch",
+            precision="float32",
+            model_name="google/tipsv2-b14",
+        )
+
+        # Request cls_avg_patch -> should concatenate both companions into (B, 32)
+        test_args_combo = [
+            "backfill_embeddings.py",
+            "--input",
+            self.input_parquet,
+            "--model_name",
+            "google/tipsv2-b14",
+            "--representation_type",
+            "cls_avg_patch",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args_combo):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs_combo = load_embeddings(
+            self.input_parquet,
+            representation_type="cls_avg_patch",
+            model_name="google/tipsv2-b14",
+            precision="float32",
+        )
+        self.assertEqual(embs_combo.shape, (3, dim * 2))
+        for i in range(3):
+            np.testing.assert_allclose(
+                embs_combo[i, :dim], np.full(dim, float(i + 1), dtype=np.float32)
+            )
+            np.testing.assert_allclose(
+                embs_combo[i, dim:], np.full(dim, float((i + 1) * 5), dtype=np.float32)
+            )
 
 
 if __name__ == "__main__":

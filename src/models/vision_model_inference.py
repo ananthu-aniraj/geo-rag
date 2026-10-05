@@ -499,6 +499,29 @@ def compute_cls_attn_fg_removed_patch(
     return simple_avg
 
 
+def is_cnn_model(model_name: str) -> bool:
+    """
+    Checks if a vision model architecture name corresponds to a Convolutional Neural Network (CNN)
+    without discrete transformer CLS/patch tokens.
+    """
+    if not model_name:
+        return False
+    name = model_name.lower()
+    cnn_indicators = [
+        "resnet",
+        "convnext",
+        "efficientnet",
+        "densenet",
+        "vgg",
+        "mobilenet",
+        "regnet",
+        "inception",
+        "resnext",
+        "shufflenet",
+    ]
+    return any(ind in name for ind in cnn_indicators)
+
+
 def load_vision_model(model_name, device):
     """
     Loads a vision model (timm or Hugging Face AutoModel) and resolves its required

@@ -6,6 +6,12 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Zero-Inference Embedding Derivation & CNN Aggregation (`src/processing/backfill_embeddings.py`)**:
+  - Implemented automatic mathematical derivation of visual representations from pre-computed companion files when running with `--resume`:
+    - **ViT Slicing**: Slices `cls` (`[:, :D]`) or `avg_patch` (`[:, D:]`) directly from existing `cls_avg_patch` companions via zero-copy memory maps, bypassing GPU forward passes and image downloads entirely.
+    - **ViT Concatenation**: Automatically concatenates separate `cls` and `avg_patch` companions into `cls_avg_patch` with key alignment.
+    - **CNN Architecture GAP Aliases**: Detects CNN architectures (`is_cnn_model`) and reuses Global Average Pooling (GAP) representations interchangeably across `cls` and `avg_patch`.
+  - Added comprehensive test suite in `tests/test_backfill_embeddings.py` covering exact matches, ViT slicing, CNN GAP aliases, and ViT concatenation.
 - **Offline Dataset Image URL Restoration Utility (`src/utils/restore_offline_image_urls.py`)**:
   - Implemented a high-throughput, chunked PyArrow utility to restore canonical remote `Image_URL` values into offline Parquet datasets using the canonical online dataset.
   - Specifically restricted URL updates to online platforms (`flickr`, `mapillary`, `kartaview`, `inaturalist`), leaving offline-only datasets (`wikimedia`, `snapshotusa`, `wildobs`, `iwildcam`, `wildlife_insights`) untouched.

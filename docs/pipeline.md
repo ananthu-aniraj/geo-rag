@@ -64,6 +64,22 @@ When new images are appended to the master dataset, pass `--run_download_images`
 * **Step 0.5 (Backfill Embeddings)**: Reads `--input` with `--resume`, skips already embedded images, loads images directly from `--download_output_dir`, computes embeddings only for the newly downloaded deltas (for the exact `--model_name`, `--representation_type`, and `--precision` configured), and updates companion `.npy` matrices.
 * **Steps 1–5**: Performs clustering, spatial indexing, medoid labeling, and interactive visualization generation seamlessly, reading images directly from `--download_output_dir`.
 
+### Zero-Inference Embedding Derivation & CNN Aggregation (`backfill_embeddings.py`)
+
+When running representation sweeps across different pooling variants (`cls`, `avg_patch`, `cls_avg_patch`), `backfill_embeddings.py` automatically detects existing companion files and derives representations mathematically without GPU model inference:
+
+* **ViT Decomposition (`cls_avg_patch` $\to$ `cls` / `avg_patch`)**:
+  * In Vision Transformers (ViT, TIPSv2, CLIP, DINOv2, SigLIP), `cls_avg_patch` is stored as direct concatenation $[\mathbf{cls} \parallel \mathbf{avg\_patch}] \in \mathbb{R}^{2D}$.
+  * If a sweep requests `cls`, `backfill_embeddings.py` automatically slices the first half (`[:, :D]`).
+  * If a sweep requests `avg_patch`, it automatically slices the second half (`[:, D:]`).
+  * Slicing operates directly via zero-copy NumPy memory maps (`mmap_mode="r"`), completing in seconds across millions of vectors without downloading images or loading PyTorch models into GPU VRAM.
+* **ViT Concatenation (`cls` + `avg_patch` $\to$ `cls_avg_patch`)**:
+  * If `cls_avg_patch` is requested and separate `_cls_embeddings.npy` and `_avg_patch_embeddings.npy` files exist, they are automatically concatenated along axis 1 with key alignment.
+* **CNN Architecture Aggregation (Global Average Pooling)**:
+  * Convolutional backbones (ResNet, ConvNeXt, EfficientNet, MobileNet, DenseNet) lack discrete `[CLS]` tokens. The spatial feature map $(B, C, H, W)$ is reduced via Global Average Pooling (GAP), making `cls` and `avg_patch` mathematically identical.
+  * The script automatically detects CNN architectures (`is_cnn_model`) and reuses existing GAP embeddings across `cls` and `avg_patch` interchangeably.
+* **Full Override Control**: Pass `--no_resume` or `--force` to bypass automatic derivation and force recomputation from scratch.
+
 ### Visualizations & Sidecar Layout
 
 To prevent destructive file overwrites across different model sweeps:
