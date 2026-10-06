@@ -80,7 +80,7 @@ A sidecar only contains the primary key (`Platform`, `Photo_ID`) plus the new ca
 
 Rather than drawing arbitrary administrative boundaries (which vary wildly between countries) or doing slow polygon math, Geo-RAG divides the entire surface of the Earth into **Uber's H3 Hexagonal Hierarchical Spatial Index**.
 
-![H3 Hexagonal Hierarchy & Geo-RAG Roles](h3_hexagonal_hierarchy.jpg)
+[![H3 Hexagonal Hierarchy & Geo-RAG Roles](h3_hexagonal_hierarchy.jpg)](h3_hexagonal_hierarchy.jpg)
 
 #### Why Hexagons Instead of Squares?
 
