@@ -90,13 +90,15 @@ When upstream coordinate anomaly cleanup (`cleanup_coordinate_anomalies.py`), du
 
 Because the offline pipeline may explore different model architectures (e.g. DINOv2, SigLIP, Swin) or multiple backfilled representations than the online pipeline, synchronization is **completely model-agnostic**:
 
-1. **Automatic Multi-Model Discovery**:
-   Scans the offline directory for all companion files matching `{base_name}_*_embeddings.keys.parquet` and `{base_name}_*_embeddings.npy`. It automatically detects companion matrices for **every model and pooling variant** present on disk.
+1. **Automatic Multi-Model & Clustered Sidecar Discovery**:
+   Scans the offline directory (and optional `--extra_dirs`, e.g. pipeline output directories) for all companion files matching `{base_name}_*_embeddings.keys.parquet` / `{base_name}_*_embeddings.npy` as well as companion clustered sidecars matching `*clustered_k_*.parquet`. It automatically detects companion matrices and cluster assignments for **every model and sweep variant** present on disk.
 2. **Metadata Pruning**:
    Extracts `photo_key` sets from the master online dataset and filters `input_parquet` in-place using atomic temporary files, removing any rows that were purged upstream.
 3. **Zero-Inference Embedding Slicing**:
    For each discovered companion pair, slices the `.npy` matrix via memory mapping (`mmap_mode="r"`) to match the surviving keys, and updates `.keys.parquet` atomically. This takes $<1$s per model without GPU forward passes or model weight loading.
-4. **Physical Image Deletion (Optional)**:
+4. **Companion Clustered Sidecar Reconciliation**:
+   Prunes pre-existing clustered sidecar Parquet files (`*_clustered_k_*.parquet`) in-place so cluster assignments stay 100% synchronized with the base dataset, preventing stale cluster mappings or missing key warnings during downstream indexing.
+5. **Physical Image Deletion (Optional)**:
    When `--delete_images` (or `--delete_orphaned_images`) is enabled, identifies local image files (`Image_Location`) for purged records and removes them from disk to reclaim storage space.
 
 **Running as a Standalone Command**:

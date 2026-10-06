@@ -6,10 +6,10 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
-- **Offline Dataset & Multi-Model Companion Embeddings Synchronization (`src/utils/sync_offline_dataset.py`)**:
+- **Offline Dataset, Companion Embeddings & Clustered Sidecars Synchronization (`src/utils/sync_offline_dataset.py`)**:
   - Implemented a high-speed, model-agnostic synchronization utility to reconcile offline Parquet datasets with the master online cleaned dataset following coordinate anomaly or sequence purging.
-  - Automatically discovers all companion embedding files (`*_embeddings.npy` and `*_embeddings.keys.parquet`) matching the offline dataset basename across all models and pooling representations (`cls`, `avg_patch`, `cls_avg_patch`).
-  - Prunes purged metadata rows in-place (atomically) and memory-map slices the companion `.npy` matrices and `.keys.parquet` to surviving keys with zero GPU forward passes and zero model recomputation.
+  - Automatically discovers all companion embedding files (`*_embeddings.npy` and `*_embeddings.keys.parquet`) as well as companion clustered sidecars (`*_clustered_k_*.parquet`) matching the offline dataset basename across all models, sweeps, and output directories (`--extra_dirs`).
+  - Prunes purged metadata rows in-place (atomically), memory-map slices companion `.npy` matrices and `.keys.parquet` to surviving keys without GPU forward passes, and reconciles clustered sidecar files to prevent stale cluster mappings or missing key warnings during downstream indexing.
   - Optionally deletes orphaned image files on disk (`--delete_images`) to reclaim local storage space.
   - Integrated into `scripts/pipeline/run_offline_pipeline.sh` as an optional pre-flight step via `--sync_offline` / `--no_sync_offline` and `sync_offline_dataset: true` in `config/pipeline/params_offline.yaml`.
   - Added unit test suite in `tests/test_sync_offline_dataset.py`.

@@ -65,8 +65,8 @@ graph TD
 
 5. **Offline Dataset & Multi-Model Embeddings Synchronization:**
    When the master online dataset (`geo_space_cleaned.parquet`) is updated (e.g. from coordinate anomaly or sequence cleaning), offline datasets (`geo_space_cleaned_offline.parquet`) can be reconciled using `src/utils/sync_offline_dataset.py`:
-   - **Model-Agnostic Discovery**: Automatically identifies all companion embedding files (`*_embeddings.keys.parquet` and `*_embeddings.npy`) matching the offline base name across any model architecture (TIPSv2, DINOv2, SigLIP, Swin, etc.).
-   - **Zero-Inference Matrix Slicing**: Slices `.npy` embedding matrices via memory mapping to surviving keys without GPU inference or model reloading.
+   - **Model-Agnostic Discovery**: Automatically identifies all companion embedding files (`*_embeddings.keys.parquet` and `*_embeddings.npy`) and clustered sidecars (`*_clustered_k_*.parquet`) matching the offline base name across any model architecture (TIPSv2, DINOv2, SigLIP, Swin, etc.).
+   - **Zero-Inference Matrix Slicing & Sidecar Pruning**: Slices `.npy` embedding matrices via memory mapping and reconciles companion clustered sidecars to surviving keys without GPU inference or re-clustering.
    - **Orphaned Image Cleanup**: Optionally removes physical `.jpg` files for purged records (`--delete_images`).
 
 ---

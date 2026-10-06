@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.utils.io import save_dataframe
 from src.utils.sync_offline_dataset import (
+    discover_clustered_sidecar_files,
     discover_companion_embedding_files,
     sync_offline_dataset,
 )
@@ -92,6 +93,34 @@ class TestSyncOfflineDataset(unittest.TestCase):
         np.save(self.model_b_npy, self.emb_model_b)
         pd.DataFrame({"photo_key": self.all_keys}).to_parquet(self.model_b_keys)
 
+        # 5. Clustered sidecar in same directory (photo_key schema)
+        self.sidecar_path = os.path.join(
+            self.test_dir, "geo_space_cleaned_offline_clustered_k_2.parquet"
+        )
+        self.df_sidecar = pd.DataFrame(
+            {
+                "photo_key": self.all_keys,
+                "cluster_id": [0, 1, 0, 1, 0],
+                "cluster_label": ["A", "B", "A", "B", "A"],
+            }
+        )
+        save_dataframe(self.df_sidecar, self.sidecar_path)
+
+        # 6. Clustered sidecar in extra output directory (Platform/Photo_ID schema)
+        self.extra_dir = os.path.join(self.test_dir, "extra_output")
+        os.makedirs(self.extra_dir, exist_ok=True)
+        self.extra_sidecar_path = os.path.join(
+            self.extra_dir, "geo_space_clustered_k_5.parquet"
+        )
+        self.df_extra_sidecar = pd.DataFrame(
+            {
+                "Platform": ["mapillary"] * 5,
+                "Photo_ID": self.all_pids,
+                "cluster_id": [1, 2, 0, 1, 2],
+            }
+        )
+        save_dataframe(self.df_extra_sidecar, self.extra_sidecar_path)
+
     def tearDown(self):
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
@@ -109,23 +138,48 @@ class TestSyncOfflineDataset(unittest.TestCase):
             npy_basenames,
         )
 
+    def test_discover_clustered_sidecar_files(self):
+        # Without extra_dirs: only self.sidecar_path in self.test_dir
+        discovered = discover_clustered_sidecar_files(self.offline_path)
+        self.assertEqual(len(discovered), 1)
+        self.assertEqual(
+            os.path.basename(discovered[0]),
+            "geo_space_cleaned_offline_clustered_k_2.parquet",
+        )
+
+        # With extra_dirs: both sidecars found
+        discovered_all = discover_clustered_sidecar_files(
+            self.offline_path, extra_dirs=[self.extra_dir]
+        )
+        self.assertEqual(len(discovered_all), 2)
+        basenames = [os.path.basename(f) for f in discovered_all]
+        self.assertIn("geo_space_cleaned_offline_clustered_k_2.parquet", basenames)
+        self.assertIn("geo_space_clustered_k_5.parquet", basenames)
+
     def test_sync_dry_run_does_not_modify_files(self):
         summary = sync_offline_dataset(
             online_path=self.online_path,
             offline_path=self.offline_path,
             image_dir=self.image_dir,
+            extra_dirs=[self.extra_dir],
             delete_images=True,
             dry_run=True,
         )
         self.assertEqual(summary["total_offline"], 5)
         self.assertEqual(summary["surviving_rows"], 3)
         self.assertEqual(summary["purged_rows"], 2)
+        self.assertEqual(summary["clustered_sidecars_synced"], 2)
+        self.assertEqual(summary["purged_sidecar_rows_total"], 4)
 
         # Files should still have original lengths
         df_off = pd.read_parquet(self.offline_path)
         self.assertEqual(len(df_off), 5)
         arr_a = np.load(self.model_a_npy)
         self.assertEqual(len(arr_a), 5)
+        df_sc = pd.read_parquet(self.sidecar_path)
+        self.assertEqual(len(df_sc), 5)
+        df_extra_sc = pd.read_parquet(self.extra_sidecar_path)
+        self.assertEqual(len(df_extra_sc), 5)
         # Images on disk should still exist
         for img_rel in self.image_paths:
             self.assertTrue(os.path.exists(os.path.join(self.image_dir, img_rel)))
@@ -135,6 +189,7 @@ class TestSyncOfflineDataset(unittest.TestCase):
             online_path=self.online_path,
             offline_path=self.offline_path,
             image_dir=self.image_dir,
+            extra_dirs=[self.extra_dir],
             delete_images=True,
             dry_run=False,
         )
@@ -143,6 +198,8 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(summary["purged_rows"], 2)
         self.assertEqual(summary["companion_models_synced"], 2)
         self.assertEqual(summary["purged_vectors_total"], 4)  # 2 vectors x 2 models
+        self.assertEqual(summary["clustered_sidecars_synced"], 2)
+        self.assertEqual(summary["purged_sidecar_rows_total"], 4)  # 2 rows x 2 sidecars
         self.assertEqual(summary["deleted_images_count"], 2)
 
         # 1. Verify offline metadata
@@ -165,7 +222,16 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(keys_b, self.online_keys)
         np.testing.assert_array_equal(arr_b, self.emb_model_b[:3])
 
-        # 4. Verify physical image files:
+        # 4. Verify Clustered Sidecars
+        df_sc = pd.read_parquet(self.sidecar_path)
+        self.assertEqual(len(df_sc), 3)
+        self.assertEqual(list(df_sc["photo_key"]), self.online_keys)
+
+        df_extra_sc = pd.read_parquet(self.extra_sidecar_path)
+        self.assertEqual(len(df_extra_sc), 3)
+        self.assertEqual(list(df_extra_sc["Photo_ID"]), ["1", "2", "3"])
+
+        # 5. Verify physical image files:
         # items 1, 2, 3 should exist, items 4, 5 should be deleted
         for i in range(1, 4):
             self.assertTrue(
@@ -181,16 +247,19 @@ class TestSyncOfflineDataset(unittest.TestCase):
         sync_offline_dataset(
             online_path=self.online_path,
             offline_path=self.offline_path,
+            extra_dirs=[self.extra_dir],
             dry_run=False,
         )
         # Second sync: should be 0 purged
         summary = sync_offline_dataset(
             online_path=self.online_path,
             offline_path=self.offline_path,
+            extra_dirs=[self.extra_dir],
             dry_run=False,
         )
         self.assertEqual(summary["purged_rows"], 0)
         self.assertEqual(summary["surviving_rows"], 3)
+        self.assertEqual(summary["purged_sidecar_rows_total"], 0)
 
 
 if __name__ == "__main__":

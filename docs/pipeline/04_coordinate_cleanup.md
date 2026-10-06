@@ -46,7 +46,7 @@ To eliminate GPS pollution comprehensively:
 5. If `MAPILLARY_TOKEN` is not present, the script gracefully falls back to point-level parallel purging with an informative notice.
 
 > [!TIP] Synchronizing Existing Offline Datasets
-> When coordinate cleaning purges new anomalies or sequences from `geo_space_cleaned.parquet`, any existing offline dataset (`geo_space_cleaned_offline.parquet`) and its companion embedding matrices (`.npy` and `.keys.parquet`) can be brought into 100% alignment using `src/utils/sync_offline_dataset.py` (or `./scripts/pipeline/run_offline_pipeline.sh --sync_offline`).
+> When coordinate cleaning purges new anomalies or sequences from `geo_space_cleaned.parquet`, any existing offline dataset (`geo_space_cleaned_offline.parquet`), companion embedding matrices (`.npy` and `.keys.parquet`), and clustered sidecars (`*_clustered_k_*.parquet`) can be brought into 100% alignment using `src/utils/sync_offline_dataset.py` (or `./scripts/pipeline/run_offline_pipeline.sh --sync_offline`).
 
 ---
 

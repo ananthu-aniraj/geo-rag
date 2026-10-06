@@ -499,11 +499,17 @@ if [ "$SYNC_OFFLINE_DATASET" = "true" ]; then
         IMAGE_DIR_FLAG="--image_dir $DOWNLOAD_OUTPUT_DIR"
     fi
 
+    EXTRA_DIRS_FLAG=""
+    if [ -n "$OUTPUT_DIR" ] && [ -d "$OUTPUT_DIR" ]; then
+        EXTRA_DIRS_FLAG="--extra_dirs $OUTPUT_DIR"
+    fi
+
     python3 -m src.utils.sync_offline_dataset \
       --online "$FULL_DATASET_PARQUET" \
       --offline "$INPUT_PARQUET" \
       $DELETE_IMAGES_FLAG \
-      $IMAGE_DIR_FLAG
+      $IMAGE_DIR_FLAG \
+      $EXTRA_DIRS_FLAG
 fi
 
 # Optional Preprocessing Step: Backfill Embeddings for Specified Model
