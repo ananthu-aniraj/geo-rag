@@ -7,6 +7,111 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
+def get_mapillary_token() -> str:
+    """Retrieves Mapillary token from environment variable or .env file."""
+    token = os.environ.get("MAPILLARY_TOKEN", "")
+    if token:
+        return token
+    if os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() == "MAPILLARY_TOKEN":
+                            token = v.strip().strip('"').strip("'")
+                            os.environ["MAPILLARY_TOKEN"] = token
+                            return token
+        except Exception:
+            pass
+    return ""
+
+
+def fetch_mapillary_sequences(
+    photo_ids: list, token: str, batch_size: int = 100
+) -> dict:
+    """
+    Batch-queries Mapillary Graph API v4 to map photo_ids to sequence_ids.
+    Returns dict: {photo_id: sequence_id}
+    """
+    if not token or not photo_ids:
+        return {}
+
+    import requests
+
+    headers = {"Authorization": f"OAuth {token}"}
+    seq_map = {}
+    clean_ids = [str(pid).strip().removesuffix(".0") for pid in photo_ids if pid]
+
+    for i in range(0, len(clean_ids), batch_size):
+        chunk = clean_ids[i : i + batch_size]
+        url = f"https://graph.mapillary.com/?ids={','.join(chunk)}&fields=id,sequence"
+        for attempt in range(3):
+            try:
+                r = requests.get(url, headers=headers, timeout=15)
+                if r.status_code == 200:
+                    data = r.json()
+                    for pid, info in data.items():
+                        if isinstance(info, dict) and "sequence" in info:
+                            seq_map[str(pid)] = str(info["sequence"])
+                    break
+                elif r.status_code == 429:
+                    time.sleep(1.5 * (attempt + 1))
+                else:
+                    break
+            except Exception:
+                if attempt == 2:
+                    break
+                time.sleep(1.0)
+    return seq_map
+
+
+def fetch_sequence_all_image_ids(sequence_ids: set, token: str) -> set:
+    """
+    Queries Mapillary Graph API v4 to retrieve all image IDs belonging to the given sequence IDs.
+    Returns set of image ID strings.
+    """
+    if not token or not sequence_ids:
+        return set()
+
+    import requests
+
+    headers = {"Authorization": f"OAuth {token}"}
+    all_image_ids = set()
+
+    for seq_id in sequence_ids:
+        if not seq_id:
+            continue
+        url = f"https://graph.mapillary.com/image_ids?sequence_id={seq_id}&limit=2000"
+        while url:
+            success = False
+            for attempt in range(3):
+                try:
+                    r = requests.get(url, headers=headers, timeout=15)
+                    if r.status_code == 200:
+                        data = r.json()
+                        for item in data.get("data", []):
+                            if "id" in item:
+                                all_image_ids.add(
+                                    str(item["id"]).strip().removesuffix(".0")
+                                )
+                        url = data.get("paging", {}).get("next")
+                        success = True
+                        break
+                    elif r.status_code == 429:
+                        time.sleep(1.5 * (attempt + 1))
+                    else:
+                        break
+                except Exception:
+                    if attempt == 2:
+                        break
+                    time.sleep(1.0)
+            if not success:
+                break
+    return all_image_ids
+
+
 def main():
     import argparse
 
@@ -74,7 +179,7 @@ def main():
     num_row_groups = pf.num_row_groups
     print(f" -> Found {num_row_groups} row groups.")
 
-    # Detect if continent column is present in the schema
+    # Detect if continent or photo_id column is present in the schema
     schema = pf.schema_arrow
     has_continent = "continent" in schema.names or "Continent" in schema.names
     continent_col = (
@@ -82,15 +187,24 @@ def main():
         if "continent" in schema.names
         else ("Continent" if "Continent" in schema.names else None)
     )
+    has_photo_id = "Photo_ID" in schema.names or "photo_id" in schema.names
+    photo_id_col = (
+        "Photo_ID"
+        if "Photo_ID" in schema.names
+        else ("photo_id" if "photo_id" in schema.names else None)
+    )
 
     # 1. Read coordinates and group columns only (extremely fast and memory efficient)
     load_cols = ["Latitude", "Longitude", "Platform"]
+    if has_photo_id and photo_id_col:
+        load_cols.append(photo_id_col)
     if has_continent and continent_col:
         load_cols.append(continent_col)
 
     lats = []
     lons = []
     plats = []
+    pids = []
     conts = []
 
     for rg in range(num_row_groups):
@@ -98,6 +212,8 @@ def main():
         lats.append(tbl_rg["Latitude"].to_numpy())
         lons.append(tbl_rg["Longitude"].to_numpy())
         plats.append(tbl_rg["Platform"].to_numpy().astype(str))
+        if has_photo_id and photo_id_col:
+            pids.append(tbl_rg[photo_id_col].to_numpy().astype(str))
         if has_continent and continent_col:
             conts.append(tbl_rg[continent_col].to_numpy().astype(str))
 
@@ -106,6 +222,8 @@ def main():
         "Longitude": np.concatenate(lons),
         "Platform": np.concatenate(plats),
     }
+    if has_photo_id and photo_id_col:
+        meta_dict["Photo_ID"] = np.concatenate(pids)
     if has_continent and continent_col:
         meta_dict[continent_col] = np.concatenate(conts)
 
@@ -113,6 +231,8 @@ def main():
     df_meta["Latitude"] = pd.to_numeric(df_meta["Latitude"], errors="coerce")
     df_meta["Longitude"] = pd.to_numeric(df_meta["Longitude"], errors="coerce")
     df_meta["Platform"] = df_meta["Platform"].fillna("").astype(str)
+    if has_photo_id and photo_id_col:
+        df_meta["Photo_ID"] = df_meta["Photo_ID"].fillna("").astype(str)
     if has_continent and continent_col:
         df_meta[continent_col] = df_meta[continent_col].fillna("").astype(str)
 
@@ -191,6 +311,59 @@ def main():
     else:
         flagged_keys = set(zip(anomalies["Platform"], anomalies["lat_round"]))
 
+    # Mapillary Sequence Expansion (Strategy A: targeted sequence retrieval)
+    violating_mapillary_image_ids = set()
+    mapillary_anomalies = anomalies[anomalies["Platform"].str.lower() == "mapillary"]
+    if (
+        not mapillary_anomalies.empty
+        and has_photo_id
+        and photo_id_col
+        and "Photo_ID" in df_meta_for_stats
+    ):
+        token = get_mapillary_token()
+        if token:
+            print("\n🔍 Expanding Mapillary anomalies to full sequences...")
+            m_sub = df_meta_for_stats[
+                df_meta_for_stats["Platform"].str.lower() == "mapillary"
+            ]
+            if has_continent and continent_col:
+                m_keys = list(
+                    zip(m_sub["Platform"], m_sub[continent_col], m_sub["lat_round"])
+                )
+            else:
+                m_keys = list(zip(m_sub["Platform"], m_sub["lat_round"]))
+
+            anom_mask = [k in flagged_keys for k in m_keys]
+            flagged_pids = (
+                m_sub.loc[anom_mask, "Photo_ID"].dropna().astype(str).tolist()
+            )
+            flagged_pids = [p.strip().removesuffix(".0") for p in flagged_pids if p]
+
+            if flagged_pids:
+                print(
+                    f" -> Querying sequence IDs for {len(flagged_pids):,} flagged Mapillary images..."
+                )
+                seq_map = fetch_mapillary_sequences(flagged_pids, token)
+                unique_seqs = set(seq_map.values())
+                print(
+                    f" -> Flagged images belong to {len(unique_seqs)} distinct Mapillary sequence(s)."
+                )
+
+                if unique_seqs:
+                    print(
+                        f" -> Retrieving all image IDs for {len(unique_seqs)} sequence(s)..."
+                    )
+                    violating_mapillary_image_ids = fetch_sequence_all_image_ids(
+                        unique_seqs, token
+                    )
+                    print(
+                        f" -> Expanded to {len(violating_mapillary_image_ids):,} total Mapillary sequence image(s) to purge."
+                    )
+        else:
+            print(
+                "\nNotice: MAPILLARY_TOKEN not found in environment or .env. Skipping Mapillary sequence expansion."
+            )
+
     # 3. Stream write filtered row groups to a temporary Parquet file
     temp_parquet_path = output_parquet_path + ".tmp"
     schema = pf.schema_arrow
@@ -208,14 +381,29 @@ def main():
             rg_lat_round = np.round(rg_lat, 5)
             rg_plat = tbl_rg["Platform"].to_numpy().astype(str)
 
+            if has_photo_id and photo_id_col:
+                rg_pids = tbl_rg[photo_id_col].to_numpy().astype(str)
+                rg_pids_clean = [p.strip().removesuffix(".0") for p in rg_pids]
+            else:
+                rg_pids_clean = [""] * len(tbl_rg)
+
             if has_continent and continent_col:
                 rg_cont = tbl_rg[continent_col].to_numpy().astype(str)
                 keys = list(zip(rg_plat, rg_cont, rg_lat_round))
             else:
                 keys = list(zip(rg_plat, rg_lat_round))
 
-            # Keep indices not matching flagged keys
-            keep_mask = np.array([k not in flagged_keys for k in keys], dtype=bool)
+            # Keep indices not matching flagged keys and not in violating sequence images
+            keep_mask = []
+            for k, plat, pid in zip(keys, rg_plat, rg_pids_clean):
+                if k in flagged_keys:
+                    keep_mask.append(False)
+                elif (
+                    plat.lower() == "mapillary" and pid in violating_mapillary_image_ids
+                ):
+                    keep_mask.append(False)
+                else:
+                    keep_mask.append(True)
 
             filtered_tbl = tbl_rg.filter(pa.array(keep_mask))
             writer.write_table(filtered_tbl)
@@ -239,6 +427,16 @@ def main():
             chunk["lat_round"] = chunk["Latitude"].round(5)
             chunk["Platform"] = chunk["Platform"].fillna("").astype(str)
 
+            chunk_pids_clean = (
+                chunk["Photo_ID"]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .str.removesuffix(".0")
+                if "Photo_ID" in chunk.columns
+                else [""] * len(chunk)
+            )
+
             if has_continent and continent_col:
                 chunk[continent_col] = chunk[continent_col].fillna("").astype(str)
                 keys = list(
@@ -247,7 +445,17 @@ def main():
             else:
                 keys = list(zip(chunk["Platform"], chunk["lat_round"]))
 
-            keep_mask = [k not in flagged_keys for k in keys]
+            keep_mask = []
+            for k, plat, pid in zip(keys, chunk["Platform"], chunk_pids_clean):
+                if k in flagged_keys:
+                    keep_mask.append(False)
+                elif (
+                    plat.lower() == "mapillary" and pid in violating_mapillary_image_ids
+                ):
+                    keep_mask.append(False)
+                else:
+                    keep_mask.append(True)
+
             cleaned_chunk = chunk[keep_mask].drop(columns=["lat_round"])
 
             cleaned_chunk.to_csv(

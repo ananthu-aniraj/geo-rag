@@ -31,6 +31,22 @@ $$
 
 ---
 
+## 🗺️ Automated Mapillary Sequence Expansion
+
+Street-level imagery in Mapillary is captured in continuous temporal driving sessions termed **sequences**. When a contributor experiences a hardware or GPS lockup (e.g. frozen latitude sensor across hundreds of kilometers), the entire driving session is contaminated.
+
+While points directly on the parallel are flagged by the `round(5)` check, other frames in that faulty sequence may drift or jitter slightly (e.g. `±0.00001` or GPS noise) and escape point-level detection.
+
+To eliminate GPS pollution comprehensively:
+
+1. When Mapillary locked-latitude anomalies are detected within the filtered platform/continent scope, the script automatically loads `MAPILLARY_TOKEN` (from the environment or `.env`).
+2. It batch-queries Mapillary Graph API v4 (`https://graph.mapillary.com/?ids=...&fields=id,sequence`) in chunks of 100 to map all flagged points to their parent `sequence_id`s.
+3. For every violating sequence, it queries `https://graph.mapillary.com/image_ids?sequence_id={seq_id}` to retrieve all image IDs belonging to that contaminated drive.
+4. During streaming Parquet and CSV writes, **the entire sequence** (all member image IDs) is purged from the database alongside the locked parallel points.
+5. If `MAPILLARY_TOKEN` is not present, the script gracefully falls back to point-level parallel purging with an informative notice.
+
+---
+
 ## ⚙️ Options & Parameters
 
 You can restrict the scope of coordinate cleaning to a specific platform or region to target known glitches (e.g. Mapillary uploads in Africa) by editing the following keys in `params.yaml`:

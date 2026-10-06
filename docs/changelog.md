@@ -6,6 +6,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Automated Mapillary Sequence Expansion in Coordinate Anomaly Cleanup (`src/processing/cleanup_coordinate_anomalies.py`)**:
+  - Implemented automatic Mapillary Graph API v4 sequence resolution for detected locked-latitude coordinate anomalies (Strategy A).
+  - Flags locked parallel artifacts strictly within the filtered platform and continent scope first (e.g. `--platform mapillary --continent africa`).
+  - Batch-queries Mapillary photo-to-sequence mappings (`https://graph.mapillary.com/?ids=...&fields=id,sequence`) in chunks of 100 IDs.
+  - Queries sequence image IDs (`https://graph.mapillary.com/image_ids?sequence_id=...`) with pagination to identify all frames belonging to contaminated driving sessions, purging drifting or jittered points that would otherwise escape point-level latitude checks.
+  - Purges all violating sequence image IDs during streaming Parquet and CSV output generation without requiring additional CLI flags, gracefully falling back to point-level parallel purging if `MAPILLARY_TOKEN` is absent.
+  - Documented in `docs/pipeline/04_coordinate_cleanup.md` and added unit test suite in `tests/test_coordinate_cleanup.py`.
+
 - **Zero-Inference Embedding Derivation & Architecture Aggregation (`src/processing/backfill_embeddings.py`)**:
   - Implemented automatic mathematical derivation of visual representations from pre-computed companion files when running with `--resume`:
     - **ViT Slicing**: Slices `cls` (`[:, :D]`) or `avg_patch` (`[:, D:]`) directly from existing `cls_avg_patch` companions via zero-copy memory maps, bypassing GPU forward passes and image downloads entirely.
