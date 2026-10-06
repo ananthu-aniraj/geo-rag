@@ -114,6 +114,8 @@ offline_pipeline:
   # image_root_dirs:                             # Offline dataset locations on PC (used ONLY in download step)
   #   - "/path/to/your/raw_cam_traps"
   #   - "/path/to/your/google-landmark"
+  # sync_offline_dataset: false                  # Sync offline dataset & companion embeddings with full_dataset_parquet
+  # delete_orphaned_images: false                # Delete image files on disk for records purged during sync
   # output_dir: ""  # Optional: defaults to the directory containing input_parquet
   # base_name: ""   # Optional: defaults to input_parquet filename stem
   # model_name: "google/tipsv2-b14"

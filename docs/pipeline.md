@@ -81,6 +81,44 @@ When running representation sweeps across different pooling variants (`cls`, `av
   * Existing spatial pooled embeddings are automatically reused across `cls` and `avg_patch` interchangeably without recomputation.
 * **Full Override Control**: Pass `--no_resume` or `--force` to bypass automatic derivation and force recomputation from scratch.
 
+### Model-Agnostic Offline Dataset & Multi-Model Embeddings Synchronization (`sync_offline_dataset.py`)
+
+When upstream coordinate anomaly cleanup (`cleanup_coordinate_anomalies.py`), duplicate pruning, or sequence purging removes corrupted records from the master online dataset (`geo_space_cleaned.parquet`), pre-existing offline datasets (`geo_space_cleaned_offline.parquet`) and their companion embeddings files retain those deleted records unless explicitly synchronized.
+
+Because the offline pipeline may explore different model architectures (e.g. DINOv2, SigLIP, Swin) or multiple backfilled representations than the online pipeline, synchronization is **completely model-agnostic**:
+
+1. **Automatic Multi-Model Discovery**:
+   Scans the offline directory for all companion files matching `{base_name}_*_embeddings.keys.parquet` and `{base_name}_*_embeddings.npy`. It automatically detects companion matrices for **every model and pooling variant** present on disk.
+2. **Metadata Pruning**:
+   Extracts `photo_key` sets from the master online dataset and filters `input_parquet` in-place using atomic temporary files, removing any rows that were purged upstream.
+3. **Zero-Inference Embedding Slicing**:
+   For each discovered companion pair, slices the `.npy` matrix via memory mapping (`mmap_mode="r"`) to match the surviving keys, and updates `.keys.parquet` atomically. This takes $<1$s per model without GPU forward passes or model weight loading.
+4. **Physical Image Deletion (Optional)**:
+   When `--delete_images` (or `--delete_orphaned_images`) is enabled, identifies local image files (`Image_Location`) for purged records and removes them from disk to reclaim storage space.
+
+**Running as a Standalone Command**:
+
+```bash
+python -m src.utils.sync_offline_dataset \
+  --online full_pipeline_output/geo_space_cleaned.parquet \
+  --offline full_pipeline_output/geo_space_cleaned_offline.parquet \
+  --image_dir /path/to/images \
+  --delete_images
+```
+
+**Running within the Offline Pipeline**:
+Pass `--sync_offline` to `scripts/pipeline/run_offline_pipeline.sh` (or set `sync_offline_dataset: true` in `config/pipeline/params_offline.yaml`):
+
+```bash
+./scripts/pipeline/run_offline_pipeline.sh \
+  --input /path/to/geo_space_cleaned_offline.parquet \
+  --full_dataset_parquet /path/to/geo_space_cleaned.parquet \
+  --sync_offline \
+  --delete_orphaned_images
+```
+
+If the offline dataset is already 100% in sync, this pre-flight step exits in $<1$s with a confirmation checkmark and proceeds.
+
 ### Visualizations & Sidecar Layout
 
 To prevent destructive file overwrites across different model sweeps:

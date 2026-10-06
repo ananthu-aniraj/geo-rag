@@ -27,6 +27,14 @@ offline_pipeline:
     - "/path/to/raw_dataset_1"
     - "/path/to/raw_dataset_2"
 
+  # Optional Step 0a: Sync Offline Dataset & Companion Embeddings with Master Dataset
+  # When true: checks input_parquet against full_dataset_parquet, prunes any purged
+  # records, automatically discovers and slices companion embedding matrices (*_embeddings.npy
+  # and *_embeddings.keys.parquet) for ALL models to match surviving keys, and optionally deletes
+  # orphaned image files on disk.
+  sync_offline_dataset: false
+  delete_orphaned_images: false
+
 
   # 2. Vision Model & Representation Settings
   # Options: "google/tipsv2-b14", or any timm / Hugging Face model identifier

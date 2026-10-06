@@ -57,6 +57,12 @@ DOWNLOAD_CHECKPOINT_INTERVAL=$(get_param "download_checkpoint_interval")
 
 IMAGE_ROOT_DIRS=$(get_param "image_root_dirs")
 
+SYNC_OFFLINE_DATASET=$(get_param "sync_offline_dataset")
+[ -z "$SYNC_OFFLINE_DATASET" ] && SYNC_OFFLINE_DATASET="false"
+
+DELETE_ORPHANED_IMAGES=$(get_param "delete_orphaned_images")
+[ -z "$DELETE_ORPHANED_IMAGES" ] && DELETE_ORPHANED_IMAGES="false"
+
 MODEL_NAME=$(get_param "model_name")
 [ -z "$MODEL_NAME" ] && MODEL_NAME="google/tipsv2-b14"
 
@@ -147,6 +153,22 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no_download_images)
       RUN_DOWNLOAD_IMAGES="false"
+      shift
+      ;;
+    --sync_offline|--sync_offline_dataset)
+      SYNC_OFFLINE_DATASET="true"
+      shift
+      ;;
+    --no_sync_offline)
+      SYNC_OFFLINE_DATASET="false"
+      shift
+      ;;
+    --delete_orphaned_images)
+      DELETE_ORPHANED_IMAGES="true"
+      shift
+      ;;
+    --no_delete_orphaned_images)
+      DELETE_ORPHANED_IMAGES="false"
       shift
       ;;
     --full_dataset_parquet|--master_parquet|--full_dataset)
@@ -263,6 +285,10 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  --input PATH                 Path to input offline parquet file"
       echo "  --full_dataset_parquet PATH  Path to master dataset with preserved URLs (for sync)"
+      echo "  --sync_offline               Sync offline dataset & multi-model companion embeddings with master dataset"
+      echo "  --no_sync_offline            Disable offline dataset sync (default)"
+      echo "  --delete_orphaned_images     Delete local image files for records purged during offline sync"
+      echo "  --no_delete_orphaned_images  Keep local image files on disk during offline sync"
       echo "  --run_download_images        Sync/download new images from master dataset to offline target"
       echo "  --no_download_images         Disable downloading images (default)"
       echo "  --download_output_dir DIR    Directory where offline images reside (used by all downstream steps)"
@@ -299,13 +325,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
+if [ "$RUN_DOWNLOAD_IMAGES" = "true" ] || [ "$SYNC_OFFLINE_DATASET" = "true" ]; then
     if [ ! -f "$FULL_DATASET_PARQUET" ]; then
         echo "❌ Error: Master dataset not found at '$FULL_DATASET_PARQUET'."
         echo "Please provide a valid file via --full_dataset_parquet or configure full_dataset_parquet in $PARAMS_YAML."
         exit 1
     fi
-else
+fi
+if [ "$RUN_DOWNLOAD_IMAGES" = "false" ]; then
     if [ ! -f "$INPUT_PARQUET" ]; then
         echo "❌ Error: Input parquet dataset not found at '$INPUT_PARQUET'."
         echo "Please provide a valid file via --input or configure input_parquet in $PARAMS_YAML."
@@ -392,6 +419,11 @@ if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
 else
     echo " - Download/Sync Images: false (using existing images in $DOWNLOAD_OUTPUT_DIR)"
 fi
+echo " - Sync Offline Dataset : $SYNC_OFFLINE_DATASET"
+if [ "$SYNC_OFFLINE_DATASET" = "true" ]; then
+    echo "   * Master Dataset    : $FULL_DATASET_PARQUET"
+    echo "   * Delete Orphaned   : $DELETE_ORPHANED_IMAGES"
+fi
 echo " - Model Identifier    : $MODEL_NAME"
 echo " - Representation Type : $REPRESENTATION_TYPE"
 echo " - Precision           : $PRECISION"
@@ -442,6 +474,36 @@ if [ "$RUN_DOWNLOAD_IMAGES" = "true" ]; then
         echo "❌ Error: Offline dataset '$INPUT_PARQUET' was not produced by download_images."
         exit 1
     fi
+fi
+
+# Optional Preprocessing Step: Sync Offline Dataset & Multi-Model Companion Embeddings
+if [ "$SYNC_OFFLINE_DATASET" = "true" ]; then
+    echo ""
+    echo "[Preprocessing] Synchronizing offline dataset and multi-model companion embeddings with master dataset '$FULL_DATASET_PARQUET'..."
+    if [ ! -f "$FULL_DATASET_PARQUET" ]; then
+        echo "❌ Error: Master dataset not found at '$FULL_DATASET_PARQUET' for offline synchronization."
+        exit 1
+    fi
+    if [ ! -f "$INPUT_PARQUET" ]; then
+        echo "❌ Error: Offline dataset not found at '$INPUT_PARQUET' for offline synchronization."
+        exit 1
+    fi
+
+    DELETE_IMAGES_FLAG=""
+    if [ "$DELETE_ORPHANED_IMAGES" = "true" ]; then
+        DELETE_IMAGES_FLAG="--delete_images"
+    fi
+
+    IMAGE_DIR_FLAG=""
+    if [ -n "$DOWNLOAD_OUTPUT_DIR" ]; then
+        IMAGE_DIR_FLAG="--image_dir $DOWNLOAD_OUTPUT_DIR"
+    fi
+
+    python3 -m src.utils.sync_offline_dataset \
+      --online "$FULL_DATASET_PARQUET" \
+      --offline "$INPUT_PARQUET" \
+      $DELETE_IMAGES_FLAG \
+      $IMAGE_DIR_FLAG
 fi
 
 # Optional Preprocessing Step: Backfill Embeddings for Specified Model
