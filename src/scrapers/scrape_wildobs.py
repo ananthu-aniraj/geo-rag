@@ -22,34 +22,16 @@ from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 from urllib3.util import Retry
 
+from src.utils.credentials import get_wildobs_api_key
+
 API_BASE_URL = "https://camdbapi.wildobs.org.au/find"
 DEFAULT_PLATFORM = "wildobs"
 
 
 def load_env_credentials(env_path: str = ".env") -> Optional[str]:
     """Attempts to find and load WILDOBS_API_KEY from environment or .env file."""
-    # 1. Check current environment variables
-    key = os.environ.get("WILDOBS_API_KEY") or os.environ.get("WILDOBSR_API_KEY")
-    if key and key.strip():
-        return key.strip()
-
-    # 2. Check local .env file
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        k = k.strip()
-                        v = v.strip().strip('"').strip("'")
-                        if k in ("WILDOBS_API_KEY", "WILDOBSR_API_KEY") and v:
-                            os.environ[k] = v
-                            return v
-        except Exception:
-            pass
-
-    return None
+    key = get_wildobs_api_key(search_dir=env_path)
+    return key if key else None
 
 
 def get_api_session(api_key: str) -> requests.Session:

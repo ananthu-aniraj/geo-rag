@@ -6,6 +6,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Added
 
+- **Centralized Credentials & Environment Management (`src/utils/credentials.py`)**:
+  - Implemented centralized API credential and environment discovery module replacing duplicate, ad-hoc `.env` parsing loops across the codebase.
+  - Features robust `.env` resolution: directory walk-up from caller path, repository root search, and `python-dotenv` integration with automatic whitespace and quote stripping (`"`, `'`).
+  - Provides typed accessors: `get_mapillary_token()`, `get_carto_api_key()`, `get_flickr_api_key()`, `get_hf_token()`, `get_wildobs_api_key()`, `get_wildlife_insights_credentials()`, and general `get_credential()`.
+  - Re-exported via `src.utils` and `src.visualization.map_utils` for seamless backward compatibility.
+  - Refactored all calling modules across processing, evaluation, indexing, visualization, and scraping pipelines to use the centralized helper.
+  - Added unit test suite in `tests/test_credentials.py`.
+
 - **Automated Mapillary Sequence Expansion in Coordinate Anomaly Cleanup (`src/processing/cleanup_coordinate_anomalies.py`)**:
   - Implemented automatic Mapillary Graph API v4 sequence resolution for detected locked-latitude coordinate anomalies (Strategy A).
   - Flags locked parallel artifacts strictly within the filtered platform and continent scope first (e.g. `--platform mapillary --continent africa`).

@@ -17,6 +17,7 @@ from src.models.vision_model_inference import (
     load_vision_model,
     model_has_cls_token,
 )
+from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     download_image,
     load_dataframe,
@@ -254,24 +255,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # Try to load .env variables if not already set
-    if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
-        try:
-            with open(".env", "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        if k.strip() == "MAPILLARY_TOKEN":
-                            os.environ["MAPILLARY_TOKEN"] = (
-                                v.strip().strip('"').strip("'")
-                            )
-                            break
-        except Exception:
-            pass
-
     if not args.mapillary_token:
-        args.mapillary_token = os.environ.get("MAPILLARY_TOKEN", "")
+        args.mapillary_token = get_mapillary_token()
 
     out_path = args.output if args.output else args.input
     if out_path.endswith(".csv"):

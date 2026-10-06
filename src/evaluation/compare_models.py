@@ -261,14 +261,10 @@ def main():
     print("=" * 90)
 
     # Source local credentials from .env to environment if available
+    from src.utils.credentials import load_env
+
+    load_env()
     env = os.environ.copy()
-    if os.path.exists(".env"):
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    env[k.strip()] = v.strip()
 
     all_results = []
     visualizer_links = []

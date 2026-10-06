@@ -21,21 +21,12 @@ try:
 except ImportError:
     from map_utils import get_carto_key_param
 
-# Try to load .env variables if not already set
-if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
-    try:
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    if k.strip() == "MAPILLARY_TOKEN":
-                        os.environ["MAPILLARY_TOKEN"] = v.strip().strip('"').strip("'")
-                        break
-    except Exception:
-        pass
+try:
+    from src.utils.credentials import get_mapillary_token
+except ImportError:
+    from utils.credentials import get_mapillary_token
 
-MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
+MAPILLARY_TOKEN = get_mapillary_token()
 
 
 def create_sample_grid(

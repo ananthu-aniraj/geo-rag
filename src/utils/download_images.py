@@ -15,6 +15,7 @@ from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 from urllib3.util import Retry
 
+from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     KNOWN_PLACEHOLDER_MD5_HASHES,
     build_offline_image_index,
@@ -26,31 +27,7 @@ from src.utils.io import (
     resolve_wildlife_insights_url,
 )
 
-# Try to load .env variables if not already set
-if os.path.exists(".env"):
-    try:
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    val = v.strip().strip('"').strip("'")
-                    if k.strip() == "MAPILLARY_TOKEN" and not os.environ.get(
-                        "MAPILLARY_TOKEN"
-                    ):
-                        os.environ["MAPILLARY_TOKEN"] = val
-                    elif k.strip() == "WILDLIFE_INSIGHTS_COOKIE" and not os.environ.get(
-                        "WILDLIFE_INSIGHTS_COOKIE"
-                    ):
-                        os.environ["WILDLIFE_INSIGHTS_COOKIE"] = val
-                    elif k.strip() == "WILDLIFE_INSIGHTS_TOKEN" and not os.environ.get(
-                        "WILDLIFE_INSIGHTS_TOKEN"
-                    ):
-                        os.environ["WILDLIFE_INSIGHTS_TOKEN"] = val
-    except Exception:
-        pass
-
-MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
+MAPILLARY_TOKEN = get_mapillary_token()
 
 
 def bulk_resolve_mapillary_urls(

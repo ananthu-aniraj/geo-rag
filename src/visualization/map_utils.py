@@ -7,11 +7,11 @@ prevent 'API key required' watermarks on Carto basemaps.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any, Tuple
 
 import folium
+
+from src.utils.credentials import get_carto_api_key
 
 CARTO_ATTRIBUTION = (
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
@@ -33,79 +33,6 @@ CARTO_STYLE_VARIANTS = {
     "voyager": "rastertiles/voyager",
     "rastertiles/voyager": "rastertiles/voyager",
 }
-
-
-def get_carto_api_key(search_dir: Path | str | None = None) -> str:
-    """Retrieve the CARTO API key from environment variables or .env file.
-
-    Args:
-        search_dir: Optional directory or file path to search for .env first.
-
-    Returns:
-        The CARTO API key as a string, or empty string if not found.
-    """
-    if search_dir is not None:
-        target_env = (
-            Path(search_dir) / ".env" if Path(search_dir).is_dir() else Path(search_dir)
-        )
-        if target_env.is_file():
-            try:
-                with open(target_env, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.startswith("#") or "=" not in line:
-                            continue
-                        k, v = line.split("=", 1)
-                        if k.strip() == "CARTO_API_KEY":
-                            val = v.strip().strip('"').strip("'")
-                            if val:
-                                return val
-            except Exception:
-                pass
-
-    api_key = os.environ.get("CARTO_API_KEY", "").strip().strip('"').strip("'")
-    if api_key:
-        return api_key
-
-    # Try python-dotenv if available
-    try:
-        from dotenv import find_dotenv, load_dotenv
-
-        dotenv_path = find_dotenv(usecwd=True)
-        if dotenv_path:
-            load_dotenv(dotenv_path)
-            api_key = os.environ.get("CARTO_API_KEY", "").strip().strip('"').strip("'")
-            if api_key:
-                return api_key
-    except ImportError:
-        pass
-
-    # Fallback: manual walk-up search for .env
-    search_dirs = [Path.cwd(), Path(__file__).resolve().parent]
-    visited = set()
-    for start_dir in search_dirs:
-        curr = start_dir
-        while curr not in visited and curr != curr.parent:
-            visited.add(curr)
-            env_file = curr / ".env"
-            if env_file.is_file():
-                try:
-                    with open(env_file, "r", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if line.startswith("#") or "=" not in line:
-                                continue
-                            k, v = line.split("=", 1)
-                            if k.strip() == "CARTO_API_KEY":
-                                val = v.strip().strip('"').strip("'")
-                                if val:
-                                    os.environ["CARTO_API_KEY"] = val
-                                    return val
-                except Exception:
-                    pass
-            curr = curr.parent
-
-    return ""
 
 
 def get_carto_key_param(api_key: str | None = None) -> str:

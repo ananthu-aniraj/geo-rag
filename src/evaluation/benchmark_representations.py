@@ -21,6 +21,7 @@ from transformers import (
 from src.models.vision_model_inference import (
     load_vision_model,
 )
+from src.utils.credentials import get_mapillary_token
 from src.utils.io import download_image, load_dataframe
 from src.visualization.visualize_retrieval import generate_retrieval_html
 
@@ -51,21 +52,7 @@ def get_rep_slug(rep_name: str, model_label: str = "") -> str:
     return slug or "rep"
 
 
-# Try to load .env variables if not already set
-if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
-    try:
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    if k.strip() == "MAPILLARY_TOKEN":
-                        os.environ["MAPILLARY_TOKEN"] = v.strip().strip('"').strip("'")
-                        break
-    except Exception:
-        pass
-
-MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
+MAPILLARY_TOKEN = get_mapillary_token()
 DEFAULT_DISCARD_CLASSES = [
     2,
     12,

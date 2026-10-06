@@ -6,26 +6,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-
-def get_mapillary_token() -> str:
-    """Retrieves Mapillary token from environment variable or .env file."""
-    token = os.environ.get("MAPILLARY_TOKEN", "")
-    if token:
-        return token
-    if os.path.exists(".env"):
-        try:
-            with open(".env", "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        if k.strip() == "MAPILLARY_TOKEN":
-                            token = v.strip().strip('"').strip("'")
-                            os.environ["MAPILLARY_TOKEN"] = token
-                            return token
-        except Exception:
-            pass
-    return ""
+from src.utils.credentials import get_mapillary_token
 
 
 def fetch_mapillary_sequences(

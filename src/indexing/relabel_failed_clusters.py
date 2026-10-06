@@ -19,6 +19,7 @@ from src.indexing.multi_medoid_utils import (
     sample_diverse_medoids,
     stitch_cells_vertically,
 )
+from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     load_dataset_with_clusters,
     load_embeddings,
@@ -29,21 +30,7 @@ from src.utils.io import (
 # Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
 
-# Try to load .env variables if not already set
-if not os.environ.get("MAPILLARY_TOKEN") and os.path.exists(".env"):
-    try:
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    if k.strip() == "MAPILLARY_TOKEN":
-                        os.environ["MAPILLARY_TOKEN"] = v.strip().strip('"').strip("'")
-                        break
-    except Exception:
-        pass
-
-MAPILLARY_TOKEN = os.environ.get("MAPILLARY_TOKEN", "")
+MAPILLARY_TOKEN = get_mapillary_token()
 
 
 def resize_image_aspect(img, target_max=448):
