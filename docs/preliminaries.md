@@ -115,32 +115,34 @@ Geo-RAG operates in two modes depending on your workflow:
 
 ## 🧪 How Do We Evaluate Models? (The Benchmark Suites)
 
-Once an AI model (like TIPSv2, DINOv2, or SigLIP) produces visual embeddings for millions of images, **how do we prove that those representations actually understand real-world geography and ecology?**
+When vision models (like TIPSv2, DINOv2, or SigLIP) produce embeddings for millions of images, **our evaluation benchmarks measure whether those representations effectively retain critical information about the scene, environment, and landscape**—and how reliably we can leverage that information for downstream spatial mapping and retrieval.
 
-Geo-RAG includes three standardized benchmarking suites that test models against certified, real-world ground truth:
+Similarly, we experiment with various textual captioning strategies and prompts across different Multimodal Large Language Models (MLLMs) to evaluate **which generated captions best capture the necessary details to answer questions about the image regarding land use, land cover, and environmental characteristics.**
 
-### 1. Ecological & Ground-Truth Alignment (LUCAS 2018 & EUNIS)
+Geo-RAG organizes these evaluations into three standardized benchmarking suites:
 
-* **The Goal**: Test whether images taken in the same ecosystem share similar embedding vectors.
+### 1. Ecological & Environmental Information Retention (LUCAS 2018 & EUNIS)
+
+* **The Question**: Do image embeddings preserve enough environmental information to group ecologically equivalent landscapes together, even when images are taken hundreds of kilometers apart?
 * **Ground-Truth Sources**:
-  * **LUCAS 2018**: European Union field surveyors physically visited hundreds of thousands of GPS points across Europe to record certified **Land Cover** (e.g., Cropland, Coniferous Woodland) and **Land Use**.
-  * **EUNIS Ecosystem Maps**: European Environment Agency (EEA) raster maps classifying habitats across three nested taxonomic levels (Macro, Meso, and Exact).
-* **The Test**: We perform $k$-Nearest-Neighbor retrieval. If we query a photo of an alpine spruce forest, do the retrieved top matches from hundreds of kilometers away also belong to spruce forest habitats?
+  * **LUCAS 2018**: European Union field surveyors physically visited hundreds of thousands of GPS points across Europe to record certified **Land Cover** (e.g., Cropland, Coniferous Woodland) and **Land Use** (e.g., Agriculture, Forestry).
+  * **EUNIS Ecosystem Maps**: High-resolution European Environment Agency (EEA) raster maps classifying habitats across three nested taxonomic levels (Macro, Meso, and Exact).
+* **The Benchmark**: We perform $k$-Nearest-Neighbor retrieval. If we query a photo taken in an alpine spruce forest in Austria, do the nearest retrieved representations from across Europe also correspond to alpine spruce habitats?
 
-### 2. Visual Scene Recognition (Places365)
+### 2. Scene & Context Recognition (Places365)
 
-* **The Goal**: Test whether embeddings preserve visual scene context across diverse outdoor and indoor environments.
-* **The Test**: Evaluates retrieval accuracy across the Places365 3-tier hierarchy:
+* **The Question**: How well do representation vectors retain scene-level semantics across diverse outdoor and indoor settings?
+* **The Benchmark**: Measures retrieval precision across the Places365 3-tier hierarchy:
   * **Exact Category** (e.g., *mountain*, *harbor*, *bamboo forest*).
   * **Sub-Category** (e.g., *water*, *cultivated land*, *commercial area*).
   * **Macro Category** (*indoor* vs. *outdoor natural* vs. *outdoor man-made*).
 
-### 3. Cross-Modal & Vision-Language Understanding (VLM Captions)
+### 3. MLLM Captioning Quality & Cross-Modal Retrieval
 
-* **The Goal**: Measure how well models bridge the gap between pixels and natural language descriptions.
-* **The Test**:
-  * **Zero-Shot Captioning**: Vision-Language Models (VLMs) describe scenes into structured JSON schema (visible evidence, vegetation types, human activities).
-  * **Cross-Modal Retrieval**: Evaluates whether text queries can accurately retrieve the right image (*Text-to-Image*), and whether images retrieve matching descriptions (*Image-to-Text*).
+* **The Question**: Which MLLM and prompt designs generate captions that most accurately describe the image, and can those captions be used to reliably answer questions about land cover and scene elements?
+* **The Benchmark**:
+  * **Captioning & Question Answering (`caption_test.py`, `evaluate_lucas.py`)**: We test multiple MLLMs (e.g., LLaVA, Qwen-VL) across different structured prompt templates to extract visible evidence, human activities, and vegetation types. We evaluate how accurately these structured descriptions answer specific questions regarding ground-truth land cover and land use classes.
+  * **Cross-Modal Retrieval (`evaluate_retrieval.py`)**: Measures whether text embeddings of MLLM captions align with raw visual feature vectors in a joint space, testing both *Text-to-Image* and *Image-to-Text* retrieval accuracy.
 
 ---
 
@@ -148,12 +150,12 @@ Geo-RAG includes three standardized benchmarking suites that test models against
 
 A major trap in geospatial machine learning is **spatial data leakage**:
 
-* If a street-view camera drives down a road and takes 10 photos 2 meters apart, a naive random 80/20 train/test split puts 8 photos in the database and 2 in the test set.
-* The model can easily score 100% accuracy simply by memorizing that specific street corner or lighting condition, without understanding the landscape!
+* If a street-view camera drives down a road and captures 10 photos 2 meters apart, a naive random 80/20 train/test split puts 8 photos in the database and 2 in the test set.
+* The model can easily achieve high scores simply by matching the exact same street corner, building facade, or lighting condition, without actually encoding generalizable environmental features.
 
 > [!IMPORTANT] The Spatial Block Solution
 > In all Geo-RAG retrieval benchmarks ([`benchmark_lucas.py`](evaluation.md#4-lucas-semantic-retrieval-benchmarking-benchmark_lucaspy), [`benchmark_eunis.py`](evaluation.md#6-eunis-ecosystem-map-retrieval-benchmarking-benchmark_eunispy)), we partition queries and database pools into **H3 Resolution 4 parent blocks (~11,000 km²)** using **Greedy Block Stratification**.
-> The test queries come from **completely different geographic territories** than the search database. The model must prove it recognizes *ecological concepts*, not memorized coordinates.
+> The test queries come from **completely different geographic territories** than the search database. This guarantees that representations are evaluated on whether they encode **generalizable ecological information**, rather than memorized local scenes.
 
 For a complete walkthrough of precision metrics ($P@K$, $mAP$, $MRR$), see the **[Evaluation Methodology Guide](evaluation.md)** and **[Metrics Reference](metrics.md)**.
 

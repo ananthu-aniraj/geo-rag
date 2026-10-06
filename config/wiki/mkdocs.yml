@@ -31,6 +31,10 @@ site_dir: '../../site'
 hooks:
   - hooks.py
 
+plugins:
+  - search
+  - glightbox
+
 extra_javascript:
   - assets/js/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
