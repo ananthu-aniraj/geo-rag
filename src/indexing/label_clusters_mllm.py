@@ -473,9 +473,18 @@ def main():
             "Input file missing 'cluster_id'. Please run cluster_images_global.py first."
         )
 
-    child_ids = df["cluster_id"].values
-    unique_child_ids = np.sort(np.unique(child_ids[child_ids >= 0]))
-    k_clusters = len(unique_child_ids)
+    # Defensively coerce cluster_id to numeric integers; fill NaNs or non-numerics with -1
+    df["cluster_id"] = (
+        pd.to_numeric(df["cluster_id"], errors="coerce").fillna(-1).astype(np.int64)
+    )
+    child_ids = df["cluster_id"].values.astype(np.int64)
+    valid_ids_mask = child_ids >= 0
+    unique_child_ids = np.sort(np.unique(child_ids[valid_ids_mask]))
+    k_clusters = (
+        max(len(unique_child_ids), int(unique_child_ids.max()) + 1)
+        if len(unique_child_ids) > 0
+        else 0
+    )
 
     print(f"Found {len(df):,} items across {k_clusters:,} child clusters.")
 
@@ -491,13 +500,13 @@ def main():
     unique_ids, starts, counts_uniq = np.unique(
         sorted_child_ids, return_index=True, return_counts=True
     )
-    cid_to_pos = {cid: i for i, cid in enumerate(unique_ids)}
-    print(f" -> Grouped 7.1M child IDs in {time.time() - t_group:.2f}s.")
+    cid_to_pos = {int(cid): i for i, cid in enumerate(unique_ids) if int(cid) >= 0}
+    print(f" -> Grouped {len(child_ids):,} child IDs in {time.time() - t_group:.2f}s.")
 
     # Chunked normalized centroid calculation
     t_centroids = time.time()
     chunk_size = 500000
-    total_len = len(embeddings)
+    total_len = min(len(embeddings), len(child_ids))
     for start_idx in range(0, total_len, chunk_size):
         end_idx = min(start_idx + chunk_size, total_len)
         chunk_raw = embeddings[start_idx:end_idx]
@@ -506,10 +515,14 @@ def main():
         chunk_norm = (chunk_raw / norms).astype(np.float32)
 
         chunk_ids = child_ids[start_idx:end_idx]
-        valid_mask = chunk_ids >= 0
-        np.add.at(raw_centroids, chunk_ids[valid_mask], chunk_norm[valid_mask])
+        valid_mask = (chunk_ids >= 0) & (chunk_ids < k_clusters)
+        valid_chunk_ids = chunk_ids[valid_mask].astype(np.int64)
+        np.add.at(raw_centroids, valid_chunk_ids, chunk_norm[valid_mask])
 
-    counts = np.bincount(child_ids[child_ids >= 0], minlength=k_clusters)
+    valid_all = (child_ids[:total_len] >= 0) & (child_ids[:total_len] < k_clusters)
+    counts = np.bincount(
+        child_ids[:total_len][valid_all].astype(np.int64), minlength=k_clusters
+    )
     valid_counts = counts > 0
     raw_centroids[valid_counts] /= counts[valid_counts, None]
     print(f" -> Re-computed centroids in {time.time() - t_centroids:.2f}s.")
@@ -517,18 +530,28 @@ def main():
     # Parent cluster mapping
     has_parents = "parent_cluster_id" in df.columns
     if has_parents:
+        df["parent_cluster_id"] = (
+            pd.to_numeric(df["parent_cluster_id"], errors="coerce")
+            .fillna(-1)
+            .astype(np.int64)
+        )
         parent_ids = df.groupby("cluster_id")["parent_cluster_id"].first().to_dict()
         parent_ids = {
             int(cid): int(pid)
             for cid, pid in parent_ids.items()
-            if pd.notna(cid) and pd.notna(pid)
+            if pd.notna(cid) and pd.notna(pid) and int(cid) >= 0 and int(pid) >= 0
         }
         k_parents = max(parent_ids.values()) + 1 if parent_ids else 0
         parent_centroids = np.zeros((k_parents, d), dtype=np.float32)
         for cid, pid in parent_ids.items():
             if cid < len(raw_centroids) and pid < k_parents:
                 parent_centroids[pid] += raw_centroids[cid] * counts[cid]
-        parent_counts = np.bincount(list(parent_ids.values()), minlength=k_parents)
+        parent_counts = np.bincount(
+            np.array(list(parent_ids.values()), dtype=np.int64)
+            if parent_ids
+            else np.array([], dtype=np.int64),
+            minlength=k_parents,
+        )
         valid_p_counts = parent_counts > 0
         parent_centroids[valid_p_counts] /= parent_counts[valid_p_counts, None]
     else:
@@ -542,7 +565,7 @@ def main():
     child_rep_indices = {}
 
     def get_indices_for_cid(cid):
-        pos = cid_to_pos.get(cid)
+        pos = cid_to_pos.get(int(cid))
         if pos is None:
             return np.array([], dtype=np.int64)
         start = starts[pos]

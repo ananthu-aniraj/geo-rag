@@ -451,22 +451,30 @@ def main():
     for item in data:
         label = item.get("cluster_label")
         cid = item.get("cluster_id")
-        if cid is not None:
-            if pd.isna(label) or label in ("Error Labeling", "Unlabeled", "", "None"):
-                target_cluster_ids.add(int(cid))
+        if cid is not None and not pd.isna(cid):
+            cid_int = int(cid)
+            if cid_int >= 0 and (
+                pd.isna(label) or label in ("Error Labeling", "Unlabeled", "", "None")
+            ):
+                target_cluster_ids.add(cid_int)
 
         if has_parents:
             p_label = item.get("parent_cluster_label")
             pid = item.get("parent_cluster_id")
-            if pid is not None:
-                if pd.isna(p_label) or p_label in (
-                    "Error Labeling",
-                    "Unlabeled Parent",
-                    "",
-                    "None",
-                    "Unlabeled",
+            if pid is not None and not pd.isna(pid):
+                pid_int = int(pid)
+                if pid_int >= 0 and (
+                    pd.isna(p_label)
+                    or p_label
+                    in (
+                        "Error Labeling",
+                        "Unlabeled Parent",
+                        "",
+                        "None",
+                        "Unlabeled",
+                    )
                 ):
-                    target_parent_ids.add(int(pid))
+                    target_parent_ids.add(pid_int)
 
     if args.cluster_ids:
         # Override with forced list for child clusters
@@ -523,7 +531,9 @@ def main():
 
     # 5. Extract Cluster Mapping and Embeddings
     print("Extracting cluster assignments...")
-    cluster_ids = np.array([item["cluster_id"] for item in data])
+    cluster_ids = np.nan_to_num(
+        [item.get("cluster_id") for item in data], nan=-1
+    ).astype(np.int64)
 
     print("Extracting embeddings...")
 
@@ -584,10 +594,10 @@ def main():
     unique_ids, starts, counts_uniq = np.unique(
         sorted_child_ids, return_index=True, return_counts=True
     )
-    cid_to_pos = {cid: i for i, cid in enumerate(unique_ids)}
+    cid_to_pos = {int(cid): i for i, cid in enumerate(unique_ids) if int(cid) >= 0}
 
     def get_indices_for_cid(cid):
-        pos = cid_to_pos.get(cid)
+        pos = cid_to_pos.get(int(cid))
         if pos is None:
             return np.array([], dtype=np.int64)
         start = starts[pos]

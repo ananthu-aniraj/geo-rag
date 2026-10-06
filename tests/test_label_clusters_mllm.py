@@ -566,6 +566,63 @@ class TestLabelClustersMLLM(unittest.TestCase):
         self.assertIn("parent_cluster_label", df_out.columns)
         self.assertTrue(len(df_out["cluster_label"].iloc[0]) > 0)
 
+    def test_labeling_with_float_and_nan_cluster_ids(self):
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from src.indexing.label_clusters_mllm import main
+        from src.utils.io import load_dataframe, save_dataframe
+
+        input_parquet = os.path.join(self.test_dir, "test_input_float_nan.parquet")
+        output_parquet = os.path.join(self.test_dir, "test_output_float_nan.parquet")
+
+        # Create dataset where cluster_id and parent_cluster_id have float dtype with NaN
+        df = pd.DataFrame(
+            {
+                "Photo_ID": [str(i) for i in range(5)],
+                "Platform": ["flickr"] * 5,
+                "Latitude": [40.0, 40.1, 50.0, 50.1, 50.2],
+                "Longitude": [-74.0, -74.1, 2.0, 2.1, 2.2],
+                "Image_URL": [f"http://example.com/{i}.jpg" for i in range(5)],
+                "cluster_id": [0.0, 0.0, 1.0, 1.0, np.nan],
+                "parent_cluster_id": [0.0, 0.0, 0.0, 0.0, np.nan],
+            }
+        )
+        embs = np.zeros((5, 4), dtype=np.float32)
+        embs[:2, 0] = 1.0
+        embs[2:4, 1] = 1.0
+        df["embedding"] = list(embs)
+        save_dataframe(df, input_parquet, representation_type="cls")
+
+        mock_model = MagicMock()
+        mock_model.to.return_value = mock_model
+        mock_tensor = MagicMock()
+        mock_tensor.cpu.return_value.numpy.return_value = np.tile(
+            np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32), (40, 1)
+        )
+        mock_model.encode_text.return_value = mock_tensor
+
+        with patch(
+            "src.indexing.label_clusters_mllm.AutoModel.from_pretrained",
+            return_value=mock_model,
+        ):
+            test_args = [
+                "label_clusters_mllm.py",
+                "--in",
+                input_parquet,
+                "--out",
+                output_parquet,
+                "--label_method",
+                "zeroshot",
+            ]
+            with patch.object(sys, "argv", test_args):
+                main()
+
+        df_out = load_dataframe(output_parquet)
+        self.assertEqual(len(df_out), 5)
+        self.assertIn("cluster_label", df_out.columns)
+        self.assertTrue(len(df_out["cluster_label"].iloc[0]) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()
