@@ -8,6 +8,11 @@ This document describes the design and operation of `build_spatial_semantic_inde
 
 The script aggregates individual image coordinates and cluster assignments into Uber's H3 Hexagonal Hierarchical Spatial Index across resolutions 1 through 11.
 
+![H3 Hexagonal Hierarchy](../h3_hexagonal_hierarchy.jpg)
+
+> [!TIP] Learn More About H3
+> For an intuitive explanation of why hexagons are used over square grids and the hierarchical nesting structure (Aperture 7), see the **[H3 Spatial Hexagons Guide](../preliminaries.md#4-h3-spatial-hexagons-the-global-honeycomb)**.
+
 It calculates and records:
 
 1. **Dominant Semantic Class**: The primary land use/land cover category representing the highest volume of images inside the cell.
