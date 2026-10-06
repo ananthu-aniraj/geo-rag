@@ -507,7 +507,9 @@ def main():
     t_centroids = time.time()
     chunk_size = 500000
     total_len = min(len(embeddings), len(child_ids))
-    for start_idx in range(0, total_len, chunk_size):
+    for start_idx in tqdm(
+        range(0, total_len, chunk_size), desc="Centroid accumulation"
+    ):
         end_idx = min(start_idx + chunk_size, total_len)
         chunk_raw = embeddings[start_idx:end_idx]
         norms = np.linalg.norm(chunk_raw, axis=1, keepdims=True)

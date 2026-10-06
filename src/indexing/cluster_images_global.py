@@ -481,6 +481,7 @@ def main():
     else:
         # Decoupled layout: Save sidecar file with only primary keys + cluster assignments
         sidecar_cols = [
+            "photo_key",
             "Platform",
             "Photo_ID",
             "embedding_idx",

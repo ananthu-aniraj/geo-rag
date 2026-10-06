@@ -256,6 +256,60 @@ class TestModelNamespacedClustering(unittest.TestCase):
         self.assertEqual(len(res), num_rows)
         self.assertIn("cluster_id", res.columns)
 
+    def test_load_dataset_with_clusters_prefers_cleaned_over_deduplicated(self):
+        # Test reproduction of user issue where both deduplicated (7.5M) and cleaned (7.46M) exist:
+        # load_dataset_with_clusters on a clustered sidecar must resolve to cleaned, NOT deduplicated!
+        dim = 16
+        rng = np.random.RandomState(42)
+
+        # 1. Create geo_space_deduplicated.parquet with 25 rows
+        df_dedup = pd.DataFrame(
+            {
+                "Platform": ["flickr"] * 25,
+                "Photo_ID": [str(i) for i in range(25)],
+                "Latitude": [40.0 + i * 0.1 for i in range(25)],
+                "Longitude": [10.0 + i * 0.1 for i in range(25)],
+                "embedding": [rng.randn(dim).astype(np.float32) for _ in range(25)],
+            }
+        )
+        dedup_path = os.path.join(self.temp_dir, "geo_space_deduplicated.parquet")
+        save_dataframe(df_dedup, dedup_path, representation_type="cls")
+
+        # 2. Create geo_space_cleaned.parquet with 20 rows (first 20 rows, 5 were purged anomalies)
+        df_cleaned = df_dedup.iloc[:20].copy()
+        cleaned_path = os.path.join(self.temp_dir, "geo_space_cleaned.parquet")
+        save_dataframe(df_cleaned, cleaned_path, representation_type="cls")
+
+        # 3. Create clustered sidecar with the 20 cleaned rows
+        sidecar_path = os.path.join(
+            self.temp_dir,
+            "geo_space_google_tipsv2-b14_cls_float16_clustered_k_5.parquet",
+        )
+        df_sidecar = pd.DataFrame(
+            {
+                "Platform": ["flickr"] * 20,
+                "Photo_ID": [str(i) for i in range(20)],
+                "cluster_id": [i % 5 for i in range(20)],
+                "parent_cluster_id": [0] * 20,
+                "model_name": ["google/tipsv2-b14"] * 20,
+                "representation_type": ["cls"] * 20,
+                "precision": ["float16"] * 20,
+            }
+        )
+        save_dataframe(df_sidecar, sidecar_path)
+
+        # 4. Load dataset with clusters using the sidecar path
+        merged = load_dataset_with_clusters(sidecar_path)
+
+        # Must have exactly 20 rows (matching cleaned and sidecar), NOT 25 rows (from deduplicated)
+        self.assertEqual(len(merged), 20)
+        self.assertFalse(merged["cluster_id"].isna().any())
+        self.assertEqual(list(merged["Photo_ID"]), [str(i) for i in range(20)])
+
+        # 5. Load embeddings on the sidecar: must also have 20 rows
+        embs = load_embeddings(sidecar_path)
+        self.assertEqual(embs.shape, (20, dim))
+
 
 if __name__ == "__main__":
     unittest.main()

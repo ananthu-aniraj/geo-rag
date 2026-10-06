@@ -346,7 +346,37 @@ def load_dataset_with_clusters(
                     ):
                         candidate_base_files.append(os.path.join(d, f))
 
-        candidate_base_files.sort(key=lambda p: len(os.path.basename(p)), reverse=True)
+        sidecar_num_rows = None
+        if known_sidecar_path and os.path.exists(known_sidecar_path):
+            try:
+                sidecar_num_rows = pq.ParquetFile(known_sidecar_path).metadata.num_rows
+            except Exception:
+                pass
+
+        def rank_candidate_base(p):
+            stem = os.path.splitext(os.path.basename(p))[0]
+            # 1. Exact row count match with sidecar (highest priority)
+            row_match = False
+            if sidecar_num_rows is not None:
+                try:
+                    c_pf = pq.ParquetFile(p)
+                    row_match = c_pf.metadata.num_rows == sidecar_num_rows
+                except Exception:
+                    pass
+
+            # 2. Prioritize cleaned over deduplicated:
+            # In the pipeline: raw -> deduplicated -> cleaned.
+            # Clustered sidecars are produced on the cleaned dataset.
+            is_cleaned = "cleaned" in stem
+            is_dedup = "deduplicated" in stem
+            clean_score = 2 if is_cleaned else (0 if is_dedup else 1)
+
+            # 3. Exact stem match
+            exact_stem = stem == stripped_prefix or stem == prefix
+
+            return (row_match, clean_score, exact_stem, len(stem))
+
+        candidate_base_files.sort(key=rank_candidate_base, reverse=True)
 
         found_base = False
         for fallback_path in candidate_base_files:
@@ -459,14 +489,29 @@ def load_dataset_with_clusters(
                 break
 
     if sidecar_path and os.path.exists(sidecar_path) and req_cluster_cols:
-        # We need Platform and Photo_ID in both dataframes for merging
-        sidecar_cols = list(set(["Platform", "Photo_ID"] + req_cluster_cols))
-        # Ensure we only load available columns from the sidecar
+        # We need join keys in both dataframes for merging
         pf_side = pq.ParquetFile(sidecar_path)
-        side_avail_cols = [c for c in sidecar_cols if c in pf_side.schema_arrow.names]
+        side_names = pf_side.schema_arrow.names
+        join_cols = ["Platform", "Photo_ID"]
+        if "photo_key" in side_names and "photo_key" in df_meta.columns:
+            join_cols = ["photo_key"]
+
+        sidecar_cols = list(set(join_cols + req_cluster_cols))
+        side_avail_cols = [c for c in sidecar_cols if c in side_names]
 
         df_sidecar = load_dataframe(sidecar_path, columns=side_avail_cols, **kwargs)
-        df_meta = df_meta.merge(df_sidecar, on=["Platform", "Photo_ID"], how="left")
+        if known_sidecar_path:
+            # Caller requested the clustered sidecar directly: preserve sidecar rows and sidecar ordering exactly
+            meta_cols_to_merge = [
+                c
+                for c in df_meta.columns
+                if c not in df_sidecar.columns or c in join_cols
+            ]
+            df_meta = df_sidecar.merge(
+                df_meta[meta_cols_to_merge], on=join_cols, how="left"
+            )
+        else:
+            df_meta = df_meta.merge(df_sidecar, on=join_cols, how="left")
 
     return df_meta
 
@@ -595,7 +640,14 @@ def load_embeddings(
                 ):
                     candidate_bases.append(cand_stem)
 
-    candidate_bases.sort(key=len, reverse=True)
+    def rank_base_stem(stem):
+        is_cleaned = "cleaned" in stem
+        is_dedup = "deduplicated" in stem
+        clean_score = 2 if is_cleaned else (0 if is_dedup else 1)
+        exact_match = stem == stripped_base or stem == base_name
+        return (clean_score, exact_match, len(stem))
+
+    candidate_bases.sort(key=rank_base_stem, reverse=True)
     clean_base = candidate_bases[0] if candidate_bases else stripped_base
     core_name = get_core_base_name(clean_base)
 
