@@ -15,6 +15,7 @@ Visit our full interactive documentation and pipeline walkthroughs at:
 
 For direct browsing within this repository:
 
+- 👉 **[Preliminaries & Core Concepts](docs/preliminaries.md)** *(Start here if you are new!)*
 - 👉 **[Data Engineering Documentation](docs/pipeline.md)**
 - 👉 **[Evaluation & Benchmarking Documentation](docs/evaluation.md)**
 - 👉 **[Dataset Structure & Loading Guide](docs/dataset.md)**

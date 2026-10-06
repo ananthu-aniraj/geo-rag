@@ -51,6 +51,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Preliminaries: preliminaries.md
   - Dataset Guide:
       - Overview: dataset.md
       - Offline Image Downloader: dataset/download_images.md

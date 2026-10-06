@@ -2,11 +2,14 @@
 
 This document serves as the master overview and index for the Geo-RAG spatial-semantic data engineering, clustering, and mapping pipeline.
 
+> [!TIP] New to Geo-RAG?
+> If you are new to the project or looking for high-level concepts and a glossary, check out the **[Preliminaries & Core Concepts Guide](preliminaries.md)** first!
+
 ---
 
 ## 🗺️ 1. Pipeline Overview & Architecture
 
-The pipeline is designed to ingest raw street-level and outdoor image databases, deduplicate them spatially, cluster them semantically using image embeddings, auto-label clusters using Multi-Modal LLMs (MLLMs), and build interactive web visualizations.
+The pipeline takes raw street-level and outdoor image databases, cleans up bad GPS data, extracts AI visual fingerprints, clusters similar landscapes globally, generates natural-language descriptions with Vision-Language Models (VLMs), and compiles interactive web maps.
 
 ![Pipeline Flowchart](pipeline_flowchart_clean.jpg)
 
@@ -16,17 +19,17 @@ The pipeline is designed to ingest raw street-level and outdoor image databases,
 
 Detailed documentation for each stage of the pipeline can be found in the sub-guides below:
 
-| Stage | Script / Utility | Core Responsibility | Details |
+| Stage | Plain English Goal | Core Responsibility & Mechanics | Guide |
 | :--- | :--- | :--- | :--- |
-| **01. Ingestion & Scraping** | `src/scrapers/*` | Flickr, Mapillary, KartaView and iNaturalist scraping, spatial difference masking. | [Detailed Guide ➡️](pipeline/01_ingestion_scraping.md) |
-| **02. Spatial Deduplication** | `process_scraped_data.py` | H3 Resolution 11 grouping, single-pass feature extraction, decoupled `.npy` format, VRAM streaming updates. | [Detailed Guide ➡️](pipeline/02_spatial_deduplication.md) |
-| **03. Timestamp Standardization** | `standardize_timestamps.py` | Capture datetime normalization, climate zoning, boundary country snapping, EPSG:3857 coastal buffer. | [Detailed Guide ➡️](pipeline/03_timestamp_standardization.md) |
-| **04. Coordinate Anomaly Cleanup** | `cleanup_coordinate_anomalies.py` | locked-latitude parallel GPS glitch purges. | [Detailed Guide ➡️](pipeline/04_coordinate_cleanup.md) |
-| **05. Optimal k Estimation** | `validate_cluster_count.py` | Spatial Block Hold-Out validation, reconstruction loss curves, Elbow heuristic estimation. | [Detailed Guide ➡️](pipeline/05_optimal_k_estimation.md) |
-| **06. Global GPU Clustering** | `cluster_images_global.py` | Semantic drift outlier tracking, fit vs assign decisioning, FAISS Spherical child clustering & resampling-aware parent hierarchy. | [Detailed Guide ➡️](pipeline/06_clustering_dynamic_drift.md) |
-| **07. MLLM Cluster Labeling** | `label_clusters_mllm.py` | Nvidia Docker SGLang lifecycle manager, multi-medoid film-strip collages, visual description prompting, text ecological categorization. | [Detailed Guide ➡️](pipeline/07_mllm_labeling.md) |
-| **08. Spatial-Semantic Indexing** | `build_spatial_semantic_index.py` | H3 multi-resolution spatial index aggregation. | [Detailed Guide ➡️](pipeline/08_spatial_semantic_indexing.md) |
-| **09. Visualization Dashboards** | `src/visualization/*` | Leaflet density/semantic maps, WebGL UMAP projections, HTML grids, and reports. | [Detailed Guide ➡️](pipeline/09_visualization_dashboards.md) |
+| **01. Ingestion & Scraping** | Download photo records from public platforms | Flickr, Mapillary, KartaView, and iNaturalist API queries with spatial difference masking. | [Guide ➡️](pipeline/01_ingestion_scraping.md) |
+| **02. Spatial Deduplication** | Prune redundant shots taken at the exact same tree/corner | H3 Resolution 11 spatial grouping, visual cosine similarity filtering, and decoupled `.npy` vector caching. | [Guide ➡️](pipeline/02_spatial_deduplication.md) |
+| **03. Timestamp Standardization** | Fix capture timezones and validate country boundaries | Datetime UTC normalization, climate zone attribution, and EPSG:3857 coastal buffer validation. | [Guide ➡️](pipeline/03_timestamp_standardization.md) |
+| **04. Coordinate Anomaly Cleanup** | Remove GPS tracks corrupted by receiver glitches | Detects frozen-latitude tracks and purges faulty Mapillary vehicle sequences. | [Guide ➡️](pipeline/04_coordinate_cleanup.md) |
+| **05. Optimal $k$ Estimation** | Estimate how many distinct visual landscapes exist | Spatial Block Hold-Out cross-validation and reconstruction loss Elbow curve heuristics. | [Guide ➡️](pipeline/05_optimal_k_estimation.md) |
+| **06. Global GPU Clustering** | Group millions of photos by visual similarity | FAISS GPU spherical $k$-means clustering, semantic drift outlier tracking, and hierarchical partitioning. | [Guide ➡️](pipeline/06_clustering_dynamic_drift.md) |
+| **07. MLLM Cluster Labeling** | Ask an AI to write descriptive captions for each cluster | Generates film-strip collages of cluster medoids and prompts VLMs (via SGLang Docker) for ecological labels. | [Guide ➡️](pipeline/07_mllm_labeling.md) |
+| **08. Spatial-Semantic Indexing** | Build a sub-millisecond global search index | Multi-resolution H3 hexagonal aggregation mapping geography to visual categories. | [Guide ➡️](pipeline/08_spatial_semantic_indexing.md) |
+| **09. Visualization Dashboards** | Render interactive maps and exploration charts | Leaflet density/semantic maps, WebGL 2D UMAP projections, and HTML cluster galleries. | [Guide ➡️](pipeline/09_visualization_dashboards.md) |
 
 ---
 
