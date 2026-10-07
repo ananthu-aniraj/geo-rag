@@ -1,7 +1,15 @@
-import argparse
+# ruff: noqa: E402
 import os
-import re
 import sys
+
+# Disable oneDNN optimizations and CUDA device conflicts before any third-party imports
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+# Prevent UMAP from eagerly importing TensorFlow / oneDNN via parametric_umap (unused and causes segfaults)
+sys.modules["tensorflow"] = None
+
+import argparse
+import re
 import time
 
 import matplotlib.pyplot as plt
@@ -105,10 +113,9 @@ def create_scatter_plot(
 
             c_ids = df_rg["cluster_id"].values
 
-            # Fast vectorized accumulation by unique ID in the chunk
-            for unique_id in tqdm(np.unique(c_ids), desc="Processing clusters"):
-                if unique_id is None or pd.isna(unique_id):
-                    continue
+            # Accumulation by unique ID in the chunk
+            valid_m = ~pd.isna(c_ids) & (c_ids >= 0)
+            for unique_id in np.unique(c_ids[valid_m]):
                 unique_id = int(unique_id)
                 mask = c_ids == unique_id
                 sum_emb = embs[mask].sum(axis=0)
@@ -162,44 +169,53 @@ def create_scatter_plot(
         dim = embeddings.shape[1]
         print(f"Detected decoupled embedding matrix dimensionality: {dim}")
 
-        c_ids = df_meta["cluster_id"].values
+        # Extract metadata per unique cluster_id
+        print("Extracting unique cluster metadata...")
+        meta_sub = df_meta.dropna(subset=["cluster_id"]).drop_duplicates(
+            subset=["cluster_id"]
+        )
+        for _, row in meta_sub.iterrows():
+            cid = int(row["cluster_id"])
+            if cid >= 0:
+                cluster_metadata[cid] = {
+                    "label": row.get("cluster_label", f"Cluster {cid}"),
+                    "parent": row.get("parent_cluster_label", f"Parent {cid // 80}"),
+                    "description": row.get(
+                        "cluster_description", "No description available"
+                    ),
+                }
 
-        # Process in memory-safe chunks of 100,000 rows
-        chunk_size = 100000
+        c_ids = df_meta["cluster_id"].to_numpy()
+        valid_mask = ~pd.isna(c_ids) & (c_ids >= 0)
+        valid_c_ids = c_ids[valid_mask].astype(np.int64)
+        max_cid = int(valid_c_ids.max()) if len(valid_c_ids) > 0 else 0
+        raw_centroids = np.zeros((max_cid + 1, dim), dtype=np.float32)
+        raw_counts = np.zeros(max_cid + 1, dtype=np.int64)
+
+        chunk_size = 500000
+        total_len = min(len(embeddings), len(c_ids))
+        print("Aggregating cluster centroids in fast vectorized chunks...")
         for start_idx in tqdm(
-            range(0, len(df_meta), chunk_size), desc="Processing chunks"
+            range(0, total_len, chunk_size), desc="Computing cluster centroids"
         ):
-            end_idx = min(start_idx + chunk_size, len(df_meta))
-            chunk_df = df_meta.iloc[start_idx:end_idx]
-            chunk_embs = embeddings[start_idx:end_idx]
-            chunk_c_ids = c_ids[start_idx:end_idx]
+            end_idx = min(start_idx + chunk_size, total_len)
+            chunk_raw = embeddings[start_idx:end_idx]
+            chunk_ids = c_ids[start_idx:end_idx]
+            m = ~pd.isna(chunk_ids) & (chunk_ids >= 0)
+            valid_ids = chunk_ids[m].astype(np.int64)
+            np.add.at(raw_centroids, valid_ids, chunk_raw[m])
+            np.add.at(raw_counts, valid_ids, 1)
 
-            for unique_id in tqdm(np.unique(chunk_c_ids), desc="Processing clusters"):
-                if unique_id is None or pd.isna(unique_id):
-                    continue
-                unique_id = int(unique_id)
-                mask = chunk_c_ids == unique_id
-                sum_emb = chunk_embs[mask].sum(axis=0)
-                count = int(mask.sum())
-
-                if unique_id not in cluster_sums:
-                    cluster_sums[unique_id] = sum_emb
-                    cluster_counts[unique_id] = count
-                    idx = np.where(mask)[0][0]
-                    cluster_metadata[unique_id] = {
-                        "label": chunk_df.iloc[idx].get(
-                            "cluster_label", f"Cluster {unique_id}"
-                        ),
-                        "parent": chunk_df.iloc[idx].get(
-                            "parent_cluster_label", f"Parent {int(unique_id) // 80}"
-                        ),
-                        "description": chunk_df.iloc[idx].get(
-                            "cluster_description", "No description available"
-                        ),
-                    }
-                else:
-                    cluster_sums[unique_id] += sum_emb
-                    cluster_counts[unique_id] += count
+        active_cluster_ids = np.where(raw_counts > 0)[0]
+        for cid in active_cluster_ids:
+            cluster_sums[cid] = raw_centroids[cid]
+            cluster_counts[cid] = int(raw_counts[cid])
+            if cid not in cluster_metadata:
+                cluster_metadata[cid] = {
+                    "label": f"Cluster {cid}",
+                    "parent": f"Parent {cid // 80}",
+                    "description": "No description available",
+                }
 
     num_clusters = len(cluster_sums)
     if num_clusters == 0:
