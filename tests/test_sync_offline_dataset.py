@@ -93,7 +93,29 @@ class TestSyncOfflineDataset(unittest.TestCase):
         np.save(self.model_b_npy, self.emb_model_b)
         pd.DataFrame({"photo_key": self.all_keys}).to_parquet(self.model_b_keys)
 
-        # 5. Clustered sidecar in same directory (photo_key schema)
+        # 5. Companion embeddings for Model C (named with core prefix without _cleaned_offline)
+        # e.g., geo_space_vit_base_patch16_dinov3.lvd1689m_cls_avg_patch_embeddings.npy
+        self.emb_model_c = np.arange(5 * 4, dtype=np.float32).reshape(5, 4)
+        self.model_c_npy = os.path.join(
+            self.test_dir,
+            "geo_space_vit_base_patch16_dinov3.lvd1689m_cls_avg_patch_embeddings.npy",
+        )
+        self.model_c_keys = os.path.join(
+            self.test_dir,
+            "geo_space_vit_base_patch16_dinov3.lvd1689m_cls_avg_patch_embeddings.keys.parquet",
+        )
+        np.save(self.model_c_npy, self.emb_model_c)
+        pd.DataFrame({"photo_key": self.all_keys}).to_parquet(self.model_c_keys)
+
+        # 6. Dummy leftover .tmp_sync file from an interrupted run
+        self.stale_tmp = os.path.join(
+            self.test_dir,
+            "geo_space_cleaned_offline_vit_base_patch16_dinov3.lvd1689m_cls_avg_patch_float16_clustered_k_40000.tmp_sync.parquet",
+        )
+        with open(self.stale_tmp, "w") as f:
+            f.write("dummy_stale_content")
+
+        # 7. Clustered sidecar in same directory (photo_key schema)
         self.sidecar_path = os.path.join(
             self.test_dir, "geo_space_cleaned_offline_clustered_k_2.parquet"
         )
@@ -106,7 +128,7 @@ class TestSyncOfflineDataset(unittest.TestCase):
         )
         save_dataframe(self.df_sidecar, self.sidecar_path)
 
-        # 6. Clustered sidecar in extra output directory (Platform/Photo_ID schema)
+        # 8. Clustered sidecar in extra output directory (Platform/Photo_ID schema)
         self.extra_dir = os.path.join(self.test_dir, "extra_output")
         os.makedirs(self.extra_dir, exist_ok=True)
         self.extra_sidecar_path = os.path.join(
@@ -127,7 +149,7 @@ class TestSyncOfflineDataset(unittest.TestCase):
 
     def test_discover_companion_embedding_files(self):
         discovered = discover_companion_embedding_files(self.offline_path)
-        self.assertEqual(len(discovered), 2)
+        self.assertEqual(len(discovered), 3)
         npy_basenames = [os.path.basename(n) for n, _ in discovered]
         self.assertIn(
             "geo_space_cleaned_offline_google_tipsv2-b14_cls_embeddings.npy",
@@ -137,6 +159,14 @@ class TestSyncOfflineDataset(unittest.TestCase):
             "geo_space_cleaned_offline_facebook_dinov2-base_cls_avg_patch_embeddings.npy",
             npy_basenames,
         )
+        self.assertIn(
+            "geo_space_vit_base_patch16_dinov3.lvd1689m_cls_avg_patch_embeddings.npy",
+            npy_basenames,
+        )
+        # Ensure temporary files are excluded
+        for n, k in discovered:
+            self.assertNotIn(".tmp_sync.", n)
+            self.assertNotIn(".tmp_sync.", k)
 
     def test_discover_clustered_sidecar_files(self):
         # Without extra_dirs: only self.sidecar_path in self.test_dir
@@ -168,6 +198,8 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(summary["total_offline"], 5)
         self.assertEqual(summary["surviving_rows"], 3)
         self.assertEqual(summary["purged_rows"], 2)
+        self.assertEqual(summary["companion_models_synced"], 3)
+        self.assertEqual(summary["purged_vectors_total"], 6)
         self.assertEqual(summary["clustered_sidecars_synced"], 2)
         self.assertEqual(summary["purged_sidecar_rows_total"], 4)
 
@@ -176,10 +208,14 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(len(df_off), 5)
         arr_a = np.load(self.model_a_npy)
         self.assertEqual(len(arr_a), 5)
+        arr_c = np.load(self.model_c_npy)
+        self.assertEqual(len(arr_c), 5)
         df_sc = pd.read_parquet(self.sidecar_path)
         self.assertEqual(len(df_sc), 5)
         df_extra_sc = pd.read_parquet(self.extra_sidecar_path)
         self.assertEqual(len(df_extra_sc), 5)
+        # Stale temp file should NOT be removed in dry run
+        self.assertTrue(os.path.exists(self.stale_tmp))
         # Images on disk should still exist
         for img_rel in self.image_paths:
             self.assertTrue(os.path.exists(os.path.join(self.image_dir, img_rel)))
@@ -196,8 +232,8 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(summary["total_offline"], 5)
         self.assertEqual(summary["surviving_rows"], 3)
         self.assertEqual(summary["purged_rows"], 2)
-        self.assertEqual(summary["companion_models_synced"], 2)
-        self.assertEqual(summary["purged_vectors_total"], 4)  # 2 vectors x 2 models
+        self.assertEqual(summary["companion_models_synced"], 3)
+        self.assertEqual(summary["purged_vectors_total"], 6)  # 2 vectors x 3 models
         self.assertEqual(summary["clustered_sidecars_synced"], 2)
         self.assertEqual(summary["purged_sidecar_rows_total"], 4)  # 2 rows x 2 sidecars
         self.assertEqual(summary["deleted_images_count"], 2)
@@ -222,7 +258,17 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(keys_b, self.online_keys)
         np.testing.assert_array_equal(arr_b, self.emb_model_b[:3])
 
-        # 4. Verify Clustered Sidecars
+        # 4. Verify Model C embeddings & keys (core_base naming convention)
+        arr_c = np.load(self.model_c_npy)
+        keys_c = pd.read_parquet(self.model_c_keys)["photo_key"].tolist()
+        self.assertEqual(len(arr_c), 3)
+        self.assertEqual(keys_c, self.online_keys)
+        np.testing.assert_array_equal(arr_c, self.emb_model_c[:3])
+
+        # Verify stale temporary file was cleaned up on non-dry run
+        self.assertFalse(os.path.exists(self.stale_tmp))
+
+        # 5. Verify Clustered Sidecars
         df_sc = pd.read_parquet(self.sidecar_path)
         self.assertEqual(len(df_sc), 3)
         self.assertEqual(list(df_sc["photo_key"]), self.online_keys)
@@ -231,7 +277,7 @@ class TestSyncOfflineDataset(unittest.TestCase):
         self.assertEqual(len(df_extra_sc), 3)
         self.assertEqual(list(df_extra_sc["Photo_ID"]), ["1", "2", "3"])
 
-        # 5. Verify physical image files:
+        # 6. Verify physical image files:
         # items 1, 2, 3 should exist, items 4, 5 should be deleted
         for i in range(1, 4):
             self.assertTrue(

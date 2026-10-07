@@ -67,8 +67,45 @@ def extract_photo_keys(parquet_path: str) -> Tuple[Set[str], List[str]]:
     return set(keys_list), keys_list
 
 
+def cleanup_stale_temp_files(
+    search_dirs: List[str],
+    dry_run: bool = False,
+) -> int:
+    """Removes leftover *.tmp_sync.* files from prior interrupted runs."""
+    seen = set()
+    cleaned_count = 0
+    for d in search_dirs:
+        if not d or not os.path.isdir(d):
+            continue
+        patterns = [
+            os.path.join(d, "*.tmp_sync.parquet"),
+            os.path.join(d, "*.tmp_sync.npy"),
+            os.path.join(d, "*.tmp_sync.keys.parquet"),
+        ]
+        for pat in patterns:
+            for stale_f in glob.glob(pat):
+                abs_f = os.path.abspath(stale_f)
+                if abs_f not in seen and os.path.isfile(abs_f):
+                    seen.add(abs_f)
+                    if not dry_run:
+                        try:
+                            os.remove(abs_f)
+                            cleaned_count += 1
+                            print(
+                                f" -> Cleaned up leftover temporary file: {os.path.basename(abs_f)}"
+                            )
+                        except OSError as e:
+                            print(f" -> Warning: Could not remove {abs_f}: {e}")
+                    else:
+                        print(
+                            f" -> [DRY RUN] Would clean up leftover temporary file: {os.path.basename(abs_f)}"
+                        )
+    return cleaned_count
+
+
 def discover_companion_embedding_files(
     offline_parquet_path: str,
+    extra_dirs: Optional[List[str]] = None,
 ) -> List[Tuple[str, str]]:
     """Discovers all companion embeddings and keys files matching the offline dataset.
 
@@ -78,16 +115,54 @@ def discover_companion_embedding_files(
     directory = os.path.dirname(os.path.abspath(offline_parquet_path))
     base_name = os.path.splitext(os.path.basename(offline_parquet_path))[0]
 
-    pattern = os.path.join(directory, f"{base_name}*embeddings.keys.parquet")
-    keys_files = glob.glob(pattern)
+    # Derive core prefix by stripping common offline/cleaning suffixes
+    core_base = base_name
+    for suffix in ["_cleaned", "_offline", "_filtered", "_deduplicated"]:
+        core_base = core_base.replace(suffix, "")
+
+    search_dirs = [directory]
+    if extra_dirs:
+        for d in extra_dirs:
+            if d and os.path.isdir(d):
+                abs_d = os.path.abspath(d)
+                if abs_d not in search_dirs:
+                    search_dirs.append(abs_d)
 
     companion_pairs = []
-    for keys_f in sorted(keys_files):
-        npy_f = keys_f.replace(".keys.parquet", ".npy")
-        if os.path.exists(npy_f):
-            companion_pairs.append((npy_f, keys_f))
+    seen = set()
 
-    return companion_pairs
+    for d in search_dirs:
+        patterns = [
+            os.path.join(d, f"{base_name}*embeddings.keys.parquet"),
+            os.path.join(d, f"{core_base}*embeddings.keys.parquet"),
+            os.path.join(d, f"{base_name}*.keys.parquet"),
+            os.path.join(d, f"{core_base}*.keys.parquet"),
+        ]
+        # In the offline directory itself, online and offline datasets are assumed
+        # to be stored in separate locations, so any companion embeddings belong to the offline dataset.
+        if d == directory:
+            patterns.extend(
+                [
+                    os.path.join(d, "*embeddings.keys.parquet"),
+                    os.path.join(d, "*.keys.parquet"),
+                ]
+            )
+
+        for pat in patterns:
+            for keys_f in glob.glob(pat):
+                if ".tmp_sync." in keys_f:
+                    continue
+                abs_keys = os.path.abspath(keys_f)
+                abs_npy = abs_keys.replace(".keys.parquet", ".npy")
+                if (
+                    abs_npy not in seen
+                    and os.path.isfile(abs_npy)
+                    and os.path.isfile(abs_keys)
+                ):
+                    seen.add(abs_npy)
+                    companion_pairs.append((abs_npy, abs_keys))
+
+    return sorted(companion_pairs, key=lambda x: x[0])
 
 
 def discover_clustered_sidecar_files(
@@ -123,9 +198,16 @@ def discover_clustered_sidecar_files(
             os.path.join(d, f"{base_name}*clustered_k_*.parquet"),
             os.path.join(d, f"{core_base}*clustered_k_*.parquet"),
         ]
+        if d == directory:
+            patterns.append(os.path.join(d, "*clustered_k_*.parquet"))
+
         for pat in patterns:
             for f in glob.glob(pat):
-                if f.endswith(".tmp_sync.parquet") or f.endswith(".keys.parquet"):
+                if (
+                    f.endswith(".tmp_sync.parquet")
+                    or f.endswith(".keys.parquet")
+                    or ".tmp_sync." in f
+                ):
                     continue
                 abs_f = os.path.abspath(f)
                 if abs_f not in seen and os.path.isfile(abs_f):
@@ -202,11 +284,31 @@ def prune_companion_embeddings(
         Number of vectors purged.
     """
     keys_df = pd.read_parquet(keys_path)
-    if "photo_key" not in keys_df.columns:
+    if "photo_key" in keys_df.columns:
+        comp_keys = [str(k).strip() for k in keys_df["photo_key"]]
+    elif "Platform" in keys_df.columns and "Photo_ID" in keys_df.columns:
+        comp_keys = [
+            compute_photo_key(p, i)
+            for p, i in zip(keys_df["Platform"], keys_df["Photo_ID"])
+        ]
+    elif "platform" in keys_df.columns and "photo_id" in keys_df.columns:
+        comp_keys = [
+            compute_photo_key(p, i)
+            for p, i in zip(keys_df["platform"], keys_df["photo_id"])
+        ]
+    else:
         print(f" -> Skipping {keys_path}: missing 'photo_key' column.")
         return 0
 
-    comp_keys = [str(k) for k in keys_df["photo_key"]]
+    # Memory-map slice the .npy matrix
+    mmap_emb = np.load(npy_path, mmap_mode="r")
+    if len(mmap_emb) != len(keys_df):
+        print(
+            f" ⚠️ WARNING: Dimension mismatch for {os.path.basename(npy_path)}: "
+            f"matrix has {len(mmap_emb):,} rows but keys index has {len(keys_df):,} rows! Skipping."
+        )
+        return 0
+
     keep_indices = [i for i, k in enumerate(comp_keys) if k in active_keys]
     num_purged = len(comp_keys) - len(keep_indices)
 
@@ -220,10 +322,10 @@ def prune_companion_embeddings(
         )
         return num_purged
 
-    # Memory-map slice the .npy matrix
-    mmap_emb = np.load(npy_path, mmap_mode="r")
     pruned_emb = mmap_emb[keep_indices]
     pruned_keys_df = keys_df.iloc[keep_indices].reset_index(drop=True)
+    if "photo_key" not in pruned_keys_df.columns:
+        pruned_keys_df["photo_key"] = [comp_keys[i] for i in keep_indices]
 
     # Atomic write to temporary files
     tmp_npy = npy_path.replace(".npy", ".tmp_sync.npy")
@@ -314,7 +416,19 @@ def sync_offline_dataset(
 
     # 2. Discover companion embeddings & clustered sidecars for ALL models
     print("\nStep 3: Discovering companion embeddings and clustered sidecars...")
-    companion_files = discover_companion_embedding_files(offline_path)
+    search_dirs = [os.path.dirname(os.path.abspath(offline_path))]
+    if extra_dirs:
+        for d in extra_dirs:
+            if d and os.path.isdir(d):
+                abs_d = os.path.abspath(d)
+                if abs_d not in search_dirs:
+                    search_dirs.append(abs_d)
+
+    cleanup_stale_temp_files(search_dirs, dry_run=dry_run)
+
+    companion_files = discover_companion_embedding_files(
+        offline_path, extra_dirs=extra_dirs
+    )
     if companion_files:
         print(f" -> Discovered {len(companion_files)} companion embedding file(s):")
         for npy_f, _ in companion_files:
