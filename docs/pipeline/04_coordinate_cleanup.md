@@ -73,3 +73,73 @@ Alternatively, you can run the script manually with targeted flags:
 ## 🏎️ Performance & Type Resilience
 
 Both Parquet loading and CSV chunk writing perform defensive `pd.to_numeric` conversions on coordinates at startup to prevent float-string mixed schema exceptions during high-precision rounding operations.
+
+---
+
+## 🖥️ Interactive Manual Anomaly Cleaner (`src/processing/interactive_anomaly_cleaner.py`)
+
+For visual inspection and targeted curation of geographic anomalies—specifically Mapillary tracks, sensor glitches, or unwanted platform-specific clusters—Geo-RAG provides a dedicated, lightweight interactive web dashboard.
+
+### Key Architecture & Features
+
+1. **Continent-Restricted & Fast Loading**:
+   * Scopes analysis to a single continent (e.g., `--continent Africa` or `--continent Europe`), reducing memory footprint and keeping startup under 8 seconds even for Europe (2.5M+ records).
+   * Automatically centers and fits the Leaflet map bounds to the selected continent.
+
+2. **Mapillary Priority & Multi-Platform Filtering**:
+   * Color-codes H3 hexagonal cells (e.g. resolution 4, ~177km edge) by Mapillary image density using log scaling.
+   * Provides fine-grained removal controls:
+     * **Purge Mapillary Only**: Removes erroneous Mapillary tracks while preserving genuine user photos from Flickr, Wikimedia, or iNaturalist in that cell.
+     * **Purge Entire Cell**: Discards all photos within the spatial boundary regardless of platform.
+
+3. **Sub-50ms On-Click Image Inspection**:
+   * Clicking any hexagon opens a side drawer in under 50 ms.
+   * Displays cell-level generic metadata: top countries, Köppen climate codes & descriptions, and centroid coordinates.
+   * Renders representative photo samples in a thumbnail grid (querying direct CDN thumbnails via `MAPILLARY_TOKEN`) with clickable links to the Mapillary web app (`https://www.mapillary.com/app/?pKey=...`).
+
+4. **2-Phase Staging & Single-Step Streaming Purge**:
+   * **Phase 1 (Instant In-Memory Staging)**: Marking cells updates your "Staged Removals" list in memory with 0 ms latency; flagged hexagons display a prominent red dashed border on the map.
+   * **Phase 2 (Single-Step Purge)**: Clicking **"🚀 Execute Purge"** runs a single streaming row-group filter over the Parquet file, filtering rows in C++ memory via PyArrow and atomically writing the cleaned dataset without high RAM consumption.
+   * **Reproducible Rules JSON**: Staged decisions are automatically persisted to `manual_h3_removals.json` (and can be exported/imported), making cleanup actions version-controlled and auditable.
+
+### Usage
+
+#### 1. Interactive Web Dashboard
+
+Launch the server pointing to your Parquet dataset and target continent:
+
+```bash
+python3 -m src.processing.interactive_anomaly_cleaner \
+    --input full_pipeline_output/geo_space_deduplicated.parquet \
+    --output full_pipeline_output/geo_space_deduplicated_cleaned.parquet \
+    --continent Africa \
+    --res 4 \
+    --port 8080
+```
+
+Then open `http://localhost:8080` in your browser.
+
+#### 2. Headless Batch Execution
+
+To re-apply previously saved removal rules headlessly (e.g. in CI/CD or batch pipelines):
+
+```bash
+python3 -m src.processing.interactive_anomaly_cleaner \
+    --input full_pipeline_output/geo_space_deduplicated.parquet \
+    --output full_pipeline_output/geo_space_deduplicated_cleaned.parquet \
+    --rules-file manual_h3_removals.json \
+    --batch-purge
+```
+
+#### CLI Parameters
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--input` | `str` | `.../geo_space_deduplicated.parquet` | Path to input Parquet dataset. |
+| `--output` | `str` | `None` (in-place) | Path to cleaned output Parquet dataset. |
+| `--continent` | `str` | `"Africa"` | Target continent to inspect (`Africa`, `Europe`, `Asia`, `North America`, etc.). |
+| `--res` | `int` | `4` | H3 aggregation grid resolution (`3`, `4`, or `5`). |
+| `--port` | `int` | `8080` | Local port to serve the interactive web dashboard. |
+| `--host` | `str` | `127.0.0.1` | Host address to bind. |
+| `--rules-file` | `str` | `manual_h3_removals.json` | Path to JSON file storing staged removal rules. |
+| `--batch-purge` | `flag` | `False` | Apply rules directly from `--rules-file` without starting the server. |

@@ -2,6 +2,9 @@
 
 Welcome to **Geo-RAG**! This guide introduces the core ideas, terminology, and architecture behind the project in plain English. If you are new to the codebase or working with large-scale geospatial imagery for the first time, start here before diving into the detailed pipeline stages.
 
+> [!TIP] Setting Up Your Local Environment & Data
+> If you are looking to install dependencies, pull the dataset via DVC, configure API credentials (`.env`), or customize local machine paths (`config/local.yaml`), jump straight to the **[Getting Started Guide in README.md](../README.md#-getting-started)**.
+
 ---
 
 ## 💡 What is Geo-RAG in 30 Seconds?
@@ -182,11 +185,13 @@ For a complete walkthrough of precision metrics ($P@K$, $mAP$, $MRR$), see the *
 flowchart TD
     Start["What is your goal?"]
 
+    Start --> Setup["0. Set up environment, DVC & credentials"]
     Start --> A["1. Analyze or query data in Python"]
     Start --> B["2. Cluster photos or experiment with vision models"]
     Start --> C["3. Understand the full data engineering pipeline"]
     Start --> D["4. Benchmark and evaluate vision models"]
 
+    Setup --> StepSetup["Getting Started Guide<br><b>README.md Setup</b>"]
     A --> StepA["Dataset Guide<br><b>Python Quickstart</b>"]
     B --> StepB["Offline Pipeline Guide<br><b>Clustering & Sweeps</b>"]
     C --> StepC["Pipeline Architecture<br><b>Data Engineering Walkthrough</b>"]
@@ -195,6 +200,7 @@ flowchart TD
 
 | Your Goal | Where to Start | What You'll Learn |
 | :--- | :--- | :--- |
+| 🚀 **Set up environment & data** | 👉 **[Getting Started Guide](../README.md#-getting-started)** | Set up Conda environment, configure `.env` tokens, pull DVC data, and customize `config/local.yaml`. |
 | 🟢 **Use data in Python** | 👉 **[Loading Data in Python](dataset.md#loading-data-in-python)** | 2-minute quickstart to load metadata, sidecars, and embeddings into Pandas/DuckDB. |
 | 🟡 **Experiment with models** | 👉 **[Offline Clustering Guide](pipeline.md#3-offline-pipeline-model-representation-sweeps-scriptspipelinerun_offline_pipelinesh)** | Run clustering sweeps and derive embeddings on your GPU without re-scraping. |
 | 🔴 **Learn the pipeline** | 👉 **[Pipeline Architecture Walkthrough](pipeline.md)** | Step-by-step deep dive into ingestion, GPS cleaning, FAISS clustering, and VLM labeling. |

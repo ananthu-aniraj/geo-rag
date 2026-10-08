@@ -2,6 +2,25 @@
 
 All notable changes and updates to the Geo-RAG codebase are documented here.
 
+## [1.0.4] - 2026-10-08
+
+### Added
+
+- **Interactive Manual Geospatial Anomaly Cleaner (`src/processing/interactive_anomaly_cleaner.py`)**:
+  - Implemented an interactive Leaflet and FastAPI web dashboard for continent-scoped spatial inspection and targeted curation of geographic anomalies, focusing on Mapillary image density.
+  - Scopes data loading to a single continent (`--continent Africa`, `Europe`, `Asia`, etc.) to minimize memory usage and provide rapid startup (<8 seconds even for Europe's 2.53M records).
+  - Color-codes H3 hexagonal cells (e.g. resolution 4, ~177km edge) by Mapillary image density using log scaling with HTML5 canvas acceleration (`preferCanvas: true`) for smooth 60 FPS panning and zooming.
+  - Sub-50ms on-click cell drawer displaying cell-level generic metadata (country breakdown, Köppen climate codes & descriptions, centroid coordinates) and representative photo thumbnails (using direct CDN queries with `MAPILLARY_TOKEN`).
+  - Granular removal controls: "Purge Mapillary Only" (dropping Mapillary photos while preserving Flickr, iNaturalist, etc.) vs "Purge Entire Cell", with optional Mapillary sequence expansion.
+  - 2-Phase workflow: instant in-memory staging of removal rules (`manual_h3_removals.json`) with zero file I/O latency, followed by a single-step streaming Parquet purge executed via C++ PyArrow filters.
+  - Supports headless batch mode via `--batch-purge` for reproducible automation in CI/CD pipelines.
+  - Added unit test suite in `tests/test_interactive_anomaly_cleaner.py` and documented in `docs/pipeline/04_coordinate_cleanup.md` and `docs/pipeline/09_visualization_dashboards.md`.
+
+- **Layout and Presentation Artifact Sanitization (`src/utils/clean_descriptions.py`)**:
+  - Created standalone and importable text-cleaning utility to scrub layout and composite presentation meta-language (e.g. "vertical stack of four photographs", "across the frames", "in the bottom frame") from visual and cluster descriptions.
+  - Integrated into MLLM cluster labeling (`src/indexing/label_clusters_mllm.py`) and relabeling (`src/indexing/relabel_failed_clusters.py`) to prevent Step 1 visual descriptions from poisoning Step 2 LULC ecological classification descriptions.
+  - Added unit test suite in `tests/test_clean_descriptions.py`.
+
 ## [1.0.3] - 2026-10-02
 
 ### Added

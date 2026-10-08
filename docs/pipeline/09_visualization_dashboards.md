@@ -64,6 +64,15 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
   * **Hover Metadata**: Hovering over any cluster centroid displays its unique `Cluster ID`, `Cluster Label`, `Parent Category`, exact image count, and its VLM visual description.
   * **Filter Toggles**: Double-clicking or clicking parent categories in the legend instantly filters and highlights specific semantic families (e.g. isolating all forestry subclasses).
 
+### 6. Interactive Anomaly Cleaner Dashboard (`interactive_anomaly_cleaner.py`)
+
+* **Purpose**: Provides a live interactive web dashboard to manually inspect, flag, and purge spatial anomalies (specifically Mapillary sensor glitches or unwanted tracks) on a continent-by-continent basis.
+* **Interactive Elements**:
+  * **Continent-Scoped Hexagonal Grid**: High-performance Leaflet canvas layer (`preferCanvas: true`) rendering thousands of H3 cells at 60 FPS without DOM overhead.
+  * **Sub-50ms On-Click Image Inspection**: Clicking any hexagon opens a side drawer displaying cell-level generic metadata (countries, Köppen climate classes, centroid coordinates) and representative photo thumbnails via direct Mapillary CDN URLs.
+  * **2-Phase Staged Curation**: Flagging cells updates an in-memory "Staged Removals" cart (with 0 ms latency); hitting **"🚀 Execute Purge"** runs a single streaming row-group pass over the Parquet dataset using PyArrow.
+  * **Reproducible Rules Specification**: Automatically persists and loads decisions from `manual_h3_removals.json`, enabling headless batch execution in CI/CD via `--batch-purge`.
+
 ---
 
 ## 📂 Experiment Output Organization & Namespacing
