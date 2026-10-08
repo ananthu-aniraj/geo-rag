@@ -1,11 +1,32 @@
+import os
 import re
 
 
 def on_page_markdown(markdown, page, config, files):
     """
     Hook to dynamically adapt index.md (which is a symlink to README.md at root)
-    for the MkDocs website.
+    and pages linking to README.md for the MkDocs website.
     """
+    # 0. Rewrite links to root README.md into index.md for MkDocs
+    page_dir = os.path.dirname(page.file.src_path)
+    if page_dir:
+        rel_to_root = os.path.relpath(".", page_dir).replace("\\", "/") + "/index.md"
+    else:
+        rel_to_root = "index.md"
+
+    def _replace_readme_link(match):
+        anchor = match.group(1)
+        if anchor:
+            clean_anchor = anchor.lstrip("#-")
+            return f"]({rel_to_root}#{clean_anchor})"
+        return f"]({rel_to_root})"
+
+    markdown = re.sub(
+        r"\]\(\.\./README\.md(#[-a-zA-Z0-9_]*)?\)",
+        _replace_readme_link,
+        markdown,
+    )
+
     if page.file.src_path == "index.md":
         # 1. Strip explicit mkdocs:hide comment blocks if present
         markdown = re.sub(

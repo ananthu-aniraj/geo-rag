@@ -8,10 +8,12 @@ targeting, staged removal rules, and a single-step streaming Parquet purge.
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
 import logging
 import os
 import time
+import urllib.parse
 from typing import Any, Dict, List, Optional, Set
 
 import h3
@@ -20,10 +22,6 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
-import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
 
 from src.utils.credentials import get_mapillary_token
 from src.utils.io import get_parquet_writer
@@ -33,12 +31,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-
-class RuleItem(BaseModel):
-    cell: str
-    platform: str = "mapillary"  # "mapillary" or "all"
-    expand_sequence: bool = False
 
 
 # ==============================================================================
@@ -138,9 +130,7 @@ class ContinentDatasetIndex:
         )
 
         # Build inverted index mapping cell -> row indices
-        self.cell_indices = self.df.groupby(
-            "H3_parent", observed=False
-        ).indices  # cell -> array of indices
+        self.cell_indices = self.df.groupby("H3_parent", observed=False).indices
 
         # Precompute summary statistics per cell
         self.precompute_cell_stats()
@@ -216,7 +206,9 @@ class ContinentDatasetIndex:
                     elif isinstance(data, dict):
                         self.rules = data
                 logger.info(
-                    "Loaded %d staged rules from %s.", len(self.rules), self.rules_path
+                    "Loaded %d staged rules from %s.",
+                    len(self.rules),
+                    self.rules_path,
                 )
             except Exception as e:
                 logger.error("Failed to load rules from %s: %s", self.rules_path, e)
@@ -264,7 +256,7 @@ class ContinentDatasetIndex:
     def get_cell_samples(self, cell: str, limit: int = 16) -> Dict[str, Any]:
         """Retrieve detailed cell metadata and sample photos."""
         if cell not in self.cell_stats:
-            raise HTTPException(status_code=404, detail="Cell not found")
+            return {"error": "Cell not found"}
 
         stats = self.cell_stats[cell]
         indices = self.cell_indices.get(cell, [])
@@ -1032,100 +1024,166 @@ def generate_html_dashboard(
 
 
 # ==============================================================================
-# 5. FastAPI Application Factory
+# 5. Standard Library HTTP Server Handler
 # ==============================================================================
-def create_app(
+class AnomalyCleanerHandler(http.server.BaseHTTPRequestHandler):
+    """Zero-dependency HTTP request handler for the interactive anomaly cleaner."""
+
+    dataset_index: ContinentDatasetIndex
+    output_parquet: str
+    carto_tile_url: str
+    carto_attribution: str
+
+    def log_message(self, format: str, *args: Any) -> None:
+        logger.info(
+            "%s - - [%s] %s",
+            self.client_address[0],
+            self.log_date_time_string(),
+            format % args,
+        )
+
+    def _send_json(self, data: Any, status: int = 200) -> None:
+        payload = json.dumps(data).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_html(self, html_str: str, status: int = 200) -> None:
+        payload = html_str.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self) -> None:
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        if path in ("", "/"):
+            html = generate_html_dashboard(
+                continent=self.dataset_index.continent,
+                h3_res=self.dataset_index.h3_res,
+                carto_tile_url=self.carto_tile_url,
+                carto_attribution=self.carto_attribution,
+            )
+            self._send_html(html)
+        elif path == "/api/cells":
+            features = []
+            for cell, stats in self.dataset_index.cell_stats.items():
+                try:
+                    coords = h3.cell_to_boundary(cell)
+                    lngs = [c[1] for c in coords]
+                    if max(lngs) - min(lngs) > 180:
+                        coords = [
+                            (lat, lng + 360 if lng < 0 else lng) for lat, lng in coords
+                        ]
+                    geojson_coords = [[lng, lat] for lat, lng in coords]
+                    geojson_coords.append(geojson_coords[0])
+
+                    top_country = stats["countries"][0][0] if stats["countries"] else ""
+
+                    features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [geojson_coords],
+                            },
+                            "properties": {
+                                "cell": cell,
+                                "total": stats["total"],
+                                "mapillary": stats["mapillary"],
+                                "other": stats["other"],
+                                "top_country": top_country,
+                            },
+                        }
+                    )
+                except Exception:
+                    continue
+            self._send_json({"type": "FeatureCollection", "features": features})
+        elif path.startswith("/api/cell/"):
+            cell_id = path.removeprefix("/api/cell/").strip()
+            if cell_id in self.dataset_index.cell_stats:
+                data = self.dataset_index.get_cell_samples(cell_id)
+                self._send_json(data)
+            else:
+                self._send_json({"error": "Cell not found"}, status=404)
+        elif path == "/api/rules":
+            self._send_json(list(self.dataset_index.rules.values()))
+        else:
+            self._send_json({"error": "Not found"}, status=404)
+
+    def do_POST(self) -> None:
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        content_len = int(self.headers.get("Content-Length", 0))
+        body = {}
+        if content_len > 0:
+            try:
+                body = json.loads(self.rfile.read(content_len).decode("utf-8"))
+            except Exception:
+                body = {}
+
+        if path == "/api/rules/add":
+            cell = body.get("cell")
+            if not cell:
+                self._send_json({"error": "Missing cell"}, status=400)
+                return
+            rule = {
+                "cell": cell,
+                "platform": body.get("platform", "mapillary"),
+                "expand_sequence": bool(body.get("expand_sequence", False)),
+            }
+            self.dataset_index.rules[cell] = rule
+            self.dataset_index.save_rules()
+            self._send_json({"status": "ok", "rule": rule})
+        elif path == "/api/rules/remove":
+            cell = body.get("cell")
+            if cell in self.dataset_index.rules:
+                del self.dataset_index.rules[cell]
+                self.dataset_index.save_rules()
+            self._send_json({"status": "ok"})
+        elif path == "/api/rules/clear":
+            self.dataset_index.rules.clear()
+            self.dataset_index.save_rules()
+            self._send_json({"status": "ok"})
+        elif path == "/api/purge":
+            res = execute_parquet_purge(
+                self.dataset_index.parquet_path,
+                self.output_parquet,
+                list(self.dataset_index.rules.values()),
+                df_index=self.dataset_index,
+            )
+            self._send_json(res)
+        else:
+            self._send_json({"error": "Not found"}, status=404)
+
+
+def create_server(
     dataset_index: ContinentDatasetIndex,
     output_parquet: str,
-) -> FastAPI:
-    app = FastAPI(title="Geo-RAG Interactive Anomaly Cleaner")
-
+    host: str = "127.0.0.1",
+    port: int = 8080,
+) -> http.server.ThreadingHTTPServer:
+    """Creates a ThreadingHTTPServer configured with the AnomalyCleanerHandler."""
     tile_url, attribution = get_carto_tile_config("light_all")
 
-    @app.get("/", response_class=HTMLResponse)
-    def index():
-        return generate_html_dashboard(
-            continent=dataset_index.continent,
-            h3_res=dataset_index.h3_res,
-            carto_tile_url=tile_url,
-            carto_attribution=attribution,
-        )
+    handler_cls = type(
+        "ConfiguredAnomalyCleanerHandler",
+        (AnomalyCleanerHandler,),
+        {
+            "dataset_index": dataset_index,
+            "output_parquet": output_parquet,
+            "carto_tile_url": tile_url,
+            "carto_attribution": attribution,
+        },
+    )
 
-    @app.get("/api/cells")
-    def get_cells():
-        features = []
-        for cell, stats in dataset_index.cell_stats.items():
-            try:
-                coords = h3.cell_to_boundary(cell)
-                lngs = [c[1] for c in coords]
-                if max(lngs) - min(lngs) > 180:
-                    coords = [
-                        (lat, lng + 360 if lng < 0 else lng) for lat, lng in coords
-                    ]
-                geojson_coords = [[lng, lat] for lat, lng in coords]
-                geojson_coords.append(geojson_coords[0])
-
-                top_country = stats["countries"][0][0] if stats["countries"] else ""
-
-                features.append(
-                    {
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Polygon",
-                            "coordinates": [geojson_coords],
-                        },
-                        "properties": {
-                            "cell": cell,
-                            "total": stats["total"],
-                            "mapillary": stats["mapillary"],
-                            "other": stats["other"],
-                            "top_country": top_country,
-                        },
-                    }
-                )
-            except Exception:
-                continue
-        return {"type": "FeatureCollection", "features": features}
-
-    @app.get("/api/cell/{cell_id}")
-    def get_cell(cell_id: str):
-        return dataset_index.get_cell_samples(cell_id)
-
-    @app.get("/api/rules")
-    def get_rules():
-        return list(dataset_index.rules.values())
-
-    @app.post("/api/rules/add")
-    def add_rule(item: RuleItem):
-        dataset_index.rules[item.cell] = item.model_dump()
-        dataset_index.save_rules()
-        return {"status": "ok", "rule": dataset_index.rules[item.cell]}
-
-    @app.post("/api/rules/remove")
-    def remove_rule(item: Dict[str, str]):
-        cell = item.get("cell")
-        if cell in dataset_index.rules:
-            del dataset_index.rules[cell]
-            dataset_index.save_rules()
-        return {"status": "ok"}
-
-    @app.post("/api/rules/clear")
-    def clear_rules():
-        dataset_index.rules.clear()
-        dataset_index.save_rules()
-        return {"status": "ok"}
-
-    @app.post("/api/purge")
-    def purge_dataset():
-        res = execute_parquet_purge(
-            dataset_index.parquet_path,
-            output_parquet,
-            list(dataset_index.rules.values()),
-            df_index=dataset_index,
-        )
-        return JSONResponse(content=res)
-
-    return app
+    return http.server.ThreadingHTTPServer((host, port), handler_cls)
 
 
 # ==============================================================================
@@ -1206,7 +1264,7 @@ def main():
         rules_path=args.rules_file,
     )
 
-    app = create_app(dataset_index, output_path)
+    server = create_server(dataset_index, output_path, host=args.host, port=args.port)
 
     print(
         "================================================================================"
@@ -1221,7 +1279,11 @@ def main():
         "================================================================================"
     )
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down server...")
+        server.server_close()
 
 
 if __name__ == "__main__":

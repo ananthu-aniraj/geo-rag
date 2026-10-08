@@ -1,14 +1,15 @@
 import os
 import tempfile
+import threading
 import unittest
 
 import h3
 import pandas as pd
-from fastapi.testclient import TestClient
+import requests
 
 from src.processing.interactive_anomaly_cleaner import (
     ContinentDatasetIndex,
-    create_app,
+    create_server,
     execute_parquet_purge,
 )
 
@@ -20,7 +21,6 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
         self.rules_path = os.path.join(self.tmpdir.name, "rules.json")
 
         # Create mock data with 2 distinct H3 res 11 cells in Africa
-        # We pick lat/lons in Africa
         c1_res11 = h3.latlng_to_cell(1.29, 36.82, 11)  # Nairobi, Kenya
         c2_res11 = h3.latlng_to_cell(0.34, 32.58, 11)  # Kampala, Uganda
 
@@ -115,7 +115,7 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
         # Europe row should still be intact
         self.assertIn("Europe", cleaned_df["continent"].values)
 
-    def test_fastapi_endpoints(self):
+    def test_http_server_endpoints(self):
         index = ContinentDatasetIndex(
             parquet_path=self.parquet_path,
             continent="Africa",
@@ -123,51 +123,63 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
             rules_path=self.rules_path,
         )
         output_parquet = os.path.join(self.tmpdir.name, "cleaned.parquet")
-        app = create_app(index, output_parquet)
-        client = TestClient(app)
 
-        # 1. Dashboard HTML
-        r = client.get("/")
-        self.assertEqual(r.status_code, 200)
-        self.assertIn("Geo-RAG Anomaly Cleaner", r.text)
+        # Start server on an ephemeral OS-assigned port
+        server = create_server(index, output_parquet, host="127.0.0.1", port=0)
+        port = server.server_address[1]
+        base_url = f"http://127.0.0.1:{port}"
 
-        # 2. GeoJSON cells
-        r = client.get("/api/cells")
-        self.assertEqual(r.status_code, 200)
-        geojson = r.json()
-        self.assertEqual(geojson["type"], "FeatureCollection")
-        self.assertGreater(len(geojson["features"]), 0)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
 
-        # 3. Cell details
-        sample_cell = geojson["features"][0]["properties"]["cell"]
-        r = client.get(f"/api/cell/{sample_cell}")
-        self.assertEqual(r.status_code, 200)
-        cell_info = r.json()
-        self.assertEqual(cell_info["cell"], sample_cell)
+        try:
+            # 1. Dashboard HTML
+            r = requests.get(f"{base_url}/")
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("Geo-RAG Anomaly Cleaner", r.text)
 
-        # 4. Rules add and remove
-        r = client.post(
-            "/api/rules/add",
-            json={
-                "cell": sample_cell,
-                "platform": "mapillary",
-                "expand_sequence": False,
-            },
-        )
-        self.assertEqual(r.status_code, 200)
+            # 2. GeoJSON cells
+            r = requests.get(f"{base_url}/api/cells")
+            self.assertEqual(r.status_code, 200)
+            geojson = r.json()
+            self.assertEqual(geojson["type"], "FeatureCollection")
+            self.assertGreater(len(geojson["features"]), 0)
 
-        r = client.get("/api/rules")
-        self.assertEqual(r.status_code, 200)
-        rules = r.json()
-        self.assertEqual(len(rules), 1)
-        self.assertEqual(rules[0]["cell"], sample_cell)
+            # 3. Cell details
+            sample_cell = geojson["features"][0]["properties"]["cell"]
+            r = requests.get(f"{base_url}/api/cell/{sample_cell}")
+            self.assertEqual(r.status_code, 200)
+            cell_info = r.json()
+            self.assertEqual(cell_info["cell"], sample_cell)
 
-        r = client.post("/api/rules/remove", json={"cell": sample_cell})
-        self.assertEqual(r.status_code, 200)
+            # 4. Rules add and remove
+            r = requests.post(
+                f"{base_url}/api/rules/add",
+                json={
+                    "cell": sample_cell,
+                    "platform": "mapillary",
+                    "expand_sequence": False,
+                },
+            )
+            self.assertEqual(r.status_code, 200)
 
-        r = client.get("/api/rules")
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(len(r.json()), 0)
+            r = requests.get(f"{base_url}/api/rules")
+            self.assertEqual(r.status_code, 200)
+            rules = r.json()
+            self.assertEqual(len(rules), 1)
+            self.assertEqual(rules[0]["cell"], sample_cell)
+
+            r = requests.post(
+                f"{base_url}/api/rules/remove", json={"cell": sample_cell}
+            )
+            self.assertEqual(r.status_code, 200)
+
+            r = requests.get(f"{base_url}/api/rules")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(len(r.json()), 0)
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":
