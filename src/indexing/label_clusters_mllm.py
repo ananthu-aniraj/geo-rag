@@ -30,6 +30,9 @@ from src.indexing.multi_medoid_utils import (
     sample_diverse_medoids,
     stitch_cells_vertically,
 )
+
+# Shared LULC Vocabularies
+from src.utils.clean_descriptions import clean_layout_artifacts
 from src.utils.credentials import get_mapillary_token
 
 # Load dataset with clusters using our decoupled-compatible loader
@@ -40,8 +43,6 @@ from src.utils.io import (
     load_embeddings,
     resolve_offline_image_path,
 )
-
-# Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
 
 MAPILLARY_TOKEN = get_mapillary_token()
@@ -281,14 +282,16 @@ def label_clusters_mllm_batched(
                 batch_responses[cid] = None
                 return
 
+            clean_desc_text = clean_layout_artifacts(desc_text)
+
             # Step 2: Text-only query (no image)
             step2_prompt = t["prompt_step2_template"].format(
-                visual_description=desc_text
+                visual_description=clean_desc_text
             )
             classification_text = query_vlm_openai_api(
                 None, step2_prompt, model_name, endpoint_url
             )
-            batch_responses[cid] = (desc_text, classification_text)
+            batch_responses[cid] = (clean_desc_text, classification_text)
 
         with ThreadPoolExecutor(max_workers=64) as executor:
             executor.map(query_task, valid_chunk)
@@ -310,6 +313,7 @@ def label_clusters_mllm_batched(
                     label.replace("**", "").replace("*", "").replace("`", "").strip()
                 )
                 label = label.strip("\"'*#-\t ")
+                description = clean_layout_artifacts(description)
                 results[cid] = (label, description, desc_text)
             else:
                 results[cid] = (
@@ -771,8 +775,8 @@ def main():
                     agg_meta = aggregate_medoid_metadata(rep_val, wrapper)
 
                     p1_text = (
-                        f"The input image contains a vertical stack of {len(medoids)} representative photographs from the same local cluster; "
-                        "analyze the common land-cover features across these frames.\n\n"
+                        f"The input image displays {len(medoids)} representative photographs of the same local geographic environment and cluster. "
+                        "Synthesize the common environmental and land-cover features across these views into a single cohesive description of the scene without describing the layout or framing.\n\n"
                         + prompt_step1_template
                     )
                     p2_text = prompt_step2_template.format(
@@ -888,8 +892,8 @@ def main():
                 agg_meta = aggregate_medoid_metadata(rep_val, wrapper)
 
                 p1_text = (
-                    f"The input image contains a vertical stack of {len(medoids)} representative photographs from the same local cluster; "
-                    "analyze the common land-cover features across these frames.\n\n"
+                    f"The input image displays {len(medoids)} representative photographs of the same local geographic environment and cluster. "
+                    "Synthesize the common environmental and land-cover features across these views into a single cohesive description of the scene without describing the layout or framing.\n\n"
                     + prompt_step1_template
                 )
                 p2_text = prompt_step2_template.format(

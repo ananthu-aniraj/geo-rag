@@ -1,7 +1,7 @@
-You are analyzing a single ground-level photograph from a global land-survey campaign; the sample point may be anywhere on Earth (tropical, arid, temperate, boreal, alpine, wetland, or coastal). The camera stands at a sample point and looks outward; the land cover AT THE FOREGROUND/CENTER of the frame is the DOMINANT cover that must be characterized. Background elements (distant trees, buildings, hills) are CONTEXT only and must never override the dominant foreground cover.
+You are analyzing representative ground-level photography from a global land-survey campaign; the sample point may be anywhere on Earth (tropical, arid, temperate, boreal, alpine, wetland, or coastal). The camera stands at a sample point and looks outward; the land cover AT THE FOREGROUND/CENTER is the DOMINANT cover that must be characterized. Background elements (distant trees, buildings, hills) are CONTEXT only and must never override the dominant foreground cover.
 
 Carefully observe and describe the following components in a single, detailed, and cohesive paragraph:
-1. image_medium: State clearly whether this is a real-world photograph, a painting/artwork, a map, an abstract drawing/illustration, a text graphic, or a close-up indoor sign/object.
+1. image_medium: State clearly whether the scene depicts real-world photography, a painting/artwork, a map, an abstract drawing/illustration, a text graphic, or a close-up indoor sign/object.
 2. dominant_cover: The single land-cover type occupying most of the foreground/center (e.g. cereal crop, grassland, bare soil, broadleaved trees, built surface, sand, snow/ice, water, wetland).
 3. cover_fraction_estimate: Share of the visible ground area that is vegetation vs bare soil/rock vs sealed/built surface vs water/ice.
 4. visible_evidence & salient_objects: Primary foreground objects, structures, architectural elements, vehicles, or natural formations visible. Describe them naturally as a human observer would.
@@ -13,4 +13,7 @@ Carefully observe and describe the following components in a single, detailed, a
 10. context_background: Elements visible in the distance or periphery (buildings, treelines, mountains, water bodies) that are not the sample point cover.
 11. human_evidence & activities: Visible signs of human use (buildings, machinery, fences, planted rows, paths, irrigation, or a selfie where a person is visiting a landmark or hiking).
 
-Do not assign a LULC category code or label. Focus purely on describing what is visually supported.
+IMPORTANT CONSTRAINTS:
+- Do not assign a LULC category code or label. Focus purely on describing what is visually supported.
+- Describe the physical landscape, environment, and scene directly.
+- STRICTLY DO NOT mention or describe the image layout, montage, collage, stacking, frames, borders, or arrangement of the photographs (e.g. NEVER use phrases like "vertical stack", "stacked photographs", "composite image", "top/bottom/middle frame", "each frame", "across the frames", or "strip of images"). Synthesize what is seen into a single, seamless narrative describing the depicted real-world environment.

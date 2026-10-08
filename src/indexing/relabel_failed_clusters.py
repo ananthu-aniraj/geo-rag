@@ -19,6 +19,9 @@ from src.indexing.multi_medoid_utils import (
     sample_diverse_medoids,
     stitch_cells_vertically,
 )
+
+# Shared LULC Vocabularies
+from src.utils.clean_descriptions import clean_layout_artifacts
 from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     load_dataset_with_clusters,
@@ -26,8 +29,6 @@ from src.utils.io import (
     resolve_offline_image_path,
     save_dataframe,
 )
-
-# Shared LULC Vocabularies
 from src.utils.lulc_vocab import MAN_MADE_LULC_VOCAB, NATURAL_LULC_VOCAB
 
 MAPILLARY_TOKEN = get_mapillary_token()
@@ -1022,8 +1023,8 @@ def main():
                         len(task.get("medoids_indices", [])) or args.num_medoids
                     )
                     p1_text = (
-                        f"The input image contains a vertical stack of {num_actual_medoids} representative photographs from the same local cluster; "
-                        "analyze the common land-cover features across these frames.\n\n"
+                        f"The input image displays {num_actual_medoids} representative photographs of the same local geographic environment and cluster. "
+                        "Synthesize the common environmental and land-cover features across these views into a single cohesive description of the scene without describing the layout or framing.\n\n"
                         + prompt_step1_template
                     )
                     p2_text = prompt_step2_template.format(
@@ -1052,6 +1053,7 @@ def main():
                 )
 
                 if desc_text:
+                    desc_text = clean_layout_artifacts(desc_text)
                     # Step 2: Text
                     step2_prompt_formatted = p2_text.format(
                         visual_description=desc_text
@@ -1084,6 +1086,7 @@ def main():
                         .strip()
                     )
                     label = label.strip("\"'*#-\t ")
+                    description = clean_layout_artifacts(description)
 
                     final_results[cid] = (label, description, desc_text)
                     print(f"  [SUCCESS] Child Cluster #{cid} labeled: '{label}'")
@@ -1134,8 +1137,8 @@ def main():
                         len(task.get("medoids_indices", [])) or args.num_medoids
                     )
                     p1_text = (
-                        f"The input image contains a vertical stack of {num_actual_medoids} representative photographs from the same local cluster; "
-                        "analyze the common land-cover features across these frames.\n\n"
+                        f"The input image displays {num_actual_medoids} representative photographs of the same local geographic environment and cluster. "
+                        "Synthesize the common environmental and land-cover features across these views into a single cohesive description of the scene without describing the layout or framing.\n\n"
                         + prompt_step1_template
                     )
                     p2_text = prompt_step2_template.format(
@@ -1164,6 +1167,7 @@ def main():
                 )
 
                 if desc_text:
+                    desc_text = clean_layout_artifacts(desc_text)
                     # Step 2: Text
                     step2_prompt_formatted = p2_text.format(
                         visual_description=desc_text
@@ -1196,6 +1200,7 @@ def main():
                         .strip()
                     )
                     label = label.strip("\"'*#-\t ")
+                    description = clean_layout_artifacts(description)
 
                     parent_results[pid] = (label, description, desc_text)
                     print(f"  [SUCCESS] Parent Cluster #{pid} labeled: '{label}'")
