@@ -17,6 +17,7 @@ dvc
 dvc-ssh
 plotly
 openpyxl
+mapclassify
 
 # --- Web Scraping & Ingestion ---
 beautifulsoup4
