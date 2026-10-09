@@ -114,7 +114,9 @@ def audit_and_purge_dataset(
     all_plats: List[str] = []
     all_conts: List[str] = []
 
-    for rg in range(num_row_groups):
+    for rg in tqdm(
+        range(num_row_groups), desc="Scanning dataset row groups", unit="rg"
+    ):
         tbl_rg = pf.read_row_group(rg, columns=cols_to_load)
         all_pids.extend(tbl_rg[photo_id_col].to_numpy().astype(str))
         all_plats.extend(tbl_rg["Platform"].to_numpy().astype(str))
@@ -173,7 +175,8 @@ def audit_and_purge_dataset(
     invalid_sequences: Dict[str, Dict[str, Any]] = {}
     valid_sequences_count = 0
 
-    for seq_id in tqdm(unique_seqs, desc="Auditing sequences"):
+    seq_pbar = tqdm(unique_seqs, desc="Auditing sequences", unit="seq")
+    for seq_id in seq_pbar:
         res = validator.validate_sequence(seq_id)
         if not res.is_valid:
             invalid_sequences[seq_id] = {
@@ -182,6 +185,7 @@ def audit_and_purge_dataset(
                 if hasattr(res.metrics, "to_dict")
                 else (res.metrics.__dict__ if res.metrics else None),
             }
+            seq_pbar.set_postfix(invalid=len(invalid_sequences), refresh=False)
         else:
             valid_sequences_count += 1
 
@@ -263,7 +267,10 @@ def audit_and_purge_dataset(
     purged_count = 0
 
     with get_parquet_writer(temp_output, schema) as writer:
-        for rg in range(num_row_groups):
+        purge_pbar = tqdm(
+            range(num_row_groups), desc="Purging Parquet row groups", unit="rg"
+        )
+        for rg in purge_pbar:
             tbl_rg = pf.read_row_group(rg)
             total_in += len(tbl_rg)
 
@@ -283,6 +290,7 @@ def audit_and_purge_dataset(
             rg_purged = int(np.sum(is_violating))
             purged_count += rg_purged
             total_out += len(filtered_tbl)
+            purge_pbar.set_postfix(purged=purged_count, refresh=False)
 
     os.replace(temp_output, output_parquet)
     print(
@@ -296,11 +304,14 @@ def audit_and_purge_dataset(
         print(f"\nStep 5: Cleaning CSV metadata file: {input_csv}...")
         temp_csv = target_csv_out + ".tmp_audit_purge"
         first_chunk = True
-        for chunk in pd.read_csv(
+        csv_purged_count = 0
+        csv_reader = pd.read_csv(
             input_csv,
             chunksize=100_000,
             dtype={photo_id_col: str, "Platform": str},
-        ):
+        )
+        csv_pbar = tqdm(csv_reader, desc="Purging CSV chunks", unit="chunk")
+        for chunk in csv_pbar:
             c_pids = chunk[photo_id_col].fillna("").astype(str).str.removesuffix(".0")
             c_plat = chunk["Platform"].fillna("").astype(str).str.lower()
             violating_csv_mask = (c_plat == platform.lower()) & c_pids.isin(
@@ -314,6 +325,8 @@ def audit_and_purge_dataset(
                 header=first_chunk,
             )
             first_chunk = False
+            csv_purged_count += int(violating_csv_mask.sum())
+            csv_pbar.set_postfix(purged=csv_purged_count, refresh=False)
         os.replace(temp_csv, target_csv_out)
         print(f" -> Updated clean CSV file: {target_csv_out}")
 

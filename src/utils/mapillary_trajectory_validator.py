@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import requests
+from tqdm import tqdm
 
 from src.utils.credentials import get_mapillary_token
 from src.utils.mapillary_trajectory_sql import (
@@ -132,7 +133,10 @@ class MapillaryTrajectoryValidator:
     # --------------------------------------------------------------------------
 
     def resolve_photo_sequences(
-        self, photo_ids: List[str], batch_size: int = 100
+        self,
+        photo_ids: List[str],
+        batch_size: int = 100,
+        show_progress: bool = True,
     ) -> Dict[str, str]:
         """
         Resolves photo IDs to sequence IDs.
@@ -177,7 +181,18 @@ class MapillaryTrajectoryValidator:
         headers = {"Authorization": f"OAuth {self.token}"}
         new_mappings: List[Tuple[str, str]] = []
 
-        for i in range(0, len(missing_ids), batch_size):
+        batch_indices = list(range(0, len(missing_ids), batch_size))
+        batch_iter = (
+            tqdm(
+                batch_indices,
+                desc="Fetching sequence IDs via API",
+                unit="batch",
+            )
+            if (show_progress and len(batch_indices) > 1)
+            else batch_indices
+        )
+
+        for i in batch_iter:
             chunk = missing_ids[i : i + batch_size]
             url = (
                 f"https://graph.mapillary.com/?ids={','.join(chunk)}&fields=id,sequence"
