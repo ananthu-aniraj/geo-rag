@@ -101,6 +101,7 @@ class MapillaryTrajectoryValidator:
         if self.db_path == ":memory:":
             self._mem_conn = sqlite3.connect(":memory:")
 
+        self.session = requests.Session()
         self._init_db()
 
     @contextmanager
@@ -199,7 +200,7 @@ class MapillaryTrajectoryValidator:
             )
             for attempt in range(3):
                 try:
-                    r = requests.get(url, headers=headers, timeout=self.timeout)
+                    r = self.session.get(url, headers=headers, timeout=self.timeout)
                     if r.status_code == 200:
                         data = r.json()
                         for pid, info in data.items():
@@ -253,7 +254,7 @@ class MapillaryTrajectoryValidator:
             success = False
             for attempt in range(3):
                 try:
-                    r = requests.get(url, headers=headers, timeout=self.timeout)
+                    r = self.session.get(url, headers=headers, timeout=self.timeout)
                     if r.status_code == 200:
                         data = r.json()
                         for item in data.get("data", []):
@@ -292,7 +293,7 @@ class MapillaryTrajectoryValidator:
             url = f"https://graph.mapillary.com/?ids={','.join(chunk)}&fields=id,geometry,computed_geometry,captured_at,compass_angle"
             for attempt in range(3):
                 try:
-                    r = requests.get(url, headers=headers, timeout=self.timeout)
+                    r = self.session.get(url, headers=headers, timeout=self.timeout)
                     if r.status_code == 200:
                         data = r.json()
                         for pid, info in data.items():

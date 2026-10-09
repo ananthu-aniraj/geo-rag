@@ -18,7 +18,8 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 - **Batch Continent Mapillary Sequence Auditor & Purge Utility (`src/processing/audit_mapillary_sequences.py`)**:
   - Implemented streaming CLI utility to audit Mapillary sequences across an entire continent (e.g. `--continent Africa`) or global scope.
-  - Batch-resolves photo IDs to sequence IDs, audits unique sequences, produces structured JSON reports (`--report_json`), and executes a streaming PyArrow purge of corrupted photos from Parquet and companion CSV files.
+  - Batch-resolves photo IDs to sequence IDs, audits unique sequences, produces structured JSON reports (`--report_json`), and executes a streaming PyArrow purge of corrupted photos from Parquet while automatically slicing companion embedding matrices (`*_embeddings.npy`, `*.keys.parquet`) and clustered sidecars.
+  - Added multi-dataset purging support (`--extra_parquets` or `--extra_parquets auto`), enabling coordinated purging across both the deduplicated dataset (`geo_space_deduplicated.parquet`) and cleaned datasets (`geo_space_cleaned.parquet`, `geo_space_cleaned_hf.parquet`) in a single run.
   - Added unit test suite in `tests/test_audit_mapillary_sequences.py`.
 
 - **End-of-Chunk Scraper Sequence Validation (`src/scrapers/mapillary_scraper.py`)**:

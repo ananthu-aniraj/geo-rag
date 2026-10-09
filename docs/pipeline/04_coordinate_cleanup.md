@@ -187,13 +187,20 @@ python3 -m src.processing.audit_mapillary_sequences \
     --dry_run \
     --report_json full_pipeline_output/africa_mapillary_audit.json
 
-# 2. Execute purge: stream-remove all invalid sequence photos from Parquet and companion CSV
+# 2. Execute purge: stream-remove invalid sequence photos from primary and sibling datasets
 python3 -m src.processing.audit_mapillary_sequences \
-    --input full_pipeline_output/geo_space_cleaned.parquet \
-    --output full_pipeline_output/geo_space_cleaned.parquet \
-    --continent Africa \
-    --csv full_pipeline_output/geo_space_cleaned.csv
+    --input full_pipeline_output/geo_space_deduplicated.parquet \
+    --extra_parquets full_pipeline_output/geo_space_cleaned.parquet full_pipeline_output/geo_space_cleaned_hf.parquet \
+    --continent Africa
 ```
+
+> [!TIP]
+> **Zero-Redundancy Multi-Dataset Synchronization**:
+>
+> * **Primary Dataset**: Purged row-group by row-group in streaming mode with minimal RAM overhead.
+> * **Additional Parquets (`--extra_parquets`)**: Pass sibling datasets (e.g. `geo_space_cleaned.parquet`) or pass `auto` to automatically discover and purge matching sibling datasets in the same run.
+> * **Companion Embeddings**: Discovers companion embeddings (`*_embeddings.npy` and `*.keys.parquet`) sharing the dataset prefix and prunes matching vectors atomically via zero-GPU memory-mapped slicing (`np.memmap`).
+> * **Clustered Sidecars**: Discovers and filters companion clustered sidecars (`*_clustered_k_*.parquet`) in-place.
 
 ### Scraper Chunk-Level Validation (`src/scrapers/mapillary_scraper.py`)
 
