@@ -143,3 +143,58 @@ python3 -m src.processing.interactive_anomaly_cleaner \
 | `--host` | `str` | `127.0.0.1` | Host address to bind. |
 | `--rules-file` | `str` | `manual_h3_removals.json` | Path to JSON file storing staged removal rules. |
 | `--batch-purge` | `flag` | `False` | Apply rules directly from `--rules-file` without starting the server. |
+
+---
+
+## 🧭 Mapillary Trajectory & Kinematic Validation (`src/utils/mapillary_trajectory_validator.py`)
+
+In crowdsourced street imagery (particularly noticeable in regions like Africa), contributors occasionally upload sequences captured from **stationary cameras** (e.g., phones placed indoors, in courtyards, or on tables). Because of poor sky visibility and multipath GNSS interference, recorded coordinates wander erratically in random walks across dozens or hundreds of meters.
+
+Downstream spatial deduplication thins out consecutive frames, leaving sparse remnants scattered across different H3 cells that masquerade as moving captures.
+
+### Kinematic & Geometric Evaluation Rules
+
+When evaluating a Mapillary sequence track $(t_i, \text{lat}_i, \text{lon}_i)_{i=1}^N$, the validator executes three strict tests:
+
+1. **Stationary Camera GPS Jitter**:
+   * Condition: Frame count $N \ge 15$, bounding radius $\le 35\text{ m}$, cumulative path length $\ge 100\text{ m}$, and tortuosity $T \ge 15.0$.
+   * Identifies cameras that never actually moved while GPS jittered back and forth.
+2. **Severe Random-Walk Tortuosity**:
+   * Condition: Path length $\ge 250\text{ m}$, net displacement $\le 25\text{ m}$, and tortuosity $T = \frac{L_{\text{total}}}{\max(D_{\text{net}}, 1\text{m})} \ge 20.0$.
+   * Filters out chaotic ping-pong wanderings.
+3. **Impossible Instantaneous Speed Spikes**:
+   * Condition: Max speed $v_{\max} \ge 160\text{ km/h}$ over jumps $> 100\text{ m}$ with $\Delta t \ge 0.5\text{ s}$.
+   * Flags teleportation anomalies and corrupted timestamps.
+
+### Persistent SQLite Caching
+
+To guarantee zero redundant API calls across pipeline runs, chunks, or interactive sessions, the validator persists:
+
+* `photo_sequences`: Mapping of `photo_id -> sequence_id`.
+* `sequences`: Evaluated sequence metrics, validity verdicts, reasons, and GeoJSON tracks in `data/cache/mapillary_sequences.db`.
+
+---
+
+## 🚜 Batch Continent Sequence Auditor (`src/processing/audit_mapillary_sequences.py`)
+
+To audit an entire continent and purge all corrupted Mapillary images in a single streaming pass:
+
+```bash
+# 1. Dry run: scan Africa, inspect violations and reason breakdown without modifying files
+python3 -m src.processing.audit_mapillary_sequences \
+    --input full_pipeline_output/geo_space_cleaned.parquet \
+    --continent Africa \
+    --dry_run \
+    --report_json full_pipeline_output/africa_mapillary_audit.json
+
+# 2. Execute purge: stream-remove all invalid sequence photos from Parquet and companion CSV
+python3 -m src.processing.audit_mapillary_sequences \
+    --input full_pipeline_output/geo_space_cleaned.parquet \
+    --output full_pipeline_output/geo_space_cleaned.parquet \
+    --continent Africa \
+    --csv full_pipeline_output/geo_space_cleaned.csv
+```
+
+### Scraper Chunk-Level Validation (`src/scrapers/mapillary_scraper.py`)
+
+For future scraping runs, [`mapillary_scraper.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/scrapers/mapillary_scraper.py) captures `sequence` during initial photo discovery and automatically audits unique sequences at the end of each chunk. Corrupted stationary tracks are purged before saving, guaranteeing that downstream metadata parsing and deduplication receive 100% clean data with the standard 6-column schema.

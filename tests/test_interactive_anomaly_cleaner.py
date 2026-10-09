@@ -177,6 +177,13 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
             r = requests.get(f"{base_url}/api/rules")
             self.assertEqual(r.status_code, 200)
             self.assertEqual(len(r.json()), 0)
+
+            # 5. Sequence track endpoint
+            r = requests.get(f"{base_url}/api/sequence/track/101")
+            self.assertEqual(r.status_code, 200)
+            track_data = r.json()
+            self.assertIn("is_valid", track_data)
+            self.assertIn("reason", track_data)
         finally:
             server.shutdown()
             server.server_close()

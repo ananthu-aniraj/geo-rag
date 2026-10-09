@@ -11,6 +11,9 @@ import requests
 from shapely.geometry import box
 from tqdm import tqdm
 
+from src.utils.credentials import get_mapillary_token
+from src.utils.mapillary_trajectory_validator import MapillaryTrajectoryValidator
+
 # --- 1. Configuration ---
 # Global Region for a representative scan
 REGION = (-180, -90, 180, 90)
@@ -55,7 +58,13 @@ def parse_args():
         help="Path to the uncovered land areas shapefile",
     )
     argparser.add_argument(
-        "--access_token", type=str, help="Mapillary API access token"
+        "--access_token", type=str, default=None, help="Mapillary API access token"
+    )
+    argparser.add_argument(
+        "--validate_sequences",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Validate sequence trajectories and purge invalid/stationary sequences at end of chunk",
     )
     return argparser.parse_args()
 
@@ -68,11 +77,14 @@ DELAY_BETWEEN_CALLS = args.delay_between_calls
 UNCOVERED_SHAPEFILE = args.uncovered_shapefile
 STEP_KM = args.step_km
 MAX_PHOTOS_PER_BOX = args.max_photos_per_box
-ACCESS_TOKEN = args.access_token
+ACCESS_TOKEN = args.access_token or get_mapillary_token() or ""
 
 # File Setup
 Path(args.base_dir).mkdir(parents=True, exist_ok=True)  # Ensure base directory exists
 OUTPUT_FILE = os.path.join(args.base_dir, f"mapillary_data_chunk_{CURRENT_CHUNK}.csv")
+STAGING_FILE = os.path.join(
+    args.base_dir, f"mapillary_data_chunk_{CURRENT_CHUNK}.staging.csv"
+)
 LOG_FILE = os.path.join(
     args.base_dir, f"mapillary_completed_boxes_chunk_{CURRENT_CHUNK}.txt"
 )
@@ -108,11 +120,11 @@ def fetch_mapillary_photos(bbox_coords=None, next_url=None):
         bbox_str = (
             f"{bbox_coords[0]},{bbox_coords[1]},{bbox_coords[2]},{bbox_coords[3]}"
         )
-        # Requesting ID, coordinates, and the 1024px thumbnail URL
+        # Requesting ID, coordinates, sequence ID, and the 1024px thumbnail URL
         url = (
             f"https://graph.mapillary.com/images"
             f"?bbox={bbox_str}"
-            f"&fields=id,geometry,thumb_1024_url,captured_at"
+            f"&fields=id,geometry,thumb_1024_url,captured_at,sequence"
             f"&limit=50"  # Max allowed per request is usually higher, but 50 aligns with our goal
         )
 
@@ -179,21 +191,8 @@ print(f"Boxes assigned to Chunk {CURRENT_CHUNK}: {len(my_boxes)}")
 print(f"Already completed: {len(completed_boxes)}")
 
 # --- 4. Main Execution ---
-file_exists = os.path.exists(OUTPUT_FILE)
-with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
-    writer = csv.writer(csv_file)
-
-    if not file_exists:
-        writer.writerow(
-            [
-                "Photo_ID",
-                "Platform",
-                "Latitude",
-                "Longitude",
-                "Image_URL",
-                "Captured_At",
-            ]
-        )
+with open(STAGING_FILE, mode="a", newline="", encoding="utf-8") as staging_file:
+    staging_writer = csv.writer(staging_file)
 
     for grid_box in tqdm(my_boxes, desc=f"Processing Chunk {CURRENT_CHUNK}"):
         box_id = (
@@ -232,6 +231,7 @@ with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
                     lon, lat = img.get("geometry", {}).get("coordinates", [None, None])
                     image_url = img.get("thumb_1024_url")
                     captured_at_ms = img.get("captured_at")
+                    seq_id = str(img.get("sequence") or "")
                     captured_at = ""
                     if captured_at_ms:
                         import datetime
@@ -241,8 +241,16 @@ with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
                         ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
                     if image_url and lat and lon:
-                        writer.writerow(
-                            [img_id, "Mapillary", lat, lon, image_url, captured_at]
+                        staging_writer.writerow(
+                            [
+                                img_id,
+                                "Mapillary",
+                                lat,
+                                lon,
+                                image_url,
+                                captured_at,
+                                seq_id,
+                            ]
                         )
                         photos_saved_this_box += 1
 
@@ -253,7 +261,7 @@ with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
                 if photos_saved_this_box >= MAX_PHOTOS_PER_BOX:
                     break
 
-                    # Update the URL for the next page. If it's None, we've hit the end.
+                # Update the URL for the next page. If it's None, we've hit the end.
                 current_url = result.get("next_url")
                 if not current_url:
                     break
@@ -267,4 +275,74 @@ with open(OUTPUT_FILE, mode="a", newline="", encoding="utf-8") as csv_file:
             log.write(box_id + "\n")
         completed_boxes.add(box_id)
 
-print(f"\nChunk {CURRENT_CHUNK} finished!")
+print(f"\nChunk {CURRENT_CHUNK} boxes finished. Auditing and finalizing...")
+
+# --- 5. End-of-Chunk Sequence Validation & Final Output ---
+if os.path.exists(STAGING_FILE) and os.path.getsize(STAGING_FILE) > 0:
+    import pandas as pd
+
+    df_staging = pd.read_csv(
+        STAGING_FILE,
+        names=[
+            "Photo_ID",
+            "Platform",
+            "Latitude",
+            "Longitude",
+            "Image_URL",
+            "Captured_At",
+            "Sequence_ID",
+        ],
+        dtype=str,
+        header=None,
+    )
+
+    if not df_staging.empty:
+        total_photos = len(df_staging)
+        print(f" -> Collected {total_photos:,} staged photos in chunk {CURRENT_CHUNK}.")
+
+        if args.validate_sequences and ACCESS_TOKEN:
+            validator = MapillaryTrajectoryValidator(token=ACCESS_TOKEN)
+            unique_seqs = [
+                s for s in df_staging["Sequence_ID"].dropna().unique() if str(s).strip()
+            ]
+            print(
+                f" -> Auditing {len(unique_seqs):,} unique sequence track(s) for kinematic validity..."
+            )
+
+            invalid_seqs = set()
+            for s in tqdm(unique_seqs, desc="Validating sequence kinematics"):
+                res = validator.validate_sequence(str(s).strip())
+                if not res.is_valid:
+                    invalid_seqs.add(str(s).strip())
+
+            if invalid_seqs:
+                valid_mask = ~df_staging["Sequence_ID"].isin(invalid_seqs)
+                purged_count = total_photos - int(valid_mask.sum())
+                df_staging = df_staging[valid_mask]
+                print(
+                    f" -> Discarded {purged_count:,} photo(s) from {len(invalid_seqs):,} invalid/stationary sequence(s)."
+                )
+            else:
+                print(" -> All sequences passed kinematic validation.")
+
+        # Project to standard 6 columns for downstream compatibility
+        df_clean = df_staging[
+            [
+                "Photo_ID",
+                "Platform",
+                "Latitude",
+                "Longitude",
+                "Image_URL",
+                "Captured_At",
+            ]
+        ]
+        write_header = not os.path.exists(OUTPUT_FILE)
+        df_clean.to_csv(OUTPUT_FILE, mode="a", index=False, header=write_header)
+        print(f" -> Saved {len(df_clean):,} clean records to {OUTPUT_FILE}.")
+
+    try:
+        os.remove(STAGING_FILE)
+    except OSError:
+        pass
+
+print(f"\nChunk {CURRENT_CHUNK} complete!")

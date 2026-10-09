@@ -2,6 +2,34 @@
 
 All notable changes and updates to the Geo-RAG codebase are documented here.
 
+## [1.0.5] - 2026-10-09
+
+### Added
+
+- **Mapillary Trajectory & Kinematic Validator (`src/utils/mapillary_trajectory_validator.py`)**:
+  - Implemented trajectory validation engine that detects invalid Mapillary sequences caused by stationary cameras, multipath GNSS drift, and speed teleportation.
+  - Computes kinematic and geometric properties (consecutive speeds, total path length, net displacement, sinuosity/tortuosity ratio, and bounding radius of gyration).
+  - Evaluates sequences against three kinematic rules:
+    - Stationary Camera Jitter: $N \ge 15$, bounding radius $\le 35\text{ m}$, path length $\ge 100\text{ m}$, tortuosity $T \ge 15.0$.
+    - Random-Walk Tortuosity: path length $\ge 250\text{ m}$, net displacement $\le 25\text{ m}$, tortuosity $T \ge 20.0$.
+    - Impossible Speed Spikes: peak speed $v_{\max} \ge 160\text{ km/h}$ over steps $> 100\text{ m}$.
+  - Features persistent local SQLite cache (`data/cache/mapillary_sequences.db`) to memoize sequence verdicts and `photo_id -> sequence_id` lookups with zero redundant API calls.
+  - Added unit test suite in `tests/test_mapillary_trajectory_validator.py`.
+
+- **Batch Continent Mapillary Sequence Auditor & Purge Utility (`src/processing/audit_mapillary_sequences.py`)**:
+  - Implemented streaming CLI utility to audit Mapillary sequences across an entire continent (e.g. `--continent Africa`) or global scope.
+  - Batch-resolves photo IDs to sequence IDs, audits unique sequences, produces structured JSON reports (`--report_json`), and executes a streaming PyArrow purge of corrupted photos from Parquet and companion CSV files.
+  - Added unit test suite in `tests/test_audit_mapillary_sequences.py`.
+
+- **End-of-Chunk Scraper Sequence Validation (`src/scrapers/mapillary_scraper.py`)**:
+  - Enhanced Mapillary grid scraper to request the `sequence` field from Mapillary Graph API v4 alongside coordinates and thumbnails at zero additional API call cost.
+  - Buffers chunk photos to staging files and audits unique sequence tracks at the end of each chunk using the trajectory validator.
+  - Automatically discards invalid stationary sequences before appending to the final chunk CSV, guaranteeing clean 6-column outputs compatible with `process_scraped_data.py`.
+
+- **Interactive Sequence Track Inspector in Web Dashboard (`src/processing/interactive_anomaly_cleaner.py`)**:
+  - Added `GET /api/sequence/track/{photo_id}` endpoint and Leaflet frontend controls ("🛤️ View Track").
+  - On-demand rendering of complete original sequence tracks as vector polylines on Leaflet with speed, tortuosity, and stationary jitter diagnostic badges.
+
 ## [1.0.4] - 2026-10-08
 
 ### Added

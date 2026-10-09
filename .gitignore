@@ -39,6 +39,7 @@ site/
 *.csv
 *.csv#
 *.html
+!src/visualization/templates/*.html
 wandb/
 exps/
 ne_10m_urban_areas.VERSION.txt
