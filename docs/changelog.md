@@ -2,6 +2,16 @@
 
 All notable changes and updates to the Geo-RAG codebase are documented here.
 
+## [1.0.6] - 2026-10-10
+
+### Added
+
+- **Multi-GPU SGLang Docker Container Parallelization (`run_full_pipeline.sh`, `run_offline_pipeline.sh`)**:
+  - Added parallel Docker container isolation for SGLang VLM auto-labeling across multiple concurrent GPU pipeline executions.
+  - Automatically derives unique Docker container names (`sglang-server-gpu<GPU_ID>-<PORT>`) and non-conflicting host ports (`30000 + GPU_ID`, e.g. GPU 0 $\to$ 30000, GPU 1 $\to$ 30001, GPU 2 $\to$ 30002) directly from `CUDA_VISIBLE_DEVICES` or `--gpu` flag.
+  - Dynamically routes `--mllm_endpoint http://localhost:<PORT>` to `src.indexing.label_clusters_mllm` and `src.indexing.relabel_failed_clusters`.
+  - Scoped container lifecycle cleanup traps so concurrent runs never kill sibling containers or collide on container names.
+
 ## [1.0.5] - 2026-10-09
 
 ### Added

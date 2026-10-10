@@ -313,8 +313,43 @@ else
     CLUSTERING_MODE="fit"
 fi
 
-# Ensure no stale sglang-server container is running from a previous run before starting GPU clustering
-docker rm -f sglang-server >/dev/null 2>&1 || true
+# SGLang Docker Server Configuration (Multi-GPU & Parallel Execution)
+# Detect CLI overrides if passed
+for ((i=1; i<=$#; i++)); do
+    arg="${!i}"
+    next_idx=$((i + 1))
+    case "$arg" in
+        --gpu|--gpu_id|--cuda_device)
+            GPU_ID="${!next_idx}"
+            ;;
+        --port|--sglang_port)
+            SGLANG_PORT="${!next_idx}"
+            ;;
+        --container_name|--sglang_container_name)
+            SGLANG_CONTAINER_NAME="${!next_idx}"
+            ;;
+    esac
+done
+
+GPU_ID="${GPU_ID:-${CUDA_VISIBLE_DEVICES:-0}}"
+GPU_ID="${GPU_ID#cuda:}"
+PRIMARY_GPU=$(echo "$GPU_ID" | cut -d',' -f1)
+GPU_SLUG=$(echo "$GPU_ID" | tr ',' '_')
+
+if [ -z "$SGLANG_PORT" ]; then
+    if [ -n "$PORT" ]; then
+        SGLANG_PORT="$PORT"
+    elif [[ "$PRIMARY_GPU" =~ ^[0-9]+$ ]]; then
+        SGLANG_PORT=$(( 30000 + PRIMARY_GPU ))
+    else
+        SGLANG_PORT=30000
+    fi
+fi
+
+SGLANG_CONTAINER_NAME="${SGLANG_CONTAINER_NAME:-sglang-server-gpu${GPU_SLUG}-${SGLANG_PORT}}"
+
+# Ensure no stale container with this specific name is running from a previous run
+docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
 
 echo ""
 echo "[Step 2/5] Global Unsupervised FAISS GPU Clustering & VLM Labeling (Mode: $CLUSTERING_MODE)..."
@@ -353,42 +388,43 @@ else
         if [ "$SGLANG_STARTED" = "true" ]; then
             echo ""
             echo "========================================="
-            echo "Trap triggered: Cleaning up SGLang server..."
-            docker rm -f sglang-server >/dev/null 2>&1 || true
+            echo "Trap triggered: Cleaning up SGLang server container ($SGLANG_CONTAINER_NAME)..."
+            docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
             echo "Cleanup complete."
             echo "========================================="
         fi
     }
     trap cleanup EXIT INT TERM ERR
 
-    echo "Launching SGLang server container..."
+    docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
+    echo "Launching SGLang server container ($SGLANG_CONTAINER_NAME) on GPU(s) '$GPU_ID' (port $SGLANG_PORT)..."
     docker run -d \
-      --name sglang-server \
+      --name "$SGLANG_CONTAINER_NAME" \
       --runtime nvidia \
       $APPARMOR_FLAG \
-      -e NVIDIA_VISIBLE_DEVICES=0 \
+      -e NVIDIA_VISIBLE_DEVICES="$GPU_ID" \
       --shm-size 32g \
-      -p 30000:30000 \
+      -p "${SGLANG_PORT}:${SGLANG_PORT}" \
       -v ~/.cache/huggingface:/root/.cache/huggingface \
       --env "HF_TOKEN=${HF_TOKEN}" \
       --ipc=host \
       lmsysorg/sglang:latest-runtime \
-      bash -c "pip install distro && python3 -m sglang.launch_server --model-path $MLLM_MODEL --host 0.0.0.0 --port 30000 --mem-fraction-static 0.75"
+      bash -c "pip install distro && python3 -m sglang.launch_server --model-path $MLLM_MODEL --host 0.0.0.0 --port $SGLANG_PORT --mem-fraction-static 0.75"
 
     SGLANG_STARTED=true
 
-    echo "Waiting for SGLang server to initialize..."
-    until curl -s http://localhost:30000/health > /dev/null; do
-        if ! docker ps -q --filter "name=sglang-server" | grep -q .; then
-            echo "[ERROR] SGLang server container exited unexpectedly."
+    echo "Waiting for SGLang server ($SGLANG_CONTAINER_NAME) on port $SGLANG_PORT to initialize..."
+    until curl -s "http://localhost:${SGLANG_PORT}/health" > /dev/null; do
+        if ! docker ps -q --filter "name=^${SGLANG_CONTAINER_NAME}$" | grep -q .; then
+            echo "[ERROR] SGLang server container '$SGLANG_CONTAINER_NAME' exited unexpectedly."
             echo "Showing last 20 lines of docker logs:"
-            docker logs --tail 20 sglang-server
+            docker logs --tail 20 "$SGLANG_CONTAINER_NAME"
             exit 1
         fi
         sleep 2
     done
 
-    echo "SGLang server is live! Executing downstream tasks..."
+    echo "SGLang server '$SGLANG_CONTAINER_NAME' is live on port $SGLANG_PORT! Executing downstream tasks..."
 
     echo ""
     echo "[Step 2b/5] MLLM Cluster Auto-Labeling..."
@@ -397,6 +433,7 @@ else
       --label_method "$LABEL_METHOD" \
       --mllm_backend "$MLLM_BACKEND" \
       --mllm_model "$MLLM_MODEL" \
+      --mllm_endpoint "http://localhost:${SGLANG_PORT}" \
       --chunk_size "$CHUNK_SIZE" \
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
@@ -410,6 +447,7 @@ else
       --in "$CLUSTERED_PARQUET" \
       --mllm_model "$MLLM_MODEL" \
       --mllm_backend "$MLLM_BACKEND" \
+      --mllm_endpoint "http://localhost:${SGLANG_PORT}" \
       --representation_type "$REPRESENTATION_TYPE" \
       --precision "$PRECISION" \
       --num_medoids "$NUM_MEDOIDS" \
@@ -417,8 +455,8 @@ else
       $IMAGE_ROOT_FLAG
 
     echo ""
-    echo "Stopping SGLang server..."
-    docker rm -f sglang-server >/dev/null 2>&1 || true
+    echo "Stopping SGLang server container ($SGLANG_CONTAINER_NAME)..."
+    docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
     SGLANG_STARTED=false
 fi
 
