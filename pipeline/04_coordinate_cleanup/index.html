@@ -1,0 +1,2017 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../03_timestamp_standardization/">
+      
+      
+        <link rel="next" href="../05_optimal_k_estimation/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>4. Coordinate Cleanup - Geo-RAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#step-1c-coordinate-anomaly-cleanup" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Geo-RAG" class="md-header__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Geo-RAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              4. Coordinate Cleanup
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../preliminaries/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Preliminaries
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../dataset/" class="md-tabs__link">
+          
+  
+  
+  Dataset Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Pipeline Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../evaluation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Evaluation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../evaluation_results/" class="md-tabs__link">
+          
+  
+  
+  Benchmark Results
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Geo-RAG" class="md-nav__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Geo-RAG
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../preliminaries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preliminaries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Dataset Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dataset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dataset/download_images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline Image Downloader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dataset_publication_roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publication Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Pipeline Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01_ingestion_scraping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Ingestion & Scraping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02_spatial_deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Spatial Deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03_timestamp_standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Timestamp Standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ Core Operation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safety-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📐 Safety Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-mapillary-sequence-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ Automated Mapillary Sequence Expansion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ Options &amp; Parameters
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚙️ Options &amp; Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-line-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Line Arguments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-type-resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🏎️ Performance &amp; Type Resilience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interactive-manual-anomaly-cleaner-srcprocessinginteractive_anomaly_cleanerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🖥️ Interactive Manual Anomaly Cleaner (src/processing/interactive_anomaly_cleaner.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🖥️ Interactive Manual Anomaly Cleaner (src/processing/interactive_anomaly_cleaner.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-architecture-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Architecture &amp; Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-interactive-web-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Interactive Web Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-headless-batch-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Headless Batch Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mapillary-trajectory-kinematic-validation-srcutilsmapillary_trajectory_validatorpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧭 Mapillary Trajectory &amp; Kinematic Validation (src/utils/mapillary_trajectory_validator.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧭 Mapillary Trajectory &amp; Kinematic Validation (src/utils/mapillary_trajectory_validator.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#kinematic-geometric-evaluation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kinematic &amp; Geometric Evaluation Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#persistent-sqlite-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent SQLite Caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-continent-sequence-auditor-srcprocessingaudit_mapillary_sequencespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚜 Batch Continent Sequence Auditor (src/processing/audit_mapillary_sequences.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚜 Batch Continent Sequence Auditor (src/processing/audit_mapillary_sequences.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scraper-chunk-level-validation-srcscrapersmapillary_scraperpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scraper Chunk-Level Validation (src/scrapers/mapillary_scraper.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05_optimal_k_estimation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Optimal K Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06_clustering_dynamic_drift/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Clustering & Drift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07_mllm_labeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08_spatial_semantic_indexing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Spatial-Semantic Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09_visualization_dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmark Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_eunis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS (All Platforms)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_eunis_plat_flickr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS (Flickr Queries)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_lucas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LUCAS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation_results/comparison_places/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Places Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ Core Operation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safety-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📐 Safety Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-mapillary-sequence-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ Automated Mapillary Sequence Expansion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ Options &amp; Parameters
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚙️ Options &amp; Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-line-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Line Arguments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-type-resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🏎️ Performance &amp; Type Resilience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interactive-manual-anomaly-cleaner-srcprocessinginteractive_anomaly_cleanerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🖥️ Interactive Manual Anomaly Cleaner (src/processing/interactive_anomaly_cleaner.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🖥️ Interactive Manual Anomaly Cleaner (src/processing/interactive_anomaly_cleaner.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-architecture-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Architecture &amp; Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-interactive-web-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Interactive Web Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-headless-batch-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Headless Batch Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mapillary-trajectory-kinematic-validation-srcutilsmapillary_trajectory_validatorpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧭 Mapillary Trajectory &amp; Kinematic Validation (src/utils/mapillary_trajectory_validator.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧭 Mapillary Trajectory &amp; Kinematic Validation (src/utils/mapillary_trajectory_validator.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#kinematic-geometric-evaluation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kinematic &amp; Geometric Evaluation Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#persistent-sqlite-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent SQLite Caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-continent-sequence-auditor-srcprocessingaudit_mapillary_sequencespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚜 Batch Continent Sequence Auditor (src/processing/audit_mapillary_sequences.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚜 Batch Continent Sequence Auditor (src/processing/audit_mapillary_sequences.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scraper-chunk-level-validation-srcscrapersmapillary_scraperpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scraper Chunk-Level Validation (src/scrapers/mapillary_scraper.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="step-1c-coordinate-anomaly-cleanup">Step 1c: Coordinate Anomaly Cleanup</h1>
+<p>This document describes the design and operation of <code>cleanup_coordinate_anomalies.py</code>, which filters out coordinate-locking anomalies caused by faulty contributor GPS units.</p>
+<hr />
+<h2 id="core-operation">⚙️ Core Operation</h2>
+<p>During scraping, certain contributors may have faulty GPS tracking equipment that locks onto a single latitude coordinate (parallel) while longitude continues to update. This creates straight lines of incorrect coordinates stretching across multiple regions.</p>
+<p>The script scans coordinate distributions, flags locked parallels, and deletes the anomalies to write an independent cleaned metadata file (<code>geo_space_cleaned.parquet</code>), leaving the raw deduplicated database untouched.</p>
+<p>To prevent false positives, <strong>anomaly checking is grouped by platform and continent</strong>:</p>
+<ol>
+<li>It reads <code>Latitude</code>, <code>Longitude</code>, <code>Platform</code>, and <code>continent</code> (if present) from the Parquet dataset.</li>
+<li>It aggregates statistics within individual platforms (and optionally continents) rather than globally.</li>
+<li>This ensures that a normal dense urban center captured by one platform is not flagged as an anomaly because of a GPS glitch present on a different platform.</li>
+</ol>
+<hr />
+<h2 id="safety-criteria">📐 Safety Criteria</h2>
+<p>A rounded latitude parallel <span class="arithmatex">\(L\)</span> (rounded to 5 decimal places, representing ~1.1 meters precision) is flagged and purged within a specific platform/continent grouping only if:</p>
+<div class="arithmatex">\[
+\text{Count}_{\text{Platform}}(L) \gt 10 \quad \text{and} \quad \text{Longitude Span}_{\text{Platform}}(L) \gt 1.0^{\circ}
+\]</div>
+<ul>
+<li>A longitude span threshold of <span class="arithmatex">\(&gt; 1.0^{\circ}\)</span> (~111 km) ensures that dense city streets or landmarks—which naturally accumulate thousands of images inside extremely small bounding boxes—are completely preserved.</li>
+<li>Platform-specific locked parallel lines spanning across multiple countries or provinces are safely purged.</li>
+</ul>
+<hr />
+<h2 id="automated-mapillary-sequence-expansion">🗺️ Automated Mapillary Sequence Expansion</h2>
+<p>Street-level imagery in Mapillary is captured in continuous temporal driving sessions termed <strong>sequences</strong>. When a contributor experiences a hardware or GPS lockup (e.g. frozen latitude sensor across hundreds of kilometers), the entire driving session is contaminated.</p>
+<p>While points directly on the parallel are flagged by the <code>round(5)</code> check, other frames in that faulty sequence may drift or jitter slightly (e.g. <code>±0.00001</code> or GPS noise) and escape point-level detection.</p>
+<p>To eliminate GPS pollution comprehensively:</p>
+<ol>
+<li>When Mapillary locked-latitude anomalies are detected within the filtered platform/continent scope, the script automatically loads <code>MAPILLARY_TOKEN</code> (from the environment or <code>.env</code>).</li>
+<li>It batch-queries Mapillary Graph API v4 (<code>https://graph.mapillary.com/?ids=...&amp;fields=id,sequence</code>) in chunks of 100 to map all flagged points to their parent <code>sequence_id</code>s.</li>
+<li>For every violating sequence, it queries <code>https://graph.mapillary.com/image_ids?sequence_id={seq_id}</code> to retrieve all image IDs belonging to that contaminated drive.</li>
+<li>During streaming Parquet and CSV writes, <strong>the entire sequence</strong> (all member image IDs) is purged from the database alongside the locked parallel points.</li>
+<li>If <code>MAPILLARY_TOKEN</code> is not present, the script gracefully falls back to point-level parallel purging with an informative notice.</li>
+</ol>
+<blockquote>
+<p>[!TIP] Synchronizing Existing Offline Datasets
+When coordinate cleaning purges new anomalies or sequences from <code>geo_space_cleaned.parquet</code>, any existing offline dataset (<code>geo_space_cleaned_offline.parquet</code>), companion embedding matrices (<code>.npy</code> and <code>.keys.parquet</code>), and clustered sidecars (<code>*_clustered_k_*.parquet</code>) can be brought into 100% alignment using <code>src/utils/sync_offline_dataset.py</code> (or <code>./scripts/pipeline/run_offline_pipeline.sh --sync_offline</code>).</p>
+</blockquote>
+<hr />
+<h2 id="options-parameters">⚙️ Options &amp; Parameters</h2>
+<p>You can restrict the scope of coordinate cleaning to a specific platform or region to target known glitches (e.g. Mapillary uploads in Africa) by editing the following keys in <code>params.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">pipeline</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">cleanup_anomalies</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Enable or disable coordinate parallel cleaning</span>
+<span class="w">  </span><span class="nt">cleanup_platform</span><span class="p">:</span><span class="w"> </span><span class="s">"mapillary"</span><span class="w"> </span><span class="c1"># (Optional) Target platform for coordinate anomaly cleanup (e.g. "mapillary")</span>
+<span class="w">  </span><span class="nt">cleanup_continent</span><span class="p">:</span><span class="w"> </span><span class="s">"africa"</span><span class="w">  </span><span class="c1"># (Optional) Target continent for coordinate anomaly cleanup (e.g. "africa")</span>
+</code></pre></div>
+<h3 id="command-line-arguments">Command Line Arguments</h3>
+<p>Alternatively, you can run the script manually with targeted flags:</p>
+<ul>
+<li><code>--platform</code>: Restricts detection and cleaning to a specific platform (e.g. <code>--platform mapillary</code>).</li>
+<li><code>--continent</code>: Restricts detection and cleaning to a specific continent (e.g. <code>--continent africa</code>).</li>
+</ul>
+<hr />
+<h2 id="performance-type-resilience">🏎️ Performance &amp; Type Resilience</h2>
+<p>Both Parquet loading and CSV chunk writing perform defensive <code>pd.to_numeric</code> conversions on coordinates at startup to prevent float-string mixed schema exceptions during high-precision rounding operations.</p>
+<hr />
+<h2 id="interactive-manual-anomaly-cleaner-srcprocessinginteractive_anomaly_cleanerpy">🖥️ Interactive Manual Anomaly Cleaner (<code>src/processing/interactive_anomaly_cleaner.py</code>)</h2>
+<p>For visual inspection and targeted curation of geographic anomalies—specifically Mapillary tracks, sensor glitches, or unwanted platform-specific clusters—Geo-RAG provides a dedicated, lightweight interactive web dashboard.</p>
+<h3 id="key-architecture-features">Key Architecture &amp; Features</h3>
+<ol>
+<li>
+<p><strong>Continent-Restricted &amp; Fast Loading</strong>:
+   * Scopes analysis to a single continent (e.g., <code>--continent Africa</code> or <code>--continent Europe</code>), reducing memory footprint and keeping startup under 8 seconds even for Europe (2.5M+ records).
+   * Automatically centers and fits the Leaflet map bounds to the selected continent.</p>
+</li>
+<li>
+<p><strong>Mapillary Priority &amp; Multi-Platform Filtering</strong>:
+   * Color-codes H3 hexagonal cells (e.g. resolution 4, ~177km edge) by Mapillary image density using log scaling.
+   * Provides fine-grained removal controls:</p>
+<ul>
+<li><strong>Purge Mapillary Only</strong>: Removes erroneous Mapillary tracks while preserving genuine user photos from Flickr, Wikimedia, or iNaturalist in that cell.</li>
+<li><strong>Purge Entire Cell</strong>: Discards all photos within the spatial boundary regardless of platform.</li>
+</ul>
+</li>
+<li>
+<p><strong>Sub-50ms On-Click Image Inspection</strong>:
+   * Clicking any hexagon opens a side drawer in under 50 ms.
+   * Displays cell-level generic metadata: top countries, Köppen climate codes &amp; descriptions, and centroid coordinates.
+   * Renders representative photo samples in a thumbnail grid (querying direct CDN thumbnails via <code>MAPILLARY_TOKEN</code>) with clickable links to the Mapillary web app (<code>https://www.mapillary.com/app/?pKey=...</code>).</p>
+</li>
+<li>
+<p><strong>2-Phase Staging &amp; Single-Step Streaming Purge</strong>:
+   * <strong>Phase 1 (Instant In-Memory Staging)</strong>: Marking cells updates your "Staged Removals" list in memory with 0 ms latency; flagged hexagons display a prominent red dashed border on the map.
+   * <strong>Phase 2 (Single-Step Purge)</strong>: Clicking <strong>"🚀 Execute Purge"</strong> runs a single streaming row-group filter over the Parquet file, filtering rows in C++ memory via PyArrow and atomically writing the cleaned dataset without high RAM consumption.
+   * <strong>Reproducible Rules JSON</strong>: Staged decisions are automatically persisted to <code>manual_h3_removals.json</code> (and can be exported/imported), making cleanup actions version-controlled and auditable.</p>
+</li>
+</ol>
+<h3 id="usage">Usage</h3>
+<h4 id="1-interactive-web-dashboard">1. Interactive Web Dashboard</h4>
+<p>Launch the server pointing to your Parquet dataset and target continent:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.processing.interactive_anomaly_cleaner<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input<span class="w"> </span>full_pipeline_output/geo_space_deduplicated.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output<span class="w"> </span>full_pipeline_output/geo_space_deduplicated_cleaned.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--continent<span class="w"> </span>Africa<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--res<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--port<span class="w"> </span><span class="m">8080</span>
+</code></pre></div>
+<p>Then open <code>http://localhost:8080</code> in your browser.</p>
+<h4 id="2-headless-batch-execution">2. Headless Batch Execution</h4>
+<p>To re-apply previously saved removal rules headlessly (e.g. in CI/CD or batch pipelines):</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-m<span class="w"> </span>src.processing.interactive_anomaly_cleaner<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input<span class="w"> </span>full_pipeline_output/geo_space_deduplicated.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output<span class="w"> </span>full_pipeline_output/geo_space_deduplicated_cleaned.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--rules-file<span class="w"> </span>manual_h3_removals.json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--batch-purge
+</code></pre></div>
+<h4 id="cli-parameters">CLI Parameters</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Flag</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--input</code></td>
+<td style="text-align: left;"><code>str</code></td>
+<td style="text-align: left;"><code>.../geo_space_deduplicated.parquet</code></td>
+<td style="text-align: left;">Path to input Parquet dataset.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--output</code></td>
+<td style="text-align: left;"><code>str</code></td>
+<td style="text-align: left;"><code>None</code> (in-place)</td>
+<td style="text-align: left;">Path to cleaned output Parquet dataset.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--continent</code></td>
+<td style="text-align: left;"><code>str</code></td>
+<td style="text-align: left;"><code>"Africa"</code></td>
+<td style="text-align: left;">Target continent to inspect (<code>Africa</code>, <code>Europe</code>, <code>Asia</code>, <code>North America</code>, etc.).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--res</code></td>
+<td style="text-align: left;"><code>int</code></td>
+<td style="text-align: left;"><code>4</code></td>
+<td style="text-align: left;">H3 aggregation grid resolution (<code>3</code>, <code>4</code>, or <code>5</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--port</code></td>
+<td style="text-align: left;"><code>int</code></td>
+<td style="text-align: left;"><code>8080</code></td>
+<td style="text-align: left;">Local port to serve the interactive web dashboard.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--host</code></td>
+<td style="text-align: left;"><code>str</code></td>
+<td style="text-align: left;"><code>127.0.0.1</code></td>
+<td style="text-align: left;">Host address to bind.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--rules-file</code></td>
+<td style="text-align: left;"><code>str</code></td>
+<td style="text-align: left;"><code>manual_h3_removals.json</code></td>
+<td style="text-align: left;">Path to JSON file storing staged removal rules.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--batch-purge</code></td>
+<td style="text-align: left;"><code>flag</code></td>
+<td style="text-align: left;"><code>False</code></td>
+<td style="text-align: left;">Apply rules directly from <code>--rules-file</code> without starting the server.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="mapillary-trajectory-kinematic-validation-srcutilsmapillary_trajectory_validatorpy">🧭 Mapillary Trajectory &amp; Kinematic Validation (<code>src/utils/mapillary_trajectory_validator.py</code>)</h2>
+<p>In crowdsourced street imagery (particularly noticeable in regions like Africa), contributors occasionally upload sequences captured from <strong>stationary cameras</strong> (e.g., phones placed indoors, in courtyards, or on tables). Because of poor sky visibility and multipath GNSS interference, recorded coordinates wander erratically in random walks across dozens or hundreds of meters.</p>
+<p>Downstream spatial deduplication thins out consecutive frames, leaving sparse remnants scattered across different H3 cells that masquerade as moving captures.</p>
+<h3 id="kinematic-geometric-evaluation-rules">Kinematic &amp; Geometric Evaluation Rules</h3>
+<p>When evaluating a Mapillary sequence track <span class="arithmatex">\((t_i, \text{lat}_i, \text{lon}_i)_{i=1}^N\)</span>, the validator executes three strict tests:</p>
+<ol>
+<li><strong>Stationary Camera GPS Jitter</strong>:
+   * Condition: Frame count <span class="arithmatex">\(N \ge 15\)</span>, bounding radius <span class="arithmatex">\(\le 35\text{ m}\)</span>, cumulative path length <span class="arithmatex">\(\ge 100\text{ m}\)</span>, and tortuosity <span class="arithmatex">\(T \ge 15.0\)</span>.
+   * Identifies cameras that never actually moved while GPS jittered back and forth.</li>
+<li><strong>Severe Random-Walk Tortuosity</strong>:
+   * Condition: Path length <span class="arithmatex">\(\ge 250\text{ m}\)</span>, net displacement <span class="arithmatex">\(\le 25\text{ m}\)</span>, and tortuosity <span class="arithmatex">\(T = \frac{L_{\text{total}}}{\max(D_{\text{net}}, 1\text{m})} \ge 20.0\)</span>.
+   * Filters out chaotic ping-pong wanderings.</li>
+<li><strong>Impossible Instantaneous Speed Spikes</strong>:
+   * Condition: Max speed <span class="arithmatex">\(v_{\max} \ge 160\text{ km/h}\)</span> over jumps <span class="arithmatex">\(&gt; 100\text{ m}\)</span> with <span class="arithmatex">\(\Delta t \ge 0.5\text{ s}\)</span>.
+   * Flags teleportation anomalies and corrupted timestamps.</li>
+</ol>
+<h3 id="persistent-sqlite-caching">Persistent SQLite Caching</h3>
+<p>To guarantee zero redundant API calls across pipeline runs, chunks, or interactive sessions, the validator persists:</p>
+<ul>
+<li><code>photo_sequences</code>: Mapping of <code>photo_id -&gt; sequence_id</code>.</li>
+<li><code>sequences</code>: Evaluated sequence metrics, validity verdicts, reasons, and GeoJSON tracks in <code>data/cache/mapillary_sequences.db</code>.</li>
+</ul>
+<hr />
+<h2 id="batch-continent-sequence-auditor-srcprocessingaudit_mapillary_sequencespy">🚜 Batch Continent Sequence Auditor (<code>src/processing/audit_mapillary_sequences.py</code>)</h2>
+<p>To audit an entire continent and purge all corrupted Mapillary images in a single streaming pass:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. Dry run: scan Africa, inspect violations and reason breakdown without modifying files</span>
+python3<span class="w"> </span>-m<span class="w"> </span>src.processing.audit_mapillary_sequences<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input<span class="w"> </span>full_pipeline_output/geo_space_cleaned.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--continent<span class="w"> </span>Africa<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--dry_run<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--report_json<span class="w"> </span>full_pipeline_output/africa_mapillary_audit.json
+
+<span class="c1"># 2. Execute purge: stream-remove invalid sequence photos from primary and sibling datasets</span>
+python3<span class="w"> </span>-m<span class="w"> </span>src.processing.audit_mapillary_sequences<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--input<span class="w"> </span>full_pipeline_output/geo_space_deduplicated.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--extra_parquets<span class="w"> </span>full_pipeline_output/geo_space_cleaned.parquet<span class="w"> </span>full_pipeline_output/geo_space_cleaned_hf.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--continent<span class="w"> </span>Africa
+</code></pre></div>
+<blockquote>
+<p>[!TIP]
+<strong>Zero-Redundancy Multi-Dataset Synchronization</strong>:</p>
+<ul>
+<li><strong>Primary Dataset</strong>: Purged row-group by row-group in streaming mode with minimal RAM overhead.</li>
+<li><strong>Additional Parquets (<code>--extra_parquets</code>)</strong>: Pass sibling datasets (e.g. <code>geo_space_cleaned.parquet</code>) or pass <code>auto</code> to automatically discover and purge matching sibling datasets in the same run.</li>
+<li><strong>Companion Embeddings</strong>: Discovers companion embeddings (<code>*_embeddings.npy</code> and <code>*.keys.parquet</code>) sharing the dataset prefix and prunes matching vectors atomically via zero-GPU memory-mapped slicing (<code>np.memmap</code>).</li>
+<li><strong>Clustered Sidecars</strong>: Discovers and filters companion clustered sidecars (<code>*_clustered_k_*.parquet</code>) in-place.</li>
+</ul>
+</blockquote>
+<h3 id="scraper-chunk-level-validation-srcscrapersmapillary_scraperpy">Scraper Chunk-Level Validation (<code>src/scrapers/mapillary_scraper.py</code>)</h3>
+<p>For future scraping runs, <a href="file:///home/aaniraj/Documents/Projects/code/geo-rag/src/scrapers/mapillary_scraper.py"><code>mapillary_scraper.py</code></a> captures <code>sequence</code> during initial photo discovery and automatically audits unique sequences at the end of each chunk. Corrupted stationary tracks are purged before saving, guaranteeing that downstream metadata parsing and deduplication receive 100% clean data with the standard 6-column schema.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../assets/js/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

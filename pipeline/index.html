@@ -1,0 +1,1761 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../dataset_publication_roadmap/">
+      
+      
+        <link rel="next" href="01_ingestion_scraping/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Overview - Geo-RAG</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#geo-rag-pipeline-guide-architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Geo-RAG" class="md-header__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Geo-RAG
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Overview
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../preliminaries/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Preliminaries
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../dataset/" class="md-tabs__link">
+          
+  
+  
+  Dataset Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Pipeline Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../evaluation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Evaluation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../evaluation_results/" class="md-tabs__link">
+          
+  
+  
+  Benchmark Results
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Geo-RAG" class="md-nav__button md-logo" aria-label="Geo-RAG" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Geo-RAG
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../preliminaries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preliminaries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Dataset Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset/download_images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline Image Downloader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dataset_publication_roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publication Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Pipeline Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-pipeline-overview-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ 1. Pipeline Overview &amp; Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-pipeline-walkthrough-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ 2. Pipeline Walkthrough &amp; Stages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-offline-pipeline-model-representation-sweeps-scriptspipelinerun_offline_pipelinesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ 3. Offline Pipeline &amp; Model Representation Sweeps (scripts/pipeline/run_offline_pipeline.sh)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚡ 3. Offline Pipeline &amp; Model Representation Sweeps (scripts/pipeline/run_offline_pipeline.sh)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-dataset-architecture-automated-image-synchronization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-Dataset Architecture &amp; Automated Image Synchronization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zero-inference-embedding-derivation-cnn-aggregation-backfill_embeddingspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-Inference Embedding Derivation &amp; CNN Aggregation (backfill_embeddings.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-agnostic-offline-dataset-multi-model-embeddings-synchronization-sync_offline_datasetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model-Agnostic Offline Dataset &amp; Multi-Model Embeddings Synchronization (sync_offline_dataset.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visualizations-sidecar-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualizations &amp; Sidecar Layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-data-versioning-dvc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💾 4. Data Versioning (DVC)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-literature-software-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📚 5. Literature &amp; Software References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="01_ingestion_scraping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Ingestion & Scraping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="02_spatial_deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Spatial Deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="03_timestamp_standardization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Timestamp Standardization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="04_coordinate_cleanup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Coordinate Cleanup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="05_optimal_k_estimation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Optimal K Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="06_clustering_dynamic_drift/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Clustering & Drift
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="07_mllm_labeling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. MLLM Labeling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="08_spatial_semantic_indexing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Spatial-Semantic Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="09_visualization_dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmark Results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_eunis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS (All Platforms)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_eunis_plat_flickr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EUNIS (Flickr Queries)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_lucas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LUCAS Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation_results/comparison_places/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Places Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-pipeline-overview-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🗺️ 1. Pipeline Overview &amp; Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-pipeline-walkthrough-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚙️ 2. Pipeline Walkthrough &amp; Stages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-offline-pipeline-model-representation-sweeps-scriptspipelinerun_offline_pipelinesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ 3. Offline Pipeline &amp; Model Representation Sweeps (scripts/pipeline/run_offline_pipeline.sh)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚡ 3. Offline Pipeline &amp; Model Representation Sweeps (scripts/pipeline/run_offline_pipeline.sh)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-dataset-architecture-automated-image-synchronization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-Dataset Architecture &amp; Automated Image Synchronization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zero-inference-embedding-derivation-cnn-aggregation-backfill_embeddingspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-Inference Embedding Derivation &amp; CNN Aggregation (backfill_embeddings.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-agnostic-offline-dataset-multi-model-embeddings-synchronization-sync_offline_datasetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model-Agnostic Offline Dataset &amp; Multi-Model Embeddings Synchronization (sync_offline_dataset.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visualizations-sidecar-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualizations &amp; Sidecar Layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-data-versioning-dvc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        💾 4. Data Versioning (DVC)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-literature-software-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        📚 5. Literature &amp; Software References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="geo-rag-pipeline-guide-architecture">Geo-RAG Pipeline Guide &amp; Architecture</h1>
+<p>This document serves as the master overview and index for the Geo-RAG spatial-semantic data engineering, clustering, and mapping pipeline.</p>
+<blockquote>
+<p>[!TIP] New to Geo-RAG?
+If you are new to the project or looking for high-level concepts and a glossary, check out the <strong><a href="../preliminaries/">Preliminaries &amp; Core Concepts Guide</a></strong> first!</p>
+</blockquote>
+<hr />
+<h2 id="1-pipeline-overview-architecture">🗺️ 1. Pipeline Overview &amp; Architecture</h2>
+<p>The pipeline takes raw street-level and outdoor image databases, cleans up bad GPS data, extracts AI visual fingerprints, clusters similar landscapes globally, generates natural-language descriptions with Vision-Language Models (VLMs), and compiles interactive web maps.</p>
+<p><img alt="Pipeline Flowchart" src="../pipeline_flowchart_clean.jpg" /></p>
+<hr />
+<h2 id="2-pipeline-walkthrough-stages">⚙️ 2. Pipeline Walkthrough &amp; Stages</h2>
+<p>Detailed documentation for each stage of the pipeline can be found in the sub-guides below:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Stage</th>
+<th style="text-align: left;">Plain English Goal</th>
+<th style="text-align: left;">Core Responsibility &amp; Mechanics</th>
+<th style="text-align: left;">Guide</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>01. Ingestion &amp; Scraping</strong></td>
+<td style="text-align: left;">Download photo records from public platforms</td>
+<td style="text-align: left;">Flickr, Mapillary, KartaView, and iNaturalist API queries with spatial difference masking.</td>
+<td style="text-align: left;"><a href="01_ingestion_scraping/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>02. Spatial Deduplication</strong></td>
+<td style="text-align: left;">Prune redundant shots taken at the exact same tree/corner</td>
+<td style="text-align: left;">H3 Resolution 11 spatial grouping, visual cosine similarity filtering, and decoupled <code>.npy</code> vector caching.</td>
+<td style="text-align: left;"><a href="02_spatial_deduplication/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>03. Timestamp Standardization</strong></td>
+<td style="text-align: left;">Fix capture timezones and validate country boundaries</td>
+<td style="text-align: left;">Datetime UTC normalization, climate zone attribution, and EPSG:3857 coastal buffer validation.</td>
+<td style="text-align: left;"><a href="03_timestamp_standardization/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>04. Coordinate Anomaly Cleanup</strong></td>
+<td style="text-align: left;">Remove GPS tracks corrupted by receiver glitches</td>
+<td style="text-align: left;">Detects frozen-latitude tracks and purges faulty Mapillary vehicle sequences.</td>
+<td style="text-align: left;"><a href="04_coordinate_cleanup/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>05. Optimal <span class="arithmatex">\(k\)</span> Estimation</strong></td>
+<td style="text-align: left;">Estimate how many distinct visual landscapes exist</td>
+<td style="text-align: left;">Spatial Block Hold-Out cross-validation and reconstruction loss Elbow curve heuristics.</td>
+<td style="text-align: left;"><a href="05_optimal_k_estimation/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>06. Global GPU Clustering</strong></td>
+<td style="text-align: left;">Group millions of photos by visual similarity</td>
+<td style="text-align: left;">FAISS GPU spherical <span class="arithmatex">\(k\)</span>-means clustering, semantic drift outlier tracking, and hierarchical partitioning.</td>
+<td style="text-align: left;"><a href="06_clustering_dynamic_drift/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>07. MLLM Cluster Labeling</strong></td>
+<td style="text-align: left;">Ask an AI to write descriptive captions for each cluster</td>
+<td style="text-align: left;">Generates film-strip collages of cluster medoids and prompts VLMs (via SGLang Docker) for ecological labels.</td>
+<td style="text-align: left;"><a href="07_mllm_labeling/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>08. Spatial-Semantic Indexing</strong></td>
+<td style="text-align: left;">Build a sub-millisecond global search index</td>
+<td style="text-align: left;">Multi-resolution H3 hexagonal aggregation mapping geography to visual categories.</td>
+<td style="text-align: left;"><a href="08_spatial_semantic_indexing/">Guide ➡️</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>09. Visualization Dashboards</strong></td>
+<td style="text-align: left;">Render interactive maps and exploration charts</td>
+<td style="text-align: left;">Leaflet density/semantic maps, WebGL 2D UMAP projections, and HTML cluster galleries.</td>
+<td style="text-align: left;"><a href="09_visualization_dashboards/">Guide ➡️</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-offline-pipeline-model-representation-sweeps-scriptspipelinerun_offline_pipelinesh">⚡ 3. Offline Pipeline &amp; Model Representation Sweeps (<code>scripts/pipeline/run_offline_pipeline.sh</code>)</h2>
+<p>When working with pre-downloaded offline datasets (e.g. <code>geo_space_cleaned_offline.parquet</code>, camera trap subsets, or benchmark extracts), the scraping, cell-chunking, and network downloading stages can be skipped entirely.</p>
+<p>The offline pipeline (<code>scripts/pipeline/run_offline_pipeline.sh</code>, configured via <code>config/pipeline/params_offline.yaml</code>) allows rapid evaluation across different vision backbones (<code>google/tipsv2-b14</code>, <code>facebook/dinov2-base</code>, SigLIP, etc.), pooling strategies (<code>cls</code>, <code>avg_patch</code>, <code>cls_avg_patch</code>), and cluster counts (<span class="arithmatex">\(k\)</span>).</p>
+<h3 id="two-dataset-architecture-automated-image-synchronization">Two-Dataset Architecture &amp; Automated Image Synchronization</h3>
+<p>Geo-RAG maintains a clean separation between remote and local datasets:</p>
+<ol>
+<li><strong>Master Dataset (<code>full_dataset_parquet</code>)</strong>: The canonical dataset preserving all original remote URLs (<code>Image_URL = https://...</code>).</li>
+<li><strong>Offline Dataset (<code>input_parquet</code>)</strong>: The self-contained operational dataset with local relative paths (<code>Image_Location = ./images/&lt;platform&gt;/&lt;photo_id&gt;.jpg</code>) and companion embeddings (<code>.npy</code> + <code>.keys.parquet</code>).</li>
+</ol>
+<p>When new images are appended to the master dataset, pass <code>--run_download_images</code> to sync the offline dataset automatically:</p>
+<div class="highlight"><pre><span></span><code>./scripts/pipeline/run_offline_pipeline.sh<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--input<span class="w"> </span>/path/to/geo_space_cleaned_offline.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--full_dataset_parquet<span class="w"> </span>/path/to/geo_space_cleaned.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--run_download_images<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--download_output_dir<span class="w"> </span>/path/to/images<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--image_root_dirs<span class="w"> </span>/path/to/images<span class="w"> </span>/path/to/other_cam_traps<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output_dir<span class="w"> </span>/path/to/output<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model_name<span class="w"> </span><span class="s2">"google/tipsv2-b14"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--representation_type<span class="w"> </span><span class="s2">"cls"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--precision<span class="w"> </span><span class="s2">"float16"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--run_backfill_embeddings<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--k_clusters<span class="w"> </span><span class="m">40000</span>
+</code></pre></div>
+<ul>
+<li><strong>Step 0 (Download / Sync)</strong>: Reads <code>--full_dataset_parquet</code>, searches existing offline files across <code>--image_root_dirs</code> (storage locations on local PC), copies discovered images into <code>--download_output_dir</code>, downloads missing deltas with streaming atomic checkpoints into <code>--download_output_dir</code>, and appends them to <code>--input</code> (metadata-only via <code>--skip_embeddings</code>, strictly decoupling image retrieval from model representations).</li>
+<li><strong>Step 0.5 (Backfill Embeddings)</strong>: Reads <code>--input</code> with <code>--resume</code>, skips already embedded images, loads images directly from <code>--download_output_dir</code>, computes embeddings only for the newly downloaded deltas (for the exact <code>--model_name</code>, <code>--representation_type</code>, and <code>--precision</code> configured), and updates companion <code>.npy</code> matrices.</li>
+<li><strong>Steps 1–5</strong>: Performs clustering, spatial indexing, medoid labeling, and interactive visualization generation seamlessly, reading images directly from <code>--download_output_dir</code>.</li>
+</ul>
+<h3 id="zero-inference-embedding-derivation-cnn-aggregation-backfill_embeddingspy">Zero-Inference Embedding Derivation &amp; CNN Aggregation (<code>backfill_embeddings.py</code>)</h3>
+<p>When running representation sweeps across different pooling variants (<code>cls</code>, <code>avg_patch</code>, <code>cls_avg_patch</code>), <code>backfill_embeddings.py</code> automatically detects existing companion files and derives representations mathematically without GPU model inference:</p>
+<ul>
+<li><strong>ViT Decomposition (<code>cls_avg_patch</code> <span class="arithmatex">\(\to\)</span> <code>cls</code> / <code>avg_patch</code>)</strong>:</li>
+<li>In Vision Transformers (ViT, TIPSv2, CLIP, DINOv2, SigLIP), <code>cls_avg_patch</code> is stored as direct concatenation <span class="arithmatex">\([\mathbf{cls} \parallel \mathbf{avg\_patch}] \in \mathbb{R}^{2D}\)</span>.</li>
+<li>If a sweep requests <code>cls</code>, <code>backfill_embeddings.py</code> automatically slices the first half (<code>[:, :D]</code>).</li>
+<li>If a sweep requests <code>avg_patch</code>, it automatically slices the second half (<code>[:, D:]</code>).</li>
+<li>Slicing operates directly via zero-copy NumPy memory maps (<code>mmap_mode="r"</code>), completing in seconds across millions of vectors without downloading images or loading PyTorch models into GPU VRAM.</li>
+<li><strong>ViT Concatenation (<code>cls</code> + <code>avg_patch</code> <span class="arithmatex">\(\to\)</span> <code>cls_avg_patch</code>)</strong>:</li>
+<li>If <code>cls_avg_patch</code> is requested and separate <code>_cls_embeddings.npy</code> and <code>_avg_patch_embeddings.npy</code> files exist, they are automatically concatenated along axis 1 with key alignment.</li>
+<li><strong>Dynamic Architecture Aggregation &amp; Zero-Inference Aliasing</strong>:</li>
+<li>Models without discrete <code>[CLS]</code> tokens—including CNNs (ResNet, ConvNeXt, EfficientNet) and CLS-less Vision Transformers (Swin Transformer, GAP-pooled ViTs, PVT)—reduce spatial tokens via Global Average Pooling (GAP) or patch averaging, making <code>cls</code> and <code>avg_patch</code> mathematically identical.</li>
+<li>Rather than relying on fragile hard-coded architecture lists, <code>backfill_embeddings.py</code> dynamically inspects <code>cls_token</code> and <code>num_prefix_tokens</code> via <code>model_has_cls_token</code> using PyTorch's <code>meta</code> device (allocating <strong>0 bytes of RAM/VRAM</strong> and <strong>0 weight downloads</strong> in ~2ms).</li>
+<li>Existing spatial pooled embeddings are automatically reused across <code>cls</code> and <code>avg_patch</code> interchangeably without recomputation.</li>
+<li><strong>Full Override Control</strong>: Pass <code>--no_resume</code> or <code>--force</code> to bypass automatic derivation and force recomputation from scratch.</li>
+</ul>
+<h3 id="model-agnostic-offline-dataset-multi-model-embeddings-synchronization-sync_offline_datasetpy">Model-Agnostic Offline Dataset &amp; Multi-Model Embeddings Synchronization (<code>sync_offline_dataset.py</code>)</h3>
+<p>When upstream coordinate anomaly cleanup (<code>cleanup_coordinate_anomalies.py</code>), duplicate pruning, or sequence purging removes corrupted records from the master online dataset (<code>geo_space_cleaned.parquet</code>), pre-existing offline datasets (<code>geo_space_cleaned_offline.parquet</code>) and their companion embeddings files retain those deleted records unless explicitly synchronized.</p>
+<p>Because the offline pipeline may explore different model architectures (e.g. DINOv2, SigLIP, Swin) or multiple backfilled representations than the online pipeline, synchronization is <strong>completely model-agnostic</strong>:</p>
+<ol>
+<li><strong>Automatic Multi-Model &amp; Clustered Sidecar Discovery</strong>:
+   Scans the offline directory (and optional <code>--extra_dirs</code>, e.g. pipeline output directories) for all companion files matching <code>{base_name}_*_embeddings.keys.parquet</code> / <code>{base_name}_*_embeddings.npy</code> as well as companion clustered sidecars matching <code>*clustered_k_*.parquet</code>. It automatically detects companion matrices and cluster assignments for <strong>every model and sweep variant</strong> present on disk.</li>
+<li><strong>Metadata Pruning</strong>:
+   Extracts <code>photo_key</code> sets from the master online dataset and filters <code>input_parquet</code> in-place using atomic temporary files, removing any rows that were purged upstream.</li>
+<li><strong>Zero-Inference Embedding Slicing</strong>:
+   For each discovered companion pair, slices the <code>.npy</code> matrix via memory mapping (<code>mmap_mode="r"</code>) to match the surviving keys, and updates <code>.keys.parquet</code> atomically. This takes <span class="arithmatex">\(&lt;1\)</span>s per model without GPU forward passes or model weight loading.</li>
+<li><strong>Companion Clustered Sidecar Reconciliation</strong>:
+   Prunes pre-existing clustered sidecar Parquet files (<code>*_clustered_k_*.parquet</code>) in-place so cluster assignments stay 100% synchronized with the base dataset, preventing stale cluster mappings or missing key warnings during downstream indexing.</li>
+<li><strong>Physical Image Deletion (Optional)</strong>:
+   When <code>--delete_images</code> (or <code>--delete_orphaned_images</code>) is enabled, identifies local image files (<code>Image_Location</code>) for purged records and removes them from disk to reclaim storage space.</li>
+</ol>
+<p><strong>Running as a Standalone Command</strong>:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>src.utils.sync_offline_dataset<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--online<span class="w"> </span>full_pipeline_output/geo_space_cleaned.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--offline<span class="w"> </span>full_pipeline_output/geo_space_cleaned_offline.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--image_dir<span class="w"> </span>/path/to/images<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--delete_images
+</code></pre></div>
+<p><strong>Running within the Offline Pipeline</strong>:
+Pass <code>--sync_offline</code> to <code>scripts/pipeline/run_offline_pipeline.sh</code> (or set <code>sync_offline_dataset: true</code> in <code>config/pipeline/params_offline.yaml</code>):</p>
+<div class="highlight"><pre><span></span><code>./scripts/pipeline/run_offline_pipeline.sh<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--input<span class="w"> </span>/path/to/geo_space_cleaned_offline.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--full_dataset_parquet<span class="w"> </span>/path/to/geo_space_cleaned.parquet<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sync_offline<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--delete_orphaned_images
+</code></pre></div>
+<p>If the offline dataset is already 100% in sync, this pre-flight step exits in <span class="arithmatex">\(&lt;1\)</span>s with a confirmation checkmark and proceeds.</p>
+<h3 id="visualizations-sidecar-layout">Visualizations &amp; Sidecar Layout</h3>
+<p>To prevent destructive file overwrites across different model sweeps:</p>
+<ul>
+<li><strong>Visualizations Directory</strong>: All HTML maps, sample grids, UMAP scatter plots, and summary statistics are routed into a dedicated subfolder:
+  <code>vis_${num_clusters}_${model_name}_${representation_type}_${precision}/</code></li>
+<li><strong>Model-Namespaced Sidecar Parquets</strong>: Clustered sidecar files and spatial indexes record the model provenance in their metadata and filenames:
+  <code>${BASE_NAME}_${model_slug}_${representation_type}_${precision}_clustered_k_${k}.parquet</code></li>
+<li><strong>Smart Parent-Directory Resolution</strong>: Downstream loaders (<code>load_dataset_with_clusters</code> and <code>load_embeddings</code>) automatically traverse parent and sibling directories to discover base metadata and companion <code>.npy</code> embeddings matrices without duplicating storage.</li>
+</ul>
+<hr />
+<h2 id="4-data-versioning-dvc">💾 4. Data Versioning (DVC)</h2>
+<p>To handle heavy files (Parquet databases, HTML maps, images), <code>scripts/pipeline/run_full_pipeline.sh</code> implements autonomous DVC standalone tracking:</p>
+<ol>
+<li><strong>HDD Storage</strong>: Outputs are written to a fast SSD, then backed up to a high-capacity HDD directory tracked by DVC.</li>
+<li><strong>Push</strong>: Pushes heavy data to remote storage using <code>dvc push</code>.</li>
+<li><strong>Git Sync</strong>: Copies the updated <code>.dvc</code> tracking files back to the SSD Git repository, automatically commits them, and pushes them to track repository state changes.</li>
+</ol>
+<hr />
+<h2 id="5-literature-software-references">📚 5. Literature &amp; Software References</h2>
+<ul>
+<li>Brodsky, A. (2018). <em>H3: Uber's Hexagonal Hierarchical Spatial Index</em>. Uber Engineering. <a href="https://h3geo.org">https://h3geo.org</a></li>
+<li>Dhillon, I. S., &amp; Modha, D. S. (2001). Concept decompositions for large sparse text document collections with applications to high-dimensional clustering. <em>Machine Learning</em>, 42(1), 143–175.</li>
+<li>Johnson, J., Douze, M., &amp; Jégou, H. (2019). Billion-scale similarity search with GPUs. <em>IEEE Transactions on Big Data</em>, 7(3), 535–547.</li>
+<li>McInnes, L., Healy, J., &amp; Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. <em>arXiv preprint arXiv:1802.03426</em>.</li>
+<li>Cao, B., Chen, K., Maninis, K. K., Chen, K., Karpur, A., Xia, Y., ... &amp; Araujo, A. (2026). Tipsv2: Advancing vision-language pretraining with enhanced patch-text alignment. <em>CVPR 2026</em>.</li>
+<li>Sculley, D. (2010). Web-scale k-means clustering. In <em>Proceedings of the 19th International Conference on World Wide Web</em> (pp. 1177–1178).</li>
+<li>Thorndike, R. L. (1953). Who belongs in the family? <em>Psychometrika</em>, 18(4), 267–276.</li>
+<li>Tobler, W. R. (1970). A computer movie simulating urban growth in the Detroit region. <em>Economic Geography</em>, 46(sup1), 234–240.</li>
+<li>Beck, H. E., T. R. McVicar, N. Vergopolan, A. Berg, N. J. Lutsko, A. Dufour, Z. Zeng, X. Jiang, A. I. J. M. van Dijk, and D. G. Miralles. High-resolution (1 km) Köppen-Geiger maps for 1901–2099 based on constrained CMIP6 projections. Scientific Data 10, 724 (2023).</li>
+<li>Vo, Huy V., et al. ‘Automatic Data Curation for Self-Supervised Learning: A Clustering-Based Approach’. <em>Transactions on Machine Learning Research</em>, 2024.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../assets/js/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
