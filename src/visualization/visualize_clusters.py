@@ -34,7 +34,14 @@ def get_clean_boundary(cell):
     return coords
 
 
-def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
+def create_map(
+    pkl_path,
+    output_html,
+    max_markers=2000,
+    image_root_dir=None,
+    find_prefix=None,
+    replace_prefix=None,
+):
     print(f"Loading data from {pkl_path}...")
     if pkl_path.endswith(".pkl"):
         with open(pkl_path, "rb") as f:
@@ -166,6 +173,8 @@ def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
         "black",
     ]
 
+    auto_detected_base = find_prefix or ""
+
     for item in plot_data:
         # Determine color based on cluster_id or platform
         if "cluster_id" in item:
@@ -219,23 +228,24 @@ def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
             if resolved_path:
                 image_url = "file://" + os.path.abspath(resolved_path)
 
+        if not auto_detected_base and isinstance(image_url, str):
+            if image_url.startswith("file://"):
+                last_slash = image_url.rfind("/")
+                if last_slash != -1:
+                    auto_detected_base = image_url[: last_slash + 1]
+
         html = popup_template.format(
             image_url=image_url,
-            photo_id=item["Photo_ID"],
-            platform=item["Platform"],
+            photo_id=item.get("Photo_ID", ""),
+            platform=item.get("Platform", ""),
             taken_text=taken_text,
             season_text=season_text,
             koppen_text=koppen_text,
             cluster_text=cluster_text,
-            h3_cell=item["H3_Cell"],
+            h3_cell=item.get("H3_Cell", ""),
         )
-        iframe_height = (
-            360
-            if ("cluster_description" in item and item["cluster_description"])
-            else 300
-        )
-        iframe = folium.IFrame(html=html, width=240, height=iframe_height)
-        popup = folium.Popup(iframe, max_width=285)
+        safe_html = html.replace("`", "&#96;").replace("${", "&#36;{")
+        popup = folium.Popup(folium.Html(safe_html, script=True), max_width=285)
 
         folium.Marker(
             location=[item["Latitude"], item["Longitude"]],
@@ -243,12 +253,36 @@ def create_map(pkl_path, output_html, max_markers=2000, image_root_dir=None):
             icon=folium.Icon(color=color, icon="camera"),
         ).add_to(marker_cluster)
 
+    if not auto_detected_base and image_root_dir:
+        first_dir = (
+            image_root_dir[0] if isinstance(image_root_dir, list) else image_root_dir
+        )
+        auto_detected_base = "file://" + os.path.abspath(first_dir).rstrip("/") + "/"
+    if not auto_detected_base:
+        for item in plot_data:
+            u = item.get("Image_URL", "")
+            if isinstance(u, str) and u.startswith("/"):
+                last_slash = u.rfind("/")
+                if last_slash != -1:
+                    auto_detected_base = u[: last_slash + 1]
+                    break
+
     # Inject global JS helper template from templates/image_error_handler.js
     js_template_path = os.path.join(
         os.path.dirname(__file__), "templates", "image_error_handler.js"
     )
     with open(js_template_path, "r", encoding="utf-8") as f:
-        js_code = f.read().replace("{{MAPILLARY_TOKEN}}", MAPILLARY_TOKEN)
+        js_code = (
+            f.read()
+            .replace("__MAPILLARY_TOKEN__", MAPILLARY_TOKEN)
+            .replace("{{MAPILLARY_TOKEN}}", MAPILLARY_TOKEN)
+            .replace("__MAP_NAME__", m.get_name())
+            .replace("{{MAP_NAME}}", m.get_name())
+            .replace("__AUTO_DETECTED_BASE__", auto_detected_base)
+            .replace("{{AUTO_DETECTED_BASE}}", auto_detected_base)
+            .replace("__DEFAULT_REPLACE_PREFIX__", replace_prefix or "")
+            .replace("{{DEFAULT_REPLACE_PREFIX}}", replace_prefix or "")
+        )
 
     js_header = f"<script>\n{js_code}\n</script>"
     m.get_root().html.add_child(folium.Element(js_header))
@@ -277,6 +311,25 @@ if __name__ == "__main__":
         default=None,
         help="Optional local offline image directories.",
     )
+    parser.add_argument(
+        "--find_prefix",
+        type=str,
+        default=None,
+        help="Optional local path prefix to replace (auto-detected if omitted).",
+    )
+    parser.add_argument(
+        "--replace_prefix",
+        type=str,
+        default=None,
+        help="Optional replacement URL prefix (e.g. http://localhost:8000/).",
+    )
     args = parser.parse_args()
 
-    create_map(args.pkl_file, args.output, args.max_markers, args.image_root_dir)
+    create_map(
+        args.pkl_file,
+        args.output,
+        args.max_markers,
+        args.image_root_dir,
+        find_prefix=args.find_prefix,
+        replace_prefix=args.replace_prefix,
+    )

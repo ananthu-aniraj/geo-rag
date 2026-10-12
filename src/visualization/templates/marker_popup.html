@@ -1,5 +1,5 @@
-<div style="width:220px">
-    <img src="{image_url}" onerror="handleImageError(this, '{photo_id}', '{platform}')" width="100%" style="border-radius: 4px;">
+<div style="width:220px; max-height: 380px; overflow-y: auto;">
+    <img src="{image_url}" data-orig-src="{image_url}" onerror="handleImageError(this, '{photo_id}', '{platform}')" width="100%" style="border-radius: 4px;">
     <p style="font-size: 11px; margin-top: 5px; line-height: 1.4; font-family: sans-serif;">
         <b>ID:</b> {photo_id}<br>
         <b>Platform:</b> {platform}<br>
@@ -8,6 +8,6 @@
         {koppen_text}
         {cluster_text}
         <b>H3 Cell:</b> {h3_cell}<br>
-        <a href="{image_url}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a>
+        <a href="{image_url}" data-orig-href="{image_url}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">Full Image</a>
     </p>
 </div>
