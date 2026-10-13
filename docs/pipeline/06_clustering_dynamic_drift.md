@@ -26,7 +26,8 @@ In `fit` mode, it runs full FAISS Spherical K-Means and triggers downstream VLM 
 
 Triggered if the pre-existing clustered database exists and the semantic distribution of new images is stable (outliers $\le 3\%$).
 
-* **Zero VLM Cost**: Rather than re-clustering all data and re-running expensive MLLMs, it dynamically calculates the centroid coordinates from the existing Parquet database in memory, maps the new images to their nearest centroids using FAISS nearest-neighbor search, and maps existing VLM labels/descriptions to the new images. This executes in seconds.
+* **Zero VLM Cost**: Rather than re-clustering all data and re-running expensive MLLMs, it dynamically calculates the centroid coordinates from the existing Parquet database in memory, maps the new images to their nearest centroids using FAISS nearest-neighbor search, and automatically merges the existing VLM labels and descriptions (`cluster_label`, `parent_cluster_label`, `cluster_description`, `parent_cluster_id`) into the assigned dataset. This executes in seconds.
+* **Autonomous MLLM Skipping**: Both master pipelines (`run_full_pipeline.sh` and `run_offline_pipeline.sh`) detect `assign` mode and automatically bypass the Step 4 SGLang container launch and MLLM auto-labeling steps. If explicit re-labeling is needed in `run_offline_pipeline.sh`, pass `--force_mllm` (or set `force_mllm: true` in `params_offline.yaml`).
 
 ---
 

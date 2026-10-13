@@ -17,6 +17,7 @@ To run local vision-language model inference on GPUs, the master pipeline script
 
 3. **Health Checks**: Polls the server `/health` endpoint and monitors container status until the backend is fully initialized.
 4. **Autonomous Teardown**: Automatically kills and removes the container upon completion or pipeline interruption (via bash `trap` handlers).
+5. **Selective Execution & Assign Mode Bypass**: When the dataset runs in `assign` mode (mapping new images to pre-existing centroids without drift), cluster labels and descriptions are inherited directly from the existing database. The SGLang container spin-up and auto-labeling steps are skipped automatically to save GPU compute and Docker overhead. In `run_offline_pipeline.sh`, pass `--force_mllm` to override this behavior and force re-labeling.
 
 ---
 

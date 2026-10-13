@@ -2,6 +2,34 @@
 
 All notable changes and updates to the Geo-RAG codebase are documented here.
 
+## [1.0.8] - 2026-10-13
+
+### Added
+
+- **Offline Pipeline MLLM Skip in Assign Mode (`scripts/pipeline/run_offline_pipeline.sh`)**:
+  - Automatically bypasses Step 4 (SGLang Docker container spin-up and MLLM cluster auto-labeling) when `CLUSTERING_MODE="assign"`, preventing redundant GPU compute on identical clusters whose labels and descriptions are already inherited from the existing clustered database.
+  - Added `--force_mllm` CLI override (and `force_mllm` in `config/pipeline/params_offline.yaml`) to allow explicitly forcing MLLM re-labeling in assign mode when desired.
+  - Added MLLM configuration parameters to pipeline summary printouts and `--help` CLI documentation.
+
+- **Streaming Vector Iteration & Memory-Mapped Embeddings (`src/utils/io.py`, `src/visualization/visualize_cluster_scatter.py`, `src/visualization/visualize_cluster_samples.py`)**:
+  - Implemented streaming batch generator [`iter_embeddings`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py) for chunked vector extraction from companion binary files.
+  - Added zero-RAM upfront memory mapping (`mmap=True`) in [`load_embeddings`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py), enabling on-demand disk paging.
+  - Refactored [`visualize_cluster_scatter.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/visualization/visualize_cluster_scatter.py) to stream centroid aggregation via `iter_embeddings` with configurable `--batch_size` (default: 500,000), slashing peak RAM from ~23 GB to ~1.2 GB.
+  - Upgraded [`visualize_cluster_samples.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/visualization/visualize_cluster_samples.py) to use `mmap=True` by default (with `--no_mmap` fallback) and targeted column projection (`sample_cols`), reducing upfront memory from >21 GB to 0.0 GB.
+
+### Optimized & Fixed
+
+- **Dataset Sidecar Loading & O(1) Column Alignment (`src/utils/io.py`)**:
+  - Fixed column projection bug in [`load_dataset_with_clusters`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py) where requesting specific columns on datasets with pre-existing `photo_key` raised `KeyError: 'Platform'`.
+  - Implemented 3-probe $O(1)$ alignment verification for direct column assignment on pre-aligned sidecars, accelerating sidecar loading by 13×.
+  - Converted high-cardinality repetitive cluster description text columns to Pandas `category` dtype, reducing full sidecar memory consumption from >25 GB to 3.26 GB.
+  - Added PyArrow C++ buffer equality check (`equals()`) in [`load_embeddings`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py) to skip the 13s Pandas string hash lookup when row order is identical.
+
+- **Visualization Pipeline Memory Footprints (`src/visualization/`)**:
+  - Optimized [`visualize_clusters.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/visualization/visualize_clusters.py) to slice the DataFrame before converting to Python dicts (`df.iloc[:max_markers].to_dict("records")`), eliminating an 8 GB RAM spike and accelerating conversion from 15s to <5ms for 7.4M records.
+  - Added schema-filtered Parquet column projection to [`visualize_dataset_stats.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/visualization/visualize_dataset_stats.py), skipping unused description and text columns.
+  - Added configurable FAISS query batching (`--batch_size`, default: 250,000) to [`cluster_images_global.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/indexing/cluster_images_global.py) in `assign` mode.
+
 ## [1.0.7] - 2026-10-11
 
 ### Fixed
