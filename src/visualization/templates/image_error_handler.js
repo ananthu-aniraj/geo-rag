@@ -158,20 +158,81 @@ function initOfflineMapping() {
         const styleEl = document.createElement('style');
         styleEl.id = 'offline-mapping-styles';
         styleEl.textContent = `
+            /* High-contrast Popups & Tooltips */
+            .leaflet-popup-content-wrapper {
+                background: #0f172a !important;
+                color: #f8fafc !important;
+                border: 1px solid #334155 !important;
+                border-radius: 8px !important;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6) !important;
+            }
+            .leaflet-popup-tip {
+                background: #0f172a !important;
+            }
+            .leaflet-popup-content {
+                margin: 12px 14px !important;
+                line-height: 1.4 !important;
+            }
+            .leaflet-tooltip {
+                background-color: #0f172a !important;
+                color: #f8fafc !important;
+                border: 1px solid #334155 !important;
+                border-radius: 6px !important;
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5) !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                font-size: 11px !important;
+                padding: 5px 9px !important;
+            }
+            .leaflet-tooltip-top:before {
+                border-top-color: #0f172a !important;
+            }
+            .leaflet-tooltip-bottom:before {
+                border-bottom-color: #0f172a !important;
+            }
+            .leaflet-tooltip-left:before {
+                border-left-color: #0f172a !important;
+            }
+            .leaflet-tooltip-right:before {
+                border-right-color: #0f172a !important;
+            }
+            .foliumtooltip {
+                background-color: #0f172a !important;
+                color: #f8fafc !important;
+                border: 1px solid #334155 !important;
+                border-radius: 6px !important;
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5) !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                font-size: 11px !important;
+                padding: 5px 9px !important;
+            }
+            .foliumtooltip table {
+                margin: 0 !important;
+            }
+            .foliumtooltip th {
+                color: #94a3b8 !important;
+                padding: 2px 6px !important;
+            }
+            .foliumtooltip td {
+                color: #38bdf8 !important;
+                font-weight: 600 !important;
+                font-family: monospace !important;
+                padding: 2px 6px !important;
+            }
+            /* High-contrast Offline Mapping Control */
             .offline-mapping-box {
-                background: #ffffff;
+                background: #0f172a !important;
                 padding: 10px 14px;
                 border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border: 1px solid #e2e8f0;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                border: 1px solid #334155 !important;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                color: #1e293b;
+                color: #f8fafc !important;
                 z-index: 1000;
             }
             .offline-mapping-title {
                 font-size: 11px;
                 font-weight: 700;
-                color: #64748b;
+                color: #94a3b8 !important;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
                 margin-bottom: 6px;
@@ -187,7 +248,9 @@ function initOfflineMapping() {
             .offline-mapping-input {
                 height: 32px;
                 padding: 4px 10px;
-                border: 1px solid #cbd5e1;
+                background: #1e293b !important;
+                color: #f8fafc !important;
+                border: 1px solid #475569 !important;
                 border-radius: 6px;
                 font-family: inherit;
                 font-size: 12px;
@@ -197,12 +260,12 @@ function initOfflineMapping() {
                 transition: border-color 0.15s ease;
             }
             .offline-mapping-input:focus {
-                border-color: #3b82f6;
-                box-shadow: 0 0 0 1px #3b82f6;
+                border-color: #38bdf8 !important;
+                box-shadow: 0 0 0 1px #38bdf8;
             }
             .offline-mapping-arrow {
                 font-size: 13px;
-                color: #64748b;
+                color: #38bdf8 !important;
                 font-weight: bold;
             }
         `;

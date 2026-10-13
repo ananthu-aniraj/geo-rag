@@ -12,9 +12,15 @@ from folium.plugins import MarkerCluster
 from src.utils.io import load_dataset_with_clusters
 
 try:
-    from src.visualization.map_utils import create_folium_map
+    from src.visualization.map_utils import (
+        create_carto_tile_layer,
+        create_folium_map,
+    )
 except ImportError:
-    from map_utils import create_folium_map
+    from map_utils import (
+        create_carto_tile_layer,
+        create_folium_map,
+    )
 
 try:
     from src.utils.credentials import get_mapillary_token
@@ -41,6 +47,7 @@ def create_map(
     image_root_dir=None,
     find_prefix=None,
     replace_prefix=None,
+    tiles="CartoDB Dark_Matter",
 ):
     print(f"Loading data from {pkl_path}...")
     if pkl_path.endswith(".pkl"):
@@ -114,9 +121,18 @@ def create_map(
     )
     avg_lon = math.degrees(math.atan2(y, x))
 
-    m = create_folium_map(
-        location=[avg_lat, avg_lon], zoom_start=12, tiles="CartoDB Positron"
-    )
+    m = create_folium_map(location=[avg_lat, avg_lon], zoom_start=12, tiles=tiles)
+
+    # Add alternative basemaps for user flexibility and contrast
+    if tiles == "CartoDB Dark_Matter":
+        create_carto_tile_layer("light_all", name="CartoDB Positron (Light)").add_to(m)
+    else:
+        create_carto_tile_layer("dark_all", name="CartoDB Dark_Matter (Dark)").add_to(m)
+
+    create_carto_tile_layer(
+        "rastertiles/voyager", name="CartoDB Voyager (Color)"
+    ).add_to(m)
+    folium.TileLayer("OpenStreetMap", name="OpenStreetMap").add_to(m)
 
     # Prepare H3 Cell Polygons
     unique_cells = set(item["H3_Cell"] for item in plot_data if "H3_Cell" in item)
@@ -141,16 +157,18 @@ def create_map(
     if features:
         folium.GeoJson(
             {"type": "FeatureCollection", "features": features},
+            name="H3 Clusters",
             style_function=lambda x: {
-                "fillColor": "gray",
-                "color": "gray",
-                "weight": 1,
-                "fillOpacity": 0.1,
+                "fillColor": "#38bdf8",
+                "color": "#38bdf8",
+                "weight": 1.5,
+                "fillOpacity": 0.08,
             },
             tooltip=folium.GeoJsonTooltip(fields=["cell"], aliases=["H3 Cell:"]),
         ).add_to(m)
 
-    marker_cluster = MarkerCluster().add_to(m)
+    marker_cluster = MarkerCluster(name="Cluster Markers").add_to(m)
+    folium.LayerControl(collapsed=True).add_to(m)
 
     # Define available folium colors
     colors = [
@@ -185,31 +203,31 @@ def create_map(
 
             parent_lbl = item.get("parent_cluster_label", "")
             parent_text = (
-                f"<b>Parent Cluster:</b> {parent_lbl} (ID: {item['parent_cluster_id']})<br>"
+                f"<span style='color: #94a3b8;'>Parent Cluster:</span> <span style='color: #f8fafc;'>{parent_lbl}</span> (ID: <span style='color: #a78bfa;'>{item['parent_cluster_id']}</span>)<br>"
                 if parent_lbl
                 else ""
             )
 
-            cluster_text = f"<b>Cluster ID:</b> {item['cluster_id']}<br><b>Labels:</b> {label}<br>{parent_text}"
+            cluster_text = f"<span style='color: #94a3b8;'>Cluster ID:</span> <span style='color: #a78bfa; font-weight: 600;'>{item['cluster_id']}</span><br><span style='color: #94a3b8;'>Labels:</span> <span style='color: #f8fafc; font-weight: 600;'>{label}</span><br>{parent_text}"
             if "cluster_description" in item and item["cluster_description"]:
-                cluster_text += f"<b>Description:</b> <span style='font-style: italic; font-size: 0.9em; color: #555;'>{item['cluster_description']}</span><br>"
+                cluster_text += f"<span style='color: #94a3b8;'>Description:</span> <span style='font-style: italic; font-size: 0.9em; color: #cbd5e1;'>{item['cluster_description']}</span><br>"
         else:
-            color = "blue" if item["Platform"] == "Flickr" else "green"
+            color = "blue" if item.get("Platform") == "Flickr" else "green"
             cluster_text = ""
 
         # Create a popup with the image and metadata
         taken_text = (
-            f"<b>Captured At:</b> {item['Captured_At']}<br>"
+            f"<span style='color: #94a3b8;'>Captured At:</span> <span style='color: #f8fafc;'>{item['Captured_At']}</span><br>"
             if "Captured_At" in item and item["Captured_At"]
             else ""
         )
         koppen_text = (
-            f"<b>Climate:</b> {item['Koppen_Code']} - {item['Koppen_Desc']}<br>"
+            f"<span style='color: #94a3b8;'>Climate:</span> <span style='color: #f8fafc;'>{item['Koppen_Code']} - {item['Koppen_Desc']}</span><br>"
             if "Koppen_Code" in item and item["Koppen_Code"]
             else ""
         )
         season_text = (
-            f"<b>Season:</b> {item['Season']}<br>"
+            f"<span style='color: #94a3b8;'>Season:</span> <span style='color: #f8fafc;'>{item['Season']}</span><br>"
             if "Season" in item and item["Season"]
             else ""
         )
@@ -247,9 +265,15 @@ def create_map(
         safe_html = html.replace("`", "&#96;").replace("${", "&#36;{")
         popup = folium.Popup(folium.Html(safe_html, script=True), max_width=285)
 
+        marker_tooltip = (
+            f"<b>Cluster {item.get('cluster_id', '')}</b>: {item.get('cluster_label', 'Photo')}"
+            if "cluster_id" in item
+            else f"<b>{item.get('Platform', 'Photo')}</b>: {item.get('Photo_ID', '')}"
+        )
         folium.Marker(
             location=[item["Latitude"], item["Longitude"]],
             popup=popup,
+            tooltip=folium.Tooltip(marker_tooltip, sticky=True),
             icon=folium.Icon(color=color, icon="camera"),
         ).add_to(marker_cluster)
 
@@ -323,6 +347,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional replacement URL prefix (e.g. http://localhost:8000/).",
     )
+    parser.add_argument(
+        "--tiles",
+        type=str,
+        default="CartoDB Dark_Matter",
+        help="Default basemap tile style (default: 'CartoDB Dark_Matter').",
+    )
     args = parser.parse_args()
 
     create_map(
@@ -332,4 +362,5 @@ if __name__ == "__main__":
         args.image_root_dir,
         find_prefix=args.find_prefix,
         replace_prefix=args.replace_prefix,
+        tiles=args.tiles,
     )

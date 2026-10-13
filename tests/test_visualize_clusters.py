@@ -69,6 +69,20 @@ class TestVisualizeClusters(unittest.TestCase):
         # Check backtick escaping
         self.assertIn("&#96;urban&#96;", html)
 
+        # Check contrasting dark basemap default and layer switcher
+        self.assertIn("dark_all", html)
+        self.assertIn("CartoDB Positron (Light)", html)
+        self.assertIn("CartoDB Voyager (Color)", html)
+        self.assertIn("OpenStreetMap", html)
+
+        # Check marker tooltip on hover
+        self.assertIn("Cluster 1", html)
+
+        # Check high contrast CSS styling
+        self.assertIn("#0f172a", html)
+        self.assertIn("#f8fafc", html)
+        self.assertIn("#38bdf8", html)
+
     def test_create_map_with_explicit_prefixes(self):
         sample_data = [
             {
