@@ -73,6 +73,19 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
   * **2-Phase Staged Curation**: Flagging cells updates an in-memory "Staged Removals" cart (with 0 ms latency); hitting **"🚀 Execute Purge"** runs a single streaming row-group pass over the Parquet dataset using PyArrow.
   * **Reproducible Rules Specification**: Automatically persists and loads decisions from `manual_h3_removals.json`, enabling headless batch execution in CI/CD via `--batch-purge`.
 
+### 7. Continent H3 Spatial-Semantic Map (`generate_continent_h3_semantic_map.py`)
+
+* **Purpose**: Generates an interactive continent-scoped Folium map at H3 resolution 4 (configurable) that pairs semantic land-cover clusters with real representative photo thumbnails for every polygon.
+* **Explicit User Inputs**:
+  * `--continent <Name>`: Target continent (e.g. `Africa`, `Europe`, `Asia`).
+  * `--index <path>`: Path to the pre-aggregated H3 spatial-semantic index (`geo_space_...h3_semantic_index.parquet`), supplying the hexagon cells, density colormap, and dominant LULC percentage breakdowns.
+  * `--dataset <path>`: Path to the cleaned dataset (`geo_space_cleaned.parquet`), supplying raw photo metadata and thumbnails without requiring heavy embeddings or sidecars.
+* **Interactive Elements**:
+  * **Continent Scoping & High Performance**: By focusing on a single continent (`--continent Africa`, `Europe`, `Asia`, etc.), active H3 cells remain under a few thousand, rendering a fast (~2–3 MB) standalone HTML map at 60 FPS without DOM or browser lag.
+  * **Hover Tooltip**: Displays the cell ID, image count, and dominant LULC classes with percentages.
+  * **On-Click Image Gallery**: Clicking any hexagon opens a popup card detailing dominant categories and a 2×2 responsive thumbnail grid of photos from that polygon (with Mapillary web links).
+  * **SSH Tunneling & Offline Dataset Mapping**: Integrates the floating "Offline Image Server Mapping" control with local path auto-detection and `--replace_prefix` / `localStorage` persistence, allowing users to view remote server images over an SSH tunnel (`http://localhost:8000/`).
+
 ---
 
 ## 📂 Experiment Output Organization & Namespacing

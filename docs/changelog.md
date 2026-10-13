@@ -11,6 +11,14 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Added `--force_mllm` CLI override (and `force_mllm` in `config/pipeline/params_offline.yaml`) to allow explicitly forcing MLLM re-labeling in assign mode when desired.
   - Added MLLM configuration parameters to pipeline summary printouts and `--help` CLI documentation.
 
+- **Continent H3 Spatial-Semantic Map with Representative Photos (`src/visualization/generate_continent_h3_semantic_map.py`)**:
+  - Implemented standalone visualization tool to generate continent-scoped Folium semantic maps at configurable H3 resolution (defaulting to H3 res 4 for fast, responsive rendering).
+  - Explicit user inputs: `--continent`, `--index` (for pre-aggregated spatial-semantic statistics and polygons), and `--dataset` (for cleaned photo metadata and thumbnails without embeddings/sidecars).
+  - Uses PyArrow pushdown filters (`continent` and `resolution`) to read continent spatial-semantic index partitions in $<1\text{s}$.
+  - Samples representative photos across each H3 cell and embeds responsive thumbnail galleries with Mapillary links in interactive Leaflet popups.
+  - Injects `templates/image_error_handler.js` for instant SSH tunneling support (`--find_prefix`, `--replace_prefix`), allowing local browsers to seamlessly stream offline photos served over `http://localhost:8000/`.
+  - Added unit test suite in `tests/test_generate_continent_h3_semantic_map.py`.
+
 - **Streaming Vector Iteration & Memory-Mapped Embeddings (`src/utils/io.py`, `src/visualization/visualize_cluster_scatter.py`, `src/visualization/visualize_cluster_samples.py`)**:
   - Implemented streaming batch generator [`iter_embeddings`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py) for chunked vector extraction from companion binary files.
   - Added zero-RAM upfront memory mapping (`mmap=True`) in [`load_embeddings`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py), enabling on-demand disk paging.
