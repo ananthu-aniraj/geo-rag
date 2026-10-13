@@ -23,11 +23,19 @@ import umap
 from sklearn.preprocessing import normalize
 from tqdm import tqdm
 
-from src.utils.io import load_dataset_with_clusters, load_embeddings
+from src.utils.io import (
+    iter_embeddings,
+    load_dataset_with_clusters,
+)
 
 
 def create_scatter_plot(
-    pkl_path, output_png, representation_type=None, model_name=None, precision=None
+    pkl_path,
+    output_png,
+    representation_type=None,
+    model_name=None,
+    precision=None,
+    batch_size=500000,
 ):
     print(f"Loading clustered data from {pkl_path}...")
     start_time = time.time()
@@ -159,16 +167,6 @@ def create_scatter_plot(
             if len(valid_reps) > 0:
                 representation_type = str(valid_reps.iloc[0])
 
-        embeddings = load_embeddings(
-            pkl_path,
-            representation_type=representation_type,
-            model_name=model_name,
-            precision=precision,
-        )
-
-        dim = embeddings.shape[1]
-        print(f"Detected decoupled embedding matrix dimensionality: {dim}")
-
         # Extract metadata per unique cluster_id
         print("Extracting unique cluster metadata...")
         meta_sub = df_meta.dropna(subset=["cluster_id"]).drop_duplicates(
@@ -189,22 +187,39 @@ def create_scatter_plot(
         valid_mask = ~pd.isna(c_ids) & (c_ids >= 0)
         valid_c_ids = c_ids[valid_mask].astype(np.int64)
         max_cid = int(valid_c_ids.max()) if len(valid_c_ids) > 0 else 0
-        raw_centroids = np.zeros((max_cid + 1, dim), dtype=np.float32)
+
+        chunk_size = batch_size
+        total_len = len(c_ids)
+        dim = None
+        raw_centroids = None
         raw_counts = np.zeros(max_cid + 1, dtype=np.int64)
 
-        chunk_size = 500000
-        total_len = min(len(embeddings), len(c_ids))
-        print("Aggregating cluster centroids in fast vectorized chunks...")
-        for start_idx in tqdm(
-            range(0, total_len, chunk_size), desc="Computing cluster centroids"
+        print("Aggregating cluster centroids in fast streaming batches...")
+        curr_idx = 0
+        total_batches = max(1, (total_len + chunk_size - 1) // chunk_size)
+        for chunk_raw in tqdm(
+            iter_embeddings(
+                pkl_path,
+                batch_size=chunk_size,
+                representation_type=representation_type,
+                model_name=model_name,
+                precision="float32",
+            ),
+            total=total_batches,
+            desc="Computing cluster centroids",
         ):
-            end_idx = min(start_idx + chunk_size, total_len)
-            chunk_raw = embeddings[start_idx:end_idx]
-            chunk_ids = c_ids[start_idx:end_idx]
+            if dim is None:
+                dim = chunk_raw.shape[1]
+                print(f"Detected decoupled embedding matrix dimensionality: {dim}")
+                raw_centroids = np.zeros((max_cid + 1, dim), dtype=np.float32)
+
+            batch_len = len(chunk_raw)
+            chunk_ids = c_ids[curr_idx : curr_idx + batch_len]
             m = ~pd.isna(chunk_ids) & (chunk_ids >= 0)
             valid_ids = chunk_ids[m].astype(np.int64)
             np.add.at(raw_centroids, valid_ids, chunk_raw[m])
             np.add.at(raw_counts, valid_ids, 1)
+            curr_idx += batch_len
 
         active_cluster_ids = np.where(raw_counts > 0)[0]
         for cid in active_cluster_ids:
@@ -439,6 +454,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional vision model name for companion embedding resolution.",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=500000,
+        help="Streaming batch size for centroid aggregation (default: 500,000).",
+    )
     args = parser.parse_args()
 
     create_scatter_plot(
@@ -447,4 +468,5 @@ if __name__ == "__main__":
         representation_type=args.representation_type,
         model_name=args.model_name,
         precision=args.precision,
+        batch_size=args.batch_size,
     )

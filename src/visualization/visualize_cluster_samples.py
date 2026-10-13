@@ -38,6 +38,7 @@ def create_sample_grid(
     representation_type=None,
     model_name=None,
     precision=None,
+    mmap=True,
 ):
     print(f"Loading clustered data from {pkl_path}...")
 
@@ -54,13 +55,48 @@ def create_sample_grid(
         if match:
             k_clusters = int(match.group(1))
 
-        df = load_dataset_with_clusters(
-            pkl_path,
-            k_clusters=k_clusters,
-            representation_type=representation_type,
-            model_name=model_name,
-            precision=precision,
-        )
+        # Target columns required for dashboard sample rendering
+        sample_cols = [
+            "Photo_ID",
+            "Platform",
+            "Latitude",
+            "Longitude",
+            "Image_URL",
+            "Captured_At",
+            "cluster_label",
+            "cluster_description",
+            "parent_cluster_id",
+            "parent_cluster_label",
+            "Season",
+            "Time_Of_Day",
+            "H3_Cell",
+            "Koppen_Code",
+            "Koppen_Desc",
+            "country",
+            "continent",
+            "visual_description",
+            "License",
+            "cluster_id",
+            "model_name",
+            "representation_type",
+        ]
+        try:
+            df = load_dataset_with_clusters(
+                pkl_path,
+                k_clusters=k_clusters,
+                columns=sample_cols,
+                representation_type=representation_type,
+                model_name=model_name,
+                precision=precision,
+            )
+        except Exception:
+            df = load_dataset_with_clusters(
+                pkl_path,
+                k_clusters=k_clusters,
+                representation_type=representation_type,
+                model_name=model_name,
+                precision=precision,
+            )
 
         if not model_name and "model_name" in df.columns:
             valid_models = df["model_name"].dropna()
@@ -72,7 +108,7 @@ def create_sample_grid(
             if len(valid_reps) > 0:
                 representation_type = str(valid_reps.iloc[0])
 
-        # Load embeddings
+        # Load embeddings (mmap=True avoids allocating memory for the full matrix in RAM)
         print("Loading raw embedding matrix...")
         t0 = time.time()
         embeddings = load_embeddings(
@@ -80,6 +116,7 @@ def create_sample_grid(
             representation_type=representation_type,
             model_name=model_name,
             precision=precision,
+            mmap=mmap,
         )
 
         print(
@@ -650,6 +687,11 @@ if __name__ == "__main__":
         default=None,
         help="Optional vision model name for companion embedding resolution.",
     )
+    parser.add_argument(
+        "--no_mmap",
+        action="store_true",
+        help="Disable memory-mapping and load the full embedding matrix eagerly into RAM.",
+    )
     args = parser.parse_args()
 
     create_sample_grid(
@@ -661,4 +703,5 @@ if __name__ == "__main__":
         representation_type=args.representation_type,
         model_name=args.model_name,
         precision=args.precision,
+        mmap=not args.no_mmap,
     )

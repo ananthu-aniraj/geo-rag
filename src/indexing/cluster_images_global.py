@@ -172,6 +172,12 @@ def main():
         default=None,
         help="Optional model name to disambiguate companion embedding files.",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=250000,
+        help="Batch size for querying FAISS index during cluster assignment (default: 250,000).",
+    )
     args = parser.parse_args()
 
     k_parents = args.k_parents
@@ -371,8 +377,12 @@ def main():
             index = faiss.IndexFlatIP(dim)
 
         index.add(child_centroids)
-        _, child_indices = index.search(embeddings_norm, 1)
-        child_indices = child_indices.ravel()
+        n_queries = len(embeddings_norm)
+        child_indices = np.empty(n_queries, dtype=np.int64)
+        for i in range(0, n_queries, args.batch_size):
+            end_i = min(i + args.batch_size, n_queries)
+            _, sub_indices = index.search(embeddings_norm[i:end_i], 1)
+            child_indices[i:end_i] = sub_indices.ravel()
 
         # Convert indices back to correct cluster IDs
         child_cluster_ids = np.array([unique_ids[idx] for idx in child_indices])

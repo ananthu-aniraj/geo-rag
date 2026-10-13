@@ -53,6 +53,11 @@ def create_map(
     if pkl_path.endswith(".pkl"):
         with open(pkl_path, "rb") as f:
             data = pickle.load(f)
+        total_unique = len(data)
+        if max_markers and len(data) > max_markers:
+            plot_data = data[:max_markers]
+        else:
+            plot_data = data
     else:
         # Auto-extract k_clusters from filename
         k_clusters = 50000
@@ -91,7 +96,12 @@ def create_map(
             )
         except Exception:
             df = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
-        data = df.to_dict("records")
+
+        total_unique = len(df)
+        if max_markers and len(df) > max_markers:
+            plot_data = df.iloc[:max_markers].to_dict("records")
+        else:
+            plot_data = df.to_dict("records")
 
     # Load marker popup template
     popup_template_path = os.path.join(
@@ -100,14 +110,11 @@ def create_map(
     with open(popup_template_path, "r", encoding="utf-8") as f:
         popup_template = f.read()
 
-    print(f"Total unique images: {len(data)}")
+    print(f"Total unique images: {total_unique}")
 
     # Use a subset for the map if there are too many, to keep the HTML responsive
-    if len(data) > max_markers:
+    if total_unique > max_markers:
         print(f"Limiting visualization to first {max_markers} images for performance.")
-        plot_data = data[:max_markers]
-    else:
-        plot_data = data
 
     # Calculate center of the map (robustly handling the antimeridian)
     avg_lat = sum(item["Latitude"] for item in plot_data) / len(plot_data)

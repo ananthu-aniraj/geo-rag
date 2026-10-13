@@ -52,9 +52,11 @@ def get_grouped_platform_series(
 ) -> pd.Series:
     """Groups camera trap platforms into a single 'Camera Traps' category while preserving other platforms."""
     return platform_series.apply(
-        lambda p: "Camera Traps"
-        if is_camera_trap_platform(p, camera_trap_platforms=camera_trap_platforms)
-        else ("Unknown" if pd.isna(p) or not str(p).strip() else str(p).strip())
+        lambda p: (
+            "Camera Traps"
+            if is_camera_trap_platform(p, camera_trap_platforms=camera_trap_platforms)
+            else ("Unknown" if pd.isna(p) or not str(p).strip() else str(p).strip())
+        )
     )
 
 
@@ -696,7 +698,7 @@ def generate_interactive_map(
                     p_row = platform_counts.loc[cell]
                     properties["platforms"] = " | ".join(
                         [
-                            f"{plat}: {int(c):,} ({c/count*100:.0f}%)"
+                            f"{plat}: {int(c):,} ({c / count * 100:.0f}%)"
                             for plat, c in p_row.items()
                             if c > 0 and plat != "Unknown"
                         ]
@@ -710,7 +712,7 @@ def generate_interactive_map(
                     t_row = tod_counts.loc[cell]
                     properties["time_of_day"] = " | ".join(
                         [
-                            f"{tod}: {int(c):,} ({c/count*100:.0f}%)"
+                            f"{tod}: {int(c):,} ({c / count * 100:.0f}%)"
                             for tod, c in t_row.items()
                             if c > 0 and tod != "Unknown"
                         ]
@@ -724,7 +726,7 @@ def generate_interactive_map(
                     s_row = season_counts.loc[cell]
                     properties["seasons"] = " | ".join(
                         [
-                            f"{season}: {int(c):,} ({c/count*100:.0f}%)"
+                            f"{season}: {int(c):,} ({c / count * 100:.0f}%)"
                             for season, c in s_row.items()
                             if c > 0 and season != "Unknown"
                         ]
@@ -738,7 +740,7 @@ def generate_interactive_map(
                     k_row = koppen_counts.loc[cell]
                     properties["koppen_climate"] = " | ".join(
                         [
-                            f"{kop}: {int(c):,} ({c/count*100:.0f}%)"
+                            f"{kop}: {int(c):,} ({c / count * 100:.0f}%)"
                             for kop, c in k_row.items()
                             if c > 0 and kop != "Unknown"
                         ]
@@ -953,7 +955,29 @@ def main():
 
     # Load dataset
     if args.input.endswith(".parquet"):
-        df = pd.read_parquet(args.input)
+        try:
+            import pyarrow.parquet as pq
+
+            avail = pq.ParquetFile(args.input).schema_arrow.names
+            target_cols = [
+                "Latitude",
+                "Longitude",
+                "Platform",
+                "Captured_At",
+                "Season",
+                "Time_Of_Day",
+                "H3_Cell",
+                "Koppen_Code",
+                "License",
+                "country",
+                "continent",
+                "parent_cluster_label",
+                "map_h3",
+            ]
+            read_cols = [c for c in target_cols if c in avail]
+            df = pd.read_parquet(args.input, columns=read_cols if read_cols else None)
+        except Exception:
+            df = pd.read_parquet(args.input)
     else:
         df = pd.read_csv(args.input, low_memory=False)
 
