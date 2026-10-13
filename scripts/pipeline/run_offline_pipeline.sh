@@ -117,6 +117,9 @@ LAND_SHP=$(get_param "land_shp")
 ENABLE_MLLM=$(get_param "enable_mllm")
 [ -z "$ENABLE_MLLM" ] && ENABLE_MLLM="false"
 
+FORCE_MLLM=$(get_param "force_mllm")
+[ -z "$FORCE_MLLM" ] && FORCE_MLLM="false"
+
 MLLM_BACKEND=$(get_param "mllm_backend")
 [ -z "$MLLM_BACKEND" ] && MLLM_BACKEND="sglang"
 
@@ -267,6 +270,10 @@ while [[ $# -gt 0 ]]; do
       ENABLE_MLLM="true"
       shift
       ;;
+    --force_mllm)
+      FORCE_MLLM="true"
+      shift
+      ;;
     --run_coordinate_cleanup)
       RUN_COORDINATE_CLEANUP="true"
       shift
@@ -325,6 +332,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --output_dir DIR             Directory for dataset & output storage (default: parent dir of --input)"
       echo "  --base_name NAME             Base name prefix (default: geo_space_offline)"
       echo "  --enable_mllm                Enable MLLM medoid labeling"
+      echo "  --force_mllm                 Force MLLM labeling even in assign mode (default: false)"
       echo "  --gpu GPU                    GPU device ID(s) for SGLang Docker (default: derived from CUDA_VISIBLE_DEVICES or 0)"
       echo "  --port PORT                  Host port for SGLang Docker server (default: 30000 + GPU_ID)"
       echo "  --container_name NAME        Custom Docker container name for SGLang server"
@@ -448,6 +456,12 @@ if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
     echo "   * Checkpoint Int.   : ${BACKFILL_CHECKPOINT_INTERVAL}s"
 fi
 echo " - Clusters (k)        : $K_CLUSTERS"
+echo " - Enable MLLM         : $ENABLE_MLLM"
+if [ "$ENABLE_MLLM" = "true" ]; then
+    echo "   * Backend           : $MLLM_BACKEND"
+    echo "   * Model             : $MLLM_MODEL"
+    echo "   * Force in Assign   : $FORCE_MLLM"
+fi
 echo " - Output Directory    : $OUTPUT_DIR"
 echo " - Clustered Sidecar   : $CLUSTERED_PARQUET"
 echo " - Visualizations Dir  : $VIS_DIR"
@@ -658,101 +672,106 @@ fi
 
 # Step 4: Optional MLLM Labeling
 if [ "$ENABLE_MLLM" = "true" ]; then
-    echo ""
-    echo "[Step 3b/5] MLLM Cluster Auto-Labeling..."
+    if [ "$CLUSTERING_MODE" = "assign" ] && [ "$FORCE_MLLM" != "true" ]; then
+        echo ""
+        echo "[Step 3b/5] Skipping MLLM Cluster Auto-Labeling (ASSIGN mode: clusters and labels are preserved from pre-existing database)."
+    else
+        echo ""
+        echo "[Step 3b/5] MLLM Cluster Auto-Labeling..."
 
-    # SGLang Docker Server Configuration (Multi-GPU & Parallel Execution)
-    GPU_ID="${GPU_ID:-${CUDA_VISIBLE_DEVICES:-0}}"
-    GPU_ID="${GPU_ID#cuda:}"
-    PRIMARY_GPU=$(echo "$GPU_ID" | cut -d',' -f1)
-    GPU_SLUG=$(echo "$GPU_ID" | tr ',' '_')
+        # SGLang Docker Server Configuration (Multi-GPU & Parallel Execution)
+        GPU_ID="${GPU_ID:-${CUDA_VISIBLE_DEVICES:-0}}"
+        GPU_ID="${GPU_ID#cuda:}"
+        PRIMARY_GPU=$(echo "$GPU_ID" | cut -d',' -f1)
+        GPU_SLUG=$(echo "$GPU_ID" | tr ',' '_')
 
-    if [ -z "$SGLANG_PORT" ]; then
-        if [ -n "$PORT" ]; then
-            SGLANG_PORT="$PORT"
-        elif [[ "$PRIMARY_GPU" =~ ^[0-9]+$ ]]; then
-            SGLANG_PORT=$(( 30000 + PRIMARY_GPU ))
-        else
-            SGLANG_PORT=30000
+        if [ -z "$SGLANG_PORT" ]; then
+            if [ -n "$PORT" ]; then
+                SGLANG_PORT="$PORT"
+            elif [[ "$PRIMARY_GPU" =~ ^[0-9]+$ ]]; then
+                SGLANG_PORT=$(( 30000 + PRIMARY_GPU ))
+            else
+                SGLANG_PORT=30000
+            fi
         fi
+
+        SGLANG_CONTAINER_NAME="${SGLANG_CONTAINER_NAME:-sglang-server-gpu${GPU_SLUG}-${SGLANG_PORT}}"
+
+        # Detect AppArmor
+        APPARMOR_FLAG=""
+        if [ -f /sys/module/apparmor/parameters/enabled ] && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ]; then
+            APPARMOR_FLAG="--security-opt apparmor=unconfined"
+        fi
+
+        SGLANG_STARTED=false
+        cleanup() {
+            if [ "$SGLANG_STARTED" = "true" ]; then
+                echo ""
+                echo "========================================="
+                echo "Trap triggered: Cleaning up SGLang server container ($SGLANG_CONTAINER_NAME)..."
+                docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
+                echo "Cleanup complete."
+                echo "========================================="
+            fi
+        }
+        trap cleanup EXIT INT TERM ERR
+
+        docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
+        echo "Launching SGLang server container ($SGLANG_CONTAINER_NAME) on GPU(s) '$GPU_ID' (port $SGLANG_PORT)..."
+        docker run -d \
+          --name "$SGLANG_CONTAINER_NAME" \
+          --runtime nvidia \
+          $APPARMOR_FLAG \
+          -e NVIDIA_VISIBLE_DEVICES="$GPU_ID" \
+          --shm-size 32g \
+          -p "${SGLANG_PORT}:${SGLANG_PORT}" \
+          -v ~/.cache/huggingface:/root/.cache/huggingface \
+          --env "HF_TOKEN=${HF_TOKEN}" \
+          --ipc=host \
+          lmsysorg/sglang:latest-runtime \
+          bash -c "pip install distro && python3 -m sglang.launch_server --model-path $MLLM_MODEL --host 0.0.0.0 --port $SGLANG_PORT --mem-fraction-static 0.75"
+
+        SGLANG_STARTED=true
+        echo "Waiting for SGLang server ($SGLANG_CONTAINER_NAME) on port $SGLANG_PORT to initialize..."
+        until curl -s "http://localhost:${SGLANG_PORT}/health" > /dev/null; do
+            if ! docker ps -q --filter "name=^${SGLANG_CONTAINER_NAME}$" | grep -q .; then
+                echo "[ERROR] SGLang server container '$SGLANG_CONTAINER_NAME' exited unexpectedly."
+                echo "Showing last 20 lines of docker logs:"
+                docker logs --tail 20 "$SGLANG_CONTAINER_NAME"
+                exit 1
+            fi
+            sleep 2
+        done
+        echo "SGLang server '$SGLANG_CONTAINER_NAME' is live on port $SGLANG_PORT! Executing cluster labeling..."
+
+        python3 -m src.indexing.label_clusters_mllm \
+          --in "$CLUSTERED_PARQUET" \
+          --label_method "mllm" \
+          --mllm_backend "$MLLM_BACKEND" \
+          --mllm_model "$MLLM_MODEL" \
+          --mllm_endpoint "http://localhost:${SGLANG_PORT}" \
+          --chunk_size "$CHUNK_SIZE" \
+          --representation_type "$REPRESENTATION_TYPE" \
+          --precision "$PRECISION" \
+          --num_medoids "$NUM_MEDOIDS" \
+          --model_name "$MODEL_NAME" \
+          $IMAGE_ROOT_FLAG
+
+        python3 -m src.indexing.relabel_failed_clusters \
+          --in "$CLUSTERED_PARQUET" \
+          --mllm_model "$MLLM_MODEL" \
+          --mllm_backend "$MLLM_BACKEND" \
+          --mllm_endpoint "http://localhost:${SGLANG_PORT}" \
+          --representation_type "$REPRESENTATION_TYPE" \
+          --precision "$PRECISION" \
+          --num_medoids "$NUM_MEDOIDS" \
+          --model_name "$MODEL_NAME" \
+          $IMAGE_ROOT_FLAG
+
+        echo "Stopping SGLang server container ($SGLANG_CONTAINER_NAME)..."
+        docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
+        SGLANG_STARTED=false
     fi
-
-    SGLANG_CONTAINER_NAME="${SGLANG_CONTAINER_NAME:-sglang-server-gpu${GPU_SLUG}-${SGLANG_PORT}}"
-
-    # Detect AppArmor
-    APPARMOR_FLAG=""
-    if [ -f /sys/module/apparmor/parameters/enabled ] && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ]; then
-        APPARMOR_FLAG="--security-opt apparmor=unconfined"
-    fi
-
-    SGLANG_STARTED=false
-    cleanup() {
-        if [ "$SGLANG_STARTED" = "true" ]; then
-            echo ""
-            echo "========================================="
-            echo "Trap triggered: Cleaning up SGLang server container ($SGLANG_CONTAINER_NAME)..."
-            docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
-            echo "Cleanup complete."
-            echo "========================================="
-        fi
-    }
-    trap cleanup EXIT INT TERM ERR
-
-    docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
-    echo "Launching SGLang server container ($SGLANG_CONTAINER_NAME) on GPU(s) '$GPU_ID' (port $SGLANG_PORT)..."
-    docker run -d \
-      --name "$SGLANG_CONTAINER_NAME" \
-      --runtime nvidia \
-      $APPARMOR_FLAG \
-      -e NVIDIA_VISIBLE_DEVICES="$GPU_ID" \
-      --shm-size 32g \
-      -p "${SGLANG_PORT}:${SGLANG_PORT}" \
-      -v ~/.cache/huggingface:/root/.cache/huggingface \
-      --env "HF_TOKEN=${HF_TOKEN}" \
-      --ipc=host \
-      lmsysorg/sglang:latest-runtime \
-      bash -c "pip install distro && python3 -m sglang.launch_server --model-path $MLLM_MODEL --host 0.0.0.0 --port $SGLANG_PORT --mem-fraction-static 0.75"
-
-    SGLANG_STARTED=true
-    echo "Waiting for SGLang server ($SGLANG_CONTAINER_NAME) on port $SGLANG_PORT to initialize..."
-    until curl -s "http://localhost:${SGLANG_PORT}/health" > /dev/null; do
-        if ! docker ps -q --filter "name=^${SGLANG_CONTAINER_NAME}$" | grep -q .; then
-            echo "[ERROR] SGLang server container '$SGLANG_CONTAINER_NAME' exited unexpectedly."
-            echo "Showing last 20 lines of docker logs:"
-            docker logs --tail 20 "$SGLANG_CONTAINER_NAME"
-            exit 1
-        fi
-        sleep 2
-    done
-    echo "SGLang server '$SGLANG_CONTAINER_NAME' is live on port $SGLANG_PORT! Executing cluster labeling..."
-
-    python3 -m src.indexing.label_clusters_mllm \
-      --in "$CLUSTERED_PARQUET" \
-      --label_method "mllm" \
-      --mllm_backend "$MLLM_BACKEND" \
-      --mllm_model "$MLLM_MODEL" \
-      --mllm_endpoint "http://localhost:${SGLANG_PORT}" \
-      --chunk_size "$CHUNK_SIZE" \
-      --representation_type "$REPRESENTATION_TYPE" \
-      --precision "$PRECISION" \
-      --num_medoids "$NUM_MEDOIDS" \
-      --model_name "$MODEL_NAME" \
-      $IMAGE_ROOT_FLAG
-
-    python3 -m src.indexing.relabel_failed_clusters \
-      --in "$CLUSTERED_PARQUET" \
-      --mllm_model "$MLLM_MODEL" \
-      --mllm_backend "$MLLM_BACKEND" \
-      --mllm_endpoint "http://localhost:${SGLANG_PORT}" \
-      --representation_type "$REPRESENTATION_TYPE" \
-      --precision "$PRECISION" \
-      --num_medoids "$NUM_MEDOIDS" \
-      --model_name "$MODEL_NAME" \
-      $IMAGE_ROOT_FLAG
-
-    echo "Stopping SGLang server container ($SGLANG_CONTAINER_NAME)..."
-    docker rm -f "$SGLANG_CONTAINER_NAME" >/dev/null 2>&1 || true
-    SGLANG_STARTED=false
 fi
 
 # Step 5: H3 Spatial-Semantic Index
