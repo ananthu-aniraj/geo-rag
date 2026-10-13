@@ -14,11 +14,13 @@ from src.utils.io import load_dataset_with_clusters
 try:
     from src.visualization.map_utils import (
         create_carto_tile_layer,
+        create_esri_satellite_layer,
         create_folium_map,
     )
 except ImportError:
     from map_utils import (
         create_carto_tile_layer,
+        create_esri_satellite_layer,
         create_folium_map,
     )
 
@@ -139,7 +141,7 @@ def create_map(
     create_carto_tile_layer(
         "rastertiles/voyager", name="CartoDB Voyager (Color)"
     ).add_to(m)
-    folium.TileLayer("OpenStreetMap", name="OpenStreetMap").add_to(m)
+    create_esri_satellite_layer().add_to(m)
 
     # Prepare H3 Cell Polygons
     unique_cells = set(item["H3_Cell"] for item in plot_data if "H3_Cell" in item)

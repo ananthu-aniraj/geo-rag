@@ -100,6 +100,142 @@ class TestGenerateContinentH3SemanticMap(unittest.TestCase):
         self.assertIn("Offline Image Server Mapping", html)
         self.assertIn("http://localhost:8000/", html)
 
+    def test_generate_continent_map_clustered_stratified(self):
+        # 1. Create dummy H3 index
+        cell_11 = h3.latlng_to_cell(0.0, 20.0, 11)
+        cell_4 = h3.cell_to_parent(cell_11, 4)
+
+        df_index = pd.DataFrame(
+            [
+                {
+                    "resolution": 4,
+                    "query_cell": cell_4,
+                    "continent": "Africa",
+                    "cluster_id": 1,
+                    "cluster_label": "Rainforest",
+                    "cluster_description": "Dense forest canopy",
+                    "image_count": 30,
+                }
+            ]
+        )
+        index_path = os.path.join(self.temp_dir, "test_strat_index.parquet")
+        df_index.to_parquet(index_path)
+
+        # 2. Create clustered dataset with 3 different clusters in the same cell
+        clusters = ["Rainforest", "Savanna", "Wetlands"]
+        df_clustered = pd.DataFrame(
+            [
+                {
+                    "Photo_ID": f"photo_strat_{i}",
+                    "Platform": "Mapillary",
+                    "Image_URL": f"https://example.com/strat_{i}.jpg",
+                    "H3_Cell": cell_11,
+                    "Latitude": 0.0 + i * 0.001,
+                    "Longitude": 20.0 + i * 0.001,
+                    "Captured_At": "2023-06-15",
+                    "continent": "Africa",
+                    "cluster_label": clusters[i % 3],
+                }
+                for i in range(12)
+            ]
+        )
+        clustered_path = os.path.join(self.temp_dir, "test_clustered.parquet")
+        df_clustered.to_parquet(clustered_path)
+
+        out_html = os.path.join(self.temp_dir, "stratified_res4_map.html")
+
+        generate_continent_map(
+            continent="Africa",
+            index_path=index_path,
+            dataset_path=clustered_path,
+            output_html=out_html,
+            h3_res=4,
+            min_count=5,
+            samples_per_cell=3,
+        )
+
+        self.assertTrue(os.path.exists(out_html))
+        with open(out_html, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # All 3 distinct cluster labels should be sampled and tagged in the popup
+        self.assertIn("Rainforest", html)
+        self.assertIn("Savanna", html)
+        self.assertIn("Wetlands", html)
+
+    def test_generate_continent_map_sidecar_append(self):
+        # 1. Dummy index
+        cell_11 = h3.latlng_to_cell(0.0, 20.0, 11)
+        cell_4 = h3.cell_to_parent(cell_11, 4)
+        df_index = pd.DataFrame(
+            [
+                {
+                    "resolution": 4,
+                    "query_cell": cell_4,
+                    "continent": "Africa",
+                    "cluster_id": 1,
+                    "cluster_label": "Mangrove",
+                    "image_count": 20,
+                }
+            ]
+        )
+        idx_path = os.path.join(self.temp_dir, "test_side_idx.parquet")
+        df_index.to_parquet(idx_path)
+
+        # 2. Cleaned base dataset (without cluster_label)
+        df_clean = pd.DataFrame(
+            [
+                {
+                    "Photo_ID": f"p_{i}",
+                    "Platform": "Mapillary",
+                    "Image_URL": f"https://example.com/p_{i}.jpg",
+                    "H3_Cell": cell_11,
+                    "Latitude": 0.0 + i * 0.001,
+                    "Longitude": 20.0 + i * 0.001,
+                    "Captured_At": "2023-06-15",
+                    "continent": "Africa",
+                }
+                for i in range(10)
+            ]
+        )
+        clean_path = os.path.join(self.temp_dir, "geo_space_cleaned.parquet")
+        df_clean.to_parquet(clean_path)
+
+        # 3. Decoupled sidecar dataset (lacks H3_Cell, coordinates, continent)
+        df_side = pd.DataFrame(
+            [
+                {
+                    "Photo_ID": f"p_{i}",
+                    "Platform": "Mapillary",
+                    "cluster_label": "Mangrove" if i % 2 == 0 else "Coastal Dune",
+                }
+                for i in range(10)
+            ]
+        )
+        side_path = os.path.join(self.temp_dir, "geo_space_clustered_k_40000.parquet")
+        df_side.to_parquet(side_path)
+
+        out_html = os.path.join(self.temp_dir, "sidecar_map.html")
+
+        # Pass sidecar as dataset_path; it should auto-detect clean_path or use cleaned_dataset_path
+        generate_continent_map(
+            continent="Africa",
+            index_path=idx_path,
+            dataset_path=side_path,
+            cleaned_dataset_path=clean_path,
+            output_html=out_html,
+            h3_res=4,
+            min_count=5,
+            samples_per_cell=4,
+        )
+
+        self.assertTrue(os.path.exists(out_html))
+        with open(out_html, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        self.assertIn("Mangrove", html)
+        self.assertIn("Coastal Dune", html)
+
     def test_cli_parsing(self):
         from unittest.mock import patch
 

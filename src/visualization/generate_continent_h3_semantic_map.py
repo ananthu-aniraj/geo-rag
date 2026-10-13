@@ -9,6 +9,7 @@ support for offline datasets.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import time
@@ -19,19 +20,29 @@ import folium
 import h3
 import numpy as np
 import pandas as pd
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from tqdm import tqdm
 
 from src.utils.credentials import get_mapillary_token
-from src.utils.io import load_dataframe, resolve_offline_image_path
+from src.utils.io import (
+    load_dataframe,
+    load_dataset_with_clusters,
+    resolve_offline_image_path,
+)
 
 try:
     from src.visualization.map_utils import (
         create_carto_tile_layer,
+        create_esri_satellite_layer,
         create_folium_map,
     )
 except ImportError:
-    from map_utils import create_carto_tile_layer, create_folium_map
+    from map_utils import (
+        create_carto_tile_layer,
+        create_esri_satellite_layer,
+        create_folium_map,
+    )
 
 MAPILLARY_TOKEN = get_mapillary_token()
 
@@ -68,6 +79,7 @@ def generate_continent_map(
     continent: str,
     index_path: str,
     dataset_path: Optional[str] = None,
+    cleaned_dataset_path: Optional[str] = None,
     output_html: str = "continent_h3_semantic_map.html",
     h3_res: int = 4,
     min_count: int = 10,
@@ -151,7 +163,7 @@ def generate_continent_map(
         pf_data = pq.ParquetFile(dataset_path)
         data_cols = pf_data.schema_arrow.names
 
-        wanted = [
+        wanted_base = [
             "Photo_ID",
             "Platform",
             "Image_URL",
@@ -160,26 +172,87 @@ def generate_continent_map(
             "Longitude",
             "Captured_At",
             "continent",
-            "cluster_label",
         ]
-        read_cols = [c for c in wanted if c in data_cols]
 
-        try:
-            tbl_data = pq.read_table(
-                dataset_path,
-                columns=read_cols,
-                filters=[("continent", "==", continent_canon)],
-            )
-            df_photos = tbl_data.to_pandas()
-        except Exception:
-            # Fallback to reading without filters then slicing
-            tbl_data = pq.read_table(dataset_path, columns=read_cols)
-            df_photos = tbl_data.to_pandas()
-            if "continent" in df_photos.columns:
-                df_photos = df_photos[
-                    df_photos["continent"].astype(str).str.lower()
-                    == continent_canon.lower()
-                ]
+        df_photos = pd.DataFrame()
+
+        # Check if dataset_path is a decoupled sidecar (lacks H3_Cell / coordinates)
+        if "H3_Cell" not in data_cols:
+            base_cand = cleaned_dataset_path
+            if not base_cand:
+                ds_dir = os.path.dirname(os.path.abspath(dataset_path))
+                candidates = glob.glob(
+                    os.path.join(ds_dir, "*cleaned*.parquet")
+                ) or glob.glob(os.path.join(ds_dir, "*deduplicated*.parquet"))
+                if candidates:
+                    base_cand = candidates[0]
+
+            if base_cand and os.path.exists(base_cand):
+                print(f" -> Found companion base dataset for coordinates: {base_cand}")
+                try:
+                    # Fast zero-copy append: both files share exact row order
+                    tbl_clean = pq.read_table(base_cand, columns=wanted_base)
+                    side_cols = [
+                        c for c in ["cluster_label", "cluster_id"] if c in data_cols
+                    ]
+                    tbl_side = pq.read_table(dataset_path, columns=side_cols)
+                    if len(tbl_clean) == len(tbl_side):
+                        tbl_joined = tbl_clean
+                        for col_name in tbl_side.column_names:
+                            tbl_joined = tbl_joined.append_column(
+                                col_name, tbl_side[col_name]
+                            )
+                        mask = pc.equal(
+                            pc.utf8_lower(tbl_joined["continent"]),
+                            continent_canon.lower(),
+                        )
+                        df_photos = tbl_joined.filter(mask).to_pandas()
+                    else:
+                        raise ValueError(
+                            f"Row count mismatch: clean={len(tbl_clean)} vs side={len(tbl_side)}"
+                        )
+                except Exception as e:
+                    print(
+                        f"Warning: Fast append failed ({e}), loading via load_dataset_with_clusters..."
+                    )
+                    df_photos = load_dataset_with_clusters(
+                        dataset_path, columns=wanted_base + ["cluster_label"]
+                    )
+                    if "continent" in df_photos.columns:
+                        df_photos = df_photos[
+                            df_photos["continent"].astype(str).str.lower()
+                            == continent_canon.lower()
+                        ]
+            else:
+                print(
+                    " -> Sidecar detected without companion base file; loading via load_dataset_with_clusters..."
+                )
+                df_photos = load_dataset_with_clusters(
+                    dataset_path, columns=wanted_base + ["cluster_label"]
+                )
+                if "continent" in df_photos.columns:
+                    df_photos = df_photos[
+                        df_photos["continent"].astype(str).str.lower()
+                        == continent_canon.lower()
+                    ]
+        else:
+            # dataset_path has H3_Cell / coordinates directly
+            read_cols = [c for c in wanted_base + ["cluster_label"] if c in data_cols]
+            try:
+                tbl_data = pq.read_table(
+                    dataset_path,
+                    columns=read_cols,
+                    filters=[("continent", "==", continent_canon)],
+                )
+                df_photos = tbl_data.to_pandas()
+            except Exception:
+                tbl_data = pq.read_table(dataset_path, columns=read_cols)
+                df_photos = tbl_data.to_pandas()
+                if "continent" in df_photos.columns:
+                    df_photos = df_photos[
+                        df_photos["continent"].astype(str).str.lower()
+                        == continent_canon.lower()
+                    ]
 
         print(
             f" -> Loaded {len(df_photos):,} continent photo records in {time.time() - t_data:.2f}s."
@@ -196,11 +269,51 @@ def generate_continent_map(
 
             # Group photos by cell and sample up to samples_per_cell
             grouped = df_photos.groupby("query_cell")
+            has_clusters = (
+                "cluster_label" in df_photos.columns
+                and df_photos["cluster_label"].notna().any()
+            )
+            if has_clusters:
+                print(
+                    " -> Performing stratified sampling across distinct clusters per cell..."
+                )
+            else:
+                print(
+                    " -> Performing uniform photo sampling per cell (no cluster labels present)..."
+                )
+
             for cell, group in tqdm(grouped, desc="Sampling photos per cell"):
                 samples = []
-                # Pick up to samples_per_cell photos
-                sub_samples = group.head(samples_per_cell)
-                for _, row in sub_samples.iterrows():
+                selected_rows = []
+
+                if has_clusters:
+                    # Stratified sampling: pick 1 photo from each dominant cluster in this cell
+                    cluster_groups = group.groupby("cluster_label", observed=True)
+                    sorted_clusters = sorted(
+                        cluster_groups, key=lambda x: len(x[1]), reverse=True
+                    )
+                    for _, c_sub in sorted_clusters:
+                        if len(selected_rows) >= samples_per_cell:
+                            break
+                        selected_rows.append(c_sub.iloc[0])
+
+                    # If fewer distinct clusters than samples_per_cell, fill remainder from largest clusters
+                    if len(selected_rows) < samples_per_cell:
+                        chosen_ids = {str(r.get("Photo_ID", "")) for r in selected_rows}
+                        rem = (
+                            group[~group["Photo_ID"].astype(str).isin(chosen_ids)]
+                            if "Photo_ID" in group.columns
+                            else group
+                        )
+                        for _, rem_row in rem.head(
+                            samples_per_cell - len(selected_rows)
+                        ).iterrows():
+                            selected_rows.append(rem_row)
+                else:
+                    for _, row in group.head(samples_per_cell).iterrows():
+                        selected_rows.append(row)
+
+                for row in selected_rows:
                     pid = str(row.get("Photo_ID", "")).strip()
                     if pid.endswith(".0"):
                         pid = pid[:-2]
@@ -208,7 +321,9 @@ def generate_continent_map(
                     plat = str(row.get("Platform", "Unknown")).strip()
                     img_url = str(row.get("Image_URL", "")).strip()
                     cap = str(row.get("Captured_At", "N/A")).strip()
-                    cl_lbl = str(row.get("cluster_label", "Land Cover")).strip()
+                    cl_lbl = str(row.get("cluster_label", "")).strip()
+                    if not cl_lbl or cl_lbl.lower() in ("nan", "none"):
+                        cl_lbl = plat if plat != "Unknown" else "Photo"
                     lat_val = (
                         float(row["Latitude"]) if pd.notna(row.get("Latitude")) else 0.0
                     )
@@ -282,7 +397,7 @@ def generate_continent_map(
     create_carto_tile_layer(
         "rastertiles/voyager", name="CartoDB Voyager (Color)"
     ).add_to(m)
-    folium.TileLayer("OpenStreetMap", name="OpenStreetMap").add_to(m)
+    create_esri_satellite_layer().add_to(m)
 
     # 4. Build Season/All Observations Layers with Popups & Tooltips
     unique_seasons = (
@@ -394,10 +509,13 @@ def generate_continent_map(
         print(f"Building map layer for {season} ({len(s_totals):,} cells)...")
 
         # Aggregate top 5 clusters per cell
+        agg_cols = [
+            c
+            for c in ["query_cell", "cluster_label", "cluster_description"]
+            if c in df_season.columns
+        ]
         df_cell_agg = (
-            df_season.groupby(
-                ["query_cell", "cluster_label", "cluster_description"], observed=True
-            )["image_count"]
+            df_season.groupby(agg_cols, observed=True)["image_count"]
             .sum()
             .reset_index()
         )
@@ -426,7 +544,7 @@ def generate_continent_map(
                 cluster_list = []
                 for row in top_clusters:
                     pct = float((row["image_count"] / tot) * 100)
-                    desc = row["cluster_description"] or ""
+                    desc = str(row.get("cluster_description", "") or "")
                     cluster_list.append(
                         [row["cluster_label"], pct, int(row["image_count"]), desc[:160]]
                     )
@@ -525,7 +643,13 @@ def main():
         dest="dataset",
         type=str,
         required=True,
-        help="Path to the cleaned dataset Parquet file containing photo metadata (e.g. geo_space_cleaned.parquet).",
+        help="Path to Parquet dataset (clustered sidecar, merged dataset, or cleaned dataset).",
+    )
+    parser.add_argument(
+        "--cleaned_dataset",
+        type=str,
+        default=None,
+        help="Optional path to base cleaned parquet if --dataset is a clustered sidecar stored separately.",
     )
     parser.add_argument(
         "--output",
@@ -585,7 +709,13 @@ def main():
         return
 
     if not os.path.exists(args.dataset):
-        print(f"❌ Error: Cleaned dataset file not found at '{args.dataset}'.")
+        print(f"❌ Error: Dataset file not found at '{args.dataset}'.")
+        return
+
+    if args.cleaned_dataset and not os.path.exists(args.cleaned_dataset):
+        print(
+            f"❌ Error: Cleaned base dataset file not found at '{args.cleaned_dataset}'."
+        )
         return
 
     output_html = args.output
@@ -597,6 +727,7 @@ def main():
         continent=args.continent,
         index_path=args.index,
         dataset_path=args.dataset,
+        cleaned_dataset_path=args.cleaned_dataset,
         output_html=output_html,
         h3_res=args.res,
         min_count=args.min_count,

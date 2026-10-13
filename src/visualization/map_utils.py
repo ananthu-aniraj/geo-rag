@@ -133,3 +133,15 @@ def create_carto_tile_layer(
     kwargs.setdefault("attr", attr)
     name = kwargs.pop("name", f"CARTO {variant}")
     return folium.TileLayer(tiles=url, name=name, **kwargs)
+
+
+def create_esri_satellite_layer(**kwargs: Any) -> folium.TileLayer:
+    """Create a Folium TileLayer configured with Esri World Imagery (Satellite)."""
+    url = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    attr = (
+        "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, "
+        "GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+    )
+    kwargs.setdefault("attr", attr)
+    name = kwargs.pop("name", "Esri World Imagery (Satellite)")
+    return folium.TileLayer(tiles=url, name=name, **kwargs)

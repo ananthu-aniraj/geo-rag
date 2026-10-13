@@ -79,11 +79,14 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
 * **Explicit User Inputs**:
   * `--continent <Name>`: Target continent (e.g. `Africa`, `Europe`, `Asia`).
   * `--index <path>`: Path to the pre-aggregated H3 spatial-semantic index (`geo_space_...h3_semantic_index.parquet`), supplying the hexagon cells, density colormap, and dominant LULC percentage breakdowns.
-  * `--dataset <path>`: Path to the cleaned dataset (`geo_space_cleaned.parquet`), supplying raw photo metadata and thumbnails without requiring heavy embeddings or sidecars.
+  * `--dataset <path>`: Path to the clustered Parquet dataset (e.g. `geo_space_...clustered_k_40000.parquet` or merged Parquet) or base cleaned dataset. If a clustered sidecar is passed, companion coordinates from `geo_space_cleaned.parquet` are auto-linked via high-speed zero-copy append in <2 seconds.
+  * `--cleaned_dataset <path>`: *(Optional)* Explicit path to base cleaned dataset if the clustered sidecar is stored in a separate directory.
 * **Interactive Elements**:
+  * **Stratified Cluster Photo Sampling**: When a clustered dataset is loaded, representative preview photos are stratified across the distinct dominant clusters present within each H3 cell (e.g. 1 photo from Rainforest, 1 from Savanna, 1 from Wetlands). Each thumbnail displays its true cluster category badge.
   * **Continent Scoping & High Performance**: By focusing on a single continent (`--continent Africa`, `Europe`, `Asia`, etc.), active H3 cells remain under a few thousand, rendering a fast (~2–3 MB) standalone HTML map at 60 FPS without DOM or browser lag.
   * **Hover Tooltip**: Displays the cell ID, image count, and dominant LULC classes with percentages.
   * **On-Click Image Gallery**: Clicking any hexagon opens a popup card detailing dominant categories and a 2×2 responsive thumbnail grid of photos from that polygon (with Mapillary web links).
+  * **Multi-Basemap Selection**: Features CartoDB Positron (Light), CartoDB Dark_Matter (Dark), CartoDB Voyager (Color OpenStreetMap), and Esri World Imagery (Satellite) without tile blocking on local `file:///` URLs.
   * **SSH Tunneling & Offline Dataset Mapping**: Integrates the floating "Offline Image Server Mapping" control with local path auto-detection and `--replace_prefix` / `localStorage` persistence, allowing users to view remote server images over an SSH tunnel (`http://localhost:8000/`).
 
 ---

@@ -13,9 +13,10 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 - **Continent H3 Spatial-Semantic Map with Representative Photos (`src/visualization/generate_continent_h3_semantic_map.py`)**:
   - Implemented standalone visualization tool to generate continent-scoped Folium semantic maps at configurable H3 resolution (defaulting to H3 res 4 for fast, responsive rendering).
-  - Explicit user inputs: `--continent`, `--index` (for pre-aggregated spatial-semantic statistics and polygons), and `--dataset` (for cleaned photo metadata and thumbnails without embeddings/sidecars).
-  - Uses PyArrow pushdown filters (`continent` and `resolution`) to read continent spatial-semantic index partitions in $<1\text{s}$.
-  - Samples representative photos across each H3 cell and embeds responsive thumbnail galleries with Mapillary links in interactive Leaflet popups.
+  - Explicit user inputs: `--continent`, `--index` (for pre-aggregated spatial-semantic statistics and polygons), and `--dataset` (for clustered or cleaned datasets).
+  - Implemented high-speed PyArrow sidecar auto-append (<1.8s) to automatically link coordinates from `geo_space_cleaned.parquet` when decoupled clustered sidecars are provided (`--cleaned_dataset` override available).
+  - Features stratified cluster photo sampling to display diverse representative thumbnails across distinct dominant land-cover classes in each polygon popup with matching cluster badges.
+  - Replaced blocked standard OpenStreetMap tiles with `create_esri_satellite_layer` (Esri World Imagery) and CartoDB Voyager to prevent 403 "Access blocked" errors when opening maps from local `file:///` URLs.
   - Injects `templates/image_error_handler.js` for instant SSH tunneling support (`--find_prefix`, `--replace_prefix`), allowing local browsers to seamlessly stream offline photos served over `http://localhost:8000/`.
   - Added unit test suite in `tests/test_generate_continent_h3_semantic_map.py`.
 
