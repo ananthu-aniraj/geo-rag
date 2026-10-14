@@ -102,6 +102,12 @@ vis_${num_clusters}_${model_name}_${representation_type}_${precision}/
 ├── cluster_semantic_scatter_k_${k}.png      # UMAP 2D scatter plot
 ├── global_h3_occupancy_map.html             # Spatial density map
 ├── global_h3_semantic_map.html              # Spatial-semantic map
+├── africa_h3_semantic_map.html              # Continent H3 map with photo galleries
+├── europe_h3_semantic_map.html              # Continent H3 map with photo galleries
+├── asia_h3_semantic_map.html                # Continent H3 map with photo galleries
+├── north_america_h3_semantic_map.html       # Continent H3 map with photo galleries
+├── south_america_h3_semantic_map.html       # Continent H3 map with photo galleries
+├── oceania_h3_semantic_map.html             # Continent H3 map with photo galleries
 ├── global_dataset_stats.png                 # Summary distribution plot
 ├── global_dataset_stats.txt                 # Textual statistics report
 ├── global_dataset_map.html                  # Layered coverage map

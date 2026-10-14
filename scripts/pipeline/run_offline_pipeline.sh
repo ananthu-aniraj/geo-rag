@@ -821,6 +821,26 @@ python3 -m src.visualization.generate_h3_semantic_map \
   --output "$SEMANTIC_MAP" \
   --res 5
 
+echo " -> Generating Continent H3 Spatial-Semantic Maps..."
+CLEANED_FLAG=""
+if [ -n "$INPUT_PARQUET" ] && [ -f "$INPUT_PARQUET" ]; then
+    CLEANED_FLAG="--cleaned_dataset $INPUT_PARQUET"
+fi
+
+CONTINENTS=("Africa" "Europe" "Asia" "North America" "South America" "Oceania")
+for cont in "${CONTINENTS[@]}"; do
+    cont_slug=$(echo "$cont" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
+    echo "    - Generating $cont H3 Spatial-Semantic Map..."
+    python3 -m src.visualization.generate_continent_h3_semantic_map \
+      --continent "$cont" \
+      --index "$H3_SEMANTIC_INDEX" \
+      --dataset "$CLUSTERED_PARQUET" \
+      $CLEANED_FLAG \
+      --output "$VIS_DIR/${cont_slug}_h3_semantic_map.html" \
+      --res 4 \
+      $IMAGE_ROOT_FLAG
+done
+
 echo " -> Generating Dataset Statistics & Coverage Report..."
 CAMERA_TRAP_FLAG=""
 if [ -n "$CAMERA_TRAP_PLATFORMS" ]; then

@@ -18,6 +18,7 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
   - Features stratified cluster photo sampling to display diverse representative thumbnails across distinct dominant land-cover classes in each polygon popup with matching cluster badges.
   - Replaced blocked standard OpenStreetMap tiles with `create_esri_satellite_layer` (Esri World Imagery) and CartoDB Voyager to prevent 403 "Access blocked" errors when opening maps from local `file:///` URLs.
   - Injects `templates/image_error_handler.js` for instant SSH tunneling support (`--find_prefix`, `--replace_prefix`), allowing local browsers to seamlessly stream offline photos served over `http://localhost:8000/`.
+  - Integrated into Step 5 of both `run_full_pipeline.sh` and `run_offline_pipeline.sh`, automatically generating individual H3 res 4 interactive maps for all 6 major inhabited continents (`Africa`, `Europe`, `Asia`, `North America`, `South America`, `Oceania`) directly into `$VIS_DIR`.
   - Added unit test suite in `tests/test_generate_continent_h3_semantic_map.py`.
 
 - **Streaming Vector Iteration & Memory-Mapped Embeddings (`src/utils/io.py`, `src/visualization/visualize_cluster_scatter.py`, `src/visualization/visualize_cluster_samples.py`)**:
