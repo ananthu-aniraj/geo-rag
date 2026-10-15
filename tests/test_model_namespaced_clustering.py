@@ -50,9 +50,9 @@ class TestModelNamespacedClustering(unittest.TestCase):
             model_name="facebook/dinov2-base",
         )
 
-        # Verify companion npy was created
+        # Verify companion npy was created with core dataset base name
         expected_npy = os.path.join(
-            self.temp_dir, "geo_space_offline_facebook_dinov2-base_cls_embeddings.npy"
+            self.temp_dir, "geo_space_facebook_dinov2-base_cls_embeddings.npy"
         )
         self.assertTrue(
             os.path.exists(expected_npy), f"Expected npy not found: {expected_npy}"

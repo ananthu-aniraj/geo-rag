@@ -111,6 +111,75 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
         self.assertEqual(embs.shape, (2, 16))
         np.testing.assert_allclose(embs, 1.0)
 
+    def test_save_dataframe_and_backfill_core_naming_for_cleaned_offline(self):
+        """
+        Regression test: Verify save_dataframe and backfill_embeddings decouple embeddings
+        to geo_space_{model_name}_{representation_type}_embeddings.npy (never adding 'cleaned_offline').
+        """
+        model_name = "vit_base_patch16_dinov3.lvd1689m"
+        offline_parquet = os.path.join(
+            self.test_dir, "geo_space_cleaned_offline.parquet"
+        )
+        dim = 16
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2"],
+                "Platform": ["flickr", "flickr"],
+                "Latitude": [40.0, 41.0],
+                "Longitude": [-74.0, -73.0],
+                "Image_URL": ["url_1", "url_2"],
+                "embedding": [np.full(dim, 2.5, dtype=np.float16) for _ in range(2)],
+            }
+        )
+        # 1. save_dataframe must save to geo_space_vit_base... NOT geo_space_cleaned_offline_vit_base...
+        save_dataframe(
+            df,
+            offline_parquet,
+            representation_type="cls",
+            precision="float16",
+            model_name=model_name,
+        )
+        expected_core_npy = os.path.join(
+            self.test_dir, f"geo_space_{model_name}_cls_embeddings.npy"
+        )
+        wrong_offline_npy = os.path.join(
+            self.test_dir, f"geo_space_cleaned_offline_{model_name}_cls_embeddings.npy"
+        )
+        self.assertTrue(os.path.exists(expected_core_npy))
+        self.assertFalse(os.path.exists(wrong_offline_npy))
+
+        # 2. Run backfill_embeddings when all embeddings exist
+        test_args = [
+            "backfill_embeddings.py",
+            "--input",
+            offline_parquet,
+            "--model_name",
+            model_name,
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float16",
+        ]
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load_model:
+                main()
+                mock_load_model.assert_not_called()
+
+        # 3. Ensure the wrong npy file was NOT created during backfill completion
+        self.assertFalse(os.path.exists(wrong_offline_npy))
+        self.assertTrue(os.path.exists(expected_core_npy))
+
+        # 4. Ensure load_embeddings loads the embeddings correctly
+        loaded = load_embeddings(
+            offline_parquet,
+            model_name=model_name,
+            representation_type="cls",
+        )
+        self.assertEqual(loaded.shape, (2, 16))
+        np.testing.assert_allclose(loaded, 2.5)
+
     def test_backfill_embeddings_all_already_computed(self):
         # Create dataset with pre-existing companion embeddings
         dim = 16

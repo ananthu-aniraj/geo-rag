@@ -22,6 +22,7 @@ from src.utils.credentials import (
 from src.utils.io import (
     KNOWN_PLACEHOLDER_MD5_HASHES,
     build_offline_image_index,
+    get_core_base_name,
     is_valid_image_file,
     load_dataframe,
     load_embeddings,
@@ -276,6 +277,7 @@ def save_stream_checkpoint(
     out_dir = os.path.dirname(os.path.abspath(out_metadata))
     os.makedirs(out_dir, exist_ok=True)
     out_base = os.path.splitext(os.path.basename(out_metadata))[0]
+    out_base = get_core_base_name(out_base)
     out_ext = os.path.splitext(out_metadata)[1].lower()
 
     rep_suffix = representation_type or "cls"
@@ -1202,7 +1204,8 @@ def main():
         )
 
     out_npy = os.path.join(
-        out_dir, f"{out_base}_{args.representation_type}_embeddings.npy"
+        out_dir,
+        f"{get_core_base_name(out_base)}_{args.representation_type}_embeddings.npy",
     )
     if df_existing is not None and not df_existing.empty:
         print("\n🎉 Offline dataset created successfully!")

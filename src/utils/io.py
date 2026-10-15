@@ -21,6 +21,10 @@ from src.utils.credentials import get_wildlife_insights_token
 
 def get_core_base_name(base_name):
     """Recursively strips common pipeline suffixes to find the base prefix (e.g. geo_space)."""
+    if not base_name:
+        return base_name
+    if base_name.startswith("geo_space"):
+        return "geo_space"
     if "_clustered_k_" in base_name:
         base_name = base_name.split("_clustered_k_")[0]
     suffixes = [
@@ -74,6 +78,8 @@ def save_dataframe(
     representation_type=None,
     precision=None,
     model_name=None,
+    companion_stem=None,
+    embeddings=None,
     **kwargs,
 ):
     """
@@ -98,11 +104,11 @@ def save_dataframe(
         if "compression" not in kwargs:
             kwargs["compression"] = "zstd"
 
-        has_embeddings = "embedding" in df.columns
+        has_embeddings = ("embedding" in df.columns) or (embeddings is not None)
 
         # Avoid deep copy of multi-gigabyte dataframes.
-        # If embeddings are present, drop them immediately to avoid keeping duplicate array copies in RAM.
-        if has_embeddings:
+        # If embeddings are present in df, drop them immediately to avoid keeping duplicate array copies in RAM.
+        if "embedding" in df.columns:
             df_to_save = df.drop(columns=["embedding"], errors="ignore")
         else:
             df_to_save = df.copy(deep=False)
@@ -136,13 +142,23 @@ def save_dataframe(
                 else file_path
             )
             db_dir = os.path.dirname(os.path.abspath(effective_path))
-            base_name = os.path.splitext(os.path.basename(effective_path))[0]
-            if "_clustered_k_" in base_name:
-                base_name = base_name.split("_clustered_k_")[0]
+            raw_base_name = os.path.splitext(os.path.basename(effective_path))[0]
+            if companion_stem:
+                base_name = companion_stem
+            else:
+                base_name = get_core_base_name(raw_base_name)
 
             # Determine dimension without loading entire matrix into memory
-            first_emb = df["embedding"].iloc[0]
-            dim = len(first_emb) if hasattr(first_emb, "__len__") else 768
+            if embeddings is not None:
+                dim = (
+                    embeddings.shape[1]
+                    if hasattr(embeddings, "ndim") and embeddings.ndim == 2
+                    else len(embeddings[0])
+                )
+                first_emb = embeddings[0]
+            else:
+                first_emb = df["embedding"].iloc[0]
+                dim = len(first_emb) if hasattr(first_emb, "__len__") else 768
 
             # 1. Resolve representation suffix
             if representation_type is not None:
@@ -180,29 +196,37 @@ def save_dataframe(
             )
 
             # Memory-efficient extraction directly into destination dtype
-            n_rows = len(df)
-            if (
-                isinstance(df["embedding"].values, np.ndarray)
-                and df["embedding"].values.ndim == 2
-            ):
-                embs = df["embedding"].values.astype(dtype, copy=False)
+            if embeddings is not None:
+                embs = np.asarray(embeddings, dtype=dtype)
+                np.save(tmp_npy_path, embs)
+                del embs
+                gc.collect()
             else:
-                # Preallocate in target dtype to prevent having simultaneous float32 + float16 full matrices
-                embs = np.empty((n_rows, dim), dtype=dtype)
-                chunk_size = 50_000
-                for i in range(0, n_rows, chunk_size):
-                    end_idx = min(i + chunk_size, n_rows)
-                    chunk_vals = df["embedding"].iloc[i:end_idx].values
-                    if len(chunk_vals) > 0 and isinstance(chunk_vals[0], np.ndarray):
-                        embs[i:end_idx] = np.vstack(chunk_vals).astype(
-                            dtype, copy=False
-                        )
-                    else:
-                        embs[i:end_idx] = np.array(list(chunk_vals), dtype=dtype)
+                n_rows = len(df)
+                if (
+                    isinstance(df["embedding"].values, np.ndarray)
+                    and df["embedding"].values.ndim == 2
+                ):
+                    embs = df["embedding"].values.astype(dtype, copy=False)
+                else:
+                    # Preallocate in target dtype to prevent having simultaneous float32 + float16 full matrices
+                    embs = np.empty((n_rows, dim), dtype=dtype)
+                    chunk_size = 50_000
+                    for i in range(0, n_rows, chunk_size):
+                        end_idx = min(i + chunk_size, n_rows)
+                        chunk_vals = df["embedding"].iloc[i:end_idx].values
+                        if len(chunk_vals) > 0 and isinstance(
+                            chunk_vals[0], np.ndarray
+                        ):
+                            embs[i:end_idx] = np.vstack(chunk_vals).astype(
+                                dtype, copy=False
+                            )
+                        else:
+                            embs[i:end_idx] = np.array(list(chunk_vals), dtype=dtype)
 
-            np.save(tmp_npy_path, embs)
-            del embs
-            gc.collect()
+                np.save(tmp_npy_path, embs)
+                del embs
+                gc.collect()
 
             if "photo_key" not in df_to_save.columns:
                 df_to_save["photo_key"] = "idx_" + np.arange(len(df_to_save)).astype(

@@ -26,6 +26,7 @@ from src.models.vision_model_inference import (
 from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     download_image,
+    get_core_base_name,
     get_parquet_writer,
     load_dataframe,
     load_embeddings,
@@ -554,9 +555,8 @@ def stream_update_parquet(
 
         # Save companion .npy file for the output parquet path
         db_dir = os.path.dirname(os.path.abspath(output_path))
-        base_name = os.path.splitext(os.path.basename(output_path))[0]
-        if "_clustered_k_" in base_name:
-            base_name = base_name.split("_clustered_k_")[0]
+        raw_base_name = os.path.splitext(os.path.basename(output_path))[0]
+        base_name = get_core_base_name(raw_base_name)
 
         model_suffix = ""
         if model_name and model_name != "google/tipsv2-b14":

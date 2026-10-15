@@ -152,6 +152,7 @@ def resolve_checkpoint_paths(
     """
     db_dir = os.path.dirname(os.path.abspath(target_path))
     base_name = os.path.splitext(os.path.basename(target_path))[0]
+    base_name = get_core_base_name(base_name)
 
     model_suffix = ""
     if model_name and model_name != "google/tipsv2-b14":
@@ -355,8 +356,13 @@ def main():
     # 2. Check for existing companion embeddings and checkpoint files (Resume & Derivation support)
     known_keys = []
     known_embs = []
+    target_npy_expected, _ = find_companion_files(
+        out_path, model_name_for_save, args.representation_type
+    )
+    exact_output_companion_loaded = False
 
     def load_companion_pair(npy_p, keys_p, label="", derivation_mode="exact"):
+        nonlocal exact_output_companion_loaded
         if not (npy_p and keys_p and os.path.exists(npy_p) and os.path.exists(keys_p)):
             return False
         try:
@@ -401,12 +407,16 @@ def main():
                 d = e_arr.shape[1]
                 e_arr = np.concatenate([e_arr, e_arr], axis=-1)
                 print(
-                    f" -> Model '{model_name_for_save}' has no discrete CLS token; forming 'cls_avg_patch' (dim: {2*d}) from spatial pooling in {label or npy_p} ({len(k_arr):,} vectors)"
+                    f" -> Model '{model_name_for_save}' has no discrete CLS token; forming 'cls_avg_patch' (dim: {2 * d}) from spatial pooling in {label or npy_p} ({len(k_arr):,} vectors)"
                 )
             else:
                 print(
                     f" -> Found existing companion embeddings ({len(k_arr):,} vectors): {label or npy_p}"
                 )
+                if target_npy_expected and os.path.abspath(npy_p) == os.path.abspath(
+                    target_npy_expected
+                ):
+                    exact_output_companion_loaded = True
 
             known_keys.append(k_arr)
             known_embs.append(e_arr)
@@ -560,8 +570,22 @@ def main():
         print(
             "\n✅ All images in the dataset already have embeddings! No feature extraction required."
         )
+        for p in [ckpt_npy, ckpt_keys]:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+        same_io_path = os.path.abspath(args.input) == os.path.abspath(out_path)
+        if exact_output_companion_loaded and same_io_path:
+            print(
+                f" -> Dataset and companion embeddings are already up to date ({target_npy_expected})."
+            )
+            print("✅ Embeddings backfilling and metadata alignment complete!")
+            return
+
         embeddings_matrix = unique_embs[known_indexer]
-        df["embedding"] = list(embeddings_matrix)
         print(f"Saving decoupled dataset to: {out_path}")
         save_dataframe(
             df,
@@ -569,13 +593,8 @@ def main():
             representation_type=args.representation_type,
             precision=args.precision,
             model_name=model_name_for_save,
+            embeddings=embeddings_matrix,
         )
-        for p in [ckpt_npy, ckpt_keys]:
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except OSError:
-                    pass
         print("✅ Embeddings backfilling and metadata alignment complete!")
         return
 
@@ -816,7 +835,6 @@ def main():
         indexer = master_keys_index.get_indexer(current_keys)
 
     embeddings_matrix = master_vectors[indexer]
-    df["embedding"] = list(embeddings_matrix)
 
     print(f"Saving decoupled dataset to: {out_path}")
     save_dataframe(
@@ -825,6 +843,7 @@ def main():
         representation_type=args.representation_type,
         precision=args.precision,
         model_name=model_name_for_save,
+        embeddings=embeddings_matrix,
     )
 
     # Clean up checkpoint files on successful completion
