@@ -1,0 +1,418 @@
+<style>
+/* Geo-RAG Floating Cluster Hover Card (cave_umwelten & itsamatch inspired) */
+.hoverlayer { display: none !important; }
+.geo-cluster-tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.25);
+    padding: 10px 12px;
+    width: 260px;
+    z-index: 999999;
+    color: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.geo-cluster-tooltip.is-active {
+    display: block;
+    opacity: 1;
+}
+.geo-cluster-tooltip .tooltip-img-wrapper {
+    position: relative;
+    width: 100%;
+    height: 145px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #090d16;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.geo-cluster-tooltip .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 3px;
+    width: 100%;
+    height: 100%;
+}
+.geo-cluster-tooltip .gallery-grid.grid-1 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+.geo-cluster-tooltip .gallery-grid.grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr;
+}
+.geo-cluster-tooltip .gallery-grid.grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr;
+}
+.geo-cluster-tooltip .gallery-grid .gallery-item {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #1e293b;
+    border-radius: 3px;
+}
+.geo-cluster-tooltip .gallery-grid img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.15s ease;
+}
+.geo-cluster-tooltip .gallery-grid img:hover {
+    transform: scale(1.08);
+}
+.geo-cluster-tooltip .tooltip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+.geo-cluster-tooltip .cluster-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: #38bdf8;
+    letter-spacing: 0.3px;
+}
+.geo-cluster-tooltip .cluster-meta {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #94a3b8;
+}
+.geo-cluster-tooltip .parent-badge {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(56, 189, 248, 0.15);
+    color: #7dd3fc;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    letter-spacing: 0.4px;
+}
+.geo-cluster-tooltip .cluster-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #f1f5f9;
+    line-height: 1.35;
+    margin-bottom: 5px;
+}
+.geo-cluster-tooltip .cluster-desc {
+    font-size: 10px;
+    line-height: 1.4;
+    color: #cbd5e1;
+    max-height: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 5px;
+    font-style: italic;
+}
+
+/* Offline Image Server Mapping Control (SSH Tunneling Support) */
+.offline-mapping-box {
+    position: fixed;
+    top: 14px;
+    right: 16px;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    z-index: 9999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #f8fafc;
+}
+.offline-mapping-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.offline-mapping-inputs {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.offline-mapping-input {
+    height: 28px;
+    padding: 3px 8px;
+    background: rgba(30, 41, 59, 0.85);
+    color: #f8fafc;
+    border: 1px solid #475569;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 11px;
+    width: 175px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease;
+}
+.offline-mapping-input:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 1px #38bdf8;
+}
+.offline-mapping-arrow {
+    font-size: 12px;
+    color: #38bdf8;
+    font-weight: bold;
+}
+</style>
+
+<div id="geo-cluster-tooltip" class="geo-cluster-tooltip">
+  <div id="geo-tt-img-wrap" class="tooltip-img-wrapper">
+    <div id="geo-tt-gallery" class="gallery-grid"></div>
+  </div>
+  <div class="tooltip-header">
+    <span id="geo-tt-cid" class="cluster-badge"></span>
+    <span id="geo-tt-count" class="cluster-meta"></span>
+  </div>
+  <div id="geo-tt-parent" class="parent-badge"></div>
+  <div id="geo-tt-label" class="cluster-label"></div>
+  <div id="geo-tt-desc" class="cluster-desc"></div>
+</div>
+
+<div class="offline-mapping-box">
+  <div class="offline-mapping-title">
+    <span>Offline Image Server Mapping</span>
+  </div>
+  <div class="offline-mapping-inputs">
+    <input type="text" id="findPrefixInput" class="offline-mapping-input" placeholder="Detecting base path..." oninput="updateCurrentTooltipImage()">
+    <span class="offline-mapping-arrow">➔</span>
+    <input type="text" id="replacePrefixInput" class="offline-mapping-input" placeholder="e.g. http://localhost:8000/" oninput="updateCurrentTooltipImage()">
+  </div>
+</div>
+
+<script>
+(function() {
+  const MAPILLARY_TOKEN = '__MAPILLARY_TOKEN__';
+  let AUTO_DETECTED_BASE = '__AUTO_DETECTED_BASE__';
+  let DEFAULT_REPLACE_PREFIX = '__DEFAULT_REPLACE_PREFIX__';
+  const SPATIAL_BIN_GALLERIES = __SPATIAL_BIN_GALLERIES__;
+
+  function getDisplayUrl(url) {
+    if (!url) return '';
+    const findInput = document.getElementById('findPrefixInput');
+    const replaceInput = document.getElementById('replacePrefixInput');
+    const findVal = findInput ? findInput.value.trim() : '';
+    const replaceVal = replaceInput ? replaceInput.value.trim() : '';
+
+    if (findVal && replaceVal) {
+      if (url.startsWith(findVal)) {
+        return url.replace(findVal, replaceVal);
+      }
+      if (url.startsWith('file://' + findVal)) {
+        return url.replace('file://' + findVal, replaceVal);
+      }
+      if (findVal.startsWith('file://') && url.startsWith(findVal.replace('file://', ''))) {
+        return url.replace(findVal.replace('file://', ''), replaceVal);
+      }
+    }
+    return url;
+  }
+
+  function handleImageError(img, photoId, platform) {
+    if (img.dataset.retryAttempt) return;
+    img.dataset.retryAttempt = '1';
+
+    const platformLower = String(platform || '').toLowerCase().trim();
+    const isMapillary = platformLower === 'mapillary' || img.src.includes('mapillary') || img.src.includes('fbcdn.net');
+    const isKartaview = platformLower === 'kartaview' || img.src.includes('kartaview') || img.src.includes('openstreetcam');
+
+    let cleanPhotoId = String(photoId || '').trim();
+    if (cleanPhotoId.endsWith('.0')) {
+      cleanPhotoId = cleanPhotoId.slice(0, -2);
+    }
+
+    if (isMapillary && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN' && MAPILLARY_TOKEN && !MAPILLARY_TOKEN.includes('MAPILLARY_TOKEN')) {
+      const apiUrl = 'https://graph.mapillary.com/' + cleanPhotoId + '?fields=thumb_1024_url';
+      fetch(apiUrl, {
+        headers: { 'Authorization': 'OAuth ' + MAPILLARY_TOKEN }
+      })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.thumb_1024_url) {
+          img.src = resData.thumb_1024_url;
+        }
+      })
+      .catch(err => console.error('Error fetching Mapillary fresh URL:', err));
+    } else if (isKartaview && cleanPhotoId && cleanPhotoId !== 'null' && cleanPhotoId !== 'undefined' && cleanPhotoId !== 'NaN') {
+      const apiUrl = 'https://api.openstreetcam.org/2.0/photo/' + cleanPhotoId;
+      fetch(apiUrl)
+      .then(res => res.json())
+      .then(resData => {
+        const data = resData.result && resData.result.data;
+        if (data) {
+          const freshUrl = data.fileurlLTh || data.fileurlTh || data.fileurl;
+          if (freshUrl) {
+            img.src = freshUrl;
+          }
+        }
+      })
+      .catch(err => console.error('Error fetching Kartaview fresh URL:', err));
+    }
+  }
+
+  window.updateCurrentTooltipImage = function() {
+    const replaceInput = document.getElementById('replacePrefixInput');
+    if (replaceInput && typeof localStorage !== 'undefined') {
+      localStorage.setItem('geo_rag_replace_prefix', replaceInput.value.trim());
+    }
+    const imgs = document.querySelectorAll('#geo-tt-gallery img');
+    imgs.forEach(function(img) {
+      if (img && img.dataset.origSrc) {
+        delete img.dataset.retryAttempt;
+        const displayUrl = getDisplayUrl(img.dataset.origSrc);
+        if (displayUrl) {
+          img.src = displayUrl;
+        }
+      }
+    });
+  };
+
+  function setupHoverTooltip() {
+    var plotEl = document.querySelector('.plotly-graph-div');
+    if (!plotEl || !plotEl.on) {
+      setTimeout(setupHoverTooltip, 100);
+      return;
+    }
+    var card = document.getElementById('geo-cluster-tooltip');
+    var imgWrap = document.getElementById('geo-tt-img-wrap');
+    var cidSpan = document.getElementById('geo-tt-cid');
+    var countSpan = document.getElementById('geo-tt-count');
+    var parentDiv = document.getElementById('geo-tt-parent');
+    var labelDiv = document.getElementById('geo-tt-label');
+    var descDiv = document.getElementById('geo-tt-desc');
+    var galleryEl = document.getElementById('geo-tt-gallery');
+
+    var findInput = document.getElementById('findPrefixInput');
+    var replaceInput = document.getElementById('replacePrefixInput');
+    if (findInput && AUTO_DETECTED_BASE && !AUTO_DETECTED_BASE.includes('AUTO_DETECTED_BASE')) {
+      findInput.value = AUTO_DETECTED_BASE;
+    }
+    var defaultReplace = (typeof DEFAULT_REPLACE_PREFIX === 'string' && DEFAULT_REPLACE_PREFIX && !DEFAULT_REPLACE_PREFIX.includes('DEFAULT_REPLACE_PREFIX')) ? DEFAULT_REPLACE_PREFIX : '';
+    if (!defaultReplace && typeof localStorage !== 'undefined') {
+      defaultReplace = localStorage.getItem('geo_rag_replace_prefix') || '';
+    }
+    if (replaceInput && defaultReplace) {
+      replaceInput.value = defaultReplace;
+    }
+
+    plotEl.on('plotly_hover', function(data) {
+      if (!data.points || data.points.length === 0) return;
+      var pt = data.points[0];
+      var cd = pt.customdata;
+      if (!cd) return;
+
+      var binId = cd[0];
+      var label = cd[1] || 'Cluster';
+      var parent = cd[2] || 'Uncategorized';
+      var count = cd[3] || 0;
+      var desc = cd[4] || '';
+      var cid = cd[5];
+
+      cidSpan.textContent = 'Cluster ' + cid;
+      countSpan.textContent = '📊 ' + Number(count).toLocaleString();
+      parentDiv.textContent = parent;
+      labelDiv.textContent = label;
+
+      if (desc && desc.trim().length > 0) {
+        descDiv.textContent = desc;
+        descDiv.style.display = 'block';
+      } else {
+        descDiv.style.display = 'none';
+      }
+
+      var gallery = [];
+      if (typeof SPATIAL_BIN_GALLERIES !== 'undefined' && SPATIAL_BIN_GALLERIES && SPATIAL_BIN_GALLERIES[binId]) {
+        gallery = SPATIAL_BIN_GALLERIES[binId];
+      } else if (typeof binId === 'string' && binId.startsWith('http')) {
+        gallery = [{ url: binId, photo_id: cd[6] || '', platform: cd[7] || '' }];
+      }
+
+      galleryEl.innerHTML = '';
+
+      if (gallery && gallery.length > 0) {
+        var countClass = 'grid-' + Math.min(gallery.length, 4);
+        galleryEl.className = 'gallery-grid ' + countClass;
+
+        gallery.forEach(function(item) {
+          var rawUrl = (typeof item === 'string') ? item : (item.url || '');
+          var pid = (typeof item === 'object') ? (item.photo_id || '') : '';
+          var plat = (typeof item === 'object') ? (item.platform || '') : '';
+
+          if (!rawUrl) return;
+
+          var itemDiv = document.createElement('div');
+          itemDiv.className = 'gallery-item';
+
+          var img = document.createElement('img');
+          img.dataset.origSrc = rawUrl;
+          img.dataset.photoId = pid;
+          img.dataset.platform = plat;
+          img.src = getDisplayUrl(rawUrl);
+          img.onerror = function() {
+            handleImageError(this, pid, plat);
+          };
+
+          itemDiv.appendChild(img);
+          galleryEl.appendChild(itemDiv);
+        });
+        imgWrap.style.display = 'block';
+      } else {
+        imgWrap.style.display = 'none';
+      }
+
+      var evt = data.event || window.event;
+      var clientX = evt ? evt.clientX : (window.innerWidth / 2);
+      var clientY = evt ? evt.clientY : (window.innerHeight / 2);
+
+      var cardWidth = 280;
+      var cardHeight = 310;
+      var x = clientX + 16;
+      var y = clientY + 16;
+
+      if (x + cardWidth > window.innerWidth) {
+        x = clientX - cardWidth - 16;
+      }
+      if (y + cardHeight > window.innerHeight) {
+        y = Math.max(10, window.innerHeight - cardHeight - 16);
+      }
+
+      card.style.left = x + 'px';
+      card.style.top = y + 'px';
+      card.classList.add('is-active');
+    });
+
+    plotEl.on('plotly_unhover', function() {
+      if (card) {
+        card.classList.remove('is-active');
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupHoverTooltip);
+  } else {
+    setupHoverTooltip();
+  }
+})();
+</script>

@@ -46,6 +46,7 @@ def create_map(
     pkl_path,
     output_html,
     max_markers=2000,
+    platforms=None,
     image_root_dir=None,
     find_prefix=None,
     replace_prefix=None,
@@ -55,6 +56,10 @@ def create_map(
     if pkl_path.endswith(".pkl"):
         with open(pkl_path, "rb") as f:
             data = pickle.load(f)
+        if platforms:
+            plat_set = {p.lower() for p in platforms}
+            data = [d for d in data if str(d.get("Platform", "")).lower() in plat_set]
+            print(f"Filtered to platforms {platforms}: {len(data):,} images remaining.")
         total_unique = len(data)
         if max_markers and len(data) > max_markers:
             plot_data = data[:max_markers]
@@ -98,6 +103,11 @@ def create_map(
             )
         except Exception:
             df = load_dataset_with_clusters(pkl_path, k_clusters=k_clusters)
+
+        if platforms and "Platform" in df.columns:
+            plat_set = {p.lower() for p in platforms}
+            df = df[df["Platform"].astype(str).str.lower().isin(plat_set)]
+            print(f"Filtered to platforms {platforms}: {len(df):,} images remaining.")
 
         total_unique = len(df)
         if max_markers and len(df) > max_markers:
@@ -338,6 +348,13 @@ if __name__ == "__main__":
         "--max_markers", type=int, default=2000, help="Max markers to show."
     )
     parser.add_argument(
+        "--platforms",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional list of platforms to filter (default: None, includes all platforms).",
+    )
+    parser.add_argument(
         "--image_root_dir",
         type=str,
         nargs="+",
@@ -368,7 +385,8 @@ if __name__ == "__main__":
         args.pkl_file,
         args.output,
         args.max_markers,
-        args.image_root_dir,
+        platforms=args.platforms,
+        image_root_dir=args.image_root_dir,
         find_prefix=args.find_prefix,
         replace_prefix=args.replace_prefix,
         tiles=args.tiles,

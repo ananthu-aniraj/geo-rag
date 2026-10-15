@@ -492,7 +492,8 @@ python3 -m src.visualization.visualize_cluster_scatter \
   --out "$SCATTER_FILE" \
   --model_name "$MODEL_NAME" \
   --representation_type "$REPRESENTATION_TYPE" \
-  --precision "$PRECISION"
+  --precision "$PRECISION" \
+  $IMAGE_ROOT_FLAG
 
 echo ""
 echo "Generating occupancy map"

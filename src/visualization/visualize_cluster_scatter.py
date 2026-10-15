@@ -9,6 +9,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 sys.modules["tensorflow"] = None
 
 import argparse
+import json
 import re
 import time
 
@@ -23,10 +24,51 @@ import umap
 from sklearn.preprocessing import normalize
 from tqdm import tqdm
 
+from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     iter_embeddings,
     load_dataset_with_clusters,
+    resolve_offline_image_path,
 )
+
+
+def inject_hover_card(
+    html_path,
+    auto_detected_base="",
+    replace_prefix="",
+    mapillary_token="",
+    bin_galleries=None,
+):
+    """Inject cave_umwelten-style floating hover tooltip card with photo preview into Plotly HTML."""
+    template_path = os.path.join(
+        os.path.dirname(__file__), "templates", "cluster_scatter_hover_card.html"
+    )
+    if not os.path.exists(template_path):
+        print(f"Warning: Hover card template not found at {template_path}")
+        return
+
+    try:
+        galleries_json = json.dumps(bin_galleries or {})
+        with open(template_path, "r", encoding="utf-8") as f:
+            tooltip_html = (
+                f.read()
+                .replace("__AUTO_DETECTED_BASE__", auto_detected_base or "")
+                .replace("__DEFAULT_REPLACE_PREFIX__", replace_prefix or "")
+                .replace("__MAPILLARY_TOKEN__", mapillary_token or "")
+                .replace("__SPATIAL_BIN_GALLERIES__", galleries_json)
+            )
+
+        with open(html_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if "</body>" in content:
+            content = content.replace("</body>", f"{tooltip_html}\n</body>")
+        else:
+            content += tooltip_html
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f" -> Successfully injected interactive hovercards into {html_path}.")
+    except Exception as e:
+        print(f"Warning: Could not inject hover card into HTML: {e}")
 
 
 def create_scatter_plot(
@@ -36,6 +78,13 @@ def create_scatter_plot(
     model_name=None,
     precision=None,
     batch_size=500000,
+    platforms=None,
+    image_root_dir=None,
+    find_prefix=None,
+    replace_prefix=None,
+    recompute_umap=False,
+    spatial_bin_size=3.0,
+    images_per_bin=4,
 ):
     print(f"Loading clustered data from {pkl_path}...")
     start_time = time.time()
@@ -90,6 +139,7 @@ def create_scatter_plot(
     cluster_sums = {}
     cluster_counts = {}
     cluster_metadata = {}
+    cluster_sample_images = {}
     dim = None
 
     if not is_pkl and not has_decoupled:
@@ -104,6 +154,8 @@ def create_scatter_plot(
                 "parent_cluster_label",
                 "cluster_description",
                 "Platform",
+                "Image_URL",
+                "Photo_ID",
             ]:
                 if extra in available_cols:
                     columns_to_read.append(extra)
@@ -147,15 +199,67 @@ def create_scatter_plot(
                 else:
                     cluster_sums[unique_id] += sum_emb
                     cluster_counts[unique_id] += count
+
+                # Sample thumbnail image for cluster hover tooltip
+                if (
+                    unique_id not in cluster_sample_images
+                    and "Image_URL" in df_rg.columns
+                ):
+                    sub_c = df_rg[mask]
+                    if platforms and "Platform" in sub_c.columns:
+                        plat_set = {p.lower() for p in platforms}
+                        sub_c = sub_c[
+                            sub_c["Platform"].astype(str).str.lower().isin(plat_set)
+                        ]
+                    if not sub_c.empty and pd.notna(sub_c.iloc[0].get("Image_URL")):
+                        first_row = sub_c.iloc[0]
+                        raw_url = str(first_row["Image_URL"])
+                        pid = str(first_row.get("Photo_ID", ""))
+                        plat = str(first_row.get("Platform", ""))
+                        if image_root_dir:
+                            resolved = resolve_offline_image_path(
+                                raw_url,
+                                image_root_dir,
+                                photo_id=pid,
+                                platform=plat,
+                            )
+                            if resolved:
+                                raw_url = "file://" + os.path.abspath(resolved)
+                        cluster_sample_images[unique_id] = {
+                            "url": raw_url,
+                            "photo_id": pid,
+                            "platform": plat,
+                        }
     else:
         # Case B: New decoupled format (load metadata/clusters and memory-mapped embeddings)
-        df_meta = load_dataset_with_clusters(
-            pkl_path,
-            k_clusters=k_clusters,
-            representation_type=representation_type,
-            model_name=model_name,
-            precision=precision,
-        )
+        sample_cols = [
+            "cluster_id",
+            "cluster_label",
+            "parent_cluster_label",
+            "cluster_description",
+            "Platform",
+            "Image_URL",
+            "Photo_ID",
+            "model_name",
+            "representation_type",
+        ]
+        try:
+            df_meta = load_dataset_with_clusters(
+                pkl_path,
+                k_clusters=k_clusters,
+                columns=sample_cols,
+                representation_type=representation_type,
+                model_name=model_name,
+                precision=precision,
+            )
+        except Exception:
+            df_meta = load_dataset_with_clusters(
+                pkl_path,
+                k_clusters=k_clusters,
+                representation_type=representation_type,
+                model_name=model_name,
+                precision=precision,
+            )
 
         if not model_name and "model_name" in df_meta.columns:
             valid_models = df_meta["model_name"].dropna()
@@ -182,6 +286,56 @@ def create_scatter_plot(
                         "cluster_description", "No description available"
                     ),
                 }
+
+        # Extract representative cluster thumbnail images for hover cards
+        if "Image_URL" in df_meta.columns and "cluster_id" in df_meta.columns:
+            print("Extracting representative cluster thumbnail images...")
+            df_imgs = df_meta.dropna(subset=["Image_URL", "cluster_id"])
+            if platforms and "Platform" in df_imgs.columns:
+                plat_set = {p.lower() for p in platforms}
+                df_imgs = df_imgs[
+                    df_imgs["Platform"].astype(str).str.lower().isin(plat_set)
+                ]
+                print(
+                    f" -> Filtered hover sample images to {platforms}: {len(df_imgs):,} available."
+                )
+            elif "Platform" in df_imgs.columns:
+                # Default (all platforms): prioritize Flickr and iNaturalist if available
+                is_persistent = (
+                    df_imgs["Platform"]
+                    .astype(str)
+                    .str.lower()
+                    .isin(["flickr", "inaturalist"])
+                )
+                df_imgs = pd.concat([df_imgs[is_persistent], df_imgs[~is_persistent]])
+
+            sub_imgs = df_imgs.drop_duplicates(subset=["cluster_id"])
+            for _, row in sub_imgs.iterrows():
+                try:
+                    cid = int(row["cluster_id"])
+                    if cid >= 0:
+                        raw_url = str(row["Image_URL"])
+                        pid = str(row.get("Photo_ID", ""))
+                        plat = str(row.get("Platform", ""))
+                        if image_root_dir:
+                            resolved = resolve_offline_image_path(
+                                raw_url,
+                                image_root_dir,
+                                photo_id=pid,
+                                platform=plat,
+                            )
+                            if resolved:
+                                raw_url = "file://" + os.path.abspath(resolved)
+                        cluster_sample_images[cid] = {
+                            "url": raw_url,
+                            "photo_id": pid,
+                            "platform": plat,
+                        }
+                except (ValueError, TypeError):
+                    continue
+            print(
+                f" -> Found thumbnail images for {len(cluster_sample_images):,} clusters."
+            )
 
         c_ids = df_meta["cluster_id"].to_numpy()
         valid_mask = ~pd.isna(c_ids) & (c_ids >= 0)
@@ -250,24 +404,120 @@ def create_scatter_plot(
     print("Normalizing centroids for cosine distance projection...")
     centroids_norm = normalize(centroids)
 
-    # 3. Compute 2D UMAP projection
-    print("Computing 2D UMAP projection on centroids...")
-    reducer = umap.UMAP(n_components=2, metric="cosine", random_state=42)
-    umap_coords = reducer.fit_transform(centroids_norm)
+    # 3. Compute or load 2D UMAP projection
+    umap_cache_path = output_png.replace(".png", "_umap_coords.npy")
+    possible_caches = [
+        umap_cache_path,
+        os.path.splitext(pkl_path)[0] + "_umap_coords.npy",
+        os.path.join(
+            os.path.dirname(os.path.abspath(output_png)),
+            f"{os.path.splitext(os.path.basename(pkl_path))[0]}_umap_coords.npy",
+        ),
+    ]
+    umap_coords = None
+    if not recompute_umap:
+        for c_path in possible_caches:
+            if os.path.exists(c_path):
+                print(f"Loading cached 2D UMAP coordinates from {c_path}...")
+                try:
+                    cached = np.load(c_path)
+                    if len(cached) == num_clusters:
+                        umap_coords = cached
+                        break
+                    else:
+                        print(
+                            f"Cached coordinates size mismatch ({len(cached)} vs {num_clusters}), trying next cache..."
+                        )
+                except Exception as e:
+                    print(f"Failed to load cached coordinates: {e}")
 
-    # 4. Prepare DataFrame for plotting
+    if umap_coords is None:
+        print("Computing 2D UMAP projection on centroids...")
+        reducer = umap.UMAP(n_components=2, metric="cosine", random_state=42)
+        umap_coords = reducer.fit_transform(centroids_norm)
+        try:
+            np.save(umap_cache_path, umap_coords)
+            print(f"Saved 2D UMAP coordinates cache to {umap_cache_path}.")
+        except Exception as e:
+            print(f"Warning: could not save UMAP cache ({e}).")
+
+    # Determine auto-detected base and mapillary token for SSH tunneling / offline image resolution
+    auto_detected_base = find_prefix or ""
+    if not auto_detected_base:
+        for cid, info in cluster_sample_images.items():
+            u = info["url"] if isinstance(info, dict) else str(info)
+            if u.startswith("file://") or u.startswith("/"):
+                last_slash = u.rfind("/")
+                if last_slash != -1:
+                    auto_detected_base = u[: last_slash + 1]
+                    break
+    if not auto_detected_base and image_root_dir:
+        first_dir = (
+            image_root_dir[0] if isinstance(image_root_dir, list) else image_root_dir
+        )
+        auto_detected_base = "file://" + os.path.abspath(first_dir).rstrip("/") + "/"
+
+    token = get_mapillary_token()
+    if platforms and "mapillary" not in [p.lower() for p in platforms]:
+        mapillary_token = ""
+    else:
+        mapillary_token = token
+
+    # 4. Group clusters into spatial-semantic visual bins (delta distance on UMAP coordinates)
+    bin_clusters = {}
+    for i, c_id in enumerate(unique_ids):
+        if spatial_bin_size and spatial_bin_size > 0:
+            bx = int(np.floor(umap_coords[i][0] / spatial_bin_size))
+            by = int(np.floor(umap_coords[i][1] / spatial_bin_size))
+            b_key = (cluster_metadata[c_id]["label"], bx, by)
+        else:
+            b_key = c_id
+
+        if b_key not in bin_clusters:
+            bin_clusters[b_key] = []
+        bin_clusters[b_key].append(c_id)
+
+    bin_key_to_id = {}
+    bin_galleries = {}
+    cluster_to_bin_id = {}
+
+    for b_key, c_list in bin_clusters.items():
+        bin_id = len(bin_key_to_id)
+        bin_key_to_id[b_key] = bin_id
+        bin_galleries[bin_id] = []
+
+        # Sort clusters in this bin by image_count descending for visual dominance
+        c_list_sorted = sorted(
+            c_list, key=lambda c: cluster_counts.get(c, 0), reverse=True
+        )
+
+        for c in c_list_sorted:
+            cluster_to_bin_id[c] = bin_id
+            if len(bin_galleries[bin_id]) < images_per_bin:
+                img_info = cluster_sample_images.get(c)
+                if img_info and isinstance(img_info, dict) and img_info.get("url"):
+                    bin_galleries[bin_id].append(img_info)
+
+    print(
+        f" -> Partitioned {len(unique_ids):,} clusters into {len(bin_galleries):,} spatial-semantic visual bins (delta={spatial_bin_size})."
+    )
+
+    # 5. Prepare DataFrame for plotting
     plot_data = []
     for i, c_id in enumerate(unique_ids):
         meta = cluster_metadata[c_id]
+        b_id = cluster_to_bin_id[c_id]
+
         plot_data.append(
             {
-                "x": umap_coords[i][0],
-                "y": umap_coords[i][1],
+                "x": float(umap_coords[i][0]),
+                "y": float(umap_coords[i][1]),
                 "cluster_id": c_id,
                 "cluster_label": meta["label"],
                 "parent_cluster_label": meta["parent"],
                 "cluster_description": meta["description"],
                 "image_count": cluster_counts[c_id],
+                "bin_id": b_id,
             }
         )
     df_plot = pd.DataFrame(plot_data)
@@ -297,22 +547,20 @@ def create_scatter_plot(
     colors = px.colors.qualitative.Alphabet + px.colors.qualitative.Dark24
     color_map = {p: colors[i % len(colors)] for i, p in enumerate(parent_categories)}
 
-    # Build custom hover templates
-    hover_templates = []
-    for idx, row in df_plot.iterrows():
-        tpl = (
-            f"<b>Cluster {row['cluster_id']}: {row['cluster_label']}</b><br>"
-            f"Parent: {row['parent_cluster_label']}<br>"
-            f"Images count: {row['image_count']:,}<br>"
-            f"Description: {row['cluster_description']}<extra></extra>"
-        )
-        hover_templates.append(tpl)
-
     fig = go.Figure()
 
     for parent in parent_categories:
         df_sub = df_plot[df_plot["parent_cluster_label"] == parent]
-        sub_hover = [hover_templates[idx] for idx in df_sub.index]
+        sub_customdata = df_sub[
+            [
+                "bin_id",
+                "cluster_label",
+                "parent_cluster_label",
+                "image_count",
+                "cluster_description",
+                "cluster_id",
+            ]
+        ].to_numpy()
 
         fig.add_trace(
             go.Scattergl(
@@ -325,8 +573,8 @@ def create_scatter_plot(
                     line=dict(width=0.5, color="rgba(255, 255, 255, 0.8)"),
                 ),
                 name=parent,
-                text=sub_hover,
-                hovertemplate="%{text}",
+                customdata=sub_customdata,
+                hoverinfo="none",
             )
         )
 
@@ -354,6 +602,13 @@ def create_scatter_plot(
 
     print(f"Saving interactive WebGL scatter plot to {output_html}...")
     fig.write_html(output_html)
+    inject_hover_card(
+        output_html,
+        auto_detected_base=auto_detected_base,
+        replace_prefix=replace_prefix or "",
+        mapillary_token=mapillary_token,
+        bin_galleries=bin_galleries,
+    )
 
     # --- SAVE STATIC PLOT (MATPLOTLIB) ---
     print("Generating static scatter plot image...")
@@ -460,6 +715,49 @@ if __name__ == "__main__":
         default=500000,
         help="Streaming batch size for centroid aggregation (default: 500,000).",
     )
+    parser.add_argument(
+        "--platforms",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional list of platforms to filter hover preview images (default: None, all platforms).",
+    )
+    parser.add_argument(
+        "--image_root_dir",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional local offline image directories for resolving local image paths.",
+    )
+    parser.add_argument(
+        "--find_prefix",
+        type=str,
+        default=None,
+        help="Optional local path prefix to replace in hover images (auto-detected if omitted).",
+    )
+    parser.add_argument(
+        "--replace_prefix",
+        type=str,
+        default=None,
+        help="Optional replacement URL prefix for SSH tunneling (e.g. http://localhost:8000/).",
+    )
+    parser.add_argument(
+        "--recompute_umap",
+        action="store_true",
+        help="Force recomputation of UMAP projection instead of using cached coordinates.",
+    )
+    parser.add_argument(
+        "--spatial_bin_size",
+        type=float,
+        default=3.0,
+        help="UMAP coordinate grid cell size for grouping clusters into representative photo galleries (default: 3.0).",
+    )
+    parser.add_argument(
+        "--images_per_bin",
+        type=int,
+        default=4,
+        help="Maximum representative images to show in hover card for each spatial-semantic bin (default: 4).",
+    )
     args = parser.parse_args()
 
     create_scatter_plot(
@@ -469,4 +767,11 @@ if __name__ == "__main__":
         model_name=args.model_name,
         precision=args.precision,
         batch_size=args.batch_size,
+        platforms=args.platforms,
+        image_root_dir=args.image_root_dir,
+        find_prefix=args.find_prefix,
+        replace_prefix=args.replace_prefix,
+        recompute_umap=args.recompute_umap,
+        spatial_bin_size=args.spatial_bin_size,
+        images_per_bin=args.images_per_bin,
     )

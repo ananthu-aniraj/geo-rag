@@ -84,6 +84,7 @@ def generate_continent_map(
     h3_res: int = 4,
     min_count: int = 10,
     samples_per_cell: int = 4,
+    platforms: Optional[List[str]] = None,
     image_root_dir: Optional[List[str]] = None,
     find_prefix: Optional[str] = None,
     replace_prefix: Optional[str] = None,
@@ -257,6 +258,15 @@ def generate_continent_map(
         print(
             f" -> Loaded {len(df_photos):,} continent photo records in {time.time() - t_data:.2f}s."
         )
+
+        if platforms and not df_photos.empty and "Platform" in df_photos.columns:
+            plat_set = {p.lower() for p in platforms}
+            df_photos = df_photos[
+                df_photos["Platform"].astype(str).str.lower().isin(plat_set)
+            ]
+            print(
+                f" -> Filtered photos to platforms {platforms}: {len(df_photos):,} records remaining."
+            )
 
         if not df_photos.empty and "H3_Cell" in df_photos.columns:
             # Map H3 cells to target resolution parent
@@ -678,6 +688,13 @@ def main():
         help="Number of representative preview photos to show per polygon popup (default: 4).",
     )
     parser.add_argument(
+        "--platforms",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional list of platforms to filter representative photos (default: None, includes all platforms).",
+    )
+    parser.add_argument(
         "--image_root_dir",
         type=str,
         nargs="+",
@@ -732,6 +749,7 @@ def main():
         h3_res=args.res,
         min_count=args.min_count,
         samples_per_cell=args.samples_per_cell,
+        platforms=args.platforms,
         image_root_dir=args.image_root_dir,
         find_prefix=args.find_prefix,
         replace_prefix=args.replace_prefix,

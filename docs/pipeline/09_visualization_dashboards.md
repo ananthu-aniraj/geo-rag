@@ -61,7 +61,10 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
 * **Interactive Elements**:
   * **WebGL Rendering**: Employs GPU-accelerated WebGL (`Scattergl`) to run smoothly (60 FPS) when panning, zooming, or box-selecting across tens of thousands of clusters in any browser.
   * **Density Sizing**: Node marker size scales dynamically based on the number of images assigned to that cluster (larger dots = higher density clusters).
-  * **Hover Metadata**: Hovering over any cluster centroid displays its unique `Cluster ID`, `Cluster Label`, `Parent Category`, exact image count, and its VLM visual description.
+  * **Interactive Photo Hover Cards (Cave Umwelten inspired)**: Hovering over any cluster dot triggers a floating glassmorphism card displaying real representative photo thumbnails, the cluster's unique ID, dominant ecological label, parent category badge, image count, and full VLM description.
+  * **Platform Filtering**: `--platforms` argument (e.g. `--platforms flickr inaturalist`) to filter thumbnail previews to persistent platforms, or leave unset to sample across all platforms (with automatic prioritization of permanent URLs).
+  * **SSH Tunneling & Offline Image Server Mapping**: Includes `--image_root_dir`, `--find_prefix`, and `--replace_prefix` CLI options, auto-detecting base image directories and embedding an interactive top-right **"Offline Image Server Mapping"** control with `localStorage` memory. This allows viewing offline images streamed over an SSH tunnel (`http://localhost:8000/`) directly in the UMAP hover cards.
+  * **Coordinate Caching**: Automatically caches 2D UMAP projections to `_umap_coords.npy` for sub-second re-generation. Use `--recompute_umap` to force recalculation.
   * **Filter Toggles**: Double-clicking or clicking parent categories in the legend instantly filters and highlights specific semantic families (e.g. isolating all forestry subclasses).
 
 ### 6. Interactive Anomaly Cleaner Dashboard (`interactive_anomaly_cleaner.py`)
@@ -81,6 +84,7 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
   * `--index <path>`: Path to the pre-aggregated H3 spatial-semantic index (`geo_space_...h3_semantic_index.parquet`), supplying the hexagon cells, density colormap, and dominant LULC percentage breakdowns.
   * `--dataset <path>`: Path to the clustered Parquet dataset (e.g. `geo_space_...clustered_k_40000.parquet` or merged Parquet) or base cleaned dataset. If a clustered sidecar is passed, companion coordinates from `geo_space_cleaned.parquet` are auto-linked via high-speed zero-copy append in <2 seconds.
   * `--cleaned_dataset <path>`: *(Optional)* Explicit path to base cleaned dataset if the clustered sidecar is stored in a separate directory.
+  * `--platforms <Platform ...>`: *(Optional)* Filter representative preview photos to specific platforms (e.g. `--platforms flickr inaturalist` guarantees persistent static image rendering for public embeds, default: all platforms).
 * **Interactive Elements**:
   * **Stratified Cluster Photo Sampling**: When a clustered dataset is loaded, representative preview photos are stratified across the distinct dominant clusters present within each H3 cell (e.g. 1 photo from Rainforest, 1 from Savanna, 1 from Wetlands). Each thumbnail displays its true cluster category badge.
   * **Continent Scoping & High Performance**: By focusing on a single continent (`--continent Africa`, `Europe`, `Asia`, etc.), active H3 cells remain under a few thousand, rendering a fast (~2–3 MB) standalone HTML map at 60 FPS without DOM or browser lag.
