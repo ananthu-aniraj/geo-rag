@@ -18,6 +18,7 @@ dvc-ssh
 plotly
 openpyxl
 mapclassify
+umap-learn
 
 # --- Web Scraping & Ingestion ---
 beautifulsoup4

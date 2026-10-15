@@ -33,6 +33,7 @@ dependencies = [
     "plotly",
     "openpyxl",
     "mapclassify",
+    "umap-learn",
     "timm",
     "beautifulsoup4",
     "playwright",

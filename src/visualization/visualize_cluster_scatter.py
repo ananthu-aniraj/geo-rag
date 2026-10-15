@@ -20,9 +20,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pyarrow.parquet as pq
 import seaborn as sns
-import umap
 from sklearn.preprocessing import normalize
 from tqdm import tqdm
+
+try:
+    import umap
+except ImportError:
+    umap = None
 
 from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
@@ -432,6 +436,11 @@ def create_scatter_plot(
                     print(f"Failed to load cached coordinates: {e}")
 
     if umap_coords is None:
+        if umap is None:
+            raise ImportError(
+                "umap-learn is required to compute 2D UMAP projections. "
+                "Please install it using: pip install umap-learn"
+            )
         print("Computing 2D UMAP projection on centroids...")
         reducer = umap.UMAP(n_components=2, metric="cosine", random_state=42)
         umap_coords = reducer.fit_transform(centroids_norm)
