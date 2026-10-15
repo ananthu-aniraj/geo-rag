@@ -310,58 +310,7 @@ def load_dataset_with_clusters(
         if parent_dir and parent_dir != db_dir:
             candidate_dirs.append(parent_dir)
 
-        base_name = os.path.splitext(os.path.basename(parquet_path))[0]
-        prefix = base_name.split("_clustered_k_")[0]
-
-        if model_name is None and "model_name" in schema_names:
-            try:
-                m_val = pf.read(columns=["model_name"])["model_name"].to_pylist()[0]
-                if m_val:
-                    model_name = m_val
-            except Exception:
-                pass
-        if (
-            representation_type is None or representation_type == "cls"
-        ) and "representation_type" in schema_names:
-            try:
-                r_val = pf.read(columns=["representation_type"])[
-                    "representation_type"
-                ].to_pylist()[0]
-                if r_val:
-                    representation_type = r_val
-            except Exception:
-                pass
-        if precision is None and "precision" in schema_names:
-            try:
-                p_val = pf.read(columns=["precision"])["precision"].to_pylist()[0]
-                if p_val:
-                    precision = p_val
-            except Exception:
-                pass
-
-        model_slug = model_name.replace("/", "_") if model_name else None
-        stripped_prefix = prefix
-        tags_to_strip = []
-        if model_slug and representation_type and precision:
-            tags_to_strip.append(f"_{model_slug}_{representation_type}_{precision}")
-        if model_slug and representation_type:
-            tags_to_strip.append(f"_{model_slug}_{representation_type}")
-        if model_slug:
-            tags_to_strip.append(f"_{model_slug}")
-        tags_to_strip.extend(
-            [
-                "_float16",
-                "_float32",
-                "_cls_avg_patch",
-                "_avg_patch",
-                "_cls",
-            ]
-        )
-        for tag in tags_to_strip:
-            if tag in stripped_prefix:
-                stripped_prefix = stripped_prefix.split(tag)[0]
-
-        # Scan candidate directories for matching base datasets (longest prefix match first)
+        sidecar_num_rows = pf.metadata.num_rows
         candidate_base_files = []
         for d in candidate_dirs:
             if not os.path.exists(d):
@@ -373,69 +322,29 @@ def load_dataset_with_clusters(
                     and "_clustered_k_" not in f
                     and "_h3_semantic_index" not in f
                 ):
-                    cand_stem = f[:-8]
-                    if (
-                        prefix.startswith(cand_stem)
-                        or stripped_prefix.startswith(cand_stem)
-                        or cand_stem.startswith(stripped_prefix)
-                        or get_core_base_name(stripped_prefix)
-                        == get_core_base_name(cand_stem)
-                    ):
-                        candidate_base_files.append(os.path.join(d, f))
-
-        if not candidate_base_files:
-            for d in candidate_dirs:
-                if not os.path.exists(d):
-                    continue
-                for f in os.listdir(d):
-                    if (
-                        f.endswith(".parquet")
-                        and not f.endswith(".keys.parquet")
-                        and "_clustered_k_" not in f
-                        and "_h3_semantic_index" not in f
-                    ):
-                        candidate_base_files.append(os.path.join(d, f))
-
-        sidecar_num_rows = None
-        if known_sidecar_path and os.path.exists(known_sidecar_path):
-            try:
-                sidecar_num_rows = pq.ParquetFile(known_sidecar_path).metadata.num_rows
-            except Exception:
-                pass
-
-        def rank_candidate_base(p):
-            stem = os.path.splitext(os.path.basename(p))[0]
-            # 1. Exact row count match with sidecar (highest priority)
-            row_match = False
-            if sidecar_num_rows is not None:
-                try:
-                    c_pf = pq.ParquetFile(p)
-                    row_match = c_pf.metadata.num_rows == sidecar_num_rows
-                except Exception:
-                    pass
-
-            # 2. Prioritize cleaned over deduplicated:
-            # In the pipeline: raw -> deduplicated -> cleaned.
-            # Clustered sidecars are produced on the cleaned dataset.
-            is_cleaned = "cleaned" in stem
-            is_dedup = "deduplicated" in stem
-            clean_score = 2 if is_cleaned else (0 if is_dedup else 1)
-
-            # 3. Exact stem match
-            exact_stem = stem == stripped_prefix or stem == prefix
-
-            return (row_match, clean_score, exact_stem, len(stem))
-
-        candidate_base_files.sort(key=rank_candidate_base, reverse=True)
-
-        found_base = False
-        for fallback_path in candidate_base_files:
-            if os.path.exists(fallback_path):
-                parquet_path = fallback_path
-                pf = pq.ParquetFile(parquet_path)
-                schema_names = pf.schema_arrow.names
-                found_base = True
+                    p = os.path.join(d, f)
+                    try:
+                        c_pf = pq.ParquetFile(p)
+                        if (
+                            "Latitude" in c_pf.schema_arrow.names
+                            and "Longitude" in c_pf.schema_arrow.names
+                        ):
+                            candidate_base_files.append(
+                                (p, c_pf.metadata.num_rows, "cleaned" in f)
+                            )
+                    except Exception:
+                        pass
+            if candidate_base_files:
                 break
+
+        if candidate_base_files:
+            candidate_base_files.sort(
+                key=lambda x: (x[1] == sidecar_num_rows, x[2], -len(x[0])),
+                reverse=True,
+            )
+            parquet_path = candidate_base_files[0][0]
+            pf = pq.ParquetFile(parquet_path)
+            schema_names = pf.schema_arrow.names
 
     cluster_cols = [
         "cluster_id",
@@ -484,69 +393,35 @@ def load_dataset_with_clusters(
     if known_sidecar_path and os.path.exists(known_sidecar_path):
         sidecar_path = known_sidecar_path
     else:
-        # Check for and load sidecar file
         db_dir = os.path.dirname(os.path.abspath(parquet_path))
-        base_name = os.path.splitext(os.path.basename(parquet_path))[0]
+        candidate_dirs = [db_dir]
+        parent_dir = os.path.dirname(db_dir)
+        if parent_dir and parent_dir != db_dir:
+            candidate_dirs.append(parent_dir)
 
-        # Trim '_clustered_k_X' suffix if present to find base name
-        if "_clustered_k_" in base_name:
-            base_name = base_name.split("_clustered_k_")[0]
-
-        core_name = get_core_base_name(base_name)
         model_slug = model_name.replace("/", "_") if model_name else None
+        rep = representation_type or "cls"
 
-        candidates = []
-        if model_slug and representation_type and precision:
-            candidates.extend(
-                [
-                    os.path.join(
-                        db_dir,
-                        f"{base_name}_{model_slug}_{representation_type}_{precision}_clustered_k_{k_clusters}.parquet",
-                    ),
-                    os.path.join(
-                        db_dir,
-                        f"{core_name}_{model_slug}_{representation_type}_{precision}_clustered_k_{k_clusters}.parquet",
-                    ),
-                ]
-            )
-        if model_slug and representation_type:
-            candidates.extend(
-                [
-                    os.path.join(
-                        db_dir,
-                        f"{base_name}_{model_slug}_{representation_type}_clustered_k_{k_clusters}.parquet",
-                    ),
-                    os.path.join(
-                        db_dir,
-                        f"{core_name}_{model_slug}_{representation_type}_clustered_k_{k_clusters}.parquet",
-                    ),
-                ]
-            )
-        if model_slug:
-            candidates.extend(
-                [
-                    os.path.join(
-                        db_dir,
-                        f"{base_name}_{model_slug}_clustered_k_{k_clusters}.parquet",
-                    ),
-                    os.path.join(
-                        db_dir,
-                        f"{core_name}_{model_slug}_clustered_k_{k_clusters}.parquet",
-                    ),
-                ]
-            )
-        candidates.extend(
-            [
-                os.path.join(db_dir, f"{base_name}_clustered_k_{k_clusters}.parquet"),
-                os.path.join(db_dir, f"{core_name}_clustered_k_{k_clusters}.parquet"),
-            ]
-        )
+        sidecar_matches = []
+        for d in candidate_dirs:
+            if not os.path.exists(d):
+                continue
+            for f in os.listdir(d):
+                if f.endswith(".parquet") and f"_clustered_k_{k_clusters}" in f:
+                    sidecar_matches.append(os.path.join(d, f))
 
         sidecar_path = None
-        for p in candidates:
-            if os.path.exists(p):
-                sidecar_path = p
-                break
+        if sidecar_matches:
+
+            def rank_sidecar(p):
+                fn = os.path.basename(p)
+                score_model = 1 if (model_slug and model_slug in fn) else 0
+                score_rep = 1 if rep in fn else 0
+                score_prec = 1 if (precision and precision in fn) else 0
+                return (score_model, score_rep, score_prec, -len(fn))
+
+            sidecar_matches.sort(key=rank_sidecar, reverse=True)
+            sidecar_path = sidecar_matches[0]
 
     if sidecar_path and os.path.exists(sidecar_path) and req_cluster_cols:
         # We need join keys in both dataframes for merging
@@ -634,23 +509,31 @@ def load_embeddings(
     mmap=False,
 ):
     """
-    Backward-compatible loader that returns memory-mapped or raw embedding matrices.
-    Supports dynamic mapping lookup via 'embedding_idx' or 'photo_key' to load from a shared base file.
-    When precision='float16' or mmap=True is specified, avoids eagerly allocating heavy float32 matrices in RAM.
+    Loads embedding matrix matching (model_name, representation_type, precision).
+    Supports raw embedding matrices (.npy) and Parquet embedded columns.
+    When companion keys (.keys.parquet) are present, verifies and aligns rows.
     """
-
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(f"File not found: {parquet_path}")
 
+    # Case 1: Direct .npy file passed
+    if parquet_path.endswith(".npy"):
+        emb = np.load(parquet_path, mmap_mode="r" if mmap else None)
+        target_dtype = np.float16 if precision == "float16" else np.float32
+        return emb if mmap else emb.astype(target_dtype, copy=False)
+
     pf = pq.ParquetFile(parquet_path)
-    if column in pf.schema_arrow.names:
-        # Case A: Combined format (read via pyarrow table and stack)
+    schema_names = pf.schema_arrow.names
+
+    # Case 2: Embedded in Parquet
+    if column in schema_names:
         table = pf.read(columns=[column])
         chunked_arr = table[column]
         num_rows = len(table)
         dim = len(chunked_arr.chunk(0)[0].as_py())
+        target_dtype = np.float16 if precision == "float16" else np.float32
 
-        emb_matrix = np.empty((num_rows, dim), dtype=np.float32)
+        emb_matrix = np.empty((num_rows, dim), dtype=target_dtype)
         current_row = 0
         for chunk in chunked_arr.chunks:
             chunk_len = len(chunk)
@@ -661,25 +544,17 @@ def load_embeddings(
             current_row += chunk_len
         return emb_matrix
 
-    # Case B: Decoupled format (.npy)
-    db_dir = os.path.dirname(os.path.abspath(parquet_path))
-    parent_dir = os.path.dirname(db_dir)
-    candidate_dirs = [db_dir]
-    if parent_dir and parent_dir != db_dir:
-        candidate_dirs.append(parent_dir)
-
-    # Auto-detect sidecar metadata from Parquet schema if not explicitly provided
-    if model_name is None and "model_name" in pf.schema_arrow.names:
+    # Case 3: Decoupled companion .npy file
+    # Auto-detect sidecar metadata from schema if not provided
+    if model_name is None and "model_name" in schema_names:
         try:
-            m_val = pf.read(columns=["model_name"])["model_name"].to_pylist()[0]
-            if m_val:
-                model_name = m_val
+            model_name = pf.read(columns=["model_name"])["model_name"].to_pylist()[0]
         except Exception:
             pass
 
     if (
         representation_type is None or representation_type == "cls"
-    ) and "representation_type" in pf.schema_arrow.names:
+    ) and "representation_type" in schema_names:
         try:
             r_val = pf.read(columns=["representation_type"])[
                 "representation_type"
@@ -689,7 +564,7 @@ def load_embeddings(
         except Exception:
             pass
 
-    if precision is None and "precision" in pf.schema_arrow.names:
+    if precision is None and "precision" in schema_names:
         try:
             p_val = pf.read(columns=["precision"])["precision"].to_pylist()[0]
             if p_val:
@@ -697,397 +572,166 @@ def load_embeddings(
         except Exception:
             pass
 
-    base_name = os.path.splitext(os.path.basename(parquet_path))[0]
+    db_dir = os.path.dirname(os.path.abspath(parquet_path))
+    candidate_dirs = [db_dir]
+    parent_dir = os.path.dirname(db_dir)
+    if parent_dir and parent_dir != db_dir:
+        candidate_dirs.append(parent_dir)
 
-    # Trim '_clustered_k_X' suffix if present to find base name
-    if "_clustered_k_" in base_name:
-        base_name = base_name.split("_clustered_k_")[0]
-
-    is_tipsv2 = (model_name is None) or ("tipsv2" in model_name.lower())
+    rep = representation_type or "cls"
     model_slug = model_name.replace("/", "_") if model_name else None
+    is_tipsv2 = (model_name is None) or ("tipsv2" in str(model_name).lower())
 
-    # Strip any known provenance tags that may have been baked into sidecar name
-    # e.g., geo_space_offline_google_tipsv2-b14_cls_float16 -> geo_space_offline
-    stripped_base = base_name
-    tags_to_strip = []
-    if model_slug and representation_type and precision:
-        tags_to_strip.append(f"_{model_slug}_{representation_type}_{precision}")
-    if model_slug and representation_type:
-        tags_to_strip.append(f"_{model_slug}_{representation_type}")
-    if model_slug:
-        tags_to_strip.append(f"_{model_slug}")
-    tags_to_strip.extend(
-        [
-            "_float16",
-            "_float32",
-            "_cls_avg_patch",
-            "_avg_patch",
-            "_cls",
-        ]
-    )
-    for tag in tags_to_strip:
-        if tag in stripped_base:
-            stripped_base = stripped_base.split(tag)[0]
+    patterns = []
+    if model_slug and not is_tipsv2:
+        if precision:
+            patterns.append(f"*{model_slug}*{rep}*{precision}*.npy")
+        patterns.append(f"*{model_slug}*{rep}*.npy")
+    elif is_tipsv2:
+        if precision:
+            patterns.append(f"*google_tipsv2-b14*{rep}*{precision}*.npy")
+            patterns.append(f"*{rep}*{precision}*.npy")
+        patterns.append(f"*google_tipsv2-b14*{rep}*.npy")
+        patterns.append(f"*{rep}*embeddings.npy")
+        patterns.append(f"*{rep}.npy")
+    else:
+        patterns.append(f"*{rep}*embeddings.npy")
 
-    # Find candidate base dataset stem by scanning candidate dirs
-    candidate_bases = []
+    def is_rep_match(fn: str, r: str) -> bool:
+        fn_lower = fn.lower()
+        if r == "cls":
+            return "cls" in fn_lower and "avg_patch" not in fn_lower
+        elif r == "avg_patch":
+            return "avg_patch" in fn_lower and "cls_avg_patch" not in fn_lower
+        return r.lower() in fn_lower
+
+    target_rows = None
+    try:
+        target_rows = pf.metadata.num_rows
+    except Exception:
+        pass
+
+    base_stem = os.path.splitext(os.path.basename(parquet_path))[0]
+    if "_clustered_k_" in base_stem:
+        base_stem = base_stem.split("_clustered_k_")[0]
+
+    npy_path = None
     for d in candidate_dirs:
         if not os.path.exists(d):
             continue
-        for f in os.listdir(d):
-            if (
-                f.endswith(".parquet")
-                and not f.endswith(".keys.parquet")
-                and "_clustered_k_" not in f
-                and "_h3_semantic_index" not in f
-            ):
-                cand_stem = f[:-8]
-                if (
-                    base_name.startswith(cand_stem)
-                    or stripped_base.startswith(cand_stem)
-                    or cand_stem.startswith(stripped_base)
-                    or get_core_base_name(stripped_base)
-                    == get_core_base_name(cand_stem)
-                ):
-                    candidate_bases.append(cand_stem)
+        for pat in patterns:
+            raw_matches = glob.glob(os.path.join(d, pat))
+            matches = [
+                m
+                for m in raw_matches
+                if "checkpoint" not in os.path.basename(m)
+                and not m.endswith(".tmp.npy")
+                and is_rep_match(os.path.basename(m), rep)
+            ]
+            if matches:
+                if len(matches) > 1:
 
-    def rank_base_stem(stem):
-        is_cleaned = "cleaned" in stem
-        is_dedup = "deduplicated" in stem
-        clean_score = 2 if is_cleaned else (0 if is_dedup else 1)
-        exact_match = stem == stripped_base or stem == base_name
-        return (clean_score, exact_match, len(stem))
+                    def rank_match(m):
+                        fn = os.path.basename(m)
+                        k_file = m.replace(".npy", ".keys.parquet")
+                        row_score = 1
+                        if os.path.exists(k_file) and target_rows is not None:
+                            try:
+                                k_rows = pq.ParquetFile(k_file).metadata.num_rows
+                                row_score = 0 if k_rows == target_rows else 2
+                            except Exception:
+                                pass
+                        stem_match = 0 if fn.startswith(base_stem) else 1
+                        return (row_score, stem_match, len(fn))
 
-    candidate_bases.sort(key=rank_base_stem, reverse=True)
-    clean_base = candidate_bases[0] if candidate_bases else stripped_base
-    core_name = get_core_base_name(clean_base)
+                    matches.sort(key=rank_match)
+                npy_path = matches[0]
+                break
+        if npy_path:
+            break
 
-    bases_to_check = []
-    for candidate in [
-        clean_base,
-        core_name,
-        stripped_base,
-        get_core_base_name(stripped_base),
-        base_name,
-        get_core_base_name(base_name),
-    ]:
-        if candidate and candidate not in bases_to_check:
-            bases_to_check.append(candidate)
-
-    def get_npy_path(base, model):
-        model_suf = f"_{model.replace('/', '_')}" if model else ""
-        if column == "embedding":
-            name = f"{base}{model_suf}_{representation_type}_embeddings.npy"
-        elif column == "patch_embedding":
-            name = f"{base}{model_suf}_patch_embeddings.npy"
+    if not npy_path or not os.path.exists(npy_path):
+        if not is_tipsv2:
+            raise FileNotFoundError(
+                f"Embeddings for model '{model_name}' (representation '{representation_type}') were not found on disk for '{parquet_path}' in '{db_dir}'. "
+                f"(Note: Embedding files without a model name are assumed to be TIPSv2). "
+                f"Please run 'python -m src.processing.backfill_embeddings --input {parquet_path} --model_name {model_name} --representation_type {representation_type}' "
+                f"to compute and backfill embeddings for this model before proceeding."
+            )
         else:
-            name = f"{base}{model_suf}_{column}_embeddings.npy"
-        for d in candidate_dirs:
-            p = os.path.join(d, name)
-            if os.path.exists(p):
-                return p
-        return os.path.join(db_dir, name)
+            model_display = model_name or "google/tipsv2-b14"
+            raise FileNotFoundError(
+                f"Embeddings for model '{model_display}' (representation '{representation_type}') were not found on disk for '{parquet_path}' in '{db_dir}'. "
+                f"Please run 'python -m src.processing.backfill_embeddings --input {parquet_path} --model_name {model_display} --representation_type {representation_type}' "
+                f"to compute and backfill embeddings for this representation before proceeding."
+            )
 
-    # 1. Try resolving with model_name if provided
-    npy_path = get_npy_path(base_name, model_name)
-    if model_name:
-        for b in bases_to_check:
-            path = get_npy_path(b, model_name)
-            if os.path.exists(path):
-                npy_path = path
-                break
+    emb = np.load(npy_path, mmap_mode="r")
+    target_dtype = np.float16 if precision == "float16" else np.float32
 
-    # 2. Fallback to model-agnostic (legacy) path resolution ONLY for TIPSv2 models
-    # (simplifying assumption: if the embedding file does not contain a model name, it's a TIPSv2 model)
-    if not os.path.exists(npy_path) and is_tipsv2:
-        for b in bases_to_check:
-            path = get_npy_path(b, None)
-            if os.path.exists(path):
-                npy_path = path
-                break
+    # Check companion keys index if present
+    keys_path = npy_path.replace(".npy", ".keys.parquet")
+    has_photo_key = "photo_key" in schema_names
+    has_platform_and_id = "Platform" in schema_names and "Photo_ID" in schema_names
 
-    def suffix_matches(filename, req_rep):
-        has_cls_avg = "cls_avg_patch" in filename
-        has_avg = "avg_patch" in filename and not has_cls_avg
-        has_cls = "cls" in filename and not has_cls_avg
+    if (has_photo_key or has_platform_and_id) and os.path.exists(keys_path):
+        print(f" -> Resolving embeddings via companion keys index: {keys_path}")
+        if has_photo_key:
+            meta_keys_table = pf.read(columns=["photo_key"])
+            master_keys_table = pq.read_table(keys_path, columns=["photo_key"])
 
-        if req_rep == "cls_avg_patch":
-            return has_cls_avg
-        elif req_rep == "avg_patch":
-            return has_avg
-        elif req_rep == "cls":
-            # Allow fallback if the filename doesn't contain any known suffix
-            if not has_cls_avg and not has_avg:
-                return True
-            return has_cls
-        return True
-
-    # Fallback: check for shared deduplicated.npy if base file is cleaned.parquet
-    if not os.path.exists(npy_path) and any("cleaned" in b for b in bases_to_check):
-        for b in bases_to_check:
-            if "cleaned" in b:
-                fallback_base = b.replace("cleaned", "deduplicated")
-                if model_name:
-                    p = get_npy_path(fallback_base, model_name)
-                    if os.path.exists(p):
-                        npy_path = p
-                        break
-                if is_tipsv2:
-                    p = get_npy_path(fallback_base, None)
-                    if os.path.exists(p):
-                        npy_path = p
-                        break
-                    fallback_name = (
-                        f"{fallback_base}.npy"
-                        if column == "embedding"
-                        else f"{fallback_base}_{column}.npy"
-                    )
-                    for d in candidate_dirs:
-                        p_legacy = os.path.join(d, fallback_name)
-                        if os.path.exists(p_legacy):
-                            npy_path = p_legacy
-                            break
-                    if os.path.exists(npy_path):
-                        break
-
-    # Wildcard search fallback for different column suffixes (e.g. cls_embeddings)
-    if not os.path.exists(npy_path):
-        bases = list(bases_to_check)
-        for b in bases_to_check:
-            if "cleaned" in b:
-                bases.append(b.replace("cleaned", "deduplicated"))
-
-        for d in candidate_dirs:
-            for b in bases:
-                pattern = os.path.join(d, f"{b}*.npy")
-                matches = glob.glob(pattern)
-                if matches:
-                    # Exclude checkpoint files if base_name does not contain checkpoint
-                    if "checkpoint" not in base_name:
-                        matches = [
-                            m
-                            for m in matches
-                            if "checkpoint" not in os.path.basename(m)
-                        ]
-                    # Filter matches by representation type if default 'embedding' column is requested
-                    if column == "embedding" and representation_type:
-                        matches = [
-                            m
-                            for m in matches
-                            if suffix_matches(os.path.basename(m), representation_type)
-                        ]
-                    # For non-TIPSv2 models, NEVER pick up files without the model name!
-                    if not is_tipsv2:
-                        model_clean = model_name.replace("/", "_")
-                        matches = [
-                            m for m in matches if model_clean in os.path.basename(m)
-                        ]
-                    elif model_name:
-                        # For TIPSv2 with explicit model name, prefer matching model name if available
-                        model_clean = model_name.replace("/", "_")
-                        model_matches = [
-                            m for m in matches if model_clean in os.path.basename(m)
-                        ]
-                        if model_matches:
-                            matches = model_matches
-
-                    if not matches:
-                        continue
-
-                    # If there's a file matching the specific column name, use it
-                    col_match = [m for m in matches if column in os.path.basename(m)]
-                    if col_match:
-                        npy_path = col_match[0]
-                        break
-                    # Otherwise, if default 'embedding' was requested, try finding cls_embeddings or similar
-                    if column == "embedding":
-                        preferred = [
-                            m
-                            for m in matches
-                            if "cls_embeddings" in os.path.basename(m)
-                            or "embedding" in os.path.basename(m)
-                        ]
-                        if preferred:
-                            npy_path = preferred[0]
-                            break
-                    # Fallback to the first match
-                    npy_path = matches[0]
-                    break
-            if os.path.exists(npy_path):
-                break
-
-    # 5. Sidecar fallback: inspect companion keys files in candidate directories
-    if not os.path.exists(npy_path):
-        is_sidecar = (
-            "cluster_id" in pf.schema_arrow.names
-            and "Latitude" not in pf.schema_arrow.names
-            and "Longitude" not in pf.schema_arrow.names
-        )
-        if is_sidecar:
-            for d in candidate_dirs:
-                if not os.path.exists(d):
-                    continue
-                for f in os.listdir(d):
-                    if f.endswith(".keys.parquet"):
-                        candidate_npy = os.path.join(
-                            d, f.replace(".keys.parquet", ".npy")
-                        )
-                        if not os.path.exists(candidate_npy):
-                            continue
-                        if representation_type and not suffix_matches(
-                            f, representation_type
-                        ):
-                            continue
-                        if not is_tipsv2:
-                            model_clean = model_name.replace("/", "_")
-                            if model_clean not in f:
-                                continue
-                        npy_path = candidate_npy
-                        break
-                if os.path.exists(npy_path):
-                    break
-
-    if os.path.exists(npy_path):
-        emb = np.load(npy_path, mmap_mode="r")
-
-        # Resolve target dtype (default to float32 for 100% backward compatibility)
-        target_dtype = np.float16 if precision == "float16" else np.float32
-
-        # If stable photo_key or platform/ID is available, and companion keys file exists, use it
-        keys_path = npy_path.replace(".npy", ".keys.parquet")
-        has_photo_key = "photo_key" in pf.schema_arrow.names
-        has_platform_and_id = (
-            "Platform" in pf.schema_arrow.names and "Photo_ID" in pf.schema_arrow.names
-        )
-
-        if (has_photo_key or has_platform_and_id) and os.path.exists(keys_path):
-            print(f" -> Resolving embeddings via companion keys index: {keys_path}")
-            is_identity = False
-
-            if has_photo_key:
-                meta_keys_table = pf.read(columns=["photo_key"])
-                master_keys_table = pq.read_table(keys_path, columns=["photo_key"])
-
-                # Fast O(1) buffer equality check in PyArrow (verifies 100% identical order and content)
-                if len(meta_keys_table) == len(master_keys_table) and meta_keys_table[
-                    "photo_key"
-                ].equals(master_keys_table["photo_key"]):
-                    is_identity = True
-                else:
-                    meta_keys = (
-                        meta_keys_table["photo_key"]
-                        .to_pandas()
-                        .astype(str)
-                        .str.lower()
-                        .values
-                    )
-                    master_keys = pd.Index(
-                        master_keys_table["photo_key"]
-                        .to_pandas()
-                        .astype(str)
-                        .str.lower()
-                    )
-            else:
-                meta_keys_table = pf.read(columns=["Platform", "Photo_ID"])
-                df_temp = meta_keys_table.to_pandas()
-                meta_keys = (
-                    df_temp["Platform"].astype(str).str.lower()
-                    + "_"
-                    + df_temp["Photo_ID"].astype(str)
-                ).values
-                master_keys = pd.Index(
-                    pd.read_parquet(keys_path, columns=["photo_key"])["photo_key"]
-                    .astype(str)
-                    .str.lower()
-                )
-
-            if is_identity:
+            # Fast O(1) buffer equality check in PyArrow (100% identical order and content)
+            if len(meta_keys_table) == len(master_keys_table) and meta_keys_table[
+                "photo_key"
+            ].equals(master_keys_table["photo_key"]):
                 if mmap:
                     return emb
-                if precision == "float16":
-                    return emb if not hasattr(emb, "copy") else emb.copy()
-                return emb.astype(np.float32)
+                return emb.astype(target_dtype, copy=False)
 
-            if master_keys.is_unique:
-                indices = master_keys.get_indexer(meta_keys)
-            else:
-                # If keys contain duplicates, resolve each key to its first occurrence in the matrix
-                pos_series = pd.Series(np.arange(len(master_keys)), index=master_keys)
-                pos_series = pos_series[~pos_series.index.duplicated(keep="first")]
-                indices = pos_series.reindex(meta_keys, fill_value=-1).values
+            meta_keys = (
+                meta_keys_table["photo_key"].to_pandas().astype(str).str.lower().values
+            )
+            master_keys = pd.Index(
+                master_keys_table["photo_key"].to_pandas().astype(str).str.lower()
+            )
+        else:
+            meta_keys_table = pf.read(columns=["Platform", "Photo_ID"])
+            df_temp = meta_keys_table.to_pandas()
+            meta_keys = (
+                df_temp["Platform"].astype(str).str.lower()
+                + "_"
+                + df_temp["Photo_ID"].astype(str)
+            ).values
+            master_keys = pd.Index(
+                pd.read_parquet(keys_path, columns=["photo_key"])["photo_key"]
+                .astype(str)
+                .str.lower()
+            )
 
-            valid_mask = indices >= 0
-            if not valid_mask.all():
-                missing_samples = list(meta_keys[~valid_mask][:10])
-                print(
-                    f"Warning: Found {np.sum(~valid_mask):,} missing keys in embeddings keys index. Zero-filling..."
-                )
-                print(f" -> Sample missing keys: {missing_samples}")
-                safe_indices = np.clip(indices, 0, len(emb) - 1)
-                sliced_emb = emb[safe_indices].astype(target_dtype, copy=False)
-                sliced_emb[~valid_mask] = 0.0
-                return sliced_emb
+        if master_keys.is_unique:
+            indices = master_keys.get_indexer(meta_keys)
+        else:
+            pos_series = pd.Series(np.arange(len(master_keys)), index=master_keys)
+            pos_series = pos_series[~pos_series.index.duplicated(keep="first")]
+            indices = pos_series.reindex(meta_keys, fill_value=-1).values
 
-            return emb[indices].astype(target_dtype, copy=False)
+        valid_mask = indices >= 0
+        if not valid_mask.all():
+            missing_samples = list(meta_keys[~valid_mask][:10])
+            print(
+                f"Warning: Found {np.sum(~valid_mask):,} missing keys in embeddings keys index. Zero-filling..."
+            )
+            print(f" -> Sample missing keys: {missing_samples}")
+            safe_indices = np.clip(indices, 0, len(emb) - 1)
+            sliced_emb = emb[safe_indices].astype(target_dtype, copy=False)
+            sliced_emb[~valid_mask] = 0.0
+            return sliced_emb
 
-        # Fallback to older embedding_idx mapping logic
-        has_embedding_idx = "embedding_idx" in pf.schema_arrow.names
-        pf_for_idx = pf
+        return emb[indices].astype(target_dtype, copy=False)
 
-        if not has_embedding_idx and "Latitude" not in pf.schema_arrow.names:
-            # Resolve to base metadata file if this is a sidecar file
-            core_name = get_core_base_name(base_name)
-            for fallback in [
-                f"{base_name}_cleaned.parquet",
-                f"{core_name}_cleaned.parquet",
-                f"{base_name}_deduplicated.parquet",
-                f"{core_name}_deduplicated.parquet",
-                f"{base_name}.parquet",
-                f"{core_name}.parquet",
-            ]:
-                fallback_path = os.path.join(db_dir, fallback)
-                if os.path.exists(fallback_path):
-                    pf_base = pq.ParquetFile(fallback_path)
-                    if "embedding_idx" in pf_base.schema_arrow.names:
-                        has_embedding_idx = True
-                        pf_for_idx = pf_base
-                    break
-
-        if has_embedding_idx:
-            idx_table = pf_for_idx.read(columns=["embedding_idx"])
-            indices = idx_table["embedding_idx"].to_numpy()
-
-            # Check bounds safety against the actual loaded matrix
-            valid_mask = (indices >= 0) & (indices < len(emb))
-            if not valid_mask.all():
-                print(
-                    f"Warning: Found {np.sum(~valid_mask):,} out-of-bounds indices in embedding_idx. Clamping and zero-filling..."
-                )
-                safe_indices = np.clip(indices, 0, len(emb) - 1)
-                sliced_emb = emb[safe_indices].astype(target_dtype, copy=False)
-                sliced_emb[~valid_mask] = 0.0
-                return sliced_emb
-
-            return emb[indices].astype(target_dtype, copy=False)
-
-        if mmap:
-            return emb
-        return emb.astype(target_dtype, copy=False)
-
-    if not is_tipsv2:
-        raise FileNotFoundError(
-            f"Embeddings for model '{model_name}' (representation '{representation_type}') were not found on disk for '{parquet_path}' in '{db_dir}'. "
-            f"(Note: Embedding files without a model name are assumed to be TIPSv2). "
-            f"Please run 'python -m src.processing.backfill_embeddings --input {parquet_path} --model_name {model_name} --representation_type {representation_type}' "
-            f"to compute and backfill embeddings for this model before proceeding."
-        )
-    else:
-        model_display = model_name or "google/tipsv2-b14"
-        raise FileNotFoundError(
-            f"Embeddings for model '{model_display}' (representation '{representation_type}') were not found on disk for '{parquet_path}' in '{db_dir}'. "
-            f"Please run 'python -m src.processing.backfill_embeddings --input {parquet_path} --model_name {model_display} --representation_type {representation_type}' "
-            f"to compute and backfill embeddings for this representation before proceeding."
-        )
+    if mmap:
+        return emb
+    return emb.astype(target_dtype, copy=False)
 
 
 def iter_embeddings(

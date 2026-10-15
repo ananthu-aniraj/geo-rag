@@ -29,6 +29,13 @@ All notable changes and updates to the Geo-RAG codebase are documented here.
 
 ### Optimized & Fixed
 
+- **Simplified Pattern-Based Embedding Loader & Companion File Resolution (`src/utils/io.py`, `src/indexing/cluster_images_global.py`, `src/indexing/label_clusters_mllm.py`, `src/indexing/relabel_failed_clusters.py`)**:
+  - Replaced over 400 lines of brittle, cascading `if/else` statements, recursive suffix stripping (`get_core_base_name`), and stem heuristics with a clean, direct pattern-matching loader in [`load_embeddings`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py).
+  - Matches the `.npy` companion matrix directly from `model_name`, `representation_type`, and `precision` strings, with disambiguation based on exact row counts and target parquet stems.
+  - Fixes erroneous resolution of partial/incomplete companion files (e.g. accidentally picking a partial `geo_space_cleaned_offline_*` file with missing keys instead of the master `geo_space_*` matrix), eliminating spurious zero-filling warnings.
+  - Forwarded explicit `--precision` parameters in [`cluster_images_global.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/indexing/cluster_images_global.py), [`label_clusters_mllm.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/indexing/label_clusters_mllm.py), and [`relabel_failed_clusters.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/indexing/relabel_failed_clusters.py).
+  - Simplified [`load_dataset_with_clusters`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py) sidecar and base dataset discovery to direct schema checks and glob pattern matching.
+
 - **Dataset Sidecar Loading & O(1) Column Alignment (`src/utils/io.py`)**:
   - Fixed column projection bug in [`load_dataset_with_clusters`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/utils/io.py) where requesting specific columns on datasets with pre-existing `photo_key` raised `KeyError: 'Platform'`.
   - Implemented 3-probe $O(1)$ alignment verification for direct column assignment on pre-aligned sidecars, accelerating sidecar loading by 13×.

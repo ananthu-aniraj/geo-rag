@@ -576,22 +576,12 @@ def main():
 
     print("Extracting embeddings...")
 
-    try:
-        embeddings = load_embeddings(
-            args.file,
-            representation_type=args.representation_type,
-            model_name=args.model_name,
-        ).squeeze()
-    except Exception as e:
-        print(
-            f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load..."
-        )
-        embeddings = load_embeddings(
-            args.file,
-            column="embedding",
-            representation_type=args.representation_type,
-            model_name=args.model_name,
-        ).squeeze()
+    embeddings = load_embeddings(
+        args.file,
+        representation_type=args.representation_type,
+        model_name=args.model_name,
+        precision=args.precision,
+    ).squeeze()
 
     # 6. Construct prompt templates
     noise_category = "None of the above / Noise"

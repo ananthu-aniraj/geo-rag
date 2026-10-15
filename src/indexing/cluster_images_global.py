@@ -208,6 +208,7 @@ def main():
             args.pkl,
             representation_type=args.representation_type,
             model_name=args.model_name,
+            precision=args.precision,
         )
 
         dim = embeddings.shape[1]
@@ -250,6 +251,7 @@ def main():
                     args.centroids_parquet,
                     representation_type=args.representation_type,
                     model_name=args.model_name,
+                    precision=args.precision,
                 )
             except Exception as e:
                 print(

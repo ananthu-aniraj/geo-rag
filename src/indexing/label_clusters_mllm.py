@@ -449,7 +449,12 @@ def main():
         embeddings = np.vstack(df["embedding"].values).astype(np.float32)
     else:
         try:
-            df = load_dataset_with_clusters(args.input_file)
+            df = load_dataset_with_clusters(
+                args.input_file,
+                representation_type=args.representation_type,
+                model_name=args.model_name,
+                precision=args.precision,
+            )
         except Exception:
             df = load_dataframe(args.input_file)
 
@@ -457,22 +462,12 @@ def main():
             "Loading raw embedding matrix temporarily to compute centroids and representative images..."
         )
         t0 = time.time()
-        try:
-            embeddings = load_embeddings(
-                args.input_file,
-                representation_type=args.representation_type,
-                model_name=args.model_name,
-            )
-        except Exception as e:
-            print(
-                f"Warning: Failed to load decoupled embeddings directly: {e}. Attempting fallback load..."
-            )
-            embeddings = load_embeddings(
-                args.input_file,
-                column="embedding",
-                representation_type=args.representation_type,
-                model_name=args.model_name,
-            )
+        embeddings = load_embeddings(
+            args.input_file,
+            representation_type=args.representation_type,
+            model_name=args.model_name,
+            precision=args.precision,
+        )
         print(
             f" -> Temporarily loaded raw embedding matrix in {time.time() - t0:.2f}s."
         )
