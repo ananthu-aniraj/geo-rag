@@ -103,9 +103,7 @@ def save_dataframe(
         # Avoid deep copy of multi-gigabyte dataframes.
         # If embeddings are present, drop them immediately to avoid keeping duplicate array copies in RAM.
         if has_embeddings:
-            df_to_save = df.drop(
-                columns=["embedding", "embedding_idx"], errors="ignore"
-            )
+            df_to_save = df.drop(columns=["embedding"], errors="ignore")
         else:
             df_to_save = df.copy(deep=False)
 
@@ -141,9 +139,6 @@ def save_dataframe(
             base_name = os.path.splitext(os.path.basename(effective_path))[0]
             if "_clustered_k_" in base_name:
                 base_name = base_name.split("_clustered_k_")[0]
-            core_name = (
-                base_name if "_filtered" in base_name else get_core_base_name(base_name)
-            )
 
             # Determine dimension without loading entire matrix into memory
             first_emb = df["embedding"].iloc[0]
@@ -164,7 +159,7 @@ def save_dataframe(
                 model_suffix = "_" + model_name.replace("/", "_")
 
             npy_path = os.path.join(
-                db_dir, f"{core_name}{model_suffix}_{rep_suffix}_embeddings.npy"
+                db_dir, f"{base_name}{model_suffix}_{rep_suffix}_embeddings.npy"
             )
 
             # 2. Resolve precision dtype
@@ -615,40 +610,51 @@ def load_embeddings(
     if "_clustered_k_" in base_stem:
         base_stem = base_stem.split("_clustered_k_")[0]
 
+    model_suffix = "_" + model_slug if model_slug and not is_tipsv2 else ""
+    direct_npy = os.path.join(db_dir, f"{base_stem}{model_suffix}_{rep}_embeddings.npy")
+    direct_keys = direct_npy.replace(".npy", ".keys.parquet")
+
     npy_path = None
-    for d in candidate_dirs:
-        if not os.path.exists(d):
-            continue
-        for pat in patterns:
-            raw_matches = glob.glob(os.path.join(d, pat))
-            matches = [
-                m
-                for m in raw_matches
-                if "checkpoint" not in os.path.basename(m)
-                and not m.endswith(".tmp.npy")
-                and is_rep_match(os.path.basename(m), rep)
-            ]
-            if matches:
-                if len(matches) > 1:
+    if os.path.exists(direct_npy) and (
+        not os.path.exists(direct_keys)
+        or target_rows is None
+        or pq.ParquetFile(direct_keys).metadata.num_rows == target_rows
+    ):
+        npy_path = direct_npy
+    else:
+        for d in candidate_dirs:
+            if not os.path.exists(d):
+                continue
+            for pat in patterns:
+                raw_matches = glob.glob(os.path.join(d, pat))
+                matches = [
+                    m
+                    for m in raw_matches
+                    if "checkpoint" not in os.path.basename(m)
+                    and not m.endswith(".tmp.npy")
+                    and is_rep_match(os.path.basename(m), rep)
+                ]
+                if matches:
+                    if len(matches) > 1:
 
-                    def rank_match(m):
-                        fn = os.path.basename(m)
-                        k_file = m.replace(".npy", ".keys.parquet")
-                        row_score = 1
-                        if os.path.exists(k_file) and target_rows is not None:
-                            try:
-                                k_rows = pq.ParquetFile(k_file).metadata.num_rows
-                                row_score = 0 if k_rows == target_rows else 2
-                            except Exception:
-                                pass
-                        stem_match = 0 if fn.startswith(base_stem) else 1
-                        return (row_score, stem_match, len(fn))
+                        def rank_match(m):
+                            fn = os.path.basename(m)
+                            k_file = m.replace(".npy", ".keys.parquet")
+                            row_score = 1
+                            if os.path.exists(k_file) and target_rows is not None:
+                                try:
+                                    k_rows = pq.ParquetFile(k_file).metadata.num_rows
+                                    row_score = 0 if k_rows == target_rows else 2
+                                except Exception:
+                                    pass
+                            stem_match = 0 if fn.startswith(base_stem) else 1
+                            return (row_score, stem_match, len(fn))
 
-                    matches.sort(key=rank_match)
-                npy_path = matches[0]
+                        matches.sort(key=rank_match)
+                    npy_path = matches[0]
+                    break
+            if npy_path:
                 break
-        if npy_path:
-            break
 
     if not npy_path or not os.path.exists(npy_path):
         if not is_tipsv2:

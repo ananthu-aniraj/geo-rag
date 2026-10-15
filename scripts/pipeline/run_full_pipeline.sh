@@ -514,7 +514,7 @@ if [ -f "$CLEANED_PARQUET" ]; then
     CLEANED_FLAG="--cleaned_dataset $CLEANED_PARQUET"
 fi
 
-CONTINENTS=("Africa" "Europe" "Asia" "North America" "South America" "Oceania")
+CONTINENTS=("Africa" "Europe" "Asia" "North America" "South America" "Oceania" "Antarctica")
 for cont in "${CONTINENTS[@]}"; do
     cont_slug=$(echo "$cont" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
     echo " -> Generating H3 Spatial-Semantic Map for $cont..."

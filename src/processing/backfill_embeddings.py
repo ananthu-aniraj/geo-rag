@@ -28,10 +28,15 @@ from src.utils.io import (
 def find_companion_files(target_path: str, model_name: str, representation_type: str):
     """
     Find existing companion .npy and .keys.parquet for a target dataset.
-    Searches exact names and canonical base names in the target's directory
-    and parent directory.
+    Constructs the companion path directly using the target's base name and model name.
     """
     if not target_path:
+        return None, None
+
+    if target_path.endswith(".npy"):
+        keys_path = target_path.replace(".npy", ".keys.parquet")
+        if os.path.exists(target_path) and os.path.exists(keys_path):
+            return target_path, keys_path
         return None, None
 
     db_dir = os.path.dirname(os.path.abspath(target_path))
@@ -43,27 +48,20 @@ def find_companion_files(target_path: str, model_name: str, representation_type:
     if parent_dir and os.path.exists(parent_dir) and parent_dir != db_dir:
         candidate_dirs.append(parent_dir)
 
-    raw_base = os.path.splitext(os.path.basename(target_path))[0]
-    candidate_bases = [raw_base]
-    if raw_base.endswith("_cleaned"):
-        candidate_bases.append(raw_base[:-8])
-    if raw_base.endswith("_offline"):
-        candidate_bases.append(raw_base[:-8])
-    if raw_base.endswith("_cleaned_offline"):
-        candidate_bases.append(raw_base[:-16])
-
-    model_suffix = ""
-    if model_name and model_name != "google/tipsv2-b14":
-        model_suffix = "_" + model_name.replace("/", "_")
+    base_name = os.path.splitext(os.path.basename(target_path))[0]
+    model_suffix = (
+        "_" + model_name.replace("/", "_")
+        if model_name and model_name != "google/tipsv2-b14"
+        else ""
+    )
 
     for d in candidate_dirs:
-        for b in candidate_bases:
-            npy_path = os.path.join(
-                d, f"{b}{model_suffix}_{representation_type}_embeddings.npy"
-            )
-            keys_path = npy_path.replace(".npy", ".keys.parquet")
-            if os.path.exists(npy_path) and os.path.exists(keys_path):
-                return npy_path, keys_path
+        npy_path = os.path.join(
+            d, f"{base_name}{model_suffix}_{representation_type}_embeddings.npy"
+        )
+        keys_path = npy_path.replace(".npy", ".keys.parquet")
+        if os.path.exists(npy_path) and os.path.exists(keys_path):
+            return npy_path, keys_path
 
     return None, None
 
@@ -126,16 +124,14 @@ def resolve_checkpoint_paths(
     Resolves the expected paths for checkpoint companion files.
     """
     db_dir = os.path.dirname(os.path.abspath(target_path))
-    raw_base = os.path.splitext(os.path.basename(target_path))[0]
-    if raw_base.endswith("_cleaned"):
-        raw_base = raw_base[:-8]
+    base_name = os.path.splitext(os.path.basename(target_path))[0]
 
     model_suffix = ""
     if model_name and model_name != "google/tipsv2-b14":
         model_suffix = "_" + model_name.replace("/", "_")
 
     ckpt_npy_name = (
-        f"{raw_base}{model_suffix}_{representation_type}_embeddings_checkpoint.npy"
+        f"{base_name}{model_suffix}_{representation_type}_embeddings_checkpoint.npy"
     )
     ckpt_npy = os.path.join(db_dir, ckpt_npy_name)
     ckpt_keys = ckpt_npy.replace(".npy", ".keys.parquet")
@@ -252,6 +248,12 @@ def main():
         type=int,
         default=300,
         help="Interval in seconds for saving progress checkpoints (default: 300, set to 0 to disable).",
+    )
+    parser.add_argument(
+        "--resume_from",
+        type=str,
+        default=None,
+        help="Optional path to an existing dataset or companion embedding matrix to resume/reuse embeddings from.",
     )
     args = parser.parse_args()
 
@@ -479,7 +481,11 @@ def main():
         if os.path.abspath(args.input) != os.path.abspath(out_path):
             resolve_and_load_companion(args.input, "input companion")
 
-        # C. Check intermediate checkpoint files for output (exact only)
+        # C. Check optional explicit resume_from path companion files
+        if getattr(args, "resume_from", None) and os.path.exists(args.resume_from):
+            resolve_and_load_companion(args.resume_from, "resume_from companion")
+
+        # D. Check intermediate checkpoint files for output (exact only)
         if os.path.exists(ckpt_npy) and os.path.exists(ckpt_keys):
             load_companion_pair(
                 ckpt_npy,

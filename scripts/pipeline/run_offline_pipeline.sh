@@ -550,6 +550,11 @@ if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
         BACKFILL_RESUME_FLAG="--no_resume"
     fi
 
+    RESUME_FROM_FLAG=""
+    if [ -n "$FULL_DATASET_PARQUET" ] && [ -f "$FULL_DATASET_PARQUET" ] && [ "$FULL_DATASET_PARQUET" != "$INPUT_PARQUET" ]; then
+        RESUME_FROM_FLAG="--resume_from $FULL_DATASET_PARQUET"
+    fi
+
     python3 -m src.processing.backfill_embeddings \
       --input "$INPUT_PARQUET" \
       --model_name "$MODEL_NAME" \
@@ -559,6 +564,7 @@ if [ "$RUN_BACKFILL_EMBEDDINGS" = "true" ]; then
       --chunk_size "$BACKFILL_CHUNK_SIZE" \
       --checkpoint_interval "$BACKFILL_CHECKPOINT_INTERVAL" \
       $BACKFILL_RESUME_FLAG \
+      $RESUME_FROM_FLAG \
       $IMAGE_ROOT_FLAG
 fi
 
@@ -827,7 +833,7 @@ if [ -n "$INPUT_PARQUET" ] && [ -f "$INPUT_PARQUET" ]; then
     CLEANED_FLAG="--cleaned_dataset $INPUT_PARQUET"
 fi
 
-CONTINENTS=("Africa" "Europe" "Asia" "North America" "South America" "Oceania")
+CONTINENTS=("Africa" "Europe" "Asia" "North America" "South America" "Oceania" "Antarctica")
 for cont in "${CONTINENTS[@]}"; do
     cont_slug=$(echo "$cont" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
     echo "    - Generating $cont H3 Spatial-Semantic Map..."

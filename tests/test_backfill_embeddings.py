@@ -636,6 +636,73 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
                 embs_cls[i], np.full(dim, float(i + 1), dtype=np.float32)
             )
 
+    def test_backfill_embeddings_resume_from_master_dataset(self):
+        dim = 16
+        master_parquet = os.path.join(self.test_dir, "geo_space_cleaned.parquet")
+        master_df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2", "3"],
+                "Platform": ["flickr", "flickr", "flickr"],
+                "Latitude": [40.0, 41.0, 42.0],
+                "Longitude": [-74.0, -73.0, -72.0],
+                "Image_URL": ["url_1", "url_2", "url_3"],
+                "embedding": [
+                    np.full(dim, float(i + 1), dtype=np.float32) for i in range(3)
+                ],
+            }
+        )
+        save_dataframe(
+            master_df,
+            master_parquet,
+            representation_type="cls",
+            precision="float32",
+            model_name="google/tipsv2-b14",
+        )
+
+        offline_parquet = os.path.join(
+            self.test_dir, "geo_space_cleaned_offline.parquet"
+        )
+        offline_df = pd.DataFrame(
+            {
+                "Photo_ID": ["2", "3"],
+                "Platform": ["flickr", "flickr"],
+                "Latitude": [41.0, 42.0],
+                "Longitude": [-73.0, -72.0],
+                "Image_URL": ["url_2", "url_3"],
+            }
+        )
+        save_dataframe(offline_df, offline_parquet)
+
+        test_args = [
+            "backfill_embeddings.py",
+            "--input",
+            offline_parquet,
+            "--resume_from",
+            master_parquet,
+            "--model_name",
+            "google/tipsv2-b14",
+            "--representation_type",
+            "cls",
+            "--precision",
+            "float32",
+        ]
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.processing.backfill_embeddings.load_vision_model"
+            ) as mock_load:
+                main()
+                self.assertEqual(mock_load.call_count, 0)
+
+        embs = load_embeddings(
+            offline_parquet,
+            representation_type="cls",
+            model_name="google/tipsv2-b14",
+            precision="float32",
+        )
+        self.assertEqual(embs.shape, (2, dim))
+        np.testing.assert_allclose(embs[0], np.full(dim, 2.0, dtype=np.float32))
+        np.testing.assert_allclose(embs[1], np.full(dim, 3.0, dtype=np.float32))
+
 
 if __name__ == "__main__":
     unittest.main()
