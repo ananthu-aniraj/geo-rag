@@ -48,6 +48,9 @@ markdown_extensions:
       custom_checkbox: true
   - admonition
   - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
 
 nav:
   - Home: index.md

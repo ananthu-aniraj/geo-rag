@@ -609,19 +609,82 @@ def load_embeddings(
     base_stem = os.path.splitext(os.path.basename(parquet_path))[0]
     if "_clustered_k_" in base_stem:
         base_stem = base_stem.split("_clustered_k_")[0]
+    core_stem = get_core_base_name(base_stem)
 
-    model_suffix = "_" + model_slug if model_slug and not is_tipsv2 else ""
-    direct_npy = os.path.join(db_dir, f"{base_stem}{model_suffix}_{rep}_embeddings.npy")
-    direct_keys = direct_npy.replace(".npy", ".keys.parquet")
+    candidate_stems = []
+    if core_stem:
+        candidate_stems.append(core_stem)
+    if base_stem and base_stem not in candidate_stems:
+        candidate_stems.append(base_stem)
+    if base_stem.startswith("geo_space") and "geo_space" not in candidate_stems:
+        candidate_stems.append("geo_space")
+
+    if is_tipsv2:
+        candidate_suffixes = ["", "_google_tipsv2-b14"]
+        if model_slug and f"_{model_slug}" not in candidate_suffixes:
+            candidate_suffixes.append(f"_{model_slug}")
+    else:
+        candidate_suffixes = [f"_{model_slug}"] if model_slug else [""]
 
     npy_path = None
-    if os.path.exists(direct_npy) and (
-        not os.path.exists(direct_keys)
-        or target_rows is None
-        or pq.ParquetFile(direct_keys).metadata.num_rows == target_rows
-    ):
-        npy_path = direct_npy
-    else:
+
+    # Step 1: Check candidate directories for exact matches where rows match or no keys needed
+    for d in candidate_dirs:
+        if not os.path.exists(d):
+            continue
+        for stem in candidate_stems:
+            for suf in candidate_suffixes:
+                for tmpl in [
+                    f"{stem}{suf}_{rep}_embeddings.npy",
+                    f"{stem}{suf}_{rep}.npy",
+                ]:
+                    cand_npy = os.path.join(d, tmpl)
+                    cand_keys = cand_npy.replace(".npy", ".keys.parquet")
+                    if os.path.exists(cand_npy):
+                        if not os.path.exists(cand_keys) or target_rows is None:
+                            npy_path = cand_npy
+                            break
+                        try:
+                            if (
+                                pq.ParquetFile(cand_keys).metadata.num_rows
+                                == target_rows
+                            ):
+                                npy_path = cand_npy
+                                break
+                        except Exception:
+                            pass
+                if npy_path:
+                    break
+            if npy_path:
+                break
+        if npy_path:
+            break
+
+    # Step 2: If no exact row match, check if candidate stems have .npy with valid .keys.parquet (for subset slicing)
+    if not npy_path:
+        for d in candidate_dirs:
+            if not os.path.exists(d):
+                continue
+            for stem in candidate_stems:
+                for suf in candidate_suffixes:
+                    for tmpl in [
+                        f"{stem}{suf}_{rep}_embeddings.npy",
+                        f"{stem}{suf}_{rep}.npy",
+                    ]:
+                        cand_npy = os.path.join(d, tmpl)
+                        cand_keys = cand_npy.replace(".npy", ".keys.parquet")
+                        if os.path.exists(cand_npy) and os.path.exists(cand_keys):
+                            npy_path = cand_npy
+                            break
+                    if npy_path:
+                        break
+                if npy_path:
+                    break
+            if npy_path:
+                break
+
+    # Step 3: Wildcard fallback search with pattern matching and ranking
+    if not npy_path:
         for d in candidate_dirs:
             if not os.path.exists(d):
                 continue
@@ -647,7 +710,13 @@ def load_embeddings(
                                     row_score = 0 if k_rows == target_rows else 2
                                 except Exception:
                                     pass
-                            stem_match = 0 if fn.startswith(base_stem) else 1
+                            stem_match = (
+                                0
+                                if (
+                                    fn.startswith(core_stem) or fn.startswith(base_stem)
+                                )
+                                else 1
+                            )
                             return (row_score, stem_match, len(fn))
 
                         matches.sort(key=rank_match)

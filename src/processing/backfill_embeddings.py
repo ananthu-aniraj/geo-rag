@@ -20,6 +20,7 @@ from src.models.vision_model_inference import (
 from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     download_image,
+    get_core_base_name,
     load_dataframe,
     save_dataframe,
 )
@@ -28,7 +29,9 @@ from src.utils.io import (
 def find_companion_files(target_path: str, model_name: str, representation_type: str):
     """
     Find existing companion .npy and .keys.parquet for a target dataset.
-    Constructs the companion path directly using the target's base name and model name.
+    Prioritizes core dataset base name (e.g. geo_space) so that downstream/filtered
+    datasets (e.g. geo_space_cleaned_offline.parquet) correctly resolve to master
+    companion embeddings geo_space_{model_name}_{representation_type}_embeddings.npy.
     """
     if not target_path:
         return None, None
@@ -49,19 +52,43 @@ def find_companion_files(target_path: str, model_name: str, representation_type:
         candidate_dirs.append(parent_dir)
 
     base_name = os.path.splitext(os.path.basename(target_path))[0]
-    model_suffix = (
-        "_" + model_name.replace("/", "_")
-        if model_name and model_name != "google/tipsv2-b14"
-        else ""
+    core_name = get_core_base_name(base_name)
+
+    candidate_stems = []
+    if core_name:
+        candidate_stems.append(core_name)
+    if base_name and base_name not in candidate_stems:
+        candidate_stems.append(base_name)
+    if base_name.startswith("geo_space") and "geo_space" not in candidate_stems:
+        candidate_stems.append("geo_space")
+
+    model_slug = model_name.replace("/", "_") if model_name else ""
+    is_tipsv2 = (
+        (not model_name)
+        or (model_name == "google/tipsv2-b14")
+        or ("tipsv2" in str(model_name).lower())
     )
 
+    if is_tipsv2:
+        model_suffixes = ["", "_google_tipsv2-b14"]
+        if model_slug and f"_{model_slug}" not in model_suffixes:
+            model_suffixes.append(f"_{model_slug}")
+    else:
+        model_suffixes = [f"_{model_slug}"] if model_slug else [""]
+
     for d in candidate_dirs:
-        npy_path = os.path.join(
-            d, f"{base_name}{model_suffix}_{representation_type}_embeddings.npy"
-        )
-        keys_path = npy_path.replace(".npy", ".keys.parquet")
-        if os.path.exists(npy_path) and os.path.exists(keys_path):
-            return npy_path, keys_path
+        if not os.path.exists(d):
+            continue
+        for stem in candidate_stems:
+            for suf in model_suffixes:
+                for tmpl in [
+                    f"{stem}{suf}_{representation_type}_embeddings.npy",
+                    f"{stem}{suf}_{representation_type}.npy",
+                ]:
+                    npy_path = os.path.join(d, tmpl)
+                    keys_path = npy_path.replace(".npy", ".keys.parquet")
+                    if os.path.exists(npy_path) and os.path.exists(keys_path):
+                        return npy_path, keys_path
 
     return None, None
 
@@ -483,6 +510,25 @@ def main():
                 f"checkpoint companion ({ckpt_npy})",
                 derivation_mode="exact",
             )
+        else:
+            out_base = os.path.splitext(os.path.basename(out_path))[0]
+            core_out = get_core_base_name(out_base)
+            if core_out and core_out != out_base:
+                core_ckpt_npy, core_ckpt_keys = resolve_checkpoint_paths(
+                    os.path.join(
+                        os.path.dirname(os.path.abspath(out_path)),
+                        f"{core_out}.parquet",
+                    ),
+                    model_name_for_save,
+                    args.representation_type,
+                )
+                if os.path.exists(core_ckpt_npy) and os.path.exists(core_ckpt_keys):
+                    load_companion_pair(
+                        core_ckpt_npy,
+                        core_ckpt_keys,
+                        f"checkpoint companion ({core_ckpt_npy})",
+                        derivation_mode="exact",
+                    )
 
     unique_keys_index = pd.Index([])
     unique_embs = None

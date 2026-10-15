@@ -62,6 +62,55 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
         self.assertTrue(os.path.exists(npy_path))
         self.assertTrue(os.path.exists(keys_path))
 
+    def test_find_companion_files_core_prefix_for_cleaned_offline(self):
+        """
+        Verify that an offline dataset named geo_space_cleaned_offline.parquet correctly
+        resolves companion embeddings named geo_space_vit_base_patch16_dinov3.lvd1689m_cls_embeddings.npy
+        (without the 'cleaned_offline' suffix).
+        """
+        model_name = "vit_base_patch16_dinov3.lvd1689m"
+        offline_parquet = os.path.join(
+            self.test_dir, "geo_space_cleaned_offline.parquet"
+        )
+
+        df = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "2"],
+                "Platform": ["flickr", "flickr"],
+                "Latitude": [40.0, 41.0],
+                "Longitude": [-74.0, -73.0],
+                "Image_URL": ["url_1", "url_2"],
+                "photo_key": ["flickr_1", "flickr_2"],
+            }
+        )
+        df.to_parquet(offline_parquet)
+
+        core_npy = os.path.join(
+            self.test_dir, f"geo_space_{model_name}_cls_embeddings.npy"
+        )
+        core_keys = core_npy.replace(".npy", ".keys.parquet")
+        np.save(core_npy, np.ones((2, 16), dtype=np.float32))
+        pd.DataFrame({"photo_key": ["flickr_1", "flickr_2"]}).to_parquet(core_keys)
+
+        # 1. Verify find_companion_files finds core_npy
+        npy_path, keys_path = find_companion_files(
+            offline_parquet,
+            model_name=model_name,
+            representation_type="cls",
+        )
+        self.assertIsNotNone(npy_path)
+        self.assertEqual(os.path.abspath(npy_path), os.path.abspath(core_npy))
+        self.assertEqual(os.path.abspath(keys_path), os.path.abspath(core_keys))
+
+        # 2. Verify load_embeddings also finds core_npy and loads the matrix correctly
+        embs = load_embeddings(
+            offline_parquet,
+            model_name=model_name,
+            representation_type="cls",
+        )
+        self.assertEqual(embs.shape, (2, 16))
+        np.testing.assert_allclose(embs, 1.0)
+
     def test_backfill_embeddings_all_already_computed(self):
         # Create dataset with pre-existing companion embeddings
         dim = 16

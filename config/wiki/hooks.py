@@ -48,8 +48,9 @@ def on_page_markdown(markdown, page, config, files):
             markdown,
         )
 
-        # 4. Replace markdown links like [Text](docs/path) with [Text](path) for MkDocs resolution
+        # 4. Replace markdown links and image sources pointing to docs/ for MkDocs resolution
         markdown = markdown.replace("](docs/", "](")
+        markdown = markdown.replace('src="docs/', 'src="')
 
         # 5. Rewrite root scripts links to point to the GitHub repository rather than broken local docs links
         markdown = re.sub(

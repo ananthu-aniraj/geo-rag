@@ -52,12 +52,22 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
 
     3. **Map Path in Browser UI**: Copy the `cluster_samples.html` and `cluster_samples_data.js` to your laptop and open the HTML file. In the **Offline Image Server Mapping** panel at the top, paste `http://localhost:8000/` in the **Replace** box. The browser will dynamically stream the images from the remote disk over your SSH tunnel in real-time.
 
+#### 🗺️ Running the Global Cluster Map Locally
+
+The full interactive Folium cluster dashboard can be generated or viewed locally on demand:
+
+```bash
+python -m src.visualization.visualize_cluster_samples \
+    --input full_pipeline_output/geo_space_cleaned_clustered_k_40000.parquet \
+    --output full_pipeline_output/cluster_samples.html
+```
+
 ### 5. Centroid Semantic UMAP Projection (`visualize_cluster_scatter.py`)
 
-* **Purpose**: Computes a 2D UMAP projection on the average embeddings (centroids) of all 50,000 fine-grained visual clusters to visualize the global semantic manifold of the dataset.
+* **Purpose**: Computes a 2D UMAP projection on the average embeddings (centroids) of all 40,000 fine-grained visual clusters to visualize the global semantic manifold of the dataset.
 * **Dual Output**:
-  * **Static Plot (`cluster_scatter.png`)**: High-resolution image showing the semantic distribution of centroids colored by their parent land-use category.
-  * **Interactive WebGL Dashboard (`cluster_scatter.html`)**: A lightweight Plotly WebGL-accelerated interactive scatter plot.
+  * **Static Plot (`cluster_scatter.png` / `cluster_scatter.webp`)**: High-resolution image showing the semantic distribution of centroids colored by their parent land-use category.
+  * **Interactive WebGL Dashboard (`cluster_scatter.html`)**: A Plotly WebGL-accelerated interactive scatter plot.
 * **Interactive Elements**:
   * **WebGL Rendering**: Employs GPU-accelerated WebGL (`Scattergl`) to run smoothly (60 FPS) when panning, zooming, or box-selecting across tens of thousands of clusters in any browser.
   * **Density Sizing**: Node marker size scales dynamically based on the number of images assigned to that cluster (larger dots = higher density clusters).
@@ -66,6 +76,23 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
   * **SSH Tunneling & Offline Image Server Mapping**: Includes `--image_root_dir`, `--find_prefix`, and `--replace_prefix` CLI options, auto-detecting base image directories and embedding an interactive top-right **"Offline Image Server Mapping"** control with `localStorage` memory. This allows viewing offline images streamed over an SSH tunnel (`http://localhost:8000/`) directly in the UMAP hover cards.
   * **Coordinate Caching**: Automatically caches 2D UMAP projections to `_umap_coords.npy` for sub-second re-generation. Use `--recompute_umap` to force recalculation.
   * **Filter Toggles**: Double-clicking or clicking parent categories in the legend instantly filters and highlights specific semantic families (e.g. isolating all forestry subclasses).
+
+#### 🌌 Live Interactive UMAP Manifold Teaser
+
+Below is an ultra-lightweight (<150 KB, pure SVG/DOM) interactive teaser showcasing 545 landmark cluster centroids sampled across all 39 parent semantic families. Hover over any dot to inspect real photo previews, VLM descriptions, and cluster statistics:
+
+<div id="umap-teaser-container" style="margin: 18px 0;"></div>
+<script src="../../visualizations/umap_teaser_data.js"></script>
+<script src="../../visualizations/umap_teaser.js"></script>
+
+To launch the full 40,000-centroid WebGL dashboard locally:
+
+```bash
+python -m src.visualization.visualize_cluster_scatter \
+    --input full_pipeline_output/geo_space_cleaned_clustered_k_40000.parquet \
+    --platforms flickr inaturalist \
+    --output full_pipeline_output/cluster_semantic_scatter_k_40000.html
+```
 
 ### 6. Interactive Anomaly Cleaner Dashboard (`interactive_anomaly_cleaner.py`)
 
@@ -80,18 +107,24 @@ The pipeline outputs five interactive maps, dashboards, and projections to inspe
 
 * **Purpose**: Generates an interactive continent-scoped Folium map at H3 resolution 4 (configurable) that pairs semantic land-cover clusters with real representative photo thumbnails for every polygon.
 * **Explicit User Inputs**:
-  * `--continent <Name>`: Target continent (e.g. `Africa`, `Europe`, `Asia`).
+  * `--continent <Name>`: Target continent (e.g. `Africa`, `Europe`, `Asia`, `North America`, `South America`, `Oceania`, `Antarctica`).
   * `--index <path>`: Path to the pre-aggregated H3 spatial-semantic index (`geo_space_...h3_semantic_index.parquet`), supplying the hexagon cells, density colormap, and dominant LULC percentage breakdowns.
-  * `--dataset <path>`: Path to the clustered Parquet dataset (e.g. `geo_space_...clustered_k_40000.parquet` or merged Parquet) or base cleaned dataset. If a clustered sidecar is passed, companion coordinates from `geo_space_cleaned.parquet` are auto-linked via high-speed zero-copy append in <2 seconds.
-  * `--cleaned_dataset <path>`: *(Optional)* Explicit path to base cleaned dataset if the clustered sidecar is stored in a separate directory.
-  * `--platforms <Platform ...>`: *(Optional)* Filter representative preview photos to specific platforms (e.g. `--platforms flickr inaturalist` guarantees persistent static image rendering for public embeds, default: all platforms).
-* **Interactive Elements**:
-  * **Stratified Cluster Photo Sampling**: When a clustered dataset is loaded, representative preview photos are stratified across the distinct dominant clusters present within each H3 cell (e.g. 1 photo from Rainforest, 1 from Savanna, 1 from Wetlands). Each thumbnail displays its true cluster category badge.
-  * **Continent Scoping & High Performance**: By focusing on a single continent (`--continent Africa`, `Europe`, `Asia`, etc.), active H3 cells remain under a few thousand, rendering a fast (~2–3 MB) standalone HTML map at 60 FPS without DOM or browser lag.
-  * **Hover Tooltip**: Displays the cell ID, image count, and dominant LULC classes with percentages.
-  * **On-Click Image Gallery**: Clicking any hexagon opens a popup card detailing dominant categories and a 2×2 responsive thumbnail grid of photos from that polygon (with Mapillary web links).
-  * **Multi-Basemap Selection**: Features CartoDB Positron (Light), CartoDB Dark_Matter (Dark), CartoDB Voyager (Color OpenStreetMap), and Esri World Imagery (Satellite) without tile blocking on local `file:///` URLs.
-  * **SSH Tunneling & Offline Dataset Mapping**: Integrates the floating "Offline Image Server Mapping" control with local path auto-detection and `--replace_prefix` / `localStorage` persistence, allowing users to view remote server images over an SSH tunnel (`http://localhost:8000/`).
+  * `--dataset <path>`: Path to the clustered Parquet dataset (e.g. `geo_space_...clustered_k_40000.parquet`).
+  * `--platforms <Platform ...>`: *(Optional)* Filter representative preview photos to specific platforms (e.g. `--platforms flickr inaturalist`).
+
+#### 🌍 Generating Continental Maps on Demand
+
+Generate any high-resolution continental map with stratified representative photo galleries locally:
+
+```bash
+# Example: Generate interactive spatial-semantic map for Europe
+python -m src.visualization.generate_continent_h3_semantic_map \
+    --continent Europe \
+    --index full_pipeline_output/geo_space_google_tipsv2-b14_cls_float16_h3_semantic_index.parquet \
+    --dataset full_pipeline_output/geo_space_google_tipsv2-b14_cls_float16_clustered_k_40000.parquet \
+    --platforms flickr inaturalist \
+    --output full_pipeline_output/europe_h3_semantic_map.html
+```
 
 ---
 

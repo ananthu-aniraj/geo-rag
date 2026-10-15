@@ -24,11 +24,19 @@ Geo-RAG provides a modular, end-to-end framework to build, evaluate, and inspect
 
 ## 🗺️ Interactive Visualizations & Mapping Suite
 
+<p align="center">
+  <a href="https://ananthu-aniraj.github.io/geo-rag/pipeline/09_visualization_dashboards/#5-centroid-semantic-umap-projection-visualize_cluster_scatterpy">
+    <img src="docs/visualizations/cluster_semantic_scatter_k_40000.png" alt="Geo-RAG Centroid UMAP 2D Semantic Manifold" width="94%" style="border-radius: 8px; border: 1px solid rgba(0,0,0,0.15);" />
+  </a>
+  <br>
+  <em>Figure: WebGL 2D UMAP projection of 40,000 fine-grained visual cluster centroids grouped into 790 spatial-semantic bins. Click image to explore the live interactive dashboard with photo hover cards.</em>
+</p>
+
 Geo-RAG includes a built-in suite of interactive tools to explore semantic representation spaces and geographic distributions for any dataset:
 
 * **[🌌 Interactive Semantic UMAP Manifold](https://ananthu-aniraj.github.io/geo-rag/pipeline/09_visualization_dashboards/#5-centroid-semantic-umap-projection-visualize_cluster_scatterpy)**: WebGL-accelerated 2D projection of visual cluster centroids. Hover over any point to inspect real photo thumbnails, dominant ecological categories, and MLLM descriptions. Supports on-the-fly SSH tunneling for remote offline images.
 * **[🗺️ Global Cluster Map](https://ananthu-aniraj.github.io/geo-rag/pipeline/09_visualization_dashboards/#4-dynamic-cluster-dashboard-visualize_cluster_samplespy)**: Interactive Folium map displaying image clusters and spatial density across the globe.
-* **[🌍 Continental Spatial-Semantic Maps](https://ananthu-aniraj.github.io/geo-rag/pipeline/09_visualization_dashboards/#7-continent-h3-spatial-semantic-map-generate_continent_h3_semantic_mapry)**: High-resolution H3 hexagonal grid maps pairing dominant land-cover categories with representative photo galleries across all continents (Africa, Antarctica, Asia, Europe, North America, Oceania, South America).
+* **[🌍 Continental Spatial-Semantic Maps](https://ananthu-aniraj.github.io/geo-rag/pipeline/09_visualization_dashboards/#7-continent-h3-spatial-semantic-map-generate_continent_h3_semantic_mapry)**: High-resolution H3 hexagonal grid maps pairing dominant land-cover categories with representative photo galleries across all continents (Europe, North America, Asia, South America, Africa, Oceania, Antarctica).
 
 > [!TIP]
 > When generating visualizations for public web embedding or documentation, pass `--platforms flickr inaturalist` to restrict thumbnail previews to permanent public URLs. For local offline datasets, omit `--platforms` and use `--image_root_dir` with the built-in SSH tunneling controls.

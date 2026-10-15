@@ -68,3 +68,10 @@ config/**/*.local.yaml
 !templates/*.html
 !prompts/*/*.txt
 !requirements.txt
+# Documentation assets (keep lightweight previews & scripts, ignore heavy HTML dumps)
+!docs/visualizations/*.png
+!docs/visualizations/*.webp
+!docs/visualizations/*.jpg
+!docs/visualizations/*.js
+!docs/visualizations/*.css
+docs/visualizations/*.html
