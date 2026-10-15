@@ -26,7 +26,6 @@ from src.models.vision_model_inference import (
 from src.utils.credentials import get_mapillary_token
 from src.utils.io import (
     download_image,
-    get_core_base_name,
     get_parquet_writer,
     load_dataframe,
     load_embeddings,
@@ -558,14 +557,13 @@ def stream_update_parquet(
         base_name = os.path.splitext(os.path.basename(output_path))[0]
         if "_clustered_k_" in base_name:
             base_name = base_name.split("_clustered_k_")[0]
-        core_name = get_core_base_name(base_name)
 
         model_suffix = ""
         if model_name and model_name != "google/tipsv2-b14":
             model_suffix = "_" + model_name.replace("/", "_")
 
         npy_path = os.path.join(
-            db_dir, f"{core_name}{model_suffix}_{representation_type}_embeddings.npy"
+            db_dir, f"{base_name}{model_suffix}_{representation_type}_embeddings.npy"
         )
         dtype = np.float16 if precision == "float16" else np.float32
         final_embs_cast = final_embs.astype(dtype)
