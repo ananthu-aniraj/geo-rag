@@ -249,12 +249,6 @@ def main():
         default=300,
         help="Interval in seconds for saving progress checkpoints (default: 300, set to 0 to disable).",
     )
-    parser.add_argument(
-        "--resume_from",
-        type=str,
-        default=None,
-        help="Optional path to an existing dataset or companion embedding matrix to resume/reuse embeddings from.",
-    )
     args = parser.parse_args()
 
     if not args.mapillary_token:
@@ -481,11 +475,7 @@ def main():
         if os.path.abspath(args.input) != os.path.abspath(out_path):
             resolve_and_load_companion(args.input, "input companion")
 
-        # C. Check optional explicit resume_from path companion files
-        if getattr(args, "resume_from", None) and os.path.exists(args.resume_from):
-            resolve_and_load_companion(args.resume_from, "resume_from companion")
-
-        # D. Check intermediate checkpoint files for output (exact only)
+        # C. Check intermediate checkpoint files for output (exact only)
         if os.path.exists(ckpt_npy) and os.path.exists(ckpt_keys):
             load_companion_pair(
                 ckpt_npy,

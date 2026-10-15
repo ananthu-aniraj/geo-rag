@@ -636,29 +636,8 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
                 embs_cls[i], np.full(dim, float(i + 1), dtype=np.float32)
             )
 
-    def test_backfill_embeddings_resume_from_master_dataset(self):
+    def test_backfill_embeddings_resume_from_dataset_companion(self):
         dim = 16
-        master_parquet = os.path.join(self.test_dir, "geo_space_cleaned.parquet")
-        master_df = pd.DataFrame(
-            {
-                "Photo_ID": ["1", "2", "3"],
-                "Platform": ["flickr", "flickr", "flickr"],
-                "Latitude": [40.0, 41.0, 42.0],
-                "Longitude": [-74.0, -73.0, -72.0],
-                "Image_URL": ["url_1", "url_2", "url_3"],
-                "embedding": [
-                    np.full(dim, float(i + 1), dtype=np.float32) for i in range(3)
-                ],
-            }
-        )
-        save_dataframe(
-            master_df,
-            master_parquet,
-            representation_type="cls",
-            precision="float32",
-            model_name="google/tipsv2-b14",
-        )
-
         offline_parquet = os.path.join(
             self.test_dir, "geo_space_cleaned_offline.parquet"
         )
@@ -669,16 +648,23 @@ class TestBackfillEmbeddingsResume(unittest.TestCase):
                 "Latitude": [41.0, 42.0],
                 "Longitude": [-73.0, -72.0],
                 "Image_URL": ["url_2", "url_3"],
+                "embedding": [
+                    np.full(dim, float(i + 2), dtype=np.float32) for i in range(2)
+                ],
             }
         )
-        save_dataframe(offline_df, offline_parquet)
+        save_dataframe(
+            offline_df,
+            offline_parquet,
+            representation_type="cls",
+            precision="float32",
+            model_name="google/tipsv2-b14",
+        )
 
         test_args = [
             "backfill_embeddings.py",
             "--input",
             offline_parquet,
-            "--resume_from",
-            master_parquet,
             "--model_name",
             "google/tipsv2-b14",
             "--representation_type",
