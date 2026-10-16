@@ -270,6 +270,7 @@ def audit_and_purge_dataset(
     embeddings_dir: Optional[str] = None,
     sync_sidecars: bool = True,
     extra_parquets: Optional[List[str]] = None,
+    min_sequence_frames: int = 2,
 ) -> Dict[str, Any]:
     """
     Audits Mapillary photos in the target continent, detects invalid sequences,
@@ -287,7 +288,9 @@ def audit_and_purge_dataset(
             "Mapillary API token not found in environment, arguments, or .env file."
         )
 
-    validator = MapillaryTrajectoryValidator(token=token, db_path=db_path)
+    validator = MapillaryTrajectoryValidator(
+        token=token, db_path=db_path, min_sequence_frames=min_sequence_frames
+    )
 
     # Clean leftover stale temp files
     search_dirs = [os.path.dirname(os.path.abspath(input_parquet))]
@@ -351,6 +354,7 @@ def audit_and_purge_dataset(
     print(f"Output Dataset : {output_parquet}")
     print(f"Scope Platform : {platform.lower()}")
     print(f"Scope Continent: {continent or 'Global (All)'}")
+    print(f"Min Seq Frames : {min_sequence_frames}")
     print(f"Dry Run Mode   : {dry_run}")
     print(f"Cache Database : {db_path}")
     if target_extra_parquets:
@@ -823,6 +827,12 @@ def main():
         default=True,
         help="Automatically discover and prune matching clustered sidecars (*_clustered_k_*.parquet).",
     )
+    parser.add_argument(
+        "--min_sequence_frames",
+        type=int,
+        default=2,
+        help="Minimum number of upstream frames required for a sequence to be valid (default: 2). Sequences with fewer frames are purged.",
+    )
     args = parser.parse_args()
 
     cont = None if args.continent.lower() in ("all", "none", "") else args.continent
@@ -842,6 +852,7 @@ def main():
         embeddings_dir=args.embeddings_dir,
         sync_sidecars=args.sync_sidecars,
         extra_parquets=args.extra_parquets,
+        min_sequence_frames=args.min_sequence_frames,
     )
 
 

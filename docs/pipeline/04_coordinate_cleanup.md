@@ -201,6 +201,9 @@ When evaluating a Mapillary sequence track $(t_i, \text{lat}_i, \text{lon}_i)_{i
 3. **Impossible Instantaneous Speed Spikes**:
    * Condition: Max speed $v_{\max} \ge 160\text{ km/h}$ over jumps $> 100\text{ m}$ with $\Delta t \ge 0.5\text{ s}$.
    * Flags teleportation anomalies and corrupted timestamps.
+4. **Single-Frame / Insufficient Upstream Sequence Length**:
+   * Condition: Upstream sequence frame count $< \text{min\_sequence\_frames}$ (default: $2$).
+   * Filters out isolated single-frame Mapillary uploads (test shots, indoor accidental uploads, uncalibrated GNSS cold-starts) where motion kinematics cannot be verified.
 
 ### Persistent SQLite Caching
 
@@ -220,6 +223,7 @@ To audit an entire continent and purge all corrupted Mapillary images in a singl
 python3 -m src.processing.audit_mapillary_sequences \
     --input full_pipeline_output/geo_space_cleaned.parquet \
     --continent Africa \
+    --min_sequence_frames 2 \
     --dry_run \
     --report_json full_pipeline_output/africa_mapillary_audit.json
 
@@ -227,7 +231,8 @@ python3 -m src.processing.audit_mapillary_sequences \
 python3 -m src.processing.audit_mapillary_sequences \
     --input full_pipeline_output/geo_space_deduplicated.parquet \
     --extra_parquets full_pipeline_output/geo_space_cleaned.parquet full_pipeline_output/geo_space_cleaned_hf.parquet \
-    --continent Africa
+    --continent Africa \
+    --min_sequence_frames 2
 ```
 
 > [!TIP]
@@ -240,4 +245,4 @@ python3 -m src.processing.audit_mapillary_sequences \
 
 ### Scraper Chunk-Level Validation (`src/scrapers/mapillary_scraper.py`)
 
-For future scraping runs, [`mapillary_scraper.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/scrapers/mapillary_scraper.py) captures `sequence` during initial photo discovery and automatically audits unique sequences at the end of each chunk. Corrupted stationary tracks are purged before saving, guaranteeing that downstream metadata parsing and deduplication receive 100% clean data with the standard 6-column schema.
+For future scraping runs, [`mapillary_scraper.py`](file:///home/aaniraj/Documents/Projects/code/geo-rag/src/scrapers/mapillary_scraper.py) captures `sequence` during initial photo discovery and automatically audits unique sequences at the end of each chunk. Photos without a valid sequence ID or from sequences with fewer than `--min_sequence_frames` (configurable in `config/scrapers/mapillary_scraper.yaml`, default: `2`) are purged alongside stationary/jitter tracks before saving, guaranteeing that downstream metadata parsing and deduplication receive 100% clean data with the standard 6-column schema.

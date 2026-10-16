@@ -5,3 +5,5 @@ mapillary_scraper:
   max_photos_per_box: 100
   uncovered_shapefile: "shapefiles/uncovered_land_areas_test.shp"
   base_dir: "/path/to/mapillary_scraper_outputs"
+  validate_sequences: true
+  min_sequence_frames: 2

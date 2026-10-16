@@ -139,6 +139,67 @@ class TestMapillaryTrajectoryValidator(unittest.TestCase):
         resolved = self.validator.resolve_photo_sequences(["photo_abc"])
         self.assertEqual(resolved.get("photo_abc"), "seq_123")
 
+    def test_single_frame_sequence_rejected_by_default(self):
+        t0 = 1600000000000
+        points = [{"photo_id": "1", "captured_at": t0, "lat": 1.0, "lon": 1.0}]
+        res = self.validator.validate_sequence("seq_single", trajectory_points=points)
+        self.assertFalse(res.is_valid)
+        self.assertIn("Insufficient sequence frames", res.reason)
+        self.assertEqual(res.metrics.frame_count, 1)
+
+    def test_empty_sequence_rejected(self):
+        res = self.validator.validate_sequence("seq_empty", trajectory_points=[])
+        self.assertFalse(res.is_valid)
+        self.assertIn("Insufficient sequence frames", res.reason)
+
+    def test_cached_single_frame_invalidated_by_threshold(self):
+        # Seed a legacy cached sequence marked valid with frame_count = 1
+        with self.validator._get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO sequences (
+                    sequence_id, is_valid, reason, frame_count, total_distance_m,
+                    net_displacement_m, tortuosity, max_speed_kmh, p95_speed_kmh,
+                    bounding_radius_m, duration_seconds, track_geojson, checked_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "seq_legacy_single",
+                    1,
+                    "Single frame or trajectory unavailable",
+                    1,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    None,
+                    1600000000.0,
+                ),
+            )
+            conn.commit()
+
+        # Reading with min_sequence_frames=2 must invalidate it
+        res = self.validator.validate_sequence("seq_legacy_single")
+        self.assertFalse(res.is_valid)
+        self.assertIn("Insufficient sequence frames", res.reason)
+
+    def test_allow_single_frame_when_min_frames_is_one(self):
+        lenient_validator = MapillaryTrajectoryValidator(
+            token="test_mock_token",
+            db_path=os.path.join(self.tmpdir.name, "test_lenient.db"),
+            min_sequence_frames=1,
+        )
+        t0 = 1600000000000
+        points = [{"photo_id": "1", "captured_at": t0, "lat": 1.0, "lon": 1.0}]
+        res = lenient_validator.validate_sequence(
+            "seq_lenient", trajectory_points=points
+        )
+        self.assertTrue(res.is_valid)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -88,6 +88,7 @@ class MapillaryTrajectoryValidator:
         max_tortuosity_threshold: float = 20.0,
         min_stationary_frames: int = 15,
         max_stationary_radius_m: float = 35.0,
+        min_sequence_frames: int = 2,
     ):
         self.token = token or get_mapillary_token() or ""
         self.db_path = db_path
@@ -96,6 +97,7 @@ class MapillaryTrajectoryValidator:
         self.max_tortuosity_threshold = max_tortuosity_threshold
         self.min_stationary_frames = min_stationary_frames
         self.max_stationary_radius_m = max_stationary_radius_m
+        self.min_sequence_frames = min_sequence_frames
 
         self._mem_conn: Optional[sqlite3.Connection] = None
         if self.db_path == ":memory:":
@@ -490,6 +492,12 @@ class MapillaryTrajectoryValidator:
                         duration_seconds=dur,
                     )
                     track_geojson = json.loads(geojson_str) if geojson_str else None
+                    if is_valid and frames < self.min_sequence_frames:
+                        is_valid = 0
+                        reason = (
+                            f"Insufficient sequence frames: {frames} frame(s) "
+                            f"(min required: {self.min_sequence_frames})"
+                        )
                     return ValidationResult(
                         sequence_id=sequence_id,
                         is_valid=bool(is_valid),
@@ -502,6 +510,32 @@ class MapillaryTrajectoryValidator:
         points = trajectory_points
         if points is None:
             points = self.fetch_sequence_trajectory(sequence_id)
+
+        num_frames = len(points) if points else 0
+        if num_frames < self.min_sequence_frames:
+            verdict = ValidationResult(
+                sequence_id=sequence_id,
+                is_valid=False,
+                reason=(
+                    f"Insufficient sequence frames: {num_frames} frame(s) "
+                    f"(min required: {self.min_sequence_frames})"
+                ),
+                metrics=TrajectoryMetrics(
+                    frame_count=num_frames,
+                    total_distance_m=0.0,
+                    net_displacement_m=0.0,
+                    tortuosity=0.0,
+                    max_speed_kmh=0.0,
+                    p95_speed_kmh=0.0,
+                    bounding_radius_m=0.0,
+                    duration_seconds=0.0,
+                )
+                if num_frames > 0
+                else None,
+                geojson_track=None,
+            )
+            self._cache_verdict(verdict)
+            return verdict
 
         # If too few points exist to disprove validity, consider it valid
         if not points or len(points) < 2:

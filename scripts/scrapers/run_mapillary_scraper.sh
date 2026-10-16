@@ -44,6 +44,17 @@ UNCOVERED_SHAPEFILE=$(get_param "uncovered_shapefile")
 BASE_DIR=$(get_param "base_dir")
 [ -z "$BASE_DIR" ] && BASE_DIR="output/mapillary_scrape"
 
+VALIDATE_SEQUENCES=$(get_param "validate_sequences")
+[ -z "$VALIDATE_SEQUENCES" ] && VALIDATE_SEQUENCES=true
+
+MIN_SEQUENCE_FRAMES=$(get_param "min_sequence_frames")
+[ -z "$MIN_SEQUENCE_FRAMES" ] && MIN_SEQUENCE_FRAMES=2
+
+VALIDATE_FLAG="--validate_sequences"
+if [ "$VALIDATE_SEQUENCES" = "false" ]; then
+    VALIDATE_FLAG="--no-validate_sequences"
+fi
+
 SCRIPT_NAME="src.scrapers.mapillary_scraper"
 ORDER_FILE="$BASE_DIR/chunk_order.txt"
 
@@ -77,7 +88,7 @@ do
     echo "========================================"
 
     # Run the Python script
-    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR" --access_token "$ACCESS_TOKEN" --uncovered_shapefile "$UNCOVERED_SHAPEFILE" --step_km "$STEP_KM" --max_photos_per_box "$MAX_PHOTOS_PER_BOX"; then
+    if ! python3 -m "$SCRIPT_NAME" --chunk "$i" --total_chunks "$TOTAL_CHUNKS" --base_dir "$BASE_DIR" --access_token "$ACCESS_TOKEN" --uncovered_shapefile "$UNCOVERED_SHAPEFILE" --step_km "$STEP_KM" --max_photos_per_box "$MAX_PHOTOS_PER_BOX" "$VALIDATE_FLAG" --min_sequence_frames "$MIN_SEQUENCE_FRAMES"; then
         echo "CRITICAL ERROR: Script failed on chunk $i. Halting execution."
         exit 1
     fi

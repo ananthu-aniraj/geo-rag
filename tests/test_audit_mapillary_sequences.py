@@ -322,6 +322,68 @@ class TestAuditMapillarySequences(unittest.TestCase):
         self.assertIn("103", cleaned_df["Photo_ID"].tolist())
         self.assertIn("104", cleaned_df["Photo_ID"].tolist())
 
+    def test_audit_and_purge_single_frame_sequences(self):
+        # Seed an additional single-frame sequence in the cache
+        validator = MapillaryTrajectoryValidator(
+            token="dummy_token", db_path=self.db_path
+        )
+        with validator._get_db() as conn:
+            cursor = conn.cursor()
+            # Remap photo 103 to a single-frame sequence
+            cursor.execute(
+                "UPDATE photo_sequences SET sequence_id = ? WHERE photo_id = ?",
+                ("seq_single", "103"),
+            )
+            cursor.execute(
+                """
+                INSERT INTO sequences (
+                    sequence_id, is_valid, reason, frame_count, total_distance_m,
+                    net_displacement_m, tortuosity, max_speed_kmh, p95_speed_kmh,
+                    bounding_radius_m, duration_seconds, track_geojson, checked_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "seq_single",
+                    1,
+                    "Single frame or trajectory unavailable",
+                    1,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    None,
+                    1600000000.0,
+                ),
+            )
+            conn.commit()
+
+        # Run audit with default min_sequence_frames=2
+        res = audit_and_purge_dataset(
+            input_parquet=self.parquet_path,
+            output_parquet=self.output_path,
+            continent="Africa",
+            platform="mapillary",
+            token="dummy_token",
+            db_path=self.db_path,
+            dry_run=False,
+            min_sequence_frames=2,
+        )
+
+        # Both seq_bad (101, 102) and seq_single (103) should be purged!
+        self.assertEqual(res["purged_photos"], 3)
+        self.assertEqual(res["invalid_sequences"], 2)
+
+        out_df = pd.read_parquet(self.output_path)
+        pids = out_df["Photo_ID"].tolist()
+        self.assertNotIn("101", pids)
+        self.assertNotIn("102", pids)
+        self.assertNotIn("103", pids)
+        self.assertIn("104", pids)  # Flickr
+        self.assertIn("105", pids)  # Mapillary Europe
+
 
 if __name__ == "__main__":
     unittest.main()

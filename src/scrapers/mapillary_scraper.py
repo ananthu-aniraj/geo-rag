@@ -66,6 +66,12 @@ def parse_args():
         default=True,
         help="Validate sequence trajectories and purge invalid/stationary sequences at end of chunk",
     )
+    argparser.add_argument(
+        "--min_sequence_frames",
+        type=int,
+        default=2,
+        help="Minimum number of upstream frames required for a sequence to be valid (default: 2)",
+    )
     return argparser.parse_args()
 
 
@@ -301,26 +307,33 @@ if os.path.exists(STAGING_FILE) and os.path.getsize(STAGING_FILE) > 0:
         print(f" -> Collected {total_photos:,} staged photos in chunk {CURRENT_CHUNK}.")
 
         if args.validate_sequences and ACCESS_TOKEN:
-            validator = MapillaryTrajectoryValidator(token=ACCESS_TOKEN)
-            unique_seqs = [
-                s for s in df_staging["Sequence_ID"].dropna().unique() if str(s).strip()
-            ]
+            validator = MapillaryTrajectoryValidator(
+                token=ACCESS_TOKEN,
+                min_sequence_frames=args.min_sequence_frames,
+            )
+            clean_seq_series = (
+                df_staging["Sequence_ID"].fillna("").astype(str).str.strip()
+            )
+            unique_seqs = [s for s in clean_seq_series.unique() if s]
             print(
-                f" -> Auditing {len(unique_seqs):,} unique sequence track(s) for kinematic validity..."
+                f" -> Auditing {len(unique_seqs):,} unique sequence track(s) for kinematic validity (min frames: {args.min_sequence_frames})..."
             )
 
             invalid_seqs = set()
             for s in tqdm(unique_seqs, desc="Validating sequence kinematics"):
-                res = validator.validate_sequence(str(s).strip())
+                res = validator.validate_sequence(s)
                 if not res.is_valid:
-                    invalid_seqs.add(str(s).strip())
+                    invalid_seqs.add(s)
 
-            if invalid_seqs:
-                valid_mask = ~df_staging["Sequence_ID"].isin(invalid_seqs)
-                purged_count = total_photos - int(valid_mask.sum())
-                df_staging = df_staging[valid_mask]
+            has_no_seq = clean_seq_series == ""
+            belongs_to_invalid_seq = clean_seq_series.isin(invalid_seqs)
+            discard_mask = has_no_seq | belongs_to_invalid_seq
+
+            if discard_mask.any():
+                purged_count = int(discard_mask.sum())
+                df_staging = df_staging[~discard_mask]
                 print(
-                    f" -> Discarded {purged_count:,} photo(s) from {len(invalid_seqs):,} invalid/stationary sequence(s)."
+                    f" -> Discarded {purged_count:,} photo(s) (empty sequence ID or failed kinematic/frame audit)."
                 )
             else:
                 print(" -> All sequences passed kinematic validation.")
