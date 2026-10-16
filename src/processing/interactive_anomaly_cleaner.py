@@ -59,10 +59,26 @@ class ContinentDatasetIndex:
         self.df: pd.DataFrame = pd.DataFrame()
         self.cell_indices: Dict[str, List[int]] = {}
         self.cell_stats: Dict[str, Dict[str, Any]] = {}
+        self.dataset_summary: Dict[str, Any] = {}
         self.total_records = 0
 
         self.load_and_index()
         self.load_rules()
+
+    @staticmethod
+    def _clean_val(val: Any, default: str = "N/A") -> str:
+        """Convert pandas/arrow values to clean display strings, replacing NaN/None with default."""
+        if val is None:
+            return default
+        try:
+            if pd.isna(val):
+                return default
+        except Exception:
+            pass
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", "null", "<na>"):
+            return default
+        return s
 
     def load_and_index(self) -> None:
         logger.info(
@@ -80,6 +96,7 @@ class ContinentDatasetIndex:
             "Latitude",
             "Longitude",
             "Image_URL",
+            "Image_Location",
             "Captured_At",
             "H3_Cell",
             "Season",
@@ -87,16 +104,31 @@ class ContinentDatasetIndex:
             "Koppen_Code",
             "Koppen_Desc",
             "continent",
+            "Continent",
             "country",
+            "Country",
+            "Region",
+            "region",
+            "Locality",
+            "locality",
+            "License",
+            "Title",
+            "Caption",
+            "cluster_id",
+            "cluster_label",
         ]
         load_cols = [c for c in wanted_cols if c in avail_cols]
 
         tbl = pf.read(columns=load_cols)
         df_all = tbl.to_pandas()
 
-        cont_col = "continent" if "continent" in df_all.columns else "Continent"
-        if cont_col in df_all.columns:
-            mask = df_all[cont_col].astype(str).str.lower() == self.continent.lower()
+        if "continent" not in df_all.columns and "Continent" in df_all.columns:
+            df_all = df_all.rename(columns={"Continent": "continent"})
+        if "country" not in df_all.columns and "Country" in df_all.columns:
+            df_all = df_all.rename(columns={"Country": "country"})
+
+        if "continent" in df_all.columns:
+            mask = df_all["continent"].astype(str).str.lower() == self.continent.lower()
             self.df = df_all[mask].copy().reset_index(drop=True)
         else:
             logger.warning("No continent column found. Loading entire dataset.")
@@ -104,14 +136,27 @@ class ContinentDatasetIndex:
 
         self.total_records = len(self.df)
         logger.info(
-            "Loaded %s records for continent '%s' in %.2fs.",
+            "Loaded %s records for continent '%s' in %.2fs (columns: %s).",
             f"{self.total_records:,}",
             self.continent,
             time.time() - t0,
+            ", ".join(self.df.columns),
         )
 
         if self.total_records == 0:
             logger.error("No records found for continent '%s'.", self.continent)
+            self.dataset_summary = {
+                "continent": self.continent,
+                "total_records": 0,
+                "unique_cells": 0,
+                "countries": [],
+                "platforms": [],
+                "koppen": [],
+                "seasons": [],
+                "times_of_day": [],
+                "bbox": [0.0, 0.0, 0.0, 0.0],
+                "centroid": [0.0, 0.0],
+            }
             return
 
         # Standardize strings
@@ -134,8 +179,117 @@ class ContinentDatasetIndex:
         # Build inverted index mapping cell -> row indices
         self.cell_indices = self.df.groupby("H3_parent", observed=False).indices
 
+        # Compute dataset-wide metadata summary and log location details
+        self.compute_dataset_summary()
+
         # Precompute summary statistics per cell
         self.precompute_cell_stats()
+
+    def compute_dataset_summary(self) -> None:
+        """Compute and log a summary of location and environmental metadata for loaded images."""
+        lat_min = (
+            float(self.df["Latitude"].min()) if "Latitude" in self.df.columns else 0.0
+        )
+        lat_max = (
+            float(self.df["Latitude"].max()) if "Latitude" in self.df.columns else 0.0
+        )
+        lon_min = (
+            float(self.df["Longitude"].min()) if "Longitude" in self.df.columns else 0.0
+        )
+        lon_max = (
+            float(self.df["Longitude"].max()) if "Longitude" in self.df.columns else 0.0
+        )
+        lat_mean = (
+            float(self.df["Latitude"].mean()) if "Latitude" in self.df.columns else 0.0
+        )
+        lon_mean = (
+            float(self.df["Longitude"].mean())
+            if "Longitude" in self.df.columns
+            else 0.0
+        )
+
+        countries: List[Any] = []
+        unique_countries = 0
+        if "country" in self.df.columns:
+            c_counts = self.df["country"].dropna().value_counts()
+            unique_countries = int(len(c_counts))
+            countries = [(str(k), int(v)) for k, v in c_counts.head(10).items()]
+
+        platforms = [
+            (str(k), int(v))
+            for k, v in self.df["Platform_Clean"].value_counts().items()
+            if str(k)
+        ]
+
+        koppen: List[Any] = []
+        if "Koppen_Code" in self.df.columns:
+            k_counts = self.df["Koppen_Code"].dropna().value_counts().head(5)
+            for code, cnt in k_counts.items():
+                desc = ""
+                if "Koppen_Desc" in self.df.columns:
+                    sub = self.df[self.df["Koppen_Code"] == code][
+                        "Koppen_Desc"
+                    ].dropna()
+                    if not sub.empty:
+                        desc = str(sub.iloc[0])
+                koppen.append((str(code), desc, int(cnt)))
+
+        seasons: List[Any] = []
+        if "Season" in self.df.columns:
+            seasons = [
+                (str(k), int(v))
+                for k, v in self.df["Season"].dropna().value_counts().items()
+            ]
+
+        times_of_day: List[Any] = []
+        if "Time_Of_Day" in self.df.columns:
+            times_of_day = [
+                (str(k), int(v))
+                for k, v in self.df["Time_Of_Day"].dropna().value_counts().items()
+            ]
+
+        self.dataset_summary = {
+            "continent": self.continent,
+            "total_records": int(self.total_records),
+            "unique_cells": int(self.df["H3_parent"].nunique()),
+            "unique_countries": unique_countries,
+            "countries": countries,
+            "platforms": platforms,
+            "koppen": koppen,
+            "seasons": seasons,
+            "times_of_day": times_of_day,
+            "bbox": [
+                round(lat_min, 4),
+                round(lon_min, 4),
+                round(lat_max, 4),
+                round(lon_max, 4),
+            ],
+            "centroid": [round(lat_mean, 4), round(lon_mean, 4)],
+        }
+
+        top_countries_str = (
+            ", ".join(f"{c} ({cnt:,})" for c, cnt in countries[:5]) or "N/A"
+        )
+        platforms_str = ", ".join(f"{p} ({cnt:,})" for p, cnt in platforms) or "N/A"
+        koppen_str = (
+            ", ".join(
+                f"{code}{f' [{desc}]' if desc else ''} ({cnt:,})"
+                for code, desc, cnt in koppen[:3]
+            )
+            or "N/A"
+        )
+        logger.info(
+            "Loaded Images Metadata Summary — BBox: [lat %.2f..%.2f, lon %.2f..%.2f] | "
+            "Countries (%d): %s | Platforms: %s | Top Climate: %s",
+            lat_min,
+            lat_max,
+            lon_min,
+            lon_max,
+            unique_countries,
+            top_countries_str,
+            platforms_str,
+            koppen_str,
+        )
 
     def precompute_cell_stats(self) -> None:
         logger.info("Precomputing cell statistics...")
@@ -145,6 +299,16 @@ class ContinentDatasetIndex:
         has_country = "country" in self.df.columns
         has_koppen = "Koppen_Code" in self.df.columns
         has_koppen_desc = "Koppen_Desc" in self.df.columns
+        has_season = "Season" in self.df.columns
+        has_tod = "Time_Of_Day" in self.df.columns
+        region_col = next(
+            (
+                c
+                for c in ("Region", "region", "Locality", "locality")
+                if c in self.df.columns
+            ),
+            None,
+        )
 
         grouped = self.df.groupby("H3_parent")
         for cell, group in grouped:
@@ -155,23 +319,57 @@ class ContinentDatasetIndex:
             m_count = int((group["Platform_Clean"] == "mapillary").sum())
             other_count = total - m_count
 
+            # Platform breakdown
+            platforms = [
+                (str(k), int(v))
+                for k, v in group["Platform_Clean"].value_counts().items()
+                if str(k)
+            ]
+
             # Top countries
             countries = []
             if has_country:
-                top_c = group["country"].dropna().value_counts().head(3)
-                countries = list(top_c.items())
+                top_c = group["country"].dropna().value_counts().head(5)
+                countries = [(str(k), int(v)) for k, v in top_c.items()]
+
+            # Top regions/localities (if available)
+            regions = []
+            if region_col:
+                top_r = group[region_col].dropna().value_counts().head(3)
+                regions = [(str(k), int(v)) for k, v in top_r.items() if str(k).strip()]
 
             # Top Koppen
             koppen = []
             if has_koppen:
-                top_k = group["Koppen_Code"].dropna().value_counts().head(2)
+                top_k = group["Koppen_Code"].dropna().value_counts().head(3)
                 for code, cnt in top_k.items():
                     desc = ""
                     if has_koppen_desc:
                         sub = group[group["Koppen_Code"] == code]
                         if not sub.empty:
-                            desc = str(sub["Koppen_Desc"].dropna().iloc[0] or "")
-                    koppen.append((code, desc, cnt))
+                            desc_series = sub["Koppen_Desc"].dropna()
+                            if not desc_series.empty:
+                                desc = str(desc_series.iloc[0] or "")
+                    koppen.append((str(code), desc, int(cnt)))
+
+            # Seasons & Time of Day
+            seasons = []
+            if has_season:
+                seasons = [
+                    (str(k), int(v))
+                    for k, v in group["Season"].dropna().value_counts().head(4).items()
+                ]
+
+            times_of_day = []
+            if has_tod:
+                times_of_day = [
+                    (str(k), int(v))
+                    for k, v in group["Time_Of_Day"]
+                    .dropna()
+                    .value_counts()
+                    .head(4)
+                    .items()
+                ]
 
             lat_mean = (
                 float(group["Latitude"].mean()) if "Latitude" in group.columns else 0.0
@@ -181,14 +379,31 @@ class ContinentDatasetIndex:
                 if "Longitude" in group.columns
                 else 0.0
             )
+            lat_min = (
+                float(group["Latitude"].min()) if "Latitude" in group.columns else 0.0
+            )
+            lat_max = (
+                float(group["Latitude"].max()) if "Latitude" in group.columns else 0.0
+            )
+            lon_min = (
+                float(group["Longitude"].min()) if "Longitude" in group.columns else 0.0
+            )
+            lon_max = (
+                float(group["Longitude"].max()) if "Longitude" in group.columns else 0.0
+            )
 
             self.cell_stats[cell] = {
                 "total": total,
                 "mapillary": m_count,
                 "other": other_count,
+                "platforms": platforms,
                 "countries": countries,
+                "regions": regions,
                 "koppen": koppen,
+                "seasons": seasons,
+                "times_of_day": times_of_day,
                 "centroid": [lat_mean, lon_mean],
+                "bbox": [lat_min, lon_min, lat_max, lon_max],
             }
         logger.info(
             "Precomputed stats for %d cells in %.2fs.",
@@ -256,7 +471,7 @@ class ContinentDatasetIndex:
         }
 
     def get_cell_samples(self, cell: str, limit: int = 16) -> Dict[str, Any]:
-        """Retrieve detailed cell metadata and sample photos."""
+        """Retrieve detailed cell metadata and sample photos with full location details."""
         if cell not in self.cell_stats:
             return {"error": "Cell not found"}
 
@@ -287,9 +502,9 @@ class ContinentDatasetIndex:
 
         samples = []
         for _, row in selected.iterrows():
-            pid = str(row.get("Photo_ID", "")).strip().removesuffix(".0")
-            plat = str(row.get("Platform_Clean", "unknown"))
-            raw_url = str(row.get("Image_URL", ""))
+            pid = self._clean_val(row.get("Photo_ID"), "").removesuffix(".0")
+            plat = self._clean_val(row.get("Platform_Clean"), "unknown")
+            raw_url = self._clean_val(row.get("Image_URL"), "")
 
             thumb_url = None
             if plat == "mapillary":
@@ -297,19 +512,62 @@ class ContinentDatasetIndex:
             elif raw_url.startswith("http"):
                 thumb_url = raw_url
 
+            lat = float(row.get("Latitude", 0.0) or 0.0)
+            lon = float(row.get("Longitude", 0.0) or 0.0)
+            country = self._clean_val(row.get("country"), "Unknown")
+            continent = self._clean_val(row.get("continent"), self.continent)
+            region = self._clean_val(
+                row.get("Region")
+                or row.get("region")
+                or row.get("Locality")
+                or row.get("locality"),
+                "",
+            )
+            h3_cell = self._clean_val(row.get("H3_Cell"), cell)
+            koppen_code = self._clean_val(row.get("Koppen_Code"), "N/A")
+            koppen_desc = self._clean_val(row.get("Koppen_Desc"), "")
+            season = self._clean_val(row.get("Season"), "N/A")
+            time_of_day = self._clean_val(row.get("Time_Of_Day"), "N/A")
+            license_str = self._clean_val(row.get("License"), "N/A")
+            captured_at = self._clean_val(row.get("Captured_At"), "N/A")
+            title = self._clean_val(row.get("Title") or row.get("Caption"), "")
+            cluster_label = self._clean_val(
+                row.get("cluster_label") or row.get("cluster_id"), ""
+            )
+
+            loc_parts = [p for p in (region, country, continent) if p and p != "N/A"]
+            location_label = (
+                ", ".join(loc_parts) if loc_parts else f"{lat:.4f}, {lon:.4f}"
+            )
+
             samples.append(
                 {
                     "photo_id": pid,
                     "platform": plat,
-                    "captured_at": str(row.get("Captured_At", "N/A")),
+                    "captured_at": captured_at,
                     "thumb_url": thumb_url,
                     "mapillary_web_url": (
                         f"https://www.mapillary.com/app/?pKey={pid}"
                         if plat == "mapillary"
                         else raw_url
                     ),
-                    "lat": float(row.get("Latitude", 0.0)),
-                    "lon": float(row.get("Longitude", 0.0)),
+                    "osm_url": f"https://www.openstreetmap.org/?mlat={lat:.6f}&mlon={lon:.6f}#map=16/{lat:.6f}/{lon:.6f}",
+                    "gmaps_url": f"https://www.google.com/maps?q={lat:.6f},{lon:.6f}",
+                    "lat": lat,
+                    "lon": lon,
+                    "country": country,
+                    "continent": continent,
+                    "region": region,
+                    "location_label": location_label,
+                    "h3_cell": h3_cell,
+                    "h3_parent": cell,
+                    "koppen_code": koppen_code,
+                    "koppen_desc": koppen_desc,
+                    "season": season,
+                    "time_of_day": time_of_day,
+                    "license": license_str,
+                    "title": title,
+                    "cluster_label": cluster_label,
                 }
             )
 
@@ -318,9 +576,14 @@ class ContinentDatasetIndex:
             "total": stats["total"],
             "mapillary": stats["mapillary"],
             "other": stats["other"],
+            "platforms": stats["platforms"],
             "centroid": stats["centroid"],
+            "bbox": stats["bbox"],
             "countries": stats["countries"],
+            "regions": stats["regions"],
             "koppen": stats["koppen"],
+            "seasons": stats["seasons"],
+            "times_of_day": stats["times_of_day"],
             "samples": samples,
             "rule": self.rules.get(cell),
         }
@@ -587,6 +850,8 @@ class AnomalyCleanerHandler(http.server.BaseHTTPRequestHandler):
                 carto_attribution=self.carto_attribution,
             )
             self._send_html(html)
+        elif path == "/api/summary":
+            self._send_json(self.dataset_index.dataset_summary)
         elif path == "/api/cells":
             features = []
             for cell, stats in self.dataset_index.cell_stats.items():
@@ -601,6 +866,16 @@ class AnomalyCleanerHandler(http.server.BaseHTTPRequestHandler):
                     geojson_coords.append(geojson_coords[0])
 
                     top_country = stats["countries"][0][0] if stats["countries"] else ""
+                    top_koppen = (
+                        f"{stats['koppen'][0][0]}"
+                        + (
+                            f" ({stats['koppen'][0][1]})"
+                            if stats["koppen"][0][1]
+                            else ""
+                        )
+                        if stats["koppen"]
+                        else ""
+                    )
 
                     features.append(
                         {
@@ -611,10 +886,16 @@ class AnomalyCleanerHandler(http.server.BaseHTTPRequestHandler):
                             },
                             "properties": {
                                 "cell": cell,
+                                "count": stats["total"],
                                 "total": stats["total"],
                                 "mapillary": stats["mapillary"],
                                 "other": stats["other"],
                                 "top_country": top_country,
+                                "countries": stats["countries"],
+                                "top_koppen": top_koppen,
+                                "centroid": stats["centroid"],
+                                "bbox": stats["bbox"],
+                                "platforms": stats["platforms"],
                             },
                         }
                     )
@@ -790,15 +1071,41 @@ def main():
     )
 
     server = create_server(dataset_index, output_path, host=args.host, port=args.port)
+    summary = dataset_index.dataset_summary
+    bbox = summary.get("bbox", [0.0, 0.0, 0.0, 0.0])
+    top_countries = (
+        ", ".join(f"{c} ({cnt:,})" for c, cnt in summary.get("countries", [])[:5])
+        or "N/A"
+    )
+    platforms_str = (
+        ", ".join(f"{p} ({cnt:,})" for p, cnt in summary.get("platforms", [])) or "N/A"
+    )
+    koppen_str = (
+        ", ".join(
+            f"{code}{f' - {desc}' if desc else ''} ({cnt:,})"
+            for code, desc, cnt in summary.get("koppen", [])[:3]
+        )
+        or "N/A"
+    )
 
     print(
         "================================================================================"
     )
     print("🗺️  GEO-RAG INTERACTIVE ANOMALY CLEANER")
-    print(f" -> Continent: {args.continent}")
+    print(
+        f" -> Continent: {args.continent} ({summary.get('total_records', 0):,} images across {summary.get('unique_cells', 0):,} H3 cells)"
+    )
     print(f" -> Input:     {args.input}")
     print(f" -> Output:    {output_path}")
     print(f" -> Grid Res:  H3 Res {args.res}")
+    print(
+        f" -> BBox:      Lat [{bbox[0]:.2f}°, {bbox[2]:.2f}°], Lon [{bbox[1]:.2f}°, {bbox[3]:.2f}°]"
+    )
+    print(
+        f" -> Countries: {summary.get('unique_countries', 0)} total (Top: {top_countries})"
+    )
+    print(f" -> Platforms: {platforms_str}")
+    print(f" -> Climate:   {koppen_str}")
     print(f" -> Server:    http://{args.host}:{args.port}")
     print(
         "================================================================================"

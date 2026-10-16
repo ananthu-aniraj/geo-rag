@@ -64,6 +64,22 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
                     "Tropical Rainforest",
                     "Marine West Coast",
                 ],
+                "Season": ["Summer", "Summer", "Spring", "Spring", "Winter"],
+                "Time_Of_Day": [
+                    "Afternoon",
+                    "Morning",
+                    "Afternoon",
+                    "Evening",
+                    "Morning",
+                ],
+                "License": ["CC-BY-SA", "CC-BY", "CC-BY-SA", "CC-BY-SA", "CC0"],
+                "Region": [
+                    "Nairobi County",
+                    "Nairobi County",
+                    "Central Region",
+                    "Central Region",
+                    "Île-de-France",
+                ],
             }
         )
         df.to_parquet(self.parquet_path, index=False)
@@ -81,13 +97,32 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
         # Should only contain the 4 African rows, not the 1 European row
         self.assertEqual(index.total_records, 4)
         self.assertGreater(len(index.cell_stats), 0)
+        self.assertEqual(index.dataset_summary["total_records"], 4)
+        self.assertEqual(index.dataset_summary["unique_countries"], 2)
 
-        # Retrieve a cell and verify sample data
+        # Retrieve a cell and verify sample data & per-image location metadata
         sample_cell = list(index.cell_stats.keys())[0]
         details = index.get_cell_samples(sample_cell)
         self.assertIn("samples", details)
         self.assertIn("countries", details)
         self.assertIn("mapillary", details)
+        self.assertIn("bbox", details)
+        self.assertIn("platforms", details)
+        self.assertGreater(len(details["samples"]), 0)
+
+        first_sample = details["samples"][0]
+        self.assertIn(first_sample["country"], ("Kenya", "Uganda"))
+        self.assertEqual(first_sample["continent"], "Africa")
+        self.assertIn(first_sample["region"], ("Nairobi County", "Central Region"))
+        self.assertIn(first_sample["country"], first_sample["location_label"])
+        self.assertIn("h3_cell", first_sample)
+        self.assertIn("koppen_code", first_sample)
+        self.assertIn("koppen_desc", first_sample)
+        self.assertIn("season", first_sample)
+        self.assertIn("time_of_day", first_sample)
+        self.assertIn("license", first_sample)
+        self.assertIn("osm_url", first_sample)
+        self.assertIn("gmaps_url", first_sample)
 
     def test_purge_execution(self):
         index = ContinentDatasetIndex(
@@ -138,19 +173,32 @@ class TestInteractiveAnomalyCleaner(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             self.assertIn("Geo-RAG Anomaly Cleaner", r.text)
 
+            # 1b. Dataset summary endpoint
+            r = requests.get(f"{base_url}/api/summary")
+            self.assertEqual(r.status_code, 200)
+            summary = r.json()
+            self.assertEqual(summary["total_records"], 4)
+            self.assertEqual(summary["unique_countries"], 2)
+
             # 2. GeoJSON cells
             r = requests.get(f"{base_url}/api/cells")
             self.assertEqual(r.status_code, 200)
             geojson = r.json()
             self.assertEqual(geojson["type"], "FeatureCollection")
             self.assertGreater(len(geojson["features"]), 0)
+            first_props = geojson["features"][0]["properties"]
+            self.assertEqual(first_props["count"], first_props["total"])
+            self.assertIn("centroid", first_props)
 
             # 3. Cell details
-            sample_cell = geojson["features"][0]["properties"]["cell"]
+            sample_cell = first_props["cell"]
             r = requests.get(f"{base_url}/api/cell/{sample_cell}")
             self.assertEqual(r.status_code, 200)
             cell_info = r.json()
             self.assertEqual(cell_info["cell"], sample_cell)
+            self.assertGreater(len(cell_info["samples"]), 0)
+            self.assertIn("location_label", cell_info["samples"][0])
+            self.assertIn("country", cell_info["samples"][0])
 
             # 4. Rules add and remove
             r = requests.post(
