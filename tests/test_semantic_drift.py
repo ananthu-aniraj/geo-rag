@@ -109,6 +109,94 @@ class TestSemanticDrift(unittest.TestCase):
         last_line = output.splitlines()[-1] if output else ""
         self.assertEqual(last_line, "fit")
 
+    def test_pruning_cleaned_images_with_new_data(self):
+        # Image "2" was pruned by the cleaning step (not in new_input)
+        # Image "4" is newly added and identical to centroid 0
+        df_new = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "3", "4"],
+                "Platform": ["flickr", "mapillary", "flickr"],
+            }
+        )
+        emb_new = np.zeros((3, 768), dtype=np.float32)
+        emb_new[0, 0] = 1.0  # Image 1
+        emb_new[1, 2] = 1.0  # Image 3
+        emb_new[2, 0] = 1.0  # Image 4 (identical to centroid 0)
+        df_new["embedding"] = list(emb_new)
+        save_dataframe(df_new, self.new_input_parquet)
+
+        test_args = [
+            "check_semantic_drift",
+            "--input",
+            self.new_input_parquet,
+            "--centroids_parquet",
+            self.centroids_parquet,
+            "--k_clusters",
+            "3",
+            "--no_gpu",
+        ]
+
+        captured_output = StringIO()
+        sys.stdout = captured_output
+
+        with patch.object(sys, "argv", test_args):
+            main()
+
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue().strip()
+        last_line = output.splitlines()[-1] if output else ""
+        self.assertEqual(last_line, "assign")
+
+        # Verify image "2" was pruned from centroids_parquet on disk
+        df_centroids_after = pd.read_parquet(self.centroids_parquet)
+        self.assertEqual(len(df_centroids_after), 2)
+        self.assertListEqual(
+            list(df_centroids_after["Photo_ID"].astype(str)), ["1", "3"]
+        )
+
+    def test_pruning_cleaned_images_without_new_data(self):
+        # Image "2" was pruned by the cleaning step, but NO new images were added
+        df_new = pd.DataFrame(
+            {
+                "Photo_ID": ["1", "3"],
+                "Platform": ["flickr", "mapillary"],
+            }
+        )
+        emb_new = np.zeros((2, 768), dtype=np.float32)
+        emb_new[0, 0] = 1.0  # Image 1
+        emb_new[1, 2] = 1.0  # Image 3
+        df_new["embedding"] = list(emb_new)
+        save_dataframe(df_new, self.new_input_parquet)
+
+        test_args = [
+            "check_semantic_drift",
+            "--input",
+            self.new_input_parquet,
+            "--centroids_parquet",
+            self.centroids_parquet,
+            "--k_clusters",
+            "3",
+            "--no_gpu",
+        ]
+
+        captured_output = StringIO()
+        sys.stdout = captured_output
+
+        with patch.object(sys, "argv", test_args):
+            main()
+
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue().strip()
+        last_line = output.splitlines()[-1] if output else ""
+        self.assertEqual(last_line, "assign")
+
+        # Verify image "2" was pruned from centroids_parquet on disk
+        df_centroids_after = pd.read_parquet(self.centroids_parquet)
+        self.assertEqual(len(df_centroids_after), 2)
+        self.assertListEqual(
+            list(df_centroids_after["Photo_ID"].astype(str)), ["1", "3"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
