@@ -60,8 +60,11 @@ offline_pipeline:
 
   # 4. Optional Preprocessing (False by default for pre-cleaned offline datasets)
   run_coordinate_cleanup: false
-  cleanup_platform: ""      # (Optional) Restrict anomaly cleanup to a specific platform
-  cleanup_continent: ""     # (Optional) Restrict anomaly cleanup to a specific continent
+  cleanup_platform:         # Target platforms for coordinate & biome anomaly cleanup
+    - flickr
+    - mapillary
+    - kartaview
+  cleanup_continent: ""     # (Optional) Restrict anomaly cleanup to a specific continent (empty = global)
   run_timestamp_standardization: false
   koppen_geiger_tif: ""     # Path to Köppen-Geiger GeoTIFF (optional)
   land_shp: "shapefiles/ne_10m_admin_0_countries.shp"

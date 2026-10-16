@@ -202,6 +202,188 @@ class TestCoordinateCleanup(unittest.TestCase):
         self.assertEqual(len(df_cleaned), 4)
         self.assertEqual(sorted(df_cleaned["Photo_ID"].tolist()), sorted(good_ids))
 
+    def test_remote_biome_knn_and_multi_platform_filtering(self):
+        """
+        Verify that:
+        1. Leave-One-Cell-Out Visual k-NN flags misplaced temperate images in Antarctica (EF)
+           and the Sahara (BWh) for target platforms ('flickr', 'mapillary', 'kartaview').
+        2. Non-target platforms (e.g. 'inaturalist') are preserved and used as trusted anchors.
+        3. Diagonal coordinate glitches (Lat == Lon) are purged for target platforms.
+        """
+        rng = np.random.default_rng(123)
+        dim = 16
+
+        # Construct distinct unit prototype directions for Temperate (Cfb), Desert (BWh), Polar (EF)
+        vec_temp = np.zeros(dim, dtype=np.float32)
+        vec_temp[0] = 1.0
+        vec_desert = np.zeros(dim, dtype=np.float32)
+        vec_desert[1] = 1.0
+        vec_polar = np.zeros(dim, dtype=np.float32)
+        vec_polar[2] = 1.0
+
+        rows = []
+        embs = []
+
+        # 1. 30 trusted Temperate (Cfb) anchor photos in Europe (inaturalist + flickr)
+        for i in range(30):
+            plat = "inaturalist" if i < 20 else "flickr"
+            rows.append(
+                {
+                    "Photo_ID": f"eu_{i}",
+                    "Platform": plat,
+                    "Latitude": 48.0 + i * 0.02,
+                    "Longitude": 2.0 + i * 0.02,
+                    "continent": "Europe",
+                    "Koppen_Code": "Cfb",
+                    "Image_URL": f"url_eu_{i}",
+                }
+            )
+            e = vec_temp + rng.normal(0, 0.02, size=dim).astype(np.float32)
+            embs.append(e / np.linalg.norm(e))
+
+        # 2. 30 trusted Desert (BWh) anchor photos in Middle East / Australia (inaturalist + wikimedia)
+        for i in range(30):
+            plat = "inaturalist" if i < 20 else "wikimedia"
+            rows.append(
+                {
+                    "Photo_ID": f"des_anchor_{i}",
+                    "Platform": plat,
+                    "Latitude": 24.0 + i * 0.02,
+                    "Longitude": 45.0 + i * 0.02,
+                    "continent": "Asia",
+                    "Koppen_Code": "BWh",
+                    "Image_URL": f"url_des_{i}",
+                }
+            )
+            e = vec_desert + rng.normal(0, 0.02, size=dim).astype(np.float32)
+            embs.append(e / np.linalg.norm(e))
+
+        # 3. 20 Polar (EF) anchor photos in Antarctica (inaturalist)
+        for i in range(20):
+            rows.append(
+                {
+                    "Photo_ID": f"ant_clean_{i}",
+                    "Platform": "inaturalist",
+                    "Latitude": -75.0 - i * 0.02,
+                    "Longitude": 160.0 + i * 0.02,
+                    "continent": "Antarctica",
+                    "Koppen_Code": "EF",
+                    "Image_URL": f"url_ant_{i}",
+                }
+            )
+            e = vec_polar + rng.normal(0, 0.02, size=dim).astype(np.float32)
+            embs.append(e / np.linalg.norm(e))
+
+        # 4. 1 clean Flickr polar photo in Antarctica (matches vec_polar -> should be KEPT)
+        rows.append(
+            {
+                "Photo_ID": "flickr_ant_good",
+                "Platform": "flickr",
+                "Latitude": -65.1,
+                "Longitude": -64.2,
+                "continent": "Antarctica",
+                "Koppen_Code": "EF",
+                "Image_URL": "url_fgood",
+            }
+        )
+        embs.append(vec_polar.copy())
+
+        # 5. 1 anomalous Flickr photo in Antarctica that looks like Temperate Europe (vec_temp -> should be PURGED)
+        rows.append(
+            {
+                "Photo_ID": "flickr_ant_bad",
+                "Platform": "flickr",
+                "Latitude": -66.2,
+                "Longitude": -65.3,
+                "continent": "Antarctica",
+                "Koppen_Code": "EF",
+                "Image_URL": "url_fbad",
+            }
+        )
+        embs.append(vec_temp.copy())
+
+        # 6. 1 anomalous Mapillary photo in Sahara (BWh) that looks like Temperate Europe (vec_temp -> should be PURGED)
+        rows.append(
+            {
+                "Photo_ID": "mapillary_sahara_bad",
+                "Platform": "mapillary",
+                "Latitude": 22.5,
+                "Longitude": 8.5,
+                "continent": "Africa",
+                "Koppen_Code": "BWh",
+                "Image_URL": "url_mbad",
+            }
+        )
+        embs.append(vec_temp.copy())
+
+        # 7. 1 trusted iNaturalist photo in Sahara even with vec_temp (should be KEPT because inaturalist is not in --platform)
+        rows.append(
+            {
+                "Photo_ID": "inat_sahara_protected",
+                "Platform": "inaturalist",
+                "Latitude": 22.6,
+                "Longitude": 8.6,
+                "continent": "Africa",
+                "Koppen_Code": "BWh",
+                "Image_URL": "url_inat_prot",
+            }
+        )
+        embs.append(vec_temp.copy())
+
+        # 8. 1 KartaView diagonal lock glitch (Lat == Lon == 25.76168) -> should be PURGED
+        rows.append(
+            {
+                "Photo_ID": "kartaview_diag_bad",
+                "Platform": "kartaview",
+                "Latitude": 25.76168,
+                "Longitude": 25.76168,
+                "continent": "Africa",
+                "Koppen_Code": "BWh",
+                "Image_URL": "url_kv_bad",
+            }
+        )
+        embs.append(vec_desert.copy())
+
+        df_all = pd.DataFrame(rows)
+        df_all["embedding"] = embs
+
+        in_pq = os.path.join(self.test_dir, "biome_test.parquet")
+        out_pq = os.path.join(self.test_dir, "biome_test_clean.parquet")
+        # save_dataframe automatically decouples Embedding to biome_test_cls_embeddings.npy + .keys.parquet
+        save_dataframe(df_all, in_pq)
+
+        test_args = [
+            "cleanup_coordinate_anomalies",
+            "--input",
+            in_pq,
+            "--output",
+            out_pq,
+            "--platform",
+            "flickr",
+            "mapillary",
+            "kartaview",
+        ]
+
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.processing.cleanup_coordinate_anomalies.get_mapillary_token",
+                return_value="",
+            ):
+                main()
+
+        df_cleaned = pd.read_parquet(out_pq)
+        remaining_ids = set(df_cleaned["Photo_ID"].tolist())
+
+        # Bad images from target platforms must be purged
+        self.assertNotIn("flickr_ant_bad", remaining_ids)
+        self.assertNotIn("mapillary_sahara_bad", remaining_ids)
+        self.assertNotIn("kartaview_diag_bad", remaining_ids)
+
+        # Clean target platform image & protected non-target platform image must be kept
+        self.assertIn("flickr_ant_good", remaining_ids)
+        self.assertIn("inat_sahara_protected", remaining_ids)
+        self.assertEqual(len(df_cleaned), len(df_all) - 3)
+
 
 if __name__ == "__main__":
     unittest.main()

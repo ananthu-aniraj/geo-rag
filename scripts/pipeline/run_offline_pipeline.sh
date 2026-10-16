@@ -583,7 +583,12 @@ if [ "$RUN_COORDINATE_CLEANUP" = "true" ]; then
         CLEANUP_FLAGS="$CLEANUP_FLAGS --continent $CLEANUP_CONTINENT"
     fi
     CLEANED_OUTPUT="$OUTPUT_DIR/${BASE_NAME}_cleaned.parquet"
-    python3 -m src.processing.cleanup_coordinate_anomalies --input "$INPUT_PARQUET" --output "$CLEANED_OUTPUT" $CLEANUP_FLAGS
+    python3 -m src.processing.cleanup_coordinate_anomalies \
+      --input "$INPUT_PARQUET" \
+      --output "$CLEANED_OUTPUT" \
+      --model_name "$MODEL_NAME" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      $CLEANUP_FLAGS
     INPUT_PARQUET="$CLEANED_OUTPUT"
 fi
 

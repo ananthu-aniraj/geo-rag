@@ -1,24 +1,26 @@
-# Step 1c: Coordinate Anomaly Cleanup
+# Step 1c: Coordinate & Remote Biome Anomaly Cleanup
 
-This document describes the design and operation of `cleanup_coordinate_anomalies.py`, which filters out coordinate-locking anomalies caused by faulty contributor GPS units.
+This document describes the design and operation of `cleanup_coordinate_anomalies.py`, which filters out coordinate-locking anomalies, Null-Island/diagonal GPS parser glitches, and misplaced images in remote biomes (such as Antarctica and hyper-arid deserts like the Sahara) caused by faulty contributor GPS units or EXIF corruption.
 
 ---
 
 ## ⚙️ Core Operation
 
-During scraping, certain contributors may have faulty GPS tracking equipment that locks onto a single latitude coordinate (parallel) while longitude continues to update. This creates straight lines of incorrect coordinates stretching across multiple regions.
+During crowdsourced scraping, contributor hardware or EXIF parsers can introduce three distinct classes of geographic corruption:
 
-The script scans coordinate distributions, flags locked parallels, and deletes the anomalies to write an independent cleaned metadata file (`geo_space_cleaned.parquet`), leaving the raw deduplicated database untouched.
+1. **Locked-Latitude Parallels**: Faulty GPS tracking equipment locks onto a single latitude coordinate (parallel) while longitude continues to update, creating straight lines stretching across multiple regions.
+2. **Null-Island & Diagonal Coordinate Glitches**: Uninitialized GPS receivers default to `(0, 0)` (`|Lat| < 0.05` and `|Lon| < 0.05`) or copy-paste parser bugs duplicate a single value into both latitude and longitude (`|Lat - Lon| < 1e-5` for `|Lat| > 1.0°`, e.g. `25.761680, 25.761680` in the Sahara).
+3. **Remote-Biome GPS Relocation Glitches**: Hemisphere sign flips (`-Lat` vs. `+Lat`), coordinate swaps, or NMEA offset bugs place temperate highways, forests, or indoor graphics into extreme remote regions such as **Antarctica (`EF` / `ET`)** or **remote hyper-arid deserts (`BWh` / `BWk`)**.
 
-To prevent false positives, **anomaly checking is grouped by platform and continent**:
-
-1. It reads `Latitude`, `Longitude`, `Platform`, and `continent` (if present) from the Parquet dataset.
-2. It aggregates statistics within individual platforms (and optionally continents) rather than globally.
-3. This ensures that a normal dense urban center captured by one platform is not flagged as an anomaly because of a GPS glitch present on a different platform.
+The script scans coordinate distributions and companion visual embeddings (from Step 1a), flags anomalies within the configured target platform(s), and writes an independent cleaned metadata file (`geo_space_cleaned.parquet`), leaving the raw deduplicated database untouched.
 
 ---
 
-## 📐 Safety Criteria
+## 📐 Detector 1: Coordinate Geometry & Parallel Safety Criteria
+
+### 1a. Locked-Latitude Parallels
+
+To prevent false positives, **parallel checking is grouped by platform and continent**:
 
 A rounded latitude parallel $L$ (rounded to 5 decimal places, representing ~1.1 meters precision) is flagged and purged within a specific platform/continent grouping only if:
 
@@ -26,24 +28,52 @@ $$
 \text{Count}_{\text{Platform}}(L) \gt 10 \quad \text{and} \quad \text{Longitude Span}_{\text{Platform}}(L) \gt 1.0^{\circ}
 $$
 
-* A longitude span threshold of $> 1.0^{\circ}$ (~111 km) ensures that dense city streets or landmarks—which naturally accumulate thousands of images inside extremely small bounding boxes—are completely preserved.
-* Platform-specific locked parallel lines spanning across multiple countries or provinces are safely purged.
+* A longitude span threshold of $> 1.0^{\circ}$ (~111 km) ensures that dense city streets or landmarks—which naturally accumulate thousands of images inside small bounding boxes—are completely preserved.
+
+### 1b. Null-Island & Diagonal Locks
+
+Within the configured target platforms and continent scope, points satisfying either of the following deterministic glitch conditions are flagged:
+
+* **Null Island**: $|\text{Latitude}| < 0.05^{\circ}$ and $|\text{Longitude}| < 0.05^{\circ}$.
+* **Diagonal Copy-Paste Lock**: $|\text{Latitude} - \text{Longitude}| < 10^{-5}$ with $|\text{Latitude}| > 1.0^{\circ}$.
+
+---
+
+## 🌍 Detector 2: Leave-One-Cell-Out Visual $k$-NN Biome Consistency
+
+Because Step 1c runs **before** global clustering and MLLM labeling, it relies solely on the **Stage 02 companion visual embeddings** (`*_embeddings.npy` + `.keys.parquet`) and **Stage 03 Köppen-Geiger climate codes** (`Koppen_Code`).
+
+### 1. Non-Circular Clean Reference Bank
+
+To avoid circular voting (e.g. a displaced 200-frame Mapillary sequence in the Sahara voting for itself), the detector builds a clean reference bank of up to 15,000 vectors per major Köppen climate group (`A` Tropical, `B` Arid, `C` Temperate, `D` Continental, `E` Polar):
+
+* **Trusted Anchor Prioritization**: Platforms not listed in `--platform` (such as curated scientific/ecological repositories `inaturalist`, `wikimedia`, and camera-trap datasets) are never purged and are prioritized first when sampling reference anchors, supplemented by multi-platform H3 Resolution 3 cells ($\ge 2$ platforms and $\ge 20$ photos).
+* **10% Outlier Tail Trimming**: Within each major Köppen group, the bottom 10% of vectors furthest from the group mean direction (by cosine similarity) are trimmed prior to indexing, guaranteeing a pure visual core per biome.
+
+### 2. Leave-One-Cell-Out Cross-Region Voting ($K = 25$)
+
+For candidate images belonging to the target `--platform` list inside extreme biomes:
+
+* **Spatial Exclusion Radius**: When querying the top-$K$ ($K=25$) visual nearest neighbors for candidate image $i$, all reference images inside the **same H3 Resolution 3 cell** (~400 km) or within $\pm 3.0^{\circ}$ latitude/longitude are masked out.
+* **Polar / Antarctica (`EF`, `ET`, or `continent == "Antarctica"`)**:
+  * Flagged if $\ge 84\%$ (`--incompat_threshold 0.84`) of cross-region visual neighbors originate from incompatible warm/temperate/tropical/arid climates (`A*`, `B*`, `Cfa`, `Cfb`, `Csa`, `Csb`, `Cwa`, `Cwb`, `Dfa`, `Dfb`).
+* **Remote Arid Deserts (`BWh`, `BWk` in non-metropolitan H3 Res 4 cells)**:
+  * Dense multi-platform desert metropolises ($\ge 500$ images across $\ge 3$ platforms in an H3 Res 4 cell, such as Cairo, Phoenix, Dubai, or Las Vegas) are excluded from candidate scanning to preserve genuine urban oases.
+  * In sparse/remote desert cells (e.g. the Sahara interior), an image is flagged if $\ge 84\%$ of its cross-region visual neighbors originate from incompatible humid forest, temperate/continental, or polar climates (`Af`, `Am`, `Cfa`, `Cfb`, `Cfc`, `Dfa`, `Dfb`, `Dfc`, `Dfd`, `EF`, `ET`).
 
 ---
 
 ## 🗺️ Automated Mapillary Sequence Expansion
 
-Street-level imagery in Mapillary is captured in continuous temporal driving sessions termed **sequences**. When a contributor experiences a hardware or GPS lockup (e.g. frozen latitude sensor across hundreds of kilometers), the entire driving session is contaminated.
-
-While points directly on the parallel are flagged by the `round(5)` check, other frames in that faulty sequence may drift or jitter slightly (e.g. `±0.00001` or GPS noise) and escape point-level detection.
+Street-level imagery in Mapillary is captured in continuous temporal driving sessions termed **sequences**. When a contributor experiences a hardware lockup or NMEA hemisphere/offset glitch that shifts a European highway drive into the Sahara desert, the entire driving session is contaminated.
 
 To eliminate GPS pollution comprehensively:
 
-1. When Mapillary locked-latitude anomalies are detected within the filtered platform/continent scope, the script automatically loads `MAPILLARY_TOKEN` (from the environment or `.env`).
+1. When any Mapillary photo is flagged by **Detector 1** (locked latitude / coordinate glitch) or **Detector 2** (Visual $k$-NN Biome mismatch), the script loads `MAPILLARY_TOKEN` (from the environment or `.env`).
 2. It batch-queries Mapillary Graph API v4 (`https://graph.mapillary.com/?ids=...&fields=id,sequence`) in chunks of 100 to map all flagged points to their parent `sequence_id`s.
 3. For every violating sequence, it queries `https://graph.mapillary.com/image_ids?sequence_id={seq_id}` to retrieve all image IDs belonging to that contaminated drive.
-4. During streaming Parquet and CSV writes, **the entire sequence** (all member image IDs) is purged from the database alongside the locked parallel points.
-5. If `MAPILLARY_TOKEN` is not present, the script gracefully falls back to point-level parallel purging with an informative notice.
+4. During streaming Parquet and CSV writes, **the entire sequence** (all member image IDs) is purged from the database alongside the flagged points.
+5. If `MAPILLARY_TOKEN` is not present, the script gracefully falls back to point-level purging with an informative notice.
 
 > [!TIP] Synchronizing Existing Offline Datasets
 > When coordinate cleaning purges new anomalies or sequences from `geo_space_cleaned.parquet`, any existing offline dataset (`geo_space_cleaned_offline.parquet`), companion embedding matrices (`.npy` and `.keys.parquet`), and clustered sidecars (`*_clustered_k_*.parquet`) can be brought into 100% alignment using `src/utils/sync_offline_dataset.py` (or `./scripts/pipeline/run_offline_pipeline.sh --sync_offline`).
@@ -52,21 +82,27 @@ To eliminate GPS pollution comprehensively:
 
 ## ⚙️ Options & Parameters
 
-You can restrict the scope of coordinate cleaning to a specific platform or region to target known glitches (e.g. Mapillary uploads in Africa) by editing the following keys in `params.yaml`:
+You can configure the target platforms and optional continent restriction in `config/pipeline/params.yaml` (and `config/pipeline/params_offline.yaml`):
 
 ```yaml
 pipeline:
-  cleanup_anomalies: true  # Enable or disable coordinate parallel cleaning
-  cleanup_platform: "mapillary" # (Optional) Target platform for coordinate anomaly cleanup (e.g. "mapillary")
-  cleanup_continent: "africa"  # (Optional) Target continent for coordinate anomaly cleanup (e.g. "africa")
+  cleanup_anomalies: true  # Enable coordinate & remote-biome anomaly cleaning
+  cleanup_platform:        # Target platforms to clean (other platforms are preserved & used as trusted reference anchors)
+    - flickr
+    - mapillary
+    - kartaview
+  cleanup_continent: ""    # (Optional) Restrict cleanup to a specific continent (empty = global)
 ```
 
 ### Command Line Arguments
 
 Alternatively, you can run the script manually with targeted flags:
 
-* `--platform`: Restricts detection and cleaning to a specific platform (e.g. `--platform mapillary`).
-* `--continent`: Restricts detection and cleaning to a specific continent (e.g. `--continent africa`).
+* `--platform`: Target platform(s) for detection and cleaning (accepts space-separated values or a comma-separated string, e.g. `--platform flickr mapillary kartaview`).
+* `--continent`: Restricts detection and cleaning to a specific continent (e.g. `--continent Antarctica` or `--continent Africa`).
+* `--model_name` & `--representation_type`: Resolves the matching companion embeddings file (`*_embeddings.npy`) for Detector 2.
+* `--disable_biome_knn`: Disables Detector 2 (runs only coordinate geometry checks).
+* `--incompat_threshold`: Fraction of incompatible cross-region visual neighbors required to flag a remote-biome anomaly (default: `0.84`).
 
 ---
 

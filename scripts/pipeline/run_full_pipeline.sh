@@ -239,14 +239,19 @@ if [ "$CLEANUP_ANOMALIES" = "true" ]; then
     echo "Running coordinate anomaly cleanup..."
     CLEANUP_FLAGS=""
     if [ -n "$CLEANUP_PLATFORM" ]; then
-        echo " -> Restricting cleanup to platform: $CLEANUP_PLATFORM"
+        echo " -> Restricting cleanup to platform(s): $CLEANUP_PLATFORM"
         CLEANUP_FLAGS="$CLEANUP_FLAGS --platform $CLEANUP_PLATFORM"
     fi
     if [ -n "$CLEANUP_CONTINENT" ]; then
         echo " -> Restricting cleanup to continent: $CLEANUP_CONTINENT"
         CLEANUP_FLAGS="$CLEANUP_FLAGS --continent $CLEANUP_CONTINENT"
     fi
-    python3 -m src.processing.cleanup_coordinate_anomalies --input "$RAW_PARQUET" --output "$CLEANED_PARQUET" $CLEANUP_FLAGS
+    python3 -m src.processing.cleanup_coordinate_anomalies \
+      --input "$RAW_PARQUET" \
+      --output "$CLEANED_PARQUET" \
+      --model_name "$MODEL_NAME" \
+      --representation_type "$REPRESENTATION_TYPE" \
+      $CLEANUP_FLAGS
     INPUT_PARQUET="$CLEANED_PARQUET"
 else
     echo "Coordinate anomaly cleanup is disabled."
